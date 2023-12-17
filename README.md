@@ -20,7 +20,7 @@ To perform the installation directly via GitHub (in case the webserver is unavai
 ```
 cd ~
 mkdir -p hshq hshq/data hshq/data/lib
-wget -q -N https://raw.githubusercontent.com/homeserverhq/hshq/main/hshq.sh
-wget -q -N -O hshq/data/lib/hshqlib.sh https://raw.githubusercontent.com/homeserverhq/hshq/main/hshqlib.sh
+wget -q https://raw.githubusercontent.com/homeserverhq/hshq/main/hshq.sh
+wget -q -O hshq/data/lib/hshqlib.sh https://raw.githubusercontent.com/homeserverhq/hshq/main/hshqlib.sh
 bash hshq.sh
 ```
