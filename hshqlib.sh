@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=8
+HSHQ_SCRIPT_VERSION=9
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -805,6 +805,8 @@ function initConfig()
         HOMESERVER_HOST_IP=""
       else
         updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
+        JITSI_ADVERTISE_IPS=$HOMESERVER_HOST_IP
+        updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
       fi
     fi
   done
@@ -1831,6 +1833,15 @@ PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
 
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh >/dev/null <<EOFPO
+#!/bin/bash
+
+systemctl restart wg-quick@${RELAYSERVER_WG_VPN_NETNAME}
+$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf restart
+
+EOFPO
+  sudo chmod 0500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh
+
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf >/dev/null <<EOFCF
 [Interface]
@@ -2126,12 +2137,12 @@ EOFSM
 
   sudo tee /etc/ssmtp/revaliases >/dev/null <<EOFSM
 root:$EMAIL_SMTP_EMAIL_ADDRESS
-$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
+\$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
 EOFSM
 
   sudo apt install mailutils -y
   getent group mailsenders >/dev/null || sudo groupadd mailsenders
-  sudo usermod -aG mailsenders $USERNAME
+  sudo usermod -aG mailsenders \$USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
   sudo chmod 750 /usr/bin/mail.mailutils
 
@@ -2392,6 +2403,7 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
+  RELAYSERVER_SERVER_IP=\$(getHostIP)
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   sudo tar xvzf \$HOME/rsbackup.tar.gz >/dev/null
@@ -2439,7 +2451,6 @@ function getIPFromHostname()
 
 function haltAndWaitForConfirmation()
 {
-  host_ip=\$(getHostIP)
   clear
   echo
   echo
@@ -2449,7 +2460,7 @@ function haltAndWaitForConfirmation()
   echo "This server has been prepped for transfer. Please modify"
   echo "your DNS A record to point to this new IP Address:"
   echo
-  echo "\$host_ip"
+  echo "\$RELAYSERVER_SERVER_IP"
   echo
   echo "After this has been done, enter 'transfer' to complete"
   echo "the remaining steps of the process."
@@ -2469,11 +2480,11 @@ function haltAndWaitForConfirmation()
   while [ \$numTries -lt \$totalTries ]
   do
     ipFromHostname=\$(getIPFromHostname $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "\$host_ip" = "\$ipFromHostname" ]; then
+    if [ "\$RELAYSERVER_SERVER_IP" = "\$ipFromHostname" ]; then
       isMatch=true
       break
     fi
-    echo "(\$numTries/\$totalTries)This host's IP: \$host_ip, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
+    echo "(\$numTries/\$totalTries)This host's IP: \$RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
     sleep \$sleepSeconds
     ((numTries++))
   done
@@ -2603,6 +2614,18 @@ EOFR
   sudo systemctl restart systemd-resolved
   startStopStack adguard stop
   startStopStack adguard start
+
+  basic_auth="$(getAdguardCredentialsRS)"
+
+  del_domain="*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
+  del_ip_addr=\$(curl -s -H "Authorization: Basic \$basic_auth" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/list | jq -r --arg del_domain \$del_domain '.[] | select(.domain==\$del_domain) | .answer')
+  dom_json=\$(jq -n --arg del_domain \$del_domain --arg del_ip_addr \$del_ip_addr '{domain: \$del_domain, answer: \$del_ip_addr}')
+  curl -s -H "Authorization: Basic \$basic_auth" -H 'Content-Type: application/json' -d "\$dom_json" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/delete
+
+  add_domain="*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
+  add_ip_addr="$RELAYSERVER_SERVER_IP"
+  dom_json=\$(jq -n --arg add_domain \$add_domain --arg add_ip_addr \$add_ip_addr '{domain: \$add_domain, answer: \$add_ip_addr}')
+  curl -s -H "Authorization: Basic \$basic_auth" -H 'Content-Type: application/json' -d "\$dom_json" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/add
 }
 
 function restoreMailRelay()
@@ -2682,7 +2705,7 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
-  host_ip=\$(getHostIP)
+  RELAYSERVER_SERVER_IP=\$(getHostIP)
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   installLogNotify "Begin Main"
   while getopts ':i' opt; do
@@ -2934,7 +2957,6 @@ function outputScripts()
 
 function outputBootScripts()
 {
-  host_ip=\$(getHostIP)
   exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,22000,21027
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -3762,7 +3784,7 @@ filtering:
     ids: []
   rewrites:
     - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
-      answer: A
+      answer: \$RELAYSERVER_SERVER_IP
     - domain: '*.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
       answer: $RELAYSERVER_WG_SV_IP
     - domain: '$HOMESERVER_DOMAIN'
@@ -5160,6 +5182,11 @@ function uploadVPNInstallScripts()
       resetRSInit
     done
     updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
+
+    if [ "$IS_INSTALLED" = "true" ]; then
+      addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
+    fi
+
     RELAYSERVER_CURRENT_SSH_PORT=""
     while [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]
     do
@@ -7418,7 +7445,7 @@ function getPrivateIPRangesCaddy()
       str_res="${CONNECTING_IP}/32"
     fi
     rsip=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if ! [ "$rsip" = "$CONNECTING_IP" ]; then
+    if ! [ -z $rsip ] && ! [ "$rsip" = "$CONNECTING_IP" ]; then
       str_res=${str_res}" ${rsip}/32"
     fi
     set +e
@@ -9338,7 +9365,7 @@ CERTS_INTERNAL_CA_DAYS=8395
 
 # Relay Server Settings
 RELAYSERVER_NAME=
-RELAYSERVER_SERVER_IP=
+RELAYSERVER_SERVER_IP=A
 RELAYSERVER_EXT_EMAIL_HOSTNAME=
 RELAYSERVER_SUB_WG=wg
 RELAYSERVER_SUB_RELAYSERVER=rs
@@ -9518,7 +9545,7 @@ NEXTCLOUD_PUSH_PORT=7867
 # Nextcloud (Service Details) END
 
 # Jitsi (Service Details)
-JITSI_ADVERTISE_IPS=$host_ip
+JITSI_ADVERTISE_IPS=
 # Jitsi (Service Details) END
 
 # Matrix (Service Details)
@@ -10052,18 +10079,26 @@ done
 
 EOFBS
   if [ "$(checkDefaultRouteIPIsPrivateIP)" = "false" ]; then
-    # Add a special rule for Portainer port when HomeServer is on non-private network, i.e. cloud-server, etc.
+    # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
     sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFPO
-  # Special case for Portainer when HomeServer is on non-private network
-  iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport $PORTAINER_LOCAL_HTTPS_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -D DOCKER-USER -m conntrack --ctorigdstport $PORTAINER_LOCAL_HTTPS_PORT --ctdir ORIGINAL -j DROP 2> /dev/null
-  iptables -I DOCKER-USER -m conntrack --ctorigdstport $PORTAINER_LOCAL_HTTPS_PORT --ctdir ORIGINAL -j DROP
-  iptables -I DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport $PORTAINER_LOCAL_HTTPS_PORT --ctdir ORIGINAL -j ACCEPT
+# Special case when HomeServer is on non-private network
+ports_list=$(getExposedPortsList)
+portsArr=(\$(echo \$ports_list | tr "," "\n"))
+for cur_port in "\${portsArr[@]}"
+do
+  iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  iptables -I DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+done
+
 EOFPO
     sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
-  # Special case for Portainer when HomeServer is on non-private network
-  iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport $PORTAINER_LOCAL_HTTPS_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -D DOCKER-USER -m conntrack --ctorigdstport $PORTAINER_LOCAL_HTTPS_PORT --ctdir ORIGINAL -j DROP 2> /dev/null
+  # Special case when HomeServer is on non-private network
+ports_list=$(getExposedPortsList)
+portsArr=(\$(echo \$ports_list | tr "," "\n"))
+for cur_port in "\${portsArr[@]}"
+do
+  iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+done
 EOFPT
   fi
 
@@ -10892,18 +10927,18 @@ function initCertificateAuthority()
   while [ -z "$CERTS_INTERNAL_ROOT_CN" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      CERTS_INTERNAL_ROOT_CN="HomeServerHQ Root CA"
+      CERTS_INTERNAL_ROOT_CN="$HOMESERVER_NAME Root CA"
     else
-      CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "HomeServerHQ Root CA" "Enter Certificate Root CN" "Enter the root CN you would like to appear on your certificates: ")
+      CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "$HOMESERVER_NAME Root CA" "Enter Certificate Root CN" "Enter the root CN you would like to appear on your certificates: ")
     fi
     updateConfigVar CERTS_INTERNAL_ROOT_CN "$CERTS_INTERNAL_ROOT_CN"
   done
   while [ -z "$CERTS_INTERNAL_INTERMEDIATE_CN" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      CERTS_INTERNAL_INTERMEDIATE_CN="HomeServerHQ ECC Intermediate"
+      CERTS_INTERNAL_INTERMEDIATE_CN="$HOMESERVER_NAME ECC Intermediate"
     else
-      CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "HomeServerHQ ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like to appear on your certificates: ")
+      CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "$HOMESERVER_NAME ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like to appear on your certificates: ")
     fi
     updateConfigVar CERTS_INTERNAL_INTERMEDIATE_CN "$CERTS_INTERNAL_INTERMEDIATE_CN"
   done
@@ -12737,7 +12772,7 @@ filtering:
     - domain: '*.$HOMESERVER_DOMAIN'
       answer: $HOMESERVER_HOST_IP
     - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
-      answer: A
+      answer: $RELAYSERVER_SERVER_IP
   protection_disabled_until: null
   safe_search:
     enabled: false
@@ -20491,7 +20526,6 @@ services:
     user: "\${UID}:\${GID}"
     networks:
       - dock-proxy-net
-      - dock-privateip-net
       - dock-ext-net
       - dock-ldap-net
     ports:
@@ -20513,9 +20547,6 @@ services:
 networks:
   dock-proxy-net:
     name: dock-proxy
-    external: true
-  dock-privateip-net:
-    name: dock-privateip
     external: true
   dock-ext-net:
     name: dock-ext
@@ -26726,7 +26757,7 @@ function initCaddyCommon()
 }
 
 ($CADDY_SNIPPET_NOTHOMESUBNET) {
-  not remote_ip $(getPrivateIPRangesCaddy)
+  not remote_ip {\$CADDY_HSHQ_PRIVATE_IPS}
 }
 
 ($CADDY_SNIPPET_RIP) {
@@ -27186,6 +27217,7 @@ CERT_INTERMEDIATE_LIFETIME=$CADDY_CERT_INTERMEDIATE_LIFETIME
 CERT_LEAF_LIFETIME=$CADDY_CERT_LEAF_LIFETIME
 CADDY_HSHQ_CA_NAME=$ca_name
 CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_rip
+CADDY_HSHQ_PRIVATE_IPS=$(getPrivateIPRangesCaddy)
 CADDY_HSHQ_CA_URL=$ca_url
 EOFCE
 
