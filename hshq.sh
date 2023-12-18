@@ -210,7 +210,7 @@ EOF
     gpg --list-keys $HSHQ_GPG_FINGERPRINT >/dev/null 2>/dev/null
     if [ $? -ne 0 ]; then
       echo "Obtaining HomeServerHQ Public GPG Key..."
-      gpg --keyserver keyserver.ubuntu.com --recv-keys $HSHQ_GPG_FINGERPRINT_SHORT
+      curl -s https://homeserverhq.com/hshq.asc | gpg --import >/dev/null 2>/dev/null
     fi
     gpg --list-keys $HSHQ_GPG_FINGERPRINT >/dev/null 2>/dev/null
     if [ $? -ne 0 ]; then
