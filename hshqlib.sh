@@ -20222,6 +20222,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - \${HSHQ_STACKS_DIR}/dozzle/users.yml:/data/users.yml
 
 networks:
   dock-proxy-net:
@@ -20230,9 +20231,16 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/dozzle.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 DOZZLE_NO_ANALYTICS=true
-DOZZLE_USERNAME=$DOZZLE_USERNAME
-DOZZLE_PASSWORD=$DOZZLE_PASSWORD
+DOZZLE_AUTH_PROVIDER=simple
+EOFDZ
+
+  cat <<EOFDZ > $HSHQ_STACKS_DIR/dozzle/users.yml
+users:
+  $DOZZLE_USERNAME:
+    name: "$HOMESERVER_NAME Admin"
+    password: "$(echo -n $DOZZLE_PASSWORD | shasum -a 256 | xargs | cut -d' ' -f1)"
 EOFDZ
 
 }
