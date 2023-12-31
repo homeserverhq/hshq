@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=9
+HSHQ_SCRIPT_VERSION=10
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -1708,6 +1708,14 @@ function setupHostedVPN()
     RELAYSERVER_RSPAMD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar RELAYSERVER_RSPAMD_ADMIN_PASSWORD $RELAYSERVER_RSPAMD_ADMIN_PASSWORD
   fi
+  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_USERNAME" ]; then
+    RELAYSERVER_FILEBROWSER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_filebrowser"
+    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
+  fi
   if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_USERNAME" ]; then
     RELAYSERVER_SYNCTHING_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_syncthing"
     updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_USERNAME
@@ -2364,6 +2372,7 @@ function pullDockerImages()
   pullImage $IMG_CADDY
   pullImage $IMG_DNSMASQ
   pullImage $IMG_MAIL_RELAY_UNBOUND
+  pullImage $IMG_FILEBROWSER
   pullImage $IMG_OFELIA
   pullImage $IMG_PORTAINER
   pullImage $IMG_SYNCTHING
@@ -2801,6 +2810,7 @@ function install()
   installAdGuard
   installMailRelay
   installWireGuard
+  installFileBrowser
   installCaddy
   installOfelia
   installSyncthing
@@ -4613,6 +4623,70 @@ EOFWQ
   sudo chmod 0400 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/clientdns/rsClientDNS.conf
 }
 
+function installFileBrowser()
+{
+  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser
+  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/db
+  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/srv
+  RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
+  FILEBROWSER_PASSWORD_HASH=\$(htpasswd -bnBC 10 "" \$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/')
+  outputConfigFileBrowser
+  installStack filebrowser filebrowser "Listening on" \$HOME/filebrowser.env
+  startStopStack filebrowser stop
+}
+
+function outputConfigFileBrowser()
+{
+  cat <<EOFFB > \$HOME/filebrowser-compose.yml
+version: '3.5'
+
+services:
+  filebrowser:
+    image: $IMG_FILEBROWSER
+    container_name: filebrowser
+    hostname: filebrowser
+    restart: unless-stopped
+    env_file: stack.env
+    user: "\\\${UID}:\\\${GID}"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
+      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/srv:/srv
+      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/db:/database
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+
+EOFFB
+
+  cat <<EOFFB > \$HOME/filebrowser.env
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+UID=\$USERID
+GID=\$GROUPID
+FB_USERNAME=$RELAYSERVER_FILEBROWSER_ADMIN_USERNAME
+FB_PASSWORD='\$FILEBROWSER_PASSWORD_HASH'
+EOFFB
+
+  cat <<EOFFB > \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/filebrowser.json
+{
+  "port": 80,
+  "baseURL": "",
+  "address": "",
+  "log": "stdout",
+  "database": "/database/filebrowser.db",
+  "root": "/srv"
+}
+EOFFB
+
+}
+
 function installCaddy()
 {
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/caddy
@@ -4789,6 +4863,15 @@ https://$RELAYSERVER_EXT_EMAIL_HOSTNAME {
   templates
   header Content-Type text/plain
   respond "Your IP Address is {{.RemoteIP}}"
+}
+
+# This provides a way to share files externally
+# The service is disabled by default.
+https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
+  import safe-header
+  reverse_proxy http://filebrowser {
+    import trusted-proxy-list
+  }
 }
 
 # Sample for providing public internet access to a service
@@ -8317,7 +8400,7 @@ function sendEmail()
     return
   fi
   if [ -z "$email_from" ]; then
-    email_from="HSHQ <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    email_from="HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
   fi
   if [ -z "$email_to" ]; then
     email_to=$EMAIL_ADMIN_EMAIL_ADDRESS
@@ -9418,6 +9501,8 @@ RELAYSERVER_ADGUARD_ADMIN_USERNAME=
 RELAYSERVER_ADGUARD_ADMIN_PASSWORD=
 RELAYSERVER_CADDYDNS_ADMIN_USERNAME=
 RELAYSERVER_CADDYDNS_ADMIN_PASSWORD=
+RELAYSERVER_FILEBROWSER_ADMIN_USERNAME=
+RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=
 RELAYSERVER_WGPORTAL_ADMIN_USERNAME=
 RELAYSERVER_WGPORTAL_ADMIN_EMAIL=
 RELAYSERVER_WGPORTAL_ADMIN_PASSWORD=
@@ -9796,9 +9881,6 @@ EOFCF
 
 function checkUpdateVersion()
 {
-  if [[ "$HSHQ_VERSION" == *"."* ]]; then
-    HSHQ_VERSION=0
-  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     set +e
     showYesNoMessageBox "Perform Updates?" "Your system is out of date, do you wish to perform updates?"
@@ -9808,27 +9890,9 @@ function checkUpdateVersion()
     fi
     set -e
   fi
-  curVersion=8
-  if [ $HSHQ_VERSION -lt $curVersion ]; then
-    echo "Updating to Version $curVersion"
-    updateSysctl
-    outputMaintenanceScripts
-    outputBootScripts
-    sudo rm -f $HSHQ_SCRIPTS_DIR/userasroot/softResetAllCaddyContainers.sh
-    sudo crontab -l > $HSHQ_BASE_DIR/rootcron
-    set +e
-    grep checkCaddyContainers.sh $HSHQ_BASE_DIR/rootcron >/dev/null 2>/dev/null
-    if [ $? -ne 0 ]; then
-      echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HSHQ_BASE_DIR/rootcron >/dev/null
-      sudo crontab $HSHQ_BASE_DIR/rootcron
-    fi
-    set -e
-    sudo rm $HSHQ_BASE_DIR/rootcron
-    sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 60m|g" /etc/ssh/sshd_config
-    sudo sed -i "s|^#*PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
-    HSHQ_VERSION=$curVersion
+  if [ $HSHQ_VERSION -lt 10 ]; then
+    HSHQ_VERSION=10
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-    sudo systemctl restart sshd
   fi
 }
 
@@ -11184,12 +11248,12 @@ function loadPinnedDockerImages()
 {
   IMG_ADGUARD=adguard/adguardhome:v0.107.41
   IMG_AUTHELIA=authelia/authelia:4.37.5
-  IMG_CADDY=caddy:2.7.4
-  IMG_CODESERVER=codercom/code-server:4.16.1
-  IMG_COLLABORA=collabora/code:23.05.5.3.1
-  IMG_DISCOURSE=bitnami/discourse:3.0.6
+  IMG_CADDY=caddy:2.7.6
+  IMG_CODESERVER=codercom/code-server:4.20.0
+  IMG_COLLABORA=collabora/code:23.05.6.4.1
+  IMG_DISCOURSE=bitnami/discourse:3.1.3
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v4.10.26
+  IMG_DOZZLE=amir20/dozzle:v5.8.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
   IMG_DRAWIO_WEB=jgraph/drawio:21.0.2
@@ -11197,28 +11261,28 @@ function loadPinnedDockerImages()
   IMG_EXCALIDRAW_SERVER=excalidraw/excalidraw-room
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
-  IMG_FILEBROWSER=filebrowser/filebrowser:v2.24.2
-  IMG_FIREFLY=fireflyiii/core:version-6.0.20
-  IMG_GHOST=ghost:5.59.1-alpine
-  IMG_GITEA_APP=gitea/gitea:1.20.3
-  IMG_GITLAB_APP=gitlab/gitlab-ce:16.2.4-ce.0
-  IMG_GRAFANA=grafana/grafana-oss:9.5.8
-  IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.3
-  IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.3
+  IMG_FILEBROWSER=filebrowser/filebrowser:v2.26.0
+  IMG_FIREFLY=fireflyiii/core:version-6.1.1
+  IMG_GHOST=ghost:5.75.2-alpine
+  IMG_GITEA_APP=gitea/gitea:1.21.3
+  IMG_GITLAB_APP=gitlab/gitlab-ce:16.7.0-ce.0
+  IMG_GRAFANA=grafana/grafana-oss:9.5.15
+  IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.4
+  IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.4
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
   IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2023.8
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
   IMG_HOMEASSISTANT_NODERED=nodered/node-red:3.0.2
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
-  IMG_INFLUXDB=influxdb:2.7.1-alpine
+  IMG_INFLUXDB=influxdb:2.7.4-alpine
   IMG_INVIDIOUS=quay.io/invidious/invidious
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
-  IMG_JELLYFIN=jellyfin/jellyfin:10.8.10
-  IMG_JITSI_WEB=jitsi/web:stable-8719
-  IMG_JITSI_PROSODY=jitsi/prosody:stable-8719
-  IMG_JITSI_JICOFO=jitsi/jicofo:stable-8719
-  IMG_JITSI_JVB=jitsi/jvb:stable-8719
-  IMG_KASM=lscr.io/linuxserver/kasm:1.13.0
+  IMG_JELLYFIN=jellyfin/jellyfin:10.8.13
+  IMG_JITSI_WEB=jitsi/web:stable-9111
+  IMG_JITSI_PROSODY=jitsi/prosody:stable-9111
+  IMG_JITSI_JICOFO=jitsi/jicofo:stable-9111
+  IMG_JITSI_JVB=jitsi/jvb:stable-9111
+  IMG_KASM=lscr.io/linuxserver/kasm:1.14.0
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.1.1
@@ -11234,44 +11298,44 @@ function loadPinnedDockerImages()
   IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2.0
   IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2.0
   IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2.0
-  IMG_MASTODON_APP=tootsuite/mastodon:v4.1.6
-  IMG_MASTODON_WEB=nginx:1.23.2-alpine
-  IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.8.1
-  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.40
-  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.90.0
+  IMG_MASTODON_APP=tootsuite/mastodon:v4.2.3
+  IMG_MASTODON_WEB=nginx:1.25.3-alpine
+  IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.11.3
+  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.52
+  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.98.0
   IMG_MEALIE=hkotel/mealie:v0.5.6
   IMG_MYSQL=mariadb:10.7.3
-  IMG_NEXTCLOUD_APP=nextcloud:27.1.3-fpm-alpine
-  IMG_NEXTCLOUD_WEB=nginx:1.23.2-alpine
+  IMG_NEXTCLOUD_APP=nextcloud:27.1.5-fpm-alpine
+  IMG_NEXTCLOUD_WEB=nginx:1.25.3-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:latest
-  IMG_NTFY=binwiederhier/ntfy:v2.7.0
-  IMG_NODE_EXPORTER=prom/node-exporter:v1.6.1
+  IMG_NTFY=binwiederhier/ntfy:v2.8.0
+  IMG_NODE_EXPORTER=prom/node-exporter:v1.7.0
   IMG_OFELIA=mcuadros/ofelia:v0.3.7
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
-  IMG_PEERTUBE_APP=chocobozzz/peertube:v5.2.0-bullseye
+  IMG_PEERTUBE_APP=chocobozzz/peertube:v6.0.2-bookworm
   IMG_PHOTOPRISM_APP=photoprism/photoprism:220901-bullseye
-  IMG_PORTAINER=portainer/portainer-ce:2.19.3-alpine
+  IMG_PORTAINER=portainer/portainer-ce:2.19.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
-  IMG_PROMETHEUS=prom/prometheus:v2.46.0
+  IMG_PROMETHEUS=prom/prometheus:v2.48.1
   IMG_REDIS=bitnami/redis:7.0.5
   IMG_REMOTELY=immybot/remotely:69
-  IMG_SEARXNG=searxng/searxng:2023.8.19-018b0a932
-  IMG_SHLINK_APP=shlinkio/shlink:3.6.3
+  IMG_SEARXNG=searxng/searxng:2023.12.29-27e26b3d6
+  IMG_SHLINK_APP=shlinkio/shlink:3.7.2
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:3.10.2
-  IMG_SQLPAD=sqlpad/sqlpad:7.1.2
-  IMG_SYNCTHING=syncthing/syncthing:1.23.7
-  IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.0-alpine
-  IMG_VAULTWARDEN_APP=vaultwarden/server:1.29.1-alpine
+  IMG_SQLPAD=sqlpad/sqlpad:7.2.0
+  IMG_SYNCTHING=syncthing/syncthing:1.27.1
+  IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.11-alpine
+  IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.1-alpine
   IMG_VAULTWARDEN_LDAP=thegeeklab/vaultwarden-ldap:0.6.2
-  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.6.0
-  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.6.0
-  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.6.0
+  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.1
+  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.1
+  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.7.1
   IMG_WGPORTAL=h44z/wg-portal:1.0.17
   IMG_WIKIJS=requarks/wiki:2.5
   IMG_WIREGUARD=linuxserver/wireguard:1.0.20210914
-  IMG_WORDPRESS=wordpress:php8.2-apache
+  IMG_WORDPRESS=wordpress:php8.3-apache
 }
 
 function pullDockerImages()
@@ -12068,7 +12132,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_IMAGES.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_ITTOOLS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JITSI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MAILU.$HOMESERVER_DOMAIN\n"
@@ -12108,6 +12171,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_GRAFANA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GUACAMOLE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_INFLUXDB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ITTOOLS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM_WIZARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
@@ -12182,6 +12246,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}-RelayServer" https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RSPAMD}-RelayServer" https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SYNCTHING}-RelayServer" https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FILEBROWSER}-RelayServer" https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   fi
@@ -12259,6 +12324,7 @@ function insertServicesHeimdall()
     insertIntoHeimdallDB "$FMLNAME_RSPAMD" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "rspamd.png"
     insertIntoHeimdallDB "$FMLNAME_SYNCTHING" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "syncthing.png"
     insertIntoHeimdallDB "$FMLNAME_WGPORTAL" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "wireguard.png"
+    insertIntoHeimdallDB "$FMLNAME_FILEBROWSER" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "filebrowser.png"
   fi
 }
 
@@ -12291,6 +12357,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_WORDPRESS" $USERTYPE_WORDPRESS "https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_GHOST" $USERTYPE_GHOST "https://$SUB_GHOST.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_DUPLICATI" $USERTYPE_DUPLICATI "https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN" 1
+  insertServiceUptimeKuma "$FMLNAME_SYNCTHING" $USERTYPE_SYNCTHING "https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN" 1
   insertServiceUptimeKuma "$FMLNAME_PEERTUBE" $USERTYPE_PEERTUBE "https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_SQLPAD" $USERTYPE_SQLPAD "https://$SUB_SQLPAD.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_CODESERVER" $USERTYPE_CODESERVER "https://$SUB_CODESERVER.$HOMESERVER_DOMAIN" 0
@@ -12317,7 +12384,9 @@ function insertServicesUptimeKuma()
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
+    insertServiceUptimeKuma "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
+    insertServiceUptimeKuma "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
   fi
 }
 
@@ -19178,11 +19247,11 @@ function installDuplicati()
   echo "Duplicati installed, sleeping 5 seconds..."
   sleep 5
   db_name=$HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite
-  sudo sqlite3 $db_name "INSERT INTO Option VALUES(-1,'','--accept-any-ssl-certificate','true');"
-  sudo sqlite3 $db_name "INSERT INTO Option VALUES(-1,'','--send-mail-from','Duplicati HSHQ Admin<$EMAIL_ADMIN_EMAIL_ADDRESS>');"
-  sudo sqlite3 $db_name "INSERT INTO Option VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
-  sudo sqlite3 $db_name "INSERT INTO Option VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
-  sudo sqlite3 $db_name "INSERT INTO Option VALUES(-1,'','--send-mail-level','all');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--accept-any-ssl-certificate','true');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-from','Duplicati HSHQ Admin<$EMAIL_ADMIN_EMAIL_ADDRESS>');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-level','all');"
   docker container restart duplicati
 
   inner_block=""
@@ -21263,6 +21332,8 @@ function installAuthelia()
   mkdir $HSHQ_STACKS_DIR/authelia/config/certs
   mkdir $HSHQ_STACKS_DIR/authelia/config/cacerts
   mkdir $HSHQ_STACKS_DIR/authelia/keys
+  mkdir $HSHQ_NONBACKUP_DIR/authelia
+  mkdir $HSHQ_NONBACKUP_DIR/authelia/redis
 
   if [ -z "$AUTHELIA_REDIRECTION_URL" ]; then
     AUTHELIA_REDIRECTION_URL=home.$HOMESERVER_DOMAIN
@@ -21364,6 +21435,7 @@ services:
       - \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro
       - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
       - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
+      - v-authelia-redis:/bitnami/redis/data
     environment:
       - REDIS_PASSWORD=$AUTHELIA_REDIS_PASSWORD
 
@@ -21378,6 +21450,14 @@ secrets:
     file: \${HSHQ_SECRETS_DIR}/ldap_admin_bind_password.txt
   authelia_redis_password:
     file: \${HSHQ_SECRETS_DIR}/authelia_redis_password.txt
+
+volumes:
+  v-authelia-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/authelia/redis
 
 networks:
   dock-proxy-net:
@@ -21402,6 +21482,7 @@ EOFAC
 HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 HSHQ_SECRETS_DIR=$HSHQ_SECRETS_DIR
 HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 TZ=$TZ
 UID=$USERID
 GID=$GROUPID
@@ -23485,6 +23566,8 @@ function installCodeServer()
   docker exec codeserver code-server --install-extension cweijan.vscode-ssh
   docker-compose -f $HOME/codeserver-compose-tmp.yml down -v
   rm -f $HOME/codeserver-compose-tmp.yml
+  rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
+  mv $HOME/settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   installStack codeserver codeserver "HTTPS server listening on https" $HOME/codeserver.env
   checkDisableStack codeserver
 
@@ -23603,7 +23686,17 @@ bind-addr: 127.0.0.1:3443
 auth: password
 hashed-password: "$CODESERVER_ADMIN_PASSWORD_HASH"
 cert: false
+disable-telemetry: true
 EOFCS
+
+  cat <<EOFCS > $HOME/settings.json
+{
+    "workbench.colorTheme": "Default Dark Modern",
+    "workbench.startupEditor": "none",
+    "telemetry.telemetryLevel": "off"
+}
+EOFCS
+
 }
 
 function installShlink()
@@ -26143,25 +26236,25 @@ function installHeimdall()
   search_provider="\n${domain_noext}:\n   id: ${domain_noext}\n   url: https://$SUB_SEARXNG.$HOMESERVER_DOMAIN\n   name: \"$HOMESERVER_NAME\"\n   method: get\n   target: _blank\n   query: q"
   echo -e "$search_provider" >> $HSHQ_STACKS_DIR/heimdall/config/www/searchproviders.yaml
 
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users VALUES(1,'$HEIMDALL_ADMIN_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/admin.png','$admin_password_hash',NULL,0,NULL,'$curdt','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users VALUES(2,'$HEIMDALL_USER_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/users.png','$user_password_hash',NULL,1,NULL,'$curdt','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users VALUES(3,'$HEIMDALL_HOMESERVERS_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/homeserver.png','$hs_password_hash',NULL,1,NULL,'$curdt','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users VALUES(4,'$HEIMDALL_RELAYSERVER_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/relayserver.png','$rs_password_hash',NULL,0,NULL,'$curdt','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(7,1,'_blank');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(7,2,'_blank');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(7,3,'_blank');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(7,4,'_blank');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(2,1,'backgrounds/adminbackground.jpg');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(2,2,'backgrounds/userbackground.jpg');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(2,3,'backgrounds/wghomeserversbackground.jpg');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(2,4,'backgrounds/relayserverbackground.jpg');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(4,1,'${domain_noext}');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(4,2,'${domain_noext}');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(4,3,'${domain_noext}');"
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(4,4,'${domain_noext}');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users(id,username,email,avatar,password,autologin,public_front,remember_token,created_at,updated_at) VALUES(1,'$HEIMDALL_ADMIN_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/admin.png','$admin_password_hash',NULL,0,NULL,'$curdt','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users(id,username,email,avatar,password,autologin,public_front,remember_token,created_at,updated_at) VALUES(2,'$HEIMDALL_USER_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/users.png','$user_password_hash',NULL,1,NULL,'$curdt','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users(id,username,email,avatar,password,autologin,public_front,remember_token,created_at,updated_at) VALUES(3,'$HEIMDALL_HOMESERVERS_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/homeserver.png','$hs_password_hash',NULL,1,NULL,'$curdt','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO users(id,username,email,avatar,password,autologin,public_front,remember_token,created_at,updated_at) VALUES(4,'$HEIMDALL_RELAYSERVER_USERNAME','$EMAIL_ADMIN_EMAIL_ADDRESS','avatars/relayserver.png','$rs_password_hash',NULL,0,NULL,'$curdt','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(7,1,'_blank');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(7,2,'_blank');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(7,3,'_blank');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(7,4,'_blank');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(2,1,'backgrounds/adminbackground.jpg');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(2,2,'backgrounds/userbackground.jpg');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(2,3,'backgrounds/wghomeserversbackground.jpg');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(2,4,'backgrounds/relayserverbackground.jpg');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,1,'${domain_noext}');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,2,'${domain_noext}');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,3,'${domain_noext}');"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,4,'${domain_noext}');"
 
   if ! [ "$(isServiceDisabled searxng)" = "true" ]; then
-    sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user VALUES(3,2,1);"
+    sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(3,2,1);"
   fi
 
   insertServicesHeimdall
@@ -26666,9 +26759,9 @@ function insertIntoHeimdallDB()
   fi
 
   cp $HSHQ_ASSETS_DIR/images/$svc_img $HSHQ_STACKS_DIR/heimdall/config/www/icons/
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO items VALUES(NULL,'$svc_proper_name','$color_string','icons/$svc_img','$svc_url',NULL,$svc_is_active,0,NULL,'$curdt','$curdt',0,$user_id,NULL,'null',NULL);"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO items(id,title,colour,icon,url,description,pinned,deleted_at,created_at,updated_at,type,user_id,class,appid,appdescription) VALUES(NULL,'$svc_proper_name','$color_string','icons/$svc_img','$svc_url',NULL,$svc_is_active,NULL,'$curdt','$curdt',0,$user_id,NULL,'null',NULL);"
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO item_tag VALUES($insert_id,0,NULL,NULL);"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO item_tag(item_id,tag_id,created_at,updated_at) VALUES($insert_id,0,NULL,NULL);"
 }
 
 function bulkImportHomeServerLinksHeimdall()
@@ -27551,13 +27644,13 @@ function installUptimeKuma()
   outputConfigUptimeKuma
   installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env
   startStopStack uptimekuma stop
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO user VALUES(1,'$UPTIMEKUMA_USERNAME','$UPTIMEKUMA_PASSWORD_HASH',1,NULL,NULL,0,NULL);"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO user(id,username,password,active,timezone,twofa_secret,twofa_status,twofa_last_token) VALUES(1,'$UPTIMEKUMA_USERNAME','$UPTIMEKUMA_PASSWORD_HASH',1,'$TZ',NULL,0,NULL);"
   curdt=$(getCurrentDate)
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag VALUES(1,'Admin','$ADMIN_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag VALUES(2,'User','$USERS_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag VALUES(3,'RelayServer','$RELAYSERVER_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag VALUES(4,'HomeServers','$HOMESERVERS_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO notification VALUES(1,'Service Alerts','{\"name\":\"Service Alerts\",\"type\":\"smtp\",\"isDefault\":true,\"smtpSecure\":false,\"smtpHost\":\"$SMTP_HOSTNAME\",\"smtpPort\":$SMTP_HOSTPORT,\"smtpFrom\":\"\\\"Uptime Kuma HSHQ Admin\\\" <$EMAIL_ADMIN_EMAIL_ADDRESS>\",\"smtpTo\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"applyExisting\":true}',1,1,1);"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(1,'Admin','$ADMIN_COLOR_CODE','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(2,'User','$USERS_COLOR_CODE','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(3,'RelayServer','$RELAYSERVER_COLOR_CODE','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(4,'HomeServers','$HOMESERVERS_COLOR_CODE','$curdt');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO notification(id,name,active,user_id,is_default,config) VALUES(1,'Service Alerts',1,1,1,'{\"name\":\"Service Alerts\",\"type\":\"smtp\",\"isDefault\":true,\"smtpSecure\":false,\"smtpHost\":\"$SMTP_HOSTNAME\",\"smtpPort\":$SMTP_HOSTPORT,\"smtpFrom\":\"\\\"Uptime Kuma HSHQ Admin\\\" <$EMAIL_ADMIN_EMAIL_ADDRESS>\",\"smtpTo\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"applyExisting\":true}');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('keepDataPeriodDays',30,'general');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('primaryBaseURL','https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN','general');"
   insertServicesUptimeKuma
@@ -27594,7 +27687,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-privateip-net
+      - dock-ext-net
       - dock-proxy-net
       - dock-internalmail-net
     volumes:
@@ -27606,8 +27699,8 @@ services:
       - \${HSHQ_STACKS_DIR}/uptimekuma/app:/app/data
 
 networks:
-  dock-privateip-net:
-    name: dock-privateip
+  dock-ext-net:
+    name: dock-ext
     external: true
   dock-proxy-net:
     name: dock-proxy
@@ -27644,10 +27737,10 @@ function insertServiceUptimeKuma()
   else
     user_id=0
   fi
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor (id,name,active,user_id,interval,url,type,weight,hostname,port,created_date,keyword,maxretries,ignore_tls,upside_down,maxredirects,accepted_statuscodes_json,dns_resolve_type,dns_resolve_server,dns_last_result,retry_interval,push_token,method,body,headers,basic_auth_user,basic_auth_pass,docker_host,docker_container,proxy_id,expiry_notification,mqtt_topic,mqtt_success_message,mqtt_username,mqtt_password,database_connection_string,database_query,auth_method,auth_domain,auth_workstation,grpc_url,grpc_protobuf,grpc_body,grpc_metadata,grpc_method,grpc_service_name,grpc_enable_tls,radius_username,radius_password,radius_called_station_id,radius_called_station_id,radius_secret,resend_interval,packet_size,game) VALUES(NULL,'$svc_proper_name',$svc_is_active,1,$UPTIMEKUMA_HEARTBEAT_INTERVAL,'$svc_url','http',2000,NULL,NULL,'$curdt',NULL,$UPTIMEKUMA_HEARTBEAT_RETRIES,0,0,10,'[\"200-299\"]','A','9.9.9.9',NULL,$UPTIMEKUMA_RETRY_INTERVAL,NULL,'GET',NULL,NULL,NULL,NULL,NULL,'',NULL,0,'','','','',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,$UPTIMEKUMA_RESEND_NOTIFY,56,NULL);"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor(id,name,active,user_id,interval,url,type,weight,hostname,port,created_date,keyword,maxretries,ignore_tls,upside_down,maxredirects,accepted_statuscodes_json,dns_resolve_type,dns_resolve_server,dns_last_result,retry_interval,push_token,method,body,headers,basic_auth_user,basic_auth_pass,docker_host,docker_container,proxy_id,expiry_notification,mqtt_topic,mqtt_success_message,mqtt_username,mqtt_password,database_connection_string,database_query,auth_method,auth_domain,auth_workstation,grpc_url,grpc_protobuf,grpc_body,grpc_metadata,grpc_method,grpc_service_name,grpc_enable_tls,radius_username,radius_password,radius_called_station_id,radius_called_station_id,radius_secret,resend_interval,packet_size,game) VALUES(NULL,'$svc_proper_name',$svc_is_active,1,$UPTIMEKUMA_HEARTBEAT_INTERVAL,'$svc_url','http',2000,NULL,NULL,'$curdt',NULL,$UPTIMEKUMA_HEARTBEAT_RETRIES,0,0,10,'[\"200-299\"]','A','9.9.9.9',NULL,$UPTIMEKUMA_RETRY_INTERVAL,NULL,'GET',NULL,NULL,NULL,NULL,NULL,'',NULL,0,'','','','',NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,0,NULL,NULL,NULL,NULL,NULL,$UPTIMEKUMA_RESEND_NOTIFY,56,NULL);"
   svc_id=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_tag VALUES(NULL,$svc_id,$user_id,'');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_notification VALUES(NULL,$svc_id,1);"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_tag(id,monitor_id,tag_id,value) VALUES(NULL,$svc_id,$user_id,'');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_notification(id,monitor_id,notification_id) VALUES(NULL,$svc_id,1);"
 }
 
 function insertEnableSvcUptimeKuma()
