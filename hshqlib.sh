@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=10
+HSHQ_SCRIPT_VERSION=11
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -1126,6 +1126,7 @@ function performBaseInstallation()
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set -e
   sudo apt update && sudo apt upgrade -y
+  setupStaticIP
   installLogNotify "Install Dependencies"
   installDependencies
   pullBaseServicesDockerImages
@@ -2976,7 +2977,7 @@ run-parts --regex '.*sh\$' \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 EOFBS
   sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
 
-  default_iface=\$(ip -o -f inet route | grep -e "^def" | awk '{print \$5}')
+  default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
 set +e
@@ -4305,7 +4306,7 @@ function outputConfigWireGuard()
 {
   sudo touch \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset
   sudo chmod 600 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset
-  default_iface=\$(ip -o -f inet route | grep -e "^def" | awk '{print \$5}')
+  default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
   sudo tee \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh >/dev/null <<EOFPU
 #!/bin/bash
 COMMAND=\\\$1
@@ -7521,7 +7522,7 @@ function checkAvailablePort()
 function getPrivateIPRangesCaddy()
 {
   if [ "$(checkDefaultRouteIPIsPrivateIP)" = "true" ]; then
-    ip route | grep src | grep $(ip -o -f inet route | grep -e "^def" | awk '{print $5}') | grep / | awk '{print $1}' | head -1
+    ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1
   else
     str_res=""
     if ! [ -z $CONNECTING_IP ]; then
@@ -7571,7 +7572,7 @@ function getConnectingIPAddress()
 
 function getDefaultRouteIPAddress()
 {
-  ip_addr=$(ip route | grep src | grep $(ip -o -f inet route | grep -e "^def" | awk '{print $5}') | grep / | xargs | rev | cut -d" " -f3 | rev)
+  ip_addr=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk -F'src ' '{print $2}' | xargs | cut -d" " -f1)
   if ! [ "$(checkValidIPAddress $ip_addr)" = "true" ]; then
     ip_addr=$(hostname -I | cut -d" " -f1)
   fi
@@ -7607,6 +7608,38 @@ function checkDefaultRouteIPIsPrivateIP()
     fi
   done
   echo "false"
+}
+
+function setupStaticIP()
+{
+  if ! [ "$(checkDefaultRouteIPIsPrivateIP)" = "true" ]; then
+    return
+  fi
+  cur_ip=$(getDefaultRouteIPAddress)
+  def_route=$(ip route | grep -e "^default")
+  cidr_part=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+  adapter_name=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+  ip_cidr=$cur_ip"/"$cidr_part
+  cur_gate=$(echo $def_route | awk '{print $3}')
+  cat <<EOFSI > $HOME/00-installer-config.yaml
+network:
+  version: 2
+  ethernets:
+    $adapter_name:
+      addresses:
+        - $ip_cidr
+      nameservers:
+        addresses: [9.9.9.9]
+      routes:
+        - to: default
+          via: $cur_gate
+
+EOFSI
+  
+  chmod 0600 $HOME/00-installer-config.yaml
+  sudo chown root:root $HOME/00-installer-config.yaml
+  sudo mv -f $HOME/00-installer-config.yaml /etc/netplan/00-installer-config.yaml
+  sudo netplan apply
 }
 
 function initWireguardDB()
@@ -9890,8 +9923,9 @@ function checkUpdateVersion()
     fi
     set -e
   fi
-  if [ $HSHQ_VERSION -lt 10 ]; then
-    HSHQ_VERSION=10
+  if [ $HSHQ_VERSION -lt 11 ]; then
+    setupStaticIP
+    HSHQ_VERSION=11
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
 }
