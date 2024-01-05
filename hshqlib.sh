@@ -214,7 +214,7 @@ function showInstalledMenu()
     fi
   fi
   if [ -f /etc/sudoers.d/$SUDO_LONG_TIMEOUT_FILENAME ]; then
-    removeSudoInstallTimeout
+    removeSudoTimeoutInstall
   fi
   installedmenu=$(cat << EOF
 
@@ -1130,7 +1130,7 @@ EOFSU
   sudo mv $HOME/$SUDO_LONG_TIMEOUT_FILENAME /etc/sudoers.d/
 }
 
-function removeSudoInstallTimeout()
+function removeSudoTimeoutInstall()
 {
   sudo rm -f /etc/sudoers.d/$SUDO_LONG_TIMEOUT_FILENAME
 }
@@ -1181,7 +1181,7 @@ function performBaseInstallation()
   fi
   installLogNotify "Post Installation"
   postInstallation
-  removeSudoInstallTimeout
+  removeSudoTimeoutInstall
 }
 
 function postInstallation()
@@ -1320,7 +1320,7 @@ EOF
   do
     installStackByName ${cur_svc//\"} $is_integrate
   done
-  removeSudoInstallTimeout
+  removeSudoTimeoutInstall
 }
 
 function installStackByStackName()
@@ -1363,7 +1363,7 @@ function installStackByStackName()
   done
 
   if [ "$isStackFound" = "true" ]; then
-    removeSudoInstallTimeout
+    removeSudoTimeoutInstall
   else
     showMessageBox "Stack Not Found" "The stack name: $stack_name, could not be found."
   fi
@@ -1402,7 +1402,7 @@ function installAllAvailableStacks()
   do
     installStackByName $cur_svc $is_integrate
   done
-  removeSudoInstallTimeout
+  removeSudoTimeoutInstall
 }
 
 function deleteStacks()
