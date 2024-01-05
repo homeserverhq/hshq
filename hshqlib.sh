@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=12
+HSHQ_SCRIPT_VERSION=13
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -54,6 +54,9 @@ function main()
   MENU_WIDTH=85
   MENU_HEIGHT=25
   MENU_INT_HEIGHT=10
+  SUDO_NORMAL_TIMEOUT=15
+  SUDO_LONG_TIMEOUT=1440
+  SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
   HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,sqlpad"
   loadPinnedDockerImages
@@ -209,6 +212,9 @@ function showInstalledMenu()
     if [ $mbres -eq 0 ]; then
       rm -f $HSHQ_INSTALL_CFG
     fi
+  fi
+  if [ -f /etc/sudoers.d/$SUDO_LONG_TIMEOUT_FILENAME ]; then
+    removeSudoInstallTimeout
   fi
   installedmenu=$(cat << EOF
 
@@ -508,7 +514,6 @@ EOFSM
 
   # Some host tuning
   updateSysctl
-  
   sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 60m|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
   
@@ -1116,6 +1121,20 @@ function initInstallation()
   exit 0
 }
 
+function setSudoTimeoutInstall()
+{
+  sudo tee $HOME/$SUDO_LONG_TIMEOUT_FILENAME >/dev/null <<EOFSU
+Defaults timestamp_timeout=$SUDO_LONG_TIMEOUT
+EOFSU
+  sudo chmod 0600 $HOME/$SUDO_LONG_TIMEOUT_FILENAME
+  sudo mv $HOME/$SUDO_LONG_TIMEOUT_FILENAME /etc/sudoers.d/
+}
+
+function removeSudoInstallTimeout()
+{
+  sudo rm -f /etc/sudoers.d/$SUDO_LONG_TIMEOUT_FILENAME
+}
+
 function performBaseInstallation()
 {
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
@@ -1125,6 +1144,7 @@ function performBaseInstallation()
   IS_INSTALLING=true
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set -e
+  setSudoTimeoutInstall
   sudo apt update && sudo apt upgrade -y
   setupStaticIP
   installLogNotify "Install Dependencies"
@@ -1161,6 +1181,7 @@ function performBaseInstallation()
   fi
   installLogNotify "Post Installation"
   postInstallation
+  removeSudoInstallTimeout
 }
 
 function postInstallation()
@@ -1230,10 +1251,9 @@ EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$svcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Select Stack(s) From List" \
-  "2" "Enter Stack Name Manually" \
-  "3" "Install All Available Stacks" \
-  "4" "Remove Stack" \
-  "5" "Exit" 3>&1 1>&2 2>&3)
+  "2" "Install All Available Stacks" \
+  "3" "Remove Stack" \
+  "4" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -1245,18 +1265,14 @@ EOF
       set +e
       return 1 ;;
     2)
-      installStackByStackName
-      set +e
-      return 1 ;;
-    3)
       installAllAvailableStacks
       set +e
       return 1 ;;
-    4)
+    3)
       deleteStacks
       set +e
       return 1 ;;
-    5)
+    4)
 	  return 0 ;;
   esac
 }
@@ -1266,7 +1282,6 @@ function installStacksFromList()
   set +e
   stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
   menu_items=""
-  is_list_emtpy=true
   for curStack in "${stackListArr[@]}"
   do
     if ! [ -d $HSHQ_STACKS_DIR/$curStack ]; then
@@ -1299,22 +1314,20 @@ EOF
   if [ $? -ne 0 ]; then
     return
   fi
+  setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
   do
     installStackByName ${cur_svc//\"} $is_integrate
-    is_list_emtpy=false
   done
-  if [ "$is_list_emtpy" = "true" ]; then
-    showMessageBox "No Selected Services" "No services were selected."
-    return
-  fi
+  removeSudoInstallTimeout
 }
 
 function installStackByStackName()
 {
+  # Deprecated
   set +e
-  stack_name=$(promptUserInputMenu "" "Enter Stack Name" "Enter the name of the stack that you wish to install/reinstall:")
+  stack_name=$(promptUserInputMenu "" "Enter Stack Name" "Enter the name of the stack(s) that you wish to install/reinstall, separated by commas:")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -1334,13 +1347,25 @@ function installStackByStackName()
   do
     if [ "$curStack" = "$stack_name" ]; then
       isStackFound=true
-      getUpdateAssets
+    fi
+  done
+
+  if [ "$isStackFound" = "true" ]; then
+    setSudoTimeoutInstall
+    getUpdateAssets
+  fi
+
+  for curStack in "${stackListArr[@]}"
+  do
+    if [ "$curStack" = "$stack_name" ]; then
       installStackByName $stack_name $is_integrate
     fi
   done
-  if [ "$isStackFound" = "false" ]; then
+
+  if [ "$isStackFound" = "true" ]; then
+    removeSudoInstallTimeout
+  else
     showMessageBox "Stack Not Found" "The stack name: $stack_name, could not be found."
-    return
   fi
 }
 
@@ -1371,11 +1396,13 @@ function installAllAvailableStacks()
   if [ $? -ne 0 ]; then
     return
   fi
+  setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
   do
     installStackByName $cur_svc $is_integrate
   done
+  removeSudoInstallTimeout
 }
 
 function deleteStacks()
@@ -2022,6 +2049,14 @@ function main()
   sudo sed -i "s|^#*ClientAliveInterval .*\$|ClientAliveInterval 15m|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*\$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
 
+  # Update sudoers file
+  sudo sed -i '/\/userasroot/d' /etc/sudoers >/dev/null
+  echo "\$USERNAME ALL=(ALL) NOPASSWD: \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/timestamp_timeout/d' /etc/sudoers >/dev/null
+  echo "Defaults timestamp_timeout=$SUDO_NORMAL_TIMEOUT" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
+  echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
+
   # Set timezone
   sudo timedatectl set-timezone "$TZ"
 
@@ -2534,9 +2569,6 @@ function restoreScripts()
   sudo ln -s \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRoot
-
-  sudo sed -i '/scripts\/userasroot/d' /etc/sudoers >/dev/null
-  echo "\$USERNAME ALL=(ALL) NOPASSWD: \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
 }
 
 function getPortainerToken()
@@ -2796,9 +2828,6 @@ function install()
   sudo chmod 700 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root
   sudo mkdir -p \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot
   sudo chmod 700 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot
-
-  sudo sed -i '/scripts\/userasroot/d' /etc/sudoers >/dev/null
-  echo "\$USERNAME ALL=(ALL) NOPASSWD: \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
 
   sudo mkdir -p \$RELAYSERVER_HSHQ_SECRETS_DIR
   mkdir -p \$RELAYSERVER_HSHQ_SSL_DIR
@@ -9425,8 +9454,12 @@ function createInitialEnv()
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/userasroot
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/bootscripts
-  sudo sed -i '/scripts\/userasroot/d' /etc/sudoers >/dev/null
+  sudo sed -i '/\/userasroot/d' /etc/sudoers >/dev/null
   echo "$USERNAME ALL=(ALL) NOPASSWD: $HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/timestamp_timeout/d' /etc/sudoers >/dev/null
+  echo "Defaults timestamp_timeout=$SUDO_NORMAL_TIMEOUT" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
+  echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
   mkdir -p $HOME/.ssh
 
   CONFIG_FILE=$HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
@@ -9927,6 +9960,10 @@ function checkUpdateVersion()
   if [ $HSHQ_VERSION -lt 11 ]; then
     setupStaticIP
     HSHQ_VERSION=11
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 13 ]; then
+    HSHQ_VERSION=13
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
 }
@@ -19421,13 +19458,13 @@ function installMastodon()
   mkdir $HSHQ_STACKS_DIR/mastodon/db
   mkdir $HSHQ_STACKS_DIR/mastodon/dbexport
   mkdir $HSHQ_STACKS_DIR/mastodon/elasticsearch
-  mkdir $HSHQ_STACKS_DIR/mastodon/static
   mkdir $HSHQ_STACKS_DIR/mastodon/system
   mkdir $HSHQ_STACKS_DIR/mastodon/web
   sudo chown 991:991 $HSHQ_STACKS_DIR/mastodon/system
   chmod 777 $HSHQ_STACKS_DIR/mastodon/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/mastodon
   mkdir $HSHQ_NONBACKUP_DIR/mastodon/redis
+  mkdir $HSHQ_NONBACKUP_DIR/mastodon/static
 
   MASTODON_SECRET_KEY_BASE=$(openssl rand -hex 64)
   MASTODON_OTP_SECRET=$(openssl rand -hex 64)
@@ -19759,7 +19796,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: $HSHQ_STACKS_DIR/mastodon/static
+      device: $HSHQ_NONBACKUP_DIR/mastodon/static
   v-mastodon-redis:
     driver: local
     driver_opts:
@@ -20008,7 +20045,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/mastodon/static
+      device: \${HSHQ_NONBACKUP_DIR}/mastodon/static
   v-mastodon-redis:
     driver: local
     driver_opts:
@@ -22070,13 +22107,13 @@ function installPeerTube()
   sudo rm -fr $HSHQ_NONBACKUP_DIR/peertube
 
   mkdir $HSHQ_STACKS_DIR/peertube
-  mkdir $HSHQ_STACKS_DIR/peertube/assets
   mkdir $HSHQ_STACKS_DIR/peertube/config
   mkdir $HSHQ_STACKS_DIR/peertube/db
   mkdir $HSHQ_STACKS_DIR/peertube/dbexport
   mkdir $HSHQ_STACKS_DIR/peertube/data
   chmod 777 $HSHQ_STACKS_DIR/peertube/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/peertube
+  mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
   mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
 
   if [ -z "$PEERTUBE_ADMIN_USERNAME" ]; then
@@ -22232,7 +22269,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/peertube/assets
+      device: \${HSHQ_NONBACKUP_DIR}/peertube/assets
   v-peertube-redis:
     driver: local
     driver_opts:
@@ -23788,7 +23825,8 @@ EOFCS
 {
     "workbench.colorTheme": "Default Dark Modern",
     "workbench.startupEditor": "none",
-    "telemetry.telemetryLevel": "off"
+    "telemetry.telemetryLevel": "off",
+    "workbench.editor.enablePreview": false
 }
 EOFCS
 
