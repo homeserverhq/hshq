@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=11
+HSHQ_SCRIPT_VERSION=12
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -2214,7 +2214,7 @@ EOFRL
   set +e
   grep DockerDaemonLogFileName /etc/rsyslog.d/docker-logs.conf >/dev/null 2>/dev/null
   if [ \$? -ne 0 ]; then
-    sudo tee -a /etc/rsyslog.d/docker-logs.conf >/dev/null <<EOFRL
+    sudo tee /etc/rsyslog.d/docker-logs.conf >/dev/null <<EOFRL
 \\\$FileCreateMode 0644
 \\\$template DockerDaemonLogFileName,"/var/log/docker/docker.log"
 \\\$template DockerContainerLogFileName,"/var/log/docker/%SYSLOGTAG:R,ERE,1,FIELD:docker/(.*)\[--end:secpath-replace%.log"
@@ -4260,7 +4260,7 @@ EOFUB
 function getAllowedPublicIPs()
 {
   set +e
-  ips="0.0.0.0/5, 8.0.0.0/7, 11.0.0.0/8, 12.0.0.0/6, 16.0.0.0/4, 32.0.0.0/3, 64.0.0.0/2, 128.0.0.0/3, 160.0.0.0/5, 168.0.0.0/6, 172.0.0.0/12, 172.32.0.0/11, 172.64.0.0/10, 172.128.0.0/9, 173.0.0.0/8, 174.0.0.0/7, 176.0.0.0/4, 192.0.0.0/9, 192.128.0.0/11, 192.160.0.0/13, 192.169.0.0/16, 192.170.0.0/15, 192.172.0.0/14, 192.176.0.0/12, 192.192.0.0/10, 193.0.0.0/8, 194.0.0.0/7, 196.0.0.0/6, 200.0.0.0/5, 208.0.0.0/4, ::/0"
+  ips="0.0.0.0/5,8.0.0.0/7,11.0.0.0/8,12.0.0.0/6,16.0.0.0/4,32.0.0.0/3,64.0.0.0/2,128.0.0.0/3,160.0.0.0/5,168.0.0.0/6,172.0.0.0/12,172.32.0.0/11,172.64.0.0/10,172.128.0.0/9,173.0.0.0/8,174.0.0.0/7,176.0.0.0/4,192.0.0.0/9,192.128.0.0/11,192.160.0.0/13,192.169.0.0/16,192.170.0.0/15,192.172.0.0/14,192.176.0.0/12,192.192.0.0/10,193.0.0.0/8,194.0.0.0/7,196.0.0.0/6,200.0.0.0/5,208.0.0.0/4"
   if ! [ -z \$1 ]; then
     ips+=","\$1
   fi
@@ -7587,7 +7587,7 @@ function getIPFromHostname()
 function getAllowedPublicIPs()
 {
   set +e
-  ips="0.0.0.0/5, 8.0.0.0/7, 11.0.0.0/8, 12.0.0.0/6, 16.0.0.0/4, 32.0.0.0/3, 64.0.0.0/2, 128.0.0.0/3, 160.0.0.0/5, 168.0.0.0/6, 172.0.0.0/12, 172.32.0.0/11, 172.64.0.0/10, 172.128.0.0/9, 173.0.0.0/8, 174.0.0.0/7, 176.0.0.0/4, 192.0.0.0/9, 192.128.0.0/11, 192.160.0.0/13, 192.169.0.0/16, 192.170.0.0/15, 192.172.0.0/14, 192.176.0.0/12, 192.192.0.0/10, 193.0.0.0/8, 194.0.0.0/7, 196.0.0.0/6, 200.0.0.0/5, 208.0.0.0/4, ::/1, 8000::/1"
+  ips="0.0.0.0/5,8.0.0.0/7,11.0.0.0/8,12.0.0.0/6,16.0.0.0/4,32.0.0.0/3,64.0.0.0/2,128.0.0.0/3,160.0.0.0/5,168.0.0.0/6,172.0.0.0/12,172.32.0.0/11,172.64.0.0/10,172.128.0.0/9,173.0.0.0/8,174.0.0.0/7,176.0.0.0/4,192.0.0.0/9,192.128.0.0/11,192.160.0.0/13,192.169.0.0/16,192.170.0.0/15,192.172.0.0/14,192.176.0.0/12,192.192.0.0/10,193.0.0.0/8,194.0.0.0/7,196.0.0.0/6,200.0.0.0/5,208.0.0.0/4"
   if ! [ -z $1 ]; then
     ips+=","$1
   fi
@@ -10872,9 +10872,10 @@ function installDocker()
 #    esac
 #  fi
   updateConfigVar IS_ROOTLESS_DOCKER $IS_ROOTLESS_DOCKER
-
+  outputDockerSettings
   util="docker|docker"
   if [[ "$(isProgramInstalled $util)" = "true" ]]; then
+    sudo systemctl restart docker
     return 0
   fi
   if [ "$IS_ROOTLESS_DOCKER" = "true" ]; then
@@ -10901,16 +10902,8 @@ function removeDocker()
   sudo groupdel docker
 }
 
-function installDockerUbuntu2004Rooted()
+function outputDockerSettings()
 {
-  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
-  echo "Installing docker, please wait..."
-  sudo apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo apt update
-  echo "Installing docker, please wait..."
-  sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
   sudo mkdir -p /etc/docker
   if [ -z $DEFAULT_NETWORK_POOL ]; then
     DEFAULT_NETWORK_POOL=172.16.0.0/12
@@ -10918,7 +10911,11 @@ function installDockerUbuntu2004Rooted()
   if [ -z $DEFAULT_NETWORK_SIZE ]; then
     DEFAULT_NETWORK_SIZE=24
   fi
-  sudo tee -a /etc/docker/daemon.json >/dev/null <<EOFRL
+  if [ -z $DOCKER_METRICS_PORT ]; then
+    DOCKER_METRICS_PORT=8323
+  fi
+
+  sudo tee /etc/docker/daemon.json >/dev/null <<EOFRL
 {
   "default-address-pools":
   [
@@ -10933,7 +10930,8 @@ function installDockerUbuntu2004Rooted()
   "metrics-addr": "0.0.0.0:$DOCKER_METRICS_PORT"
 }
 EOFRL
-  sudo tee -a /etc/rsyslog.d/docker-logs.conf >/dev/null <<EOFRL
+
+  sudo tee /etc/rsyslog.d/docker-logs.conf >/dev/null <<EOFRL
 \$FileCreateMode 0644
 \$template DockerDaemonLogFileName,"/var/log/docker/docker.log"
 \$template DockerContainerLogFileName,"/var/log/docker/%SYSLOGTAG:R,ERE,1,FIELD:docker/(.*)\[--end:secpath-replace%.log"
@@ -10953,6 +10951,19 @@ if \$programname == 'docker' then {
 }
 \$FileCreateMode 0600
 EOFRL
+
+}
+
+function installDockerUbuntu2004Rooted()
+{
+  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
+  echo "Installing docker, please wait..."
+  sudo apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo apt update
+  echo "Installing docker, please wait..."
+  sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
   sudo systemctl restart rsyslog
   sudo systemctl restart docker
 }
