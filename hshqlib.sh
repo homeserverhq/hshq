@@ -9561,6 +9561,7 @@ XDG_RUNTIME_DIR=
 IS_ROOTLESS_DOCKER=false
 DEFAULT_NETWORK_POOL=172.16.0.0/12
 DEFAULT_NETWORK_SIZE=24
+DOCKER_METRICS_PORT=8323
 TRUSTED_PROXIES="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 # Docker Installation Info END
 
@@ -10120,6 +10121,9 @@ done
   # Special case for HomeAssistant since it is using host networking
   iptables -C INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
 
+  # Special case for Docker metrics
+  iptables -C INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
+
   # Policy drop for input and forward
   iptables -P INPUT DROP
   iptables -P FORWARD DROP
@@ -10168,6 +10172,7 @@ done
   iptables -D INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp --dport 443 -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
+  iptables -D INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
 
   iptables -P INPUT ACCEPT
 
@@ -10924,7 +10929,8 @@ function installDockerUbuntu2004Rooted()
     "syslog-address": "unixgram:///dev/log",
     "tag": "docker/{{.Name}}"
   },
-  "ipv6": false
+  "ipv6": false,
+  "metrics-addr": "0.0.0.0:$DOCKER_METRICS_PORT"
 }
 EOFRL
   sudo tee -a /etc/rsyslog.d/docker-logs.conf >/dev/null <<EOFRL
@@ -12032,6 +12038,7 @@ function initServiceVars()
   checkAddSvc "SVCD_PHOTOPRISM=photoprism,photoprism,other,user,PhotoPrism,photoprism,hshq"
   checkAddSvc "SVCD_PORTAINER=portainer,portainer,primary,admin,Portainer,portainer,hshq"
   checkAddSvc "SVCD_POSTFIX=mail-relay,mail,primary,admin,Mail,mail,hshq"
+  checkAddSvc "SVCD_PROMETHEUS=sysutils,prometheus,primary,admin,Prometheus,prometheus,hshq"
   checkAddSvc "SVCD_REMOTELY=remotely,remotely,primary,admin,Remotely,remotely,hshq"
   checkAddSvc "SVCD_RSPAMD=mail-relay,rspamd,primary,admin,Rspamd,rspamd,hshq"
   checkAddSvc "SVCD_SEARXNG=searxng,searxng,primary,user,SearxNG,searxng,hshq"
@@ -12210,6 +12217,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_KASM_WIZARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PORTAINER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PROMETHEUS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SQLPAD.$HOMESERVER_DOMAIN\n"
@@ -12303,6 +12311,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_OPENLDAP_PHP" $USERTYPE_OPENLDAP_PHP "https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN" 1 "ldapphp.png"
   insertIntoHeimdallDB "$FMLNAME_WAZUH" $USERTYPE_WAZUH "https://$SUB_WAZUH.$HOMESERVER_DOMAIN" 0 "wazuh.png"
   insertIntoHeimdallDB "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" 0 "grafana.png"
+  insertIntoHeimdallDB "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" 0 "prometheus.png"
   insertIntoHeimdallDB "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" 0 "influxdb.png"
   insertIntoHeimdallDB "$FMLNAME_DOZZLE" $USERTYPE_DOZZLE "https://$SUB_DOZZLE.$HOMESERVER_DOMAIN" 0 "dozzle.png"
   insertIntoHeimdallDB "$FMLNAME_GUACAMOLE" $USERTYPE_GUACAMOLE "https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN" 0 "guacamole.png"
@@ -12379,6 +12388,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_MATRIX_ELEMENT_PUBLIC" $USERTYPE_MATRIX_ELEMENT_PUBLIC "https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_MASTODON" $USERTYPE_MASTODON "https://$SUB_MASTODON.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_DOZZLE" $USERTYPE_DOZZLE "https://$SUB_DOZZLE.$HOMESERVER_DOMAIN" 0
@@ -13060,6 +13070,22 @@ function installSystemUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_GRAFANA $MANAGETLS_GRAFANA "$is_integrate_hshq" $NETDEFAULT_GRAFANA "$inner_block"
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://prometheus:9090 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PROMETHEUS $MANAGETLS_PROMETHEUS "$is_integrate_hshq" $NETDEFAULT_PROMETHEUS "$inner_block"
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -13074,8 +13100,10 @@ function installSystemUtils()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_INFLUXDB $MANAGETLS_INFLUXDB "$is_integrate_hshq" $NETDEFAULT_INFLUXDB "$inner_block"
+
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll sysutils "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" "grafana.png"
+    insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png"
     insertEnableSvcAll sysutils "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" "influxdb.png"
     restartAllCaddyContainers
   fi
@@ -13118,6 +13146,8 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    extra_hosts:
+      - host.docker.internal:host-gateway
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -13126,6 +13156,8 @@ services:
       - '--web.enable-lifecycle'
     networks:
       - int-sysutils-net
+      - dock-proxy-net
+      - dock-privateip-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -13207,6 +13239,9 @@ networks:
   dock-ext-net:
     name: dock-ext
     external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
   int-sysutils-net:
     driver: bridge
     internal: true
@@ -13244,6 +13279,8 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    extra_hosts:
+      - host.docker.internal:host-gateway
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -13252,6 +13289,8 @@ services:
       - '--web.enable-lifecycle'
     networks:
       - int-sysutils-net
+      - dock-proxy-net
+      - dock-privateip-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -13357,6 +13396,9 @@ scrape_configs:
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['node-exporter:9100']
+  - job_name: docker
+    static_configs:
+      - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
 EOFPM
 
   cat <<EOFJS > $HOME/gfdashboard.json
