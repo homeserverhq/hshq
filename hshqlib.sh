@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=13
+HSHQ_SCRIPT_VERSION=14
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -58,7 +58,7 @@ function main()
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,sqlpad"
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
@@ -675,11 +675,11 @@ function initConfig()
     if [ $total_ram -lt 8 ]; then
       DISABLED_SERVICES=minimal
     elif [ $total_ram -lt 12 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,calibre
     elif [ $total_ram -lt 16 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,calibre
     elif [ $total_ram -lt 24 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio
+      DISABLED_SERVICES=gitlab,discourse,drawio,calibre
     else
       DISABLED_SERVICES=gitlab
     fi
@@ -1622,7 +1622,7 @@ function setupHostedVPN()
   RELAYSERVER_LE_CERT_DOMAINS=unset
   while [ "$RELAYSERVER_LE_CERT_DOMAINS" = "unset" ]
   do
-    lecert_def="$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN"
+    lecert_def="$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN"
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       RELAYSERVER_LE_CERT_DOMAINS="$lecert_def"
     else
@@ -6305,7 +6305,7 @@ function createOtherNetworkApplyHomeServerVPNConfig()
     RELAYSERVER_LE_CERT_DOMAINS=unset
     while [ "$RELAYSERVER_LE_CERT_DOMAINS" = "unset" ]
     do
-      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
+      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
       if [ $? -ne 0 ]; then
         return 1
       fi
@@ -9467,7 +9467,7 @@ function createInitialEnv()
 # Configuration File
 $logo
 
-# General Info
+# General Info BEGIN
 HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
 HOMESERVER_DOMAIN=
 HOMESERVER_NAME=
@@ -9494,10 +9494,10 @@ WIREGUARD_DNS_REFRESH_RATE=5
 LECERTS_REFRESH_RATE=15
 # General Info END
 
-# Services Info
+# Services Info BEGIN
 # Services Info END
 
-# Certs
+# Certs BEGIN
 CERTS_IS_CA_INIT=false
 CERTS_ROOT_CA_NAME=
 CERTS_EMAIL_ADDRESS=
@@ -9512,7 +9512,7 @@ CERTS_INTERNAL_INTERMEDIATE_CN=
 CERTS_INTERNAL_CA_DAYS=8395
 # Certs END
 
-# Relay Server Settings
+# Relay Server Settings BEGIN
 RELAYSERVER_NAME=
 RELAYSERVER_SERVER_IP=A
 RELAYSERVER_EXT_EMAIL_HOSTNAME=
@@ -9559,7 +9559,7 @@ RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY=
 RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY=
 # Relay Server Settings END
 
-# Relay Server Services
+# Relay Server Services BEGIN
 RELAYSERVER_PORTAINER_ADMIN_USERNAME=
 RELAYSERVER_PORTAINER_ADMIN_PASSWORD=
 RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=
@@ -9583,11 +9583,11 @@ RELAYSERVER_SYNCTHING_DEVICE_ID=
 RELAYSERVER_SYNCTHING_FOLDER_ID=
 # Relay Server Services END
 
-# Config File Encryption Passphrase
+# Config File Encryption Passphrase BEGIN
 CONFIG_ENCRYPTION_PASSPHRASE=
 # Config File Encryption Passphrase END
 
-# Docker Installation Info
+# Docker Installation Info BEGIN
 USERID=
 GROUPID=
 XDG_RUNTIME_DIR=
@@ -9598,8 +9598,8 @@ DOCKER_METRICS_PORT=8323
 TRUSTED_PROXIES="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 # Docker Installation Info END
 
-# Service Details
-# Portainer (Service Details)
+# Service Details BEGIN
+# Portainer (Service Details) BEGIN
 PORTAINER_ADMIN_USERNAME=
 PORTAINER_ADMIN_PASSWORD=
 PORTAINER_ADMIN_USERID=
@@ -9607,17 +9607,17 @@ PORTAINER_LOCAL_HTTPS_PORT=
 PORTAINER_DB_KEY=
 # Portainer (Service Details) END
 
-# Adguard (Service Details)
+# Adguard (Service Details) BEGIN
 ADGUARD_LOCALHOST_PORT=5443
 ADGUARD_ADMIN_USERNAME=
 ADGUARD_ADMIN_PASSWORD=
 # Adguard (Service Details) END
 
-# Authelia (Service Details)
+# Authelia (Service Details) BEGIN
 AUTHELIA_REDIRECTION_URL=
 # Authelia (Service Details) END
 
-# SysUtils (Service Details)
+# SysUtils (Service Details) BEGIN
 GRAFANA_ADMIN_USERNAME=
 GRAFANA_ADMIN_PASSWORD=
 INFLUXDB_ADMIN_USERNAME=
@@ -9627,7 +9627,7 @@ INFLUXDB_TOKEN=
 INFLUXDB_HA_BUCKET=
 # SysUtils (Service Details) END
 
-# OpenLDAP (Service Details)
+# OpenLDAP (Service Details) BEGIN
 LDAP_ADMIN_USER_USERNAME=
 LDAP_ADMIN_USER_PASSWORD=
 LDAP_PRIMARY_USER_USERNAME=
@@ -9650,7 +9650,7 @@ LDAP_ACCOUNT_REQUESTS_ENABLED=true
 LDAP_ACCOUNT_REQUESTS_EMAIL=
 # OpenLDAP (Service Details) END
 
-# Mailu (Service Details)
+# Mailu (Service Details) BEGIN
 EMAIL_ADMIN_USERNAME=
 EMAIL_ADMIN_PASSWORD=
 EMAIL_ADMIN_EMAIL_ADDRESS=
@@ -9664,7 +9664,7 @@ SMTP_RELAY_USERNAME=
 SMTP_RELAY_PASSWORD=
 # Mailu (Service Details) END
 
-# Wazuh (Service Details)
+# Wazuh (Service Details) BEGIN
 WAZUH_USERS_DASHBOARD_USERNAME=kibanaserver
 WAZUH_USERS_DASHBOARD_PASSWORD=
 WAZUH_API_USERNAME=
@@ -9677,12 +9677,12 @@ WAZUH_USERS_READALL_PASSWORD=
 WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD=
 # Wazuh (Service Details) END
 
-# Collabora (Service Details)
+# Collabora (Service Details) BEGIN
 COLLABORA_ADMIN_USERNAME=
 COLLABORA_ADMIN_PASSWORD=
 # Collabora (Service Details) END
 
-# Nextcloud (Service Details)
+# Nextcloud (Service Details) BEGIN
 NEXTCLOUD_ADMIN_USERNAME=
 NEXTCLOUD_ADMIN_PASSWORD=
 NEXTCLOUD_ADMIN_EMAIL_ADDRESS=
@@ -9696,11 +9696,11 @@ NEXTCLOUD_IMAGINARY_PORT=7557
 NEXTCLOUD_PUSH_PORT=7867
 # Nextcloud (Service Details) END
 
-# Jitsi (Service Details)
+# Jitsi (Service Details) BEGIN
 JITSI_ADVERTISE_IPS=
 # Jitsi (Service Details) END
 
-# Matrix (Service Details)
+# Matrix (Service Details) BEGIN
 MATRIX_DATABASE_NAME=
 MATRIX_DATABASE_USER=
 MATRIX_DATABASE_USER_PASSWORD=
@@ -9710,17 +9710,17 @@ MATRIX_SYNAPSE_MACAROON_SECRET=
 MATRIX_SYNAPSE_FORM_SECRET=
 # Matrix (Service Details) END
 
-# Wiki.js (Service Details)
+# Wiki.js (Service Details) BEGIN
 WIKIJS_DATABASE_NAME=
 WIKIJS_DATABASE_USER=
 WIKIJS_DATABASE_USER_PASSWORD=
 # Wiki.js (Service Details) END
 
-# Duplicati (Service Details)
+# Duplicati (Service Details) BEGIN
 DUPLICATI_ADMIN_PASSWORD=
 # Duplicati (Service Details) END
 
-# Mastodon (Service Details)
+# Mastodon (Service Details) BEGIN
 MASTODON_ADMIN_EMAIL_ADDRESS=
 MASTODON_ADMIN_PASSWORD=
 MASTODON_ADMIN_USERNAME=
@@ -9731,34 +9731,34 @@ MASTODON_REDIS_PASSWORD=
 MASTODON_ELASTICSEARCH_PASSWORD=
 # Mastodon (Service Details) END
 
-# Dozzle (Service Details)
+# Dozzle (Service Details) BEGIN
 DOZZLE_USERNAME=
 DOZZLE_PASSWORD=
 # Dozzle (Service Details) END
 
-# SearxNG (Service Details)
+# SearxNG (Service Details) BEGIN
 SEARXNG_REDIS_PASSWORD=
 SEARXNG_SECRET_KEY=
 # SearxNG (Service Details) END
 
-# Jellyfin (Service Details)
+# Jellyfin (Service Details) BEGIN
 JELLYFIN_ADMIN_USERNAME=
 JELLYFIN_ADMIN_PASSWORD=
 # Jellyfin (Service Details) END
 
-# FileBrowser (Service Details)
+# FileBrowser (Service Details) BEGIN
 FILEBROWSER_USERNAME=
 FILEBROWSER_PASSWORD=
 # FileBrowser (Service Details) END
 
-# PhotoPrism (Service Details)
+# PhotoPrism (Service Details) BEGIN
 PHOTOPRISM_DATABASE_ROOT_PASSWORD=
 PHOTOPRISM_DATABASE_NAME=
 PHOTOPRISM_DATABASE_USER=
 PHOTOPRISM_DATABASE_USER_PASSWORD=
 # PhotoPrism (Service Details) END
 
-# Guacamole (Service Details)
+# Guacamole (Service Details) BEGIN
 GUACAMOLE_DEFAULT_ADMIN_USERNAME=guacadmin
 GUACAMOLE_DEFAULT_ADMIN_PASSWORD=guacadmin
 GUACAMOLE_DATABASE_ROOT_PASSWORD=
@@ -9767,7 +9767,7 @@ GUACAMOLE_DATABASE_USER=
 GUACAMOLE_DATABASE_USER_PASSWORD=
 # Guacamole (Service Details) END
 
-# UptimeKuma (Service Details)
+# UptimeKuma (Service Details) BEGIN
 UPTIMEKUMA_USERNAME=
 UPTIMEKUMA_PASSWORD=
 UPTIMEKUMA_HEARTBEAT_INTERVAL=60
@@ -9776,21 +9776,21 @@ UPTIMEKUMA_RETRY_INTERVAL=20
 UPTIMEKUMA_RESEND_NOTIFY=360
 # UptimeKuma (Service Details) END
 
-# Wordpress (Service Details)
+# Wordpress (Service Details) BEGIN
 WORDPRESS_DATABASE_ROOT_PASSWORD=
 WORDPRESS_DATABASE_NAME=
 WORDPRESS_DATABASE_USER=
 WORDPRESS_DATABASE_USER_PASSWORD=
 # Wordpress (Service Details) END
 
-# Ghost (Service Details)
+# Ghost (Service Details) BEGIN
 GHOST_DATABASE_ROOT_PASSWORD=
 GHOST_DATABASE_NAME=
 GHOST_DATABASE_USER=
 GHOST_DATABASE_USER_PASSWORD=
 # Ghost (Service Details) END
 
-# PeerTube (Service Details)
+# PeerTube (Service Details) BEGIN
 PEERTUBE_ADMIN_USERNAME=
 PEERTUBE_ADMIN_PASSWORD=
 PEERTUBE_ADMIN_EMAIL_ADDRESS=
@@ -9799,7 +9799,7 @@ PEERTUBE_DATABASE_USER=
 PEERTUBE_DATABASE_USER_PASSWORD=
 # PeerTube (Service Details) END
 
-# HomeAssistant (Service Details)
+# HomeAssistant (Service Details) BEGIN
 HOMEASSISTANT_LOCALHOST_PORT=8123
 HOMEASSISTANT_DB_LOCALHOST_PORT=8432
 HOMEASSISTANT_DATABASE_NAME=
@@ -9809,7 +9809,7 @@ HOMEASSISTANT_TASMOADMIN_USER=
 HOMEASSISTANT_TASMOADMIN_USER_PASSWORD=
 # HomeAssistant (Service Details) END
 
-# Gitlab (Service Details)
+# Gitlab (Service Details) BEGIN
 GITLAB_ROOT_PASSWORD=
 GITLAB_DATABASE_NAME=
 GITLAB_DATABASE_USER=
@@ -9817,14 +9817,14 @@ GITLAB_DATABASE_USER_PASSWORD=
 GITLAB_REDIS_PASSWORD=
 # Gitlab (Service Details) END
 
-# Vaultwarden (Service Details)
+# Vaultwarden (Service Details) BEGIN
 VAULTWARDEN_ADMIN_TOKEN=
 VAULTWARDEN_DATABASE_NAME=
 VAULTWARDEN_DATABASE_USER=
 VAULTWARDEN_DATABASE_USER_PASSWORD=
 # Vaultwarden (Service Details) END
 
-# Discourse (Service Details)
+# Discourse (Service Details) BEGIN
 DISCOURSE_ADMIN_USERNAME=
 DISCOURSE_ADMIN_PASSWORD=
 DISCOURSE_ADMIN_EMAIL_ADDRESS=
@@ -9834,19 +9834,19 @@ DISCOURSE_DATABASE_USER_PASSWORD=
 DISCOURSE_REDIS_PASSWORD=
 # Discourse (Service Details) END
 
-# Syncthing (Service Details)
+# Syncthing (Service Details) BEGIN
 SYNCTHING_ADMIN_USERNAME=
 SYNCTHING_ADMIN_PASSWORD=
 SYNCTHING_API_KEY=
 SYNCTHING_DEVICE_ID=
 # Syncthing (Service Details) END
 
-# CodeServer (Service Details)
+# CodeServer (Service Details) BEGIN
 CODESERVER_ADMIN_USERNAME=
 CODESERVER_ADMIN_PASSWORD=
 # CodeServer (Service Details) END
 
-# Shlink (Service Details)
+# Shlink (Service Details) BEGIN
 SHLINK_DATABASE_NAME=
 SHLINK_DATABASE_USER=
 SHLINK_DATABASE_USER_PASSWORD=
@@ -9854,7 +9854,7 @@ SHLINK_REDIS_PASSWORD=
 SHLINK_INITIAL_API_KEY=
 # Shlink (Service Details) END
 
-# FireflyIII (Service Details)
+# FireflyIII (Service Details) BEGIN
 FIREFLY_DATABASE_NAME=
 FIREFLY_DATABASE_USER=
 FIREFLY_DATABASE_USER_PASSWORD=
@@ -9862,11 +9862,11 @@ FIREFLY_REDIS_PASSWORD=
 FIREFLY_INITIAL_API_KEY=
 # FireflyIII (Service Details) END
 
-# Excalidraw (Service Details)
+# Excalidraw (Service Details) BEGIN
 EXCALIDRAW_REDIS_PASSWORD=
 # Excalidraw (Service Details) END
 
-# Gitea (Service Details)
+# Gitea (Service Details) BEGIN
 GITEA_ADMIN_USERNAME=
 GITEA_ADMIN_EMAIL_ADDRESS=
 GITEA_ADMIN_PASSWORD=
@@ -9875,30 +9875,30 @@ GITEA_DATABASE_USER=
 GITEA_DATABASE_USER_PASSWORD=
 # Gitea (Service Details) END
 
-# Invidious (Service Details)
+# Invidious (Service Details) BEGIN
 INVIDIOUS_DATABASE_NAME=
 INVIDIOUS_DATABASE_USER=
 INVIDIOUS_DATABASE_USER_PASSWORD=
 # Invidious (Service Details) END
 
-# Mealie (Service Details)
+# Mealie (Service Details) BEGIN
 MEALIE_ADMIN_USERNAME=
 MEALIE_ADMIN_EMAIL_ADDRESS=
 MEALIE_ADMIN_PASSWORD=
 # Mealie (Service Details) END
 
-# Remotely (Service Details)
+# Remotely (Service Details) BEGIN
 REMOTELY_ADMIN_USERNAME=
 REMOTELY_ADMIN_EMAIL_ADDRESS=
 REMOTELY_ADMIN_PASSWORD=
 # Remotely (Service Details) END
 
-# SQLPad (Service Details)
+# SQLPad (Service Details) BEGIN
 SQLPAD_ADMIN_USERNAME=
 SQLPAD_ADMIN_PASSWORD=
 # SQLPad (Service Details) END
 
-# Heimdall (Service Details)
+# Heimdall (Service Details) BEGIN
 HEIMDALL_ADMIN_USERNAME=
 HEIMDALL_ADMIN_PASSWORD=
 HEIMDALL_USER_USERNAME=
@@ -9910,7 +9910,7 @@ HEIMDALL_RELAYSERVER_PASSWORD=
 HEIMDALL_WINDOW_TITLE=
 # Heimdall (Service Details) END
 
-# Caddy (Service Details)
+# Caddy (Service Details) BEGIN
 CADDY_CERT_RENEW_INTERVAL=1h
 CADDY_CERT_INTERMEDIATE_LIFETIME=90d
 CADDY_CERT_LEAF_LIFETIME=7d
@@ -9925,6 +9925,12 @@ CADDY_SNIPPET_SAFEHEADERALLOWCORS=safe-header-allow-cors
 CADDY_SNIPPET_SAFEHEADERCORS=safe-header-cors
 CADDY_SNIPPET_NOTHOMESUBNET=not-home-subnet
 # Caddy (Service Details) END
+
+# Calibre (Service Details) BEGIN
+CALIBRE_WEB_ADMIN_USERNAME=
+CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=
+CALIBRE_WEB_ADMIN_PASSWORD=
+# Calibre (Service Details) END
 
 # Service Details END
 EOFCF
@@ -9962,10 +9968,24 @@ function checkUpdateVersion()
     HSHQ_VERSION=11
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 13 ]; then
-    HSHQ_VERSION=13
+  if [ $HSHQ_VERSION -lt 14 ]; then
+    fixConfigComments
+    HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+}
+
+function fixConfigComments()
+{
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  fixlist=($(cat $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME | grep "^#" | grep -v "# Configuration File" | grep -v "END" | grep -v "BEGIN"))
+  for curitem in "${fixlist[@]}"
+  do
+    sed -i "s|$curitem|$curitem BEGIN|g" $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
+    sed -i "s|$curitem BEGIN END|$curitem END|g" $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
+  done
+  IFS=$OLDIFS
 }
 
 function checkAddServiceToConfig()
@@ -9973,9 +9993,11 @@ function checkAddServiceToConfig()
   service_name=$1
   variable_list=$2
   set +e
+  is_in_config=true
   grep "# $service_name (Service Details)" $CONFIG_FILE >/dev/null 2>/dev/null
   if [ $? -ne 0 ]; then
-    replace_block="# $service_name (Service Details)\n"
+    is_in_config=false
+    replace_block="# $service_name (Service Details) BEGIN\n"
     varListArr=($(echo $variable_list | tr "," "\n"))
     for curVar in "${varListArr[@]}"
     do
@@ -9985,6 +10007,7 @@ function checkAddServiceToConfig()
     sed -i "s|# Service Details END|$replace_block|g" $CONFIG_FILE
   fi
   set -e
+  echo $is_in_config
 }
 
 function removeServiceFromConfig()
@@ -11337,6 +11360,8 @@ function loadPinnedDockerImages()
   IMG_ADGUARD=adguard/adguardhome:v0.107.41
   IMG_AUTHELIA=authelia/authelia:4.37.5
   IMG_CADDY=caddy:2.7.6
+  IMG_CALIBRE_SERVER=linuxserver/calibre:7.3.0
+  IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.21
   IMG_CODESERVER=codercom/code-server:4.20.0
   IMG_COLLABORA=collabora/code:23.05.6.4.1
   IMG_DISCOURSE=bitnami/discourse:3.1.3
@@ -11507,6 +11532,8 @@ function pullDockerImages()
   pullImage $IMG_KASM
   pullImage $IMG_DNSMASQ
   pullImage $IMG_WIREGUARD
+  pullImage $IMG_CALIBRE_SERVER
+  pullImage $IMG_CALIBRE_WEB
 }
 
 function pullBaseServicesDockerImages()
@@ -12016,6 +12043,18 @@ function initServicesCredentials()
     REMOTELY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar REMOTELY_ADMIN_PASSWORD $REMOTELY_ADMIN_PASSWORD
   fi
+  if [ -z "$CALIBRE_WEB_ADMIN_USERNAME" ]; then
+    CALIBRE_WEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_calibre"
+    updateConfigVar CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_USERNAME
+  fi
+  if [ -z "$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS" ]; then
+    CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=$CALIBRE_WEB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar CALIBRE_WEB_ADMIN_EMAIL_ADDRESS $CALIBRE_WEB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$CALIBRE_WEB_ADMIN_PASSWORD" ]; then
+    CALIBRE_WEB_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
+    updateConfigVar CALIBRE_WEB_ADMIN_PASSWORD $CALIBRE_WEB_ADMIN_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -12041,6 +12080,8 @@ function initServiceVars()
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
   checkAddSvc "SVCD_CADDY=caddy,caddy,primary,admin,Caddy,caddy,hshq"
   checkAddSvc "SVCD_CADDYDNS=caddy,caddy-dns,primary,admin,CaddyDNS,caddy-dns,hshq"
+  checkAddSvc "SVCD_CALIBRE_SERVER=calibre,calibre-server,primary,admin,Calibre-Server,calibre-server,hshq"
+  checkAddSvc "SVCD_CALIBRE_WEB=calibre,calibre-web,other,user,Calibre-Web,calibre-web,le"
   checkAddSvc "SVCD_CLIENTDNS=clientdns,clientdns,primary,admin,ClientDNS,clientdns,hshq"
   checkAddSvc "SVCD_CODESERVER=codeserver,codeserver,primary,admin,CodeServer,codeserver,hshq"
   checkAddSvc "SVCD_COLLABORA=collabora,collabora,other,user,Collabora,collabora,hshq"
@@ -12188,6 +12229,8 @@ function installStackByName()
       installNTFY $is_integrate ;;
     remotely)
       installRemotely $is_integrate ;;
+    calibre)
+      installCalibre $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -12207,6 +12250,7 @@ function getAutheliaBlock()
   retval="${retval}  rules:\n"
   retval="${retval}    - domain:\n"
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN\n"
@@ -12251,6 +12295,7 @@ function getAutheliaBlock()
   retval="${retval}        - \"group:$LDAP_PRIMARY_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - ${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CODESERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOZZLE.$HOMESERVER_DOMAIN\n"
@@ -12328,6 +12373,8 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NEXTCLOUD}-User" https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DISCOURSE}-Admin" https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_VAULTWARDEN}-Admin" https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV admin $VAULTWARDEN_ADMIN_TOKEN)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-Admin" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-User" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   fi
   # Relay Server
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -12376,6 +12423,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_COLLABORA Admin" $USERTYPE_PORTAINER "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/browser/dist/admin/admin.html" 0 "collabora.png"
   insertIntoHeimdallDB "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" 0 "ntfy.png"
   insertIntoHeimdallDB "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" 0 "ittools.png"
+  insertIntoHeimdallDB "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0 "calibre-server.png"
   insertIntoHeimdallDB "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0 "remotely.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # Users Tab
@@ -12404,6 +12452,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" 0 "drawio.png"
   insertIntoHeimdallDB "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" 0 "mealie.png"
   insertIntoHeimdallDB "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0 "kasm.png"
+  insertIntoHeimdallDB "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0 "calibre-web.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -12471,6 +12520,8 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -20775,7 +20826,7 @@ EOFJF
   <LdapBindUser>cn=$LDAP_READONLY_USER_USERNAME,$LDAP_BASE_DN</LdapBindUser>
   <LdapBindPassword>$LDAP_READONLY_USER_PASSWORD</LdapBindPassword>
   <LdapBaseDn>$LDAP_BASE_DN</LdapBaseDn>
-  <LdapSearchFilter>(memberOf=cn=primaryusers,ou=groups,$LDAP_BASE_DN)</LdapSearchFilter>
+  <LdapSearchFilter>(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)</LdapSearchFilter>
   <LdapAdminBaseDn>cn=admins,ou=groups,$LDAP_BASE_DN</LdapAdminBaseDn>
   <LdapAdminFilter>_disabled_</LdapAdminFilter>
   <LdapSearchAttributes>uid, cn, mail, displayName</LdapSearchAttributes>
@@ -23788,6 +23839,9 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${HSHQ_STACKS_DIR}/codeserver:/home/coder
+      - \${HSHQ_STACKS_DIR}/authelia/config/configuration.yml:/home/coder/HSHQ/authelia/configuration.yml
+      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles:/home/coder/HSHQ/caddy/caddyfiles
+      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/home/coder/HSHQ/caddy/snippets
       - \${HSHQ_SSL_DIR}/codeserver.crt:/certs/codeserver.crt
       - \${HSHQ_SSL_DIR}/codeserver.key:/certs/codeserver.key
 
@@ -23826,7 +23880,8 @@ EOFCS
     "workbench.colorTheme": "Default Dark Modern",
     "workbench.startupEditor": "none",
     "telemetry.telemetryLevel": "off",
-    "workbench.editor.enablePreview": false
+    "workbench.editor.enablePreview": false,
+    "files.autoSave": "off"
 }
 EOFCS
 
@@ -25033,7 +25088,7 @@ function installGitea()
   sleep 5
   addUserMailu alias $GITEA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin user create --admin --username $GITEA_ADMIN_USERNAME --password $GITEA_ADMIN_PASSWORD --email $GITEA_ADMIN_EMAIL_ADDRESS
-  docker exec -u $USERID gitea-app gitea admin auth add-ldap --name OpenLDAP --security-protocol ldaps --host ldapserver --port 636 --bind-dn "$LDAP_READONLY_USER_BIND_DN" --bind-password "$LDAP_READONLY_USER_PASSWORD" --user-search-base "ou=people,$LDAP_BASE_DN" --user-filter "(&(&(uid=%s)(objectClass=person))(memberOf=cn=primaryusers,ou=groups,$LDAP_BASE_DN))" --admin-filter "(memberOf=cn=admins,ou=groups,$LDAP_BASE_DN)" --username-attribute uid --firstname-attribute givenName --surname-attribute sn --email-attribute mail --avatar-attribute jpegPhoto --synchronize-users --active
+  docker exec -u $USERID gitea-app gitea admin auth add-ldap --name OpenLDAP --security-protocol ldaps --host ldapserver --port 636 --bind-dn "$LDAP_READONLY_USER_BIND_DN" --bind-password "$LDAP_READONLY_USER_PASSWORD" --user-search-base "ou=people,$LDAP_BASE_DN" --user-filter "(&(&(uid=%s)(objectClass=person))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))" --admin-filter "(memberOf=cn=admins,ou=groups,$LDAP_BASE_DN)" --username-attribute uid --firstname-attribute givenName --surname-attribute sn --email-attribute mail --avatar-attribute jpegPhoto --synchronize-users --active
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITEA.$HOMESERVER_DOMAIN {\n"
@@ -26022,6 +26077,194 @@ EOFRM
 HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 EOFRM
 
+}
+
+function installCalibre()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory calibre "Calibre"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/calibre
+  mkdir $HSHQ_STACKS_DIR/calibre/server
+  mkdir $HSHQ_STACKS_DIR/calibre/library
+  mkdir $HSHQ_STACKS_DIR/calibre/web
+
+  is_calibre_config=$(checkAddServiceToConfig "Calibre" "CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD=")
+  if [ -z "$CALIBRE_WEB_ADMIN_USERNAME" ]; then
+    CALIBRE_WEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_calibre"
+    updateConfigVar CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_USERNAME
+  fi
+  if [ -z "$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS" ]; then
+    CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=$CALIBRE_WEB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar CALIBRE_WEB_ADMIN_EMAIL_ADDRESS $CALIBRE_WEB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$CALIBRE_WEB_ADMIN_PASSWORD" ]; then
+    CALIBRE_WEB_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
+    updateConfigVar CALIBRE_WEB_ADMIN_PASSWORD $CALIBRE_WEB_ADMIN_PASSWORD
+  fi
+
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $CALIBRE_WEB_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $CALIBRE_WEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  if [ $is_calibre_config = "false" ]; then
+    # Not in configuration file, email credentials to mail admin
+    sendEmail -s "Calibre-Web Login Info" -b "Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nAdmin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  fi
+
+  pullImage $IMG_CALIBRE_SERVER
+  pullImage $IMG_CALIBRE_WEB
+  outputConfigCalibre
+  generateCert calibre-web calibre-web
+  installStack calibre calibre-web "done." $HOME/calibre.env
+  echo "Calibre stack installed, sleeping 10 seconds..."
+  sleep 10
+
+  docker exec -it calibre-web python3 /app/calibre-web/cps.py -p /config/app.db -s admin:$CALIBRE_WEB_ADMIN_PASSWORD
+  encpw=$(docker exec -it calibre-web python3 /config/getencpw.py)
+  encpw=${encpw:2:${#encpw}-4}
+  startStopStack calibre stop
+  cat $HSHQ_STACKS_DIR/calibre/server/.config/calibre/global.py.json | jq '.library_path |= "/library"' > $HOME/calibre_new.json
+  mv -f $HOME/calibre_new.json $HSHQ_STACKS_DIR/calibre/server/.config/calibre/global.py.json
+  
+  rm $HSHQ_STACKS_DIR/calibre/web/getencpw.py
+  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE user set name='$CALIBRE_WEB_ADMIN_USERNAME', email='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS', kindle_mail='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS' where id=1;"
+  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='mailu-front', mail_port=25, mail_use_ssl=1, mail_from='Calibre-Web HSHQ Admin <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
+
+  if ! [ "$(isServiceDisabled calibre)" = "true" ]; then
+    echo "Starting Calibre..."
+    startStopStack calibre start
+  fi
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://calibre-server:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CALIBRE_SERVER $MANAGETLS_CALIBRE_SERVER "$is_integrate_hshq" $NETDEFAULT_CALIBRE_SERVER "$inner_block"
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://calibre-web:8083 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CALIBRE_WEB $MANAGETLS_CALIBRE_WEB "$is_integrate_hshq" $NETDEFAULT_CALIBRE_WEB "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll calibre "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" "calibre-server.png"
+    insertEnableSvcAll calibre "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" "calibre-web.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigCalibre()
+{
+  cat <<EOFNT > $HOME/calibre-compose.yml
+version: '3.5'
+
+services:
+  calibre-server:
+    image: $IMG_CALIBRE_SERVER
+    container_name: calibre-server
+    hostname: calibre-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/calibre/server:/config
+      - \${HSHQ_STACKS_DIR}/calibre/library:/library
+
+  calibre-web:
+    image: $IMG_CALIBRE_WEB
+    container_name: calibre-web
+    hostname: calibre-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-ldap-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_SSL_DIR}/calibre-web.crt:/certs/calibre-web.crt:ro
+      - \${HSHQ_SSL_DIR}/calibre-web.key:/certs/calibre-web.key:ro
+      - \${HSHQ_STACKS_DIR}/calibre/web:/config
+      - \${HSHQ_STACKS_DIR}/calibre/library:/library
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+
+EOFNT
+
+  cat <<EOFNT > $HOME/calibre.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+PUID=1000
+PGID=1000
+TZ=America/Chicago
+CALIBRE_LDAP_AUTO_CREATE=true
+EOFNT
+
+  cat <<EOFPY > $HSHQ_STACKS_DIR/calibre/web/getencpw.py
+from cryptography.fernet import Fernet
+import cryptography.exceptions
+from base64 import urlsafe_b64decode
+f = open("/config/.key", "r")
+key = f.read()
+f.close()
+crypter = Fernet(key)
+configpw = "$LDAP_READONLY_USER_PASSWORD"
+configpw_e=crypter.encrypt(configpw.encode())
+print(configpw_e)
+EOFPY
 }
 
 function installSQLPad()
