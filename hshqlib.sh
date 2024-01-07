@@ -615,7 +615,7 @@ function addToDisabledServices()
   curE=${-//[^e]/}
   set +e
   echo $DISABLED_SERVICES | grep $dis_svc >/dev/null 2>/dev/null
-  if [ $? -eq 0 ]; then
+  if [ $? -ne 0 ]; then
     if [ "$DISABLED_SERVICES" = "" ]; then
       DISABLED_SERVICES="$dis_svc"
     else
@@ -10003,6 +10003,8 @@ function checkUpdateVersion()
 
 function fixConfigComments()
 {
+  curE=${-//[^e]/}
+  set +e
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   fixlist=($(cat $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME | grep "^#" | grep -v "# Configuration File" | grep -v "END" | grep -v "BEGIN"))
@@ -10012,6 +10014,9 @@ function fixConfigComments()
     sed -i "s|$curitem BEGIN END|$curitem END|g" $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
   done
   IFS=$OLDIFS
+  if ! [ -z $curE ]; then
+    set -e
+  fi
 }
 
 function checkAddServiceToConfig()
