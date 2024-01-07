@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=14
+HSHQ_SCRIPT_VERSION=15
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -58,7 +58,7 @@ function main()
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,sqlpad"
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
@@ -675,13 +675,13 @@ function initConfig()
     if [ $total_ram -lt 8 ]; then
       DISABLED_SERVICES=minimal
     elif [ $total_ram -lt 12 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,calibre
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,calibre,netdata,linkwarden,stirlingpdf
     elif [ $total_ram -lt 16 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,calibre
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,calibre,netdata,linkwarden,stirlingpdf
     elif [ $total_ram -lt 24 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,calibre
+      DISABLED_SERVICES=gitlab,discourse,drawio,calibre,netdata,linkwarden,stirlingpdf
     else
-      DISABLED_SERVICES=gitlab
+      DISABLED_SERVICES=gitlab,netdata
     fi
     updateConfigVar DISABLED_SERVICES $DISABLED_SERVICES
   fi
@@ -7498,8 +7498,9 @@ function checkDeleteStackAndDirectory()
   is_delete_stack=false
   is_delete_dirs=false
   sudo -v
+  curE=${-//[^e]/}
+  set +e
   if ! [ "$is_check_stack" = "false" ]; then
-    set +e
     stackID=$(getStackID $stack_name)
     if ! [ -z "$stackID" ]; then
       if [ "$is_force_delete" = "true" ]; then
@@ -7508,6 +7509,9 @@ function checkDeleteStackAndDirectory()
         showYesNoMessageBox "Stack Exists" "The stack '$stack_name' exists. Do you wish to delete it?"
         mbres=$?
 	    if [ $mbres -ne 0 ]; then
+          if ! [ -z $curE ]; then
+            set -e
+          fi
           return 1
         else
           is_delete_stack=true
@@ -7515,28 +7519,38 @@ function checkDeleteStackAndDirectory()
       fi
     fi
   fi
-
   if [ -d "$HSHQ_STACKS_DIR/$stack_name" ] || [ -d "$HSHQ_NONBACKUP_DIR/$stack_name" ]; then
     if [ "$is_force_delete" = "true" ]; then
-      set -e
-	  sudo rm -fr $HSHQ_STACKS_DIR/$stack_name
-	  sudo rm -fr $HSHQ_NONBACKUP_DIR/$stack_name
+      is_delete_dirs=true
     else
       showYesNoMessageBox "$formal_name Directory Exists" "The $formal_name directory already exists. Do you wish to delete it?"
 	  mbres=$?
 	  if [ $mbres -eq 0 ]; then
-        set -e
         is_delete_dirs=true
       fi
     fi
   fi
-
+  set -e
   if [ "$is_delete_stack" = "true" ]; then
     deleteStack $stack_name
   fi
   if [ "$is_delete_dirs" = "true" ]; then
     sudo rm -fr $HSHQ_STACKS_DIR/$stack_name
     sudo rm -fr $HSHQ_NONBACKUP_DIR/$stack_name
+    # Delete any volumes
+    OLDIFS=$IFS
+    IFS=$(echo -en "\n\b")
+    vol_list=($(docker volume ls | grep v-${stack_name}))
+    for curVol in "${vol_list[@]}"
+    do
+      curVolName=$(echo $curVol | xargs | cut -d" " -f2)
+      docker volume rm $curVolName
+    done
+    IFS=$OLDIFS
+  fi
+  set +e
+  if ! [ -z $curE ]; then
+    set -e
   fi
 }
 
@@ -9932,6 +9946,13 @@ CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=
 CALIBRE_WEB_ADMIN_PASSWORD=
 # Calibre (Service Details) END
 
+# Linkwarden (Service Details) BEGIN
+LINKWARDEN_DATABASE_NAME=
+LINKWARDEN_DATABASE_USER=
+LINKWARDEN_DATABASE_USER_PASSWORD=
+LINKWARDEN_NEXTAUTH_SECRET=
+# Linkwarden (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -9970,7 +9991,12 @@ function checkUpdateVersion()
   fi
   if [ $HSHQ_VERSION -lt 14 ]; then
     fixConfigComments
+    addToDisabledServices netdata
     HSHQ_VERSION=14
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 15 ]; then
+    HSHQ_VERSION=15
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
 }
@@ -11396,6 +11422,7 @@ function loadPinnedDockerImages()
   IMG_JITSI_JICOFO=jitsi/jicofo:stable-9111
   IMG_JITSI_JVB=jitsi/jvb:stable-9111
   IMG_KASM=lscr.io/linuxserver/kasm:1.14.0
+  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.4.8
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.1.1
@@ -11418,6 +11445,7 @@ function loadPinnedDockerImages()
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.98.0
   IMG_MEALIE=hkotel/mealie:v0.5.6
   IMG_MYSQL=mariadb:10.7.3
+  IMG_NETDATA=netdata/netdata:v1.44.1
   IMG_NEXTCLOUD_APP=nextcloud:27.1.5-fpm-alpine
   IMG_NEXTCLOUD_WEB=nginx:1.25.3-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:latest
@@ -11438,6 +11466,7 @@ function loadPinnedDockerImages()
   IMG_SHLINK_APP=shlinkio/shlink:3.7.2
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:3.10.2
   IMG_SQLPAD=sqlpad/sqlpad:7.2.0
+  IMG_STIRLINGPDF=frooodle/s-pdf:0.19.0
   IMG_SYNCTHING=syncthing/syncthing:1.27.1
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.11-alpine
   IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.1-alpine
@@ -11479,6 +11508,7 @@ function pullDockerImages()
   pullImage $IMG_WAZUH_INDEXER
   pullImage $IMG_WAZUH_DASHBOARD
   pullImage $IMG_COLLABORA
+  pullImage $IMG_NETDATA
   pullImage $IMG_NEXTCLOUD_APP
   pullImage $IMG_NEXTCLOUD_WEB
   pullImage $IMG_NEXTCLOUD_IMAGINARY
@@ -11534,6 +11564,8 @@ function pullDockerImages()
   pullImage $IMG_WIREGUARD
   pullImage $IMG_CALIBRE_SERVER
   pullImage $IMG_CALIBRE_WEB
+  pullImage $IMG_LINKWARDEN
+  pullImage $IMG_STIRLINGPDF
 }
 
 function pullBaseServicesDockerImages()
@@ -12055,6 +12087,18 @@ function initServicesCredentials()
     CALIBRE_WEB_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar CALIBRE_WEB_ADMIN_PASSWORD $CALIBRE_WEB_ADMIN_PASSWORD
   fi
+  if [ -z "$LINKWARDEN_DATABASE_NAME" ]; then
+    LINKWARDEN_DATABASE_NAME=linkwardendb
+    updateConfigVar LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_NAME
+  fi
+  if [ -z "$LINKWARDEN_DATABASE_USER" ]; then
+    LINKWARDEN_DATABASE_USER=linkwarden-user
+    updateConfigVar LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER
+  fi
+  if [ -z "$LINKWARDEN_DATABASE_USER_PASSWORD" ]; then
+    LINKWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LINKWARDEN_DATABASE_USER_PASSWORD $LINKWARDEN_DATABASE_USER_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -12111,6 +12155,7 @@ function initServiceVars()
   checkAddSvc "SVCD_ITTOOLS=ittools,ittools,primary,admin,IT Tools,ittools,hshq"
   checkAddSvc "SVCD_JELLYFIN=jellyfin,jellyfin,primary,user,Jellyfin,jellyfin,hshq"
   checkAddSvc "SVCD_JITSI=jitsi,jitsi,other,user,Jitsi,jitsi,le"
+  checkAddSvc "SVCD_LINKWARDEN=linkwarden,linkwarden,primary,user,Linkwarden,linkwarden,hshq"
   checkAddSvc "SVCD_KASM=kasm,kasm,primary,user,Kasm,kasm,hshq"
   checkAddSvc "SVCD_KASM_WIZARD=kasm,kasm-wizard,home,admin,Kasm Wizard,kasm-wizard,hshq"
   checkAddSvc "SVCD_MAILU=mailu,mailu,primary,user,Mailu,mailu,hshq"
@@ -12119,6 +12164,7 @@ function initServiceVars()
   checkAddSvc "SVCD_MATRIX_ELEMENT_PUBLIC=matrix,element-public,other,user,Matrix Element (Public Jitsi),element-public,hshq"
   checkAddSvc "SVCD_MATRIX_SYNAPSE=matrix,synapse,other,user,Synapse,synapse,le"
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
+  checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
@@ -12134,6 +12180,7 @@ function initServiceVars()
   checkAddSvc "SVCD_SHLINK_APP=shlink,shlink-app,other,user,Shlink App,links,hshq"
   checkAddSvc "SVCD_SHLINK_WEB=shlink,shlink-web,primary,admin,Shlink,shlink,hshq"
   checkAddSvc "SVCD_SQLPAD=sqlpad,sqlpad,primary,admin,SQLPad,sqlpad,hshq"
+  checkAddSvc "SVCD_STIRLINGPDF=stirlingpdf,stirlingpdf,primary,user,Stirling PDF,stirlingpdf,hshq"
   checkAddSvc "SVCD_SYNCTHING=syncthing,syncthing,primary,admin,Syncthing,syncthing,hshq"
   checkAddSvc "SVCD_SYSUTILS=sysutils,sysutils,primary,admin,SysUtils,sysutils,hshq"
   checkAddSvc "SVCD_UPTIMEKUMA=uptimekuma,uptimekuma,primary,admin,UptimeKuma,uptimekuma,hshq"
@@ -12231,6 +12278,12 @@ function installStackByName()
       installRemotely $is_integrate ;;
     calibre)
       installCalibre $is_integrate ;;
+    netdata)
+      installNetdata $is_integrate ;;
+    linkwarden)
+      installLinkwarden $is_integrate ;;
+    stirlingpdf)
+      installStirlingPDF $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -12288,7 +12341,9 @@ function getAutheliaBlock()
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_BASIC_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -12308,6 +12363,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_ITTOOLS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM_WIZARD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NETDATA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PORTAINER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PROMETHEUS.$HOMESERVER_DOMAIN\n"
@@ -12423,8 +12479,9 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_COLLABORA Admin" $USERTYPE_PORTAINER "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/browser/dist/admin/admin.html" 0 "collabora.png"
   insertIntoHeimdallDB "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" 0 "ntfy.png"
   insertIntoHeimdallDB "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" 0 "ittools.png"
-  insertIntoHeimdallDB "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0 "calibre-server.png"
   insertIntoHeimdallDB "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0 "remotely.png"
+  insertIntoHeimdallDB "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0 "calibre-server.png"
+  insertIntoHeimdallDB "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0 "netdata.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # Users Tab
   insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png"
@@ -12453,6 +12510,8 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" 0 "mealie.png"
   insertIntoHeimdallDB "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0 "kasm.png"
   insertIntoHeimdallDB "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0 "calibre-web.png"
+  insertIntoHeimdallDB "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0 "linkwarden.png"
+  insertIntoHeimdallDB "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0 "stirlingpdf.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -12520,9 +12579,13 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0
+
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -13231,7 +13294,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-grafana-data:/var/lib/grafana
+      - v-sysutils-grafana:/var/lib/grafana
     environment:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SECURITY_ADMIN_USER=$GRAFANA_ADMIN_USERNAME
@@ -13261,7 +13324,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - ${HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
-      - v-prometheus-data:/prometheus
+      - v-sysutils-prometheus:/prometheus
       
   node-exporter:
     image: $IMG_NODE_EXPORTER
@@ -13318,18 +13381,18 @@ services:
       - INFLUXD_TLS_KEY=/certs/influxdb.key
 
 volumes:
-  v-prometheus-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
-  v-grafana-data:
+  v-sysutils-grafana:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: ${HSHQ_STACKS_DIR}/sysutils/grafana
+  v-sysutils-prometheus:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
 
 networks:
   dock-proxy-net:
@@ -13368,7 +13431,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-grafana-data:/var/lib/grafana
+      - v-sysutils-grafana:/var/lib/grafana
 
   prometheus:
     image: $IMG_PROMETHEUS
@@ -13394,7 +13457,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - \${HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
-      - v-prometheus-data:/prometheus
+      - v-sysutils-prometheus:/prometheus
       
   node-exporter:
     image: $IMG_NODE_EXPORTER
@@ -13444,18 +13507,18 @@ services:
       - \${HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
 
 volumes:
-  v-prometheus-data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
-  v-grafana-data:
+  v-sysutils-grafana:
     driver: local
     driver_opts:
       type: none
       o: bind
       device: \${HSHQ_STACKS_DIR}/sysutils/grafana
+  v-sysutils-prometheus:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
 
 networks:
   dock-proxy-net:
@@ -18290,6 +18353,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    shm_size: 256mb
     networks:
       - int-nextcloud-net
       - dock-dbs-net
@@ -18802,6 +18866,9 @@ services:
     user: \${UID}
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
     networks:
       - int-matrix-net
       - dock-dbs-net
@@ -19276,6 +19343,9 @@ services:
     user: \${UID}
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
     networks:
       - int-wikijs-net
       - dock-dbs-net
@@ -21372,7 +21442,6 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    shm_size: 256mb
     networks:
       - int-guacamole-net
     volumes:
@@ -22541,6 +22610,9 @@ services:
     user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
     networks:
       - dock-privateip-net
       - dock-dbs-net
@@ -23403,6 +23475,9 @@ services:
     user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
     networks:
       - int-discourse-net
       - dock-dbs-net
@@ -23471,7 +23546,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-sidekiq-data:/bitnami/discourse
+      - v-discourse-sidekiq:/bitnami/discourse
 
   discourse-redis:
     image: $IMG_REDIS
@@ -23502,7 +23577,7 @@ volumes:
       type: none
       o: bind
       device: \${HSHQ_STACKS_DIR}/discourse/app
-  v-sidekiq-data:
+  v-discourse-sidekiq:
     driver: local
     driver_opts:
       type: none
@@ -23979,6 +24054,9 @@ services:
     user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
     networks:
       - int-shlink-net
       - dock-dbs-net
@@ -24734,6 +24812,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    shm_size: 256mb
     networks:
       - int-invidious-net
       - dock-dbs-net
@@ -26014,7 +26093,11 @@ function installRemotely()
   sudo chown root:root $HSHQ_STACKS_DIR/remotely/appsettings.json
   sudo chmod 644 $HSHQ_STACKS_DIR/remotely/appsettings.json
 
-  startStopStack remotely start
+  if ! [ "$(isServiceDisabled remotely)" = "true" ]; then
+    echo "Starting Remotely..."
+    startStopStack remotely start
+  fi
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_REMOTELY.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -26267,6 +26350,377 @@ print(configpw_e)
 EOFPY
 }
 
+function installNetdata()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory netdata "Netdata"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/netdata
+  mkdir $HSHQ_STACKS_DIR/netdata/config
+  mkdir $HSHQ_STACKS_DIR/netdata/lib
+  mkdir $HSHQ_NONBACKUP_DIR/netdata
+  mkdir $HSHQ_NONBACKUP_DIR/netdata/cache
+
+  pullImage $IMG_NETDATA
+  outputConfigNetData
+  installStack netdata netdata "" $HOME/netdata.env
+  sleep 3
+  checkDisableStack netdata
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NETDATA.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://netdata:19999 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NETDATA $MANAGETLS_NETDATA "$is_integrate_hshq" $NETDEFAULT_NETDATA "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll netdata "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" "netdata.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigNetData()
+{
+  cat <<EOFDZ > $HOME/netdata-compose.yml
+version: '3.5'
+
+services:
+  netdata:
+    image: $IMG_NETDATA
+    container_name: netdata
+    hostname: netdata
+    restart: unless-stopped
+    pid: host
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    networks:
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+      - /var/log:/host/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - v-netdata-config:/etc/netdata
+      - v-netdata-lib:/var/lib/netdata
+      - v-netdata-cache:/var/cache/netdata
+
+volumes:
+  v-netdata-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/netdata/config
+  v-netdata-lib:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/netdata/lib
+  v-netdata-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/netdata/cache
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+
+EOFDZ
+
+  cat <<EOFDZ > $HOME/netdata.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
+EOFDZ
+
+}
+
+function installLinkwarden()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory linkwarden "Linkwarden"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/linkwarden
+  mkdir $HSHQ_STACKS_DIR/linkwarden/db
+  mkdir $HSHQ_STACKS_DIR/linkwarden/dbexport
+  mkdir $HSHQ_STACKS_DIR/linkwarden/app
+
+  is_linkw_config=$(checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=")
+  if [ -z "$LINKWARDEN_DATABASE_NAME" ]; then
+    LINKWARDEN_DATABASE_NAME=linkwardendb
+    updateConfigVar LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_NAME
+  fi
+  if [ -z "$LINKWARDEN_DATABASE_USER" ]; then
+    LINKWARDEN_DATABASE_USER=linkwarden-user
+    updateConfigVar LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER
+  fi
+  if [ -z "$LINKWARDEN_DATABASE_USER_PASSWORD" ]; then
+    LINKWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LINKWARDEN_DATABASE_USER_PASSWORD $LINKWARDEN_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$LINKWARDEN_NEXTAUTH_SECRET" ]; then
+    LINKWARDEN_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar LINKWARDEN_NEXTAUTH_SECRET $LINKWARDEN_NEXTAUTH_SECRET
+  fi
+
+  pullImage $IMG_LINKWARDEN
+  outputConfigLinkwarden
+  installStack linkwarden linkwarden "" $HOME/linkwarden.env
+  sleep 3
+  checkDisableStack linkwarden
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://linkwarden-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_LINKWARDEN $MANAGETLS_LINKWARDEN "$is_integrate_hshq" $NETDEFAULT_LINKWARDEN "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigLinkwarden()
+{
+  cat <<EOFDZ > $HOME/linkwarden-compose.yml
+version: '3.5'
+
+services:
+  linkwarden-db:
+    image: $IMG_POSTGRES
+    container_name: linkwarden-db
+    hostname: linkwarden-db
+    user: "${UID}:${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-linkwarden-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/linkwarden/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/linkwarden/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.linkwarden-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.linkwarden-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.linkwarden-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.linkwarden-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.linkwarden-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.linkwarden-hourly-db.email-from=Linkwarden Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.linkwarden-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.linkwarden-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.linkwarden-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.linkwarden-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.linkwarden-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.linkwarden-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.linkwarden-monthly-db.email-from=Linkwarden Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.linkwarden-monthly-db.mail-only-on-error=false"
+
+  linkwarden-app:
+    image: $IMG_LINKWARDEN
+    container_name: linkwarden-app
+    hostname: linkwarden-app
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - linkwarden-db
+    networks:
+      - int-linkwarden-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-linkwarden-app:/data/data
+
+volumes:
+  v-linkwarden-app:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/linkwarden/app
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-linkwarden-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFDZ
+
+  cat <<EOFDZ > $HOME/linkwarden.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$LINKWARDEN_DATABASE_NAME
+POSTGRES_USER=$LINKWARDEN_DATABASE_USER
+POSTGRES_PASSWORD=$LINKWARDEN_DATABASE_USER_PASSWORD
+DATABASE_URL=postgresql://$LINKWARDEN_DATABASE_USER:$LINKWARDEN_DATABASE_USER_PASSWORD@linkwarden-db:5432/$LINKWARDEN_DATABASE_NAME
+NEXTAUTH_SECRET=$LINKWARDEN_NEXTAUTH_SECRET
+NEXTAUTH_URL=https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN
+EOFDZ
+
+}
+
+function installStirlingPDF()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory stirlingpdf "StirlingPDF"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/stirlingpdf
+  mkdir $HSHQ_STACKS_DIR/stirlingpdf/configs
+  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf
+  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
+  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
+
+  pullImage $IMG_STIRLINGPDF
+  outputConfigStirlingPDF
+  installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
+  sleep 3
+  checkDisableStack stirlingpdf
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://stirlingpdf:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_STIRLINGPDF $MANAGETLS_STIRLINGPDF "$is_integrate_hshq" $NETDEFAULT_STIRLINGPDF "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll stirlingpdf "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" "stirlingpdf.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigStirlingPDF()
+{
+  cat <<EOFDZ > $HOME/stirlingpdf-compose.yml
+version: '3.5'
+
+services:
+  stirlingpdf:
+    image: $IMG_STIRLINGPDF
+    container_name: stirlingpdf
+    hostname: stirlingpdf
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/stirlingpdf/configs:/configs
+      - \${HSHQ_NONBACKUP_DIR}/stirlingpdf/logs:/logs
+      - \${HSHQ_NONBACKUP_DIR}/stirlingpdf/traindata:/usr/share/tesseract-ocr/5/tessdata
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+
+
+EOFDZ
+
+  cat <<EOFDZ > $HOME/stirlingpdf.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
+EOFDZ
+
+}
+
 function installSQLPad()
 {
   is_integrate_hshq=$1
@@ -26426,6 +26880,14 @@ SQLPAD_CONNECTIONS__invidious__username=$INVIDIOUS_DATABASE_USER
 SQLPAD_CONNECTIONS__invidious__password=$INVIDIOUS_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__invidious__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__invidious__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__linkwarden__name=Linkwarden
+SQLPAD_CONNECTIONS__linkwarden__driver=postgres
+SQLPAD_CONNECTIONS__linkwarden__host=linkwarden-db
+SQLPAD_CONNECTIONS__linkwarden__database=$LINKWARDEN_DATABASE_NAME
+SQLPAD_CONNECTIONS__linkwarden__username=$LINKWARDEN_DATABASE_USER
+SQLPAD_CONNECTIONS__linkwarden__password=$LINKWARDEN_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__linkwarden__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__linkwarden__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__mastodon__name=Mastodon
 SQLPAD_CONNECTIONS__mastodon__driver=postgres
 SQLPAD_CONNECTIONS__mastodon__host=mastodon-db
