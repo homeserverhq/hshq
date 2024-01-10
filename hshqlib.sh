@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=15
+HSHQ_SCRIPT_VERSION=16
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -58,7 +58,7 @@ function main()
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,sqlpad"
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
@@ -636,8 +636,8 @@ function initConfig()
     exit 1
   fi
   total_disk_space=$(($(df | grep /$ | xargs | cut -d" " -f4) / 1048576))
-  if [ $total_disk_space -lt 50 ]; then
-    showMessageBox "Insufficient Disk Space" "Total available disk space is $total_disk_space GB. You must have at least 50 GB of available space to perform the installation, exiting..."
+  if [ $total_disk_space -lt 150 ]; then
+    showMessageBox "Insufficient Disk Space" "Total available disk space is $total_disk_space GB. You must have at least 150 GB of available space to perform the installation, exiting..."
     exit 1
   fi
   set -e
@@ -675,9 +675,9 @@ function initConfig()
     if [ $total_ram -lt 8 ]; then
       DISABLED_SERVICES=minimal
     elif [ $total_ram -lt 12 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,calibre,netdata,linkwarden,stirlingpdf
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf
     elif [ $total_ram -lt 16 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,calibre,netdata,linkwarden,stirlingpdf
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf
     elif [ $total_ram -lt 24 ]; then
       DISABLED_SERVICES=gitlab,discourse,drawio,calibre,netdata,linkwarden,stirlingpdf
     else
@@ -2027,6 +2027,7 @@ set -e
 USERNAME=\$(id -u -n)
 RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
 RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
+RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
 RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 
 function main()
@@ -2415,12 +2416,12 @@ function pullDockerImages()
   pullImage $IMG_REDIS
   pullImage $IMG_WGPORTAL
   pullImage $IMG_WIREGUARD
-  sudo rm -fr \$HOME/build
-  mkdir \$HOME/build
-  git clone https://github.com/homeserverhq/mail-relay.git \$HOME/build/mail-relay
-  docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$HOME/build/mail-relay/postfix/Dockerfile \$HOME/build/mail-relay/postfix
-  docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$HOME/build/mail-relay/rspamd/Dockerfile \$HOME/build/mail-relay/rspamd
-  rm -fr \$HOME/build
+  mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
+  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
+  git clone https://github.com/homeserverhq/mail-relay.git \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
+  docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix
+  docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd
+  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
 }
 
 main "\$@"
@@ -7498,7 +7499,6 @@ function checkDeleteStackAndDirectory()
   is_delete_stack=false
   is_delete_dirs=false
   sudo -v
-  curE=${-//[^e]/}
   set +e
   if ! [ "$is_check_stack" = "false" ]; then
     stackID=$(getStackID $stack_name)
@@ -7509,9 +7509,6 @@ function checkDeleteStackAndDirectory()
         showYesNoMessageBox "Stack Exists" "The stack '$stack_name' exists. Do you wish to delete it?"
         mbres=$?
 	    if [ $mbres -ne 0 ]; then
-          if ! [ -z $curE ]; then
-            set -e
-          fi
           return 1
         else
           is_delete_stack=true
@@ -7534,6 +7531,7 @@ function checkDeleteStackAndDirectory()
   if [ "$is_delete_stack" = "true" ]; then
     deleteStack $stack_name
   fi
+  set +e
   if [ "$is_delete_dirs" = "true" ]; then
     sudo rm -fr $HSHQ_STACKS_DIR/$stack_name
     sudo rm -fr $HSHQ_NONBACKUP_DIR/$stack_name
@@ -7548,10 +7546,7 @@ function checkDeleteStackAndDirectory()
     done
     IFS=$OLDIFS
   fi
-  set +e
-  if ! [ -z $curE ]; then
-    set -e
-  fi
+  set -e
 }
 
 function checkAvailablePort()
@@ -8559,7 +8554,7 @@ function loadDirectoryStructure()
   HSHQ_BACKUP_DIR=$HSHQ_BASE_DIR/backup
   HSHQ_NONBACKUP_DIR=$HSHQ_BASE_DIR/nonbackup
   HSHQ_ASSETS_DIR=$HSHQ_DATA_DIR/assets
-  HSHQ_BUILD_DIR=$HSHQ_DATA_DIR/build
+  HSHQ_BUILD_DIR=$HSHQ_NONBACKUP_DIR/build
   HSHQ_CONFIG_DIR=$HSHQ_DATA_DIR/config
   HSHQ_RELAYSERVER_DIR=$HSHQ_DATA_DIR/relayserver
   HSHQ_SCRIPTS_DIR=$HSHQ_DATA_DIR/scripts
@@ -9953,6 +9948,11 @@ LINKWARDEN_DATABASE_USER_PASSWORD=
 LINKWARDEN_NEXTAUTH_SECRET=
 # Linkwarden (Service Details) END
 
+# Bar Assistant (Service Details) BEGIN
+BARASSISTANT_REDIS_PASSWORD=
+BARASSISTANT_MEILISEARCH_KEY=
+# Bar Assistant (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -9995,8 +9995,8 @@ function checkUpdateVersion()
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 15 ]; then
-    HSHQ_VERSION=15
+  if [ $HSHQ_VERSION -lt 16 ]; then
+    HSHQ_VERSION=16
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
 }
@@ -11390,6 +11390,8 @@ function loadPinnedDockerImages()
 {
   IMG_ADGUARD=adguard/adguardhome:v0.107.41
   IMG_AUTHELIA=authelia/authelia:4.37.5
+  IMG_BARASSISTANT_APP=barassistant/server:v3
+  IMG_BARASSISTANT_WEB=nginx:1.25.3-alpine
   IMG_CADDY=caddy:2.7.6
   IMG_CALIBRE_SERVER=linuxserver/calibre:7.3.0
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.21
@@ -11449,6 +11451,7 @@ function loadPinnedDockerImages()
   IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.52
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.98.0
   IMG_MEALIE=hkotel/mealie:v0.5.6
+  IMG_MEILISEARCH=getmeili/meilisearch:v1.4
   IMG_MYSQL=mariadb:10.7.3
   IMG_NETDATA=netdata/netdata:v1.44.1
   IMG_NEXTCLOUD_APP=nextcloud:27.1.5-fpm-alpine
@@ -11467,6 +11470,7 @@ function loadPinnedDockerImages()
   IMG_PROMETHEUS=prom/prometheus:v2.48.1
   IMG_REDIS=bitnami/redis:7.0.5
   IMG_REMOTELY=immybot/remotely:69
+  IMG_SALTRIM=barassistant/salt-rim:v2
   IMG_SEARXNG=searxng/searxng:2023.12.29-27e26b3d6
   IMG_SHLINK_APP=shlinkio/shlink:3.7.2
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:3.10.2
@@ -11571,6 +11575,10 @@ function pullDockerImages()
   pullImage $IMG_CALIBRE_WEB
   pullImage $IMG_LINKWARDEN
   pullImage $IMG_STIRLINGPDF
+  pullImage $IMG_BARASSISTANT_APP
+  pullImage $IMG_BARASSISTANT_WEB
+  pullImage $IMG_MEILISEARCH
+  pullImage $IMG_SALTRIM
 }
 
 function pullBaseServicesDockerImages()
@@ -12127,6 +12135,7 @@ function initServiceVars()
   set +e
   checkAddSvc "SVCD_ADGUARD=adguard,adguard,primary,admin,AdguardHome,adguard,hshq"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
+  checkAddSvc "SVCD_BARASSISTANT=bar-assistant,bar-assistant,primary,user,Bar Assistant,bar-assistant,hshq"
   checkAddSvc "SVCD_CADDY=caddy,caddy,primary,admin,Caddy,caddy,hshq"
   checkAddSvc "SVCD_CADDYDNS=caddy,caddy-dns,primary,admin,CaddyDNS,caddy-dns,hshq"
   checkAddSvc "SVCD_CALIBRE_SERVER=calibre,calibre-server,primary,admin,Calibre-Server,calibre-server,hshq"
@@ -12289,6 +12298,8 @@ function installStackByName()
       installLinkwarden $is_integrate ;;
     stirlingpdf)
       installStirlingPDF $is_integrate ;;
+    bar-assistant)
+      installBarAssistant $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -12308,6 +12319,7 @@ function getAutheliaBlock()
   retval="${retval}  rules:\n"
   retval="${retval}    - domain:\n"
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN\n"
@@ -12513,6 +12525,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" 0 "excalidraw.png"
   insertIntoHeimdallDB "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" 0 "drawio.png"
   insertIntoHeimdallDB "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" 0 "mealie.png"
+  insertIntoHeimdallDB "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" 0 "bar-assistant.png"
   insertIntoHeimdallDB "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0 "kasm.png"
   insertIntoHeimdallDB "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0 "calibre-web.png"
   insertIntoHeimdallDB "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0 "linkwarden.png"
@@ -12581,6 +12594,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_INVIDIOUS" $USERTYPE_INVIDIOUS "https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" 0
@@ -26711,7 +26725,6 @@ networks:
     name: dock-proxy
     external: true
 
-
 EOFDZ
 
   cat <<EOFDZ > $HOME/stirlingpdf.env
@@ -26723,6 +26736,287 @@ TZ=$TZ
 UID=$USERID
 GID=$GROUPID
 EOFDZ
+
+}
+
+function installBarAssistant()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory bar-assistant "Bar Assistant"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/bar-assistant
+  mkdir $HSHQ_STACKS_DIR/bar-assistant/app
+  mkdir $HSHQ_STACKS_DIR/bar-assistant/meilisearch
+  mkdir $HSHQ_STACKS_DIR/bar-assistant/web
+  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
+  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
+
+  is_ba_config=$(checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY=")
+
+  if [ -z "$BARASSISTANT_REDIS_PASSWORD" ]; then
+    BARASSISTANT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BARASSISTANT_REDIS_PASSWORD $BARASSISTANT_REDIS_PASSWORD
+  fi
+  if [ -z "$BARASSISTANT_MEILISEARCH_KEY" ]; then
+    BARASSISTANT_MEILISEARCH_KEY=$(pwgen -c -n 64 1)
+    updateConfigVar BARASSISTANT_MEILISEARCH_KEY $BARASSISTANT_MEILISEARCH_KEY
+  fi
+
+  pullImage $IMG_BARASSISTANT_APP
+  pullImage $IMG_BARASSISTANT_WEB
+  pullImage $IMG_MEILISEARCH
+  pullImage $IMG_SALTRIM
+
+  outputConfigBarAssistant
+  installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 5
+  sleep 3
+  checkDisableStack bar-assistant
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://bar-assistant-web:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_BARASSISTANT $MANAGETLS_BARASSISTANT "$is_integrate_hshq" $NETDEFAULT_BARASSISTANT "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll bar-assistant "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" "bar-assistant.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigBarAssistant()
+{
+  cat <<EOFBA > $HOME/bar-assistant-compose.yml
+version: '3.5'
+
+services:
+  bar-assistant-app:
+    image: $IMG_BARASSISTANT_APP
+    container_name: bar-assistant-app
+    hostname: bar-assistant-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - bar-assistant-meilisearch
+      - bar-assistant-redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - int-bar-assistant-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-bar-assistant-app:/var/www/cocktails/storage/bar-assistant
+
+  bar-assistant-meilisearch:
+    image: $IMG_MEILISEARCH
+    container_name: bar-assistant-meilisearch
+    hostname: bar-assistant-meilisearch
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - int-bar-assistant-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-bar-assistant-meilisearch:/meili_data
+
+  bar-assistant-redis:
+    image: $IMG_REDIS
+    container_name: bar-assistant-redis
+    hostname: bar-assistant-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-bar-assistant-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-bar-assistant-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$BARASSISTANT_REDIS_PASSWORD
+
+  bar-assistant-saltrim:
+    image: $IMG_SALTRIM
+    container_name: bar-assistant-saltrim
+    hostname: bar-assistant-saltrim
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - bar-assistant-app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - int-bar-assistant-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  bar-assistant-web:
+    image: $IMG_BARASSISTANT_WEB
+    container_name: bar-assistant-web
+    hostname: bar-assistant-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-bar-assistant-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - bar-assistant-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/bar-assistant/web/nginx.conf:/etc/nginx/conf.d/default.conf
+
+volumes:
+  v-bar-assistant-app:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/bar-assistant/app
+  v-bar-assistant-meilisearch:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/bar-assistant/meilisearch
+  v-bar-assistant-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/bar-assistant/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  int-bar-assistant-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFBA
+
+  cat <<EOFBA > $HOME/bar-assistant.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
+BASE_URL=https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN
+APP_URL=\${BASE_URL}
+DEFAULT_LOCALE=en-US
+LOG_CHANNEL=stderr
+API_URL=\${BASE_URL}/bar
+MEILISEARCH_URL=\${BASE_URL}/search
+MEILI_MASTER_KEY=$BARASSISTANT_MEILISEARCH_KEY
+MEILI_ENV=production
+MEILISEARCH_KEY=$BARASSISTANT_MEILISEARCH_KEY
+MEILISEARCH_HOST=http://bar-assistant-meilisearch:7700
+REDIS_HOST=bar-assistant-redis
+REDIS_PASSWORD=$BARASSISTANT_REDIS_PASSWORD
+ALLOW_REGISTRATION=true
+MAIL_MAILER=smtp
+MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAIL_FROM_NAME=Bar Assistant HSHQ Admin
+MAIL_HOST=mailu-front
+MAIL_PORT=25
+MAIL_ENCRYPTION=tls
+MAIL_REQUIRE_CONFIRMATION=false
+MAIL_CONFIRM_URL=\${BASE_URL}/confirmation/[id]/[hash]
+MAIL_RESET_URL=\${BASE_URL}/reset-password?token=[token]
+EOFBA
+
+  cat <<EOFBA > $HSHQ_STACKS_DIR/bar-assistant/web/nginx.conf
+server {
+    listen 3000 default_server;
+    listen [::]:3000 default_server;
+    server_name _;
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+
+    client_max_body_size 100M;
+
+    location /bar/ {
+        proxy_pass http://bar-assistant-app:3000/;
+    }
+
+    location /uploads/ {
+        proxy_pass http://bar-assistant-app:3000;
+    }
+
+    location /search/ {
+        proxy_pass http://bar-assistant-meilisearch:7700/;
+    }
+
+    location / {
+        proxy_pass http://bar-assistant-saltrim:8080/;
+    }
+}
+EOFBA
 
 }
 
