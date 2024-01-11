@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=16
+HSHQ_SCRIPT_VERSION=17
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -20,6 +20,7 @@ set -e
 
 function main()
 {
+  IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   HSHQ_SCRIPT_OPEN=/tmp/hshqopen
   CONFIG_FILE_DEFAULT_LOCATION=$HOME/hshq/data/config
@@ -58,7 +59,7 @@ function main()
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,sqlpad"
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
@@ -675,9 +676,9 @@ function initConfig()
     if [ $total_ram -lt 8 ]; then
       DISABLED_SERVICES=minimal
     elif [ $total_ram -lt 12 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss
     elif [ $total_ram -lt 16 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss
     elif [ $total_ram -lt 24 ]; then
       DISABLED_SERVICES=gitlab,discourse,drawio,calibre,netdata,linkwarden,stirlingpdf
     else
@@ -8030,7 +8031,11 @@ function installStack()
   fi
   echo "Creating stack: $stack_name"
   echo "$(createStackJson $stack_name $HOME/$stack_name-compose.yml "$envfile")" > $HOME/$stack_name-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
+  if [ "$IS_STACK_DEBUG" = "true" ]; then
+    http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
+  else
+    http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
+  fi
   ret_val=$?
   if [ $ret_val -ne 0 ]; then
     installLogNotify "Error innstalling Stack ($stack_name)"
@@ -9953,6 +9958,15 @@ BARASSISTANT_REDIS_PASSWORD=
 BARASSISTANT_MEILISEARCH_KEY=
 # Bar Assistant (Service Details) END
 
+# FreshRSS (Service Details) BEGIN
+FRESHRSS_ADMIN_USERNAME=
+FRESHRSS_ADMIN_PASSWORD=
+FRESHRSS_ADMIN_EMAIL_ADDRESS=
+FRESHRSS_DATABASE_NAME=
+FRESHRSS_DATABASE_USER=
+FRESHRSS_DATABASE_USER_PASSWORD=
+# FreshRSS (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -9975,28 +9989,22 @@ EOFCF
 
 function checkUpdateVersion()
 {
-  if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
-    set +e
-    showYesNoMessageBox "Perform Updates?" "Your system is out of date, do you wish to perform updates?"
-    mbres=$?
-    if [ $mbres -ne 0 ]; then
-      return
-    fi
-    set -e
-  fi
   if [ $HSHQ_VERSION -lt 11 ]; then
+    echo "Updating to Version 11..."
     setupStaticIP
     HSHQ_VERSION=11
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 14 ]; then
+    echo "Updating to Version 14..."
     fixConfigComments
     addToDisabledServices netdata
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 16 ]; then
-    HSHQ_VERSION=16
+  if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
+    echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
+    HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
 }
@@ -10135,7 +10143,7 @@ function nukeHSHQ()
 
 function getExposedPortsList()
 {
-  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,22000,21027"
+  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,22000,21027,$PORTAINER_LOCAL_HTTPS_PORT"
 }
 
 function outputBootScripts()
@@ -10276,8 +10284,6 @@ EOFBS
     # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
     sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFPO
 # Special case when HomeServer is on non-private network
-ports_list=$(getExposedPortsList)
-portsArr=(\$(echo \$ports_list | tr "," "\n"))
 for cur_port in "\${portsArr[@]}"
 do
   iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
@@ -10287,8 +10293,6 @@ done
 EOFPO
     sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
   # Special case when HomeServer is on non-private network
-ports_list=$(getExposedPortsList)
-portsArr=(\$(echo \$ports_list | tr "," "\n"))
 for cur_port in "\${portsArr[@]}"
 do
   iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
@@ -11409,6 +11413,7 @@ function loadPinnedDockerImages()
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
   IMG_FILEBROWSER=filebrowser/filebrowser:v2.26.0
   IMG_FIREFLY=fireflyiii/core:version-6.1.1
+  IMG_FRESHRSS=freshrss/freshrss:1.23.1
   IMG_GHOST=ghost:5.75.2-alpine
   IMG_GITEA_APP=gitea/gitea:1.21.3
   IMG_GITLAB_APP=gitlab/gitlab-ce:16.7.0-ce.0
@@ -11579,6 +11584,7 @@ function pullDockerImages()
   pullImage $IMG_BARASSISTANT_WEB
   pullImage $IMG_MEILISEARCH
   pullImage $IMG_SALTRIM
+  pullImage $IMG_FRESHRSS
 }
 
 function pullBaseServicesDockerImages()
@@ -12112,6 +12118,28 @@ function initServicesCredentials()
     LINKWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar LINKWARDEN_DATABASE_USER_PASSWORD $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$FRESHRSS_ADMIN_USERNAME" ]; then
+    FRESHRSS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_freshrss"
+    updateConfigVar FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_USERNAME
+    FRESHRSS_ADMIN_EMAIL_ADDRESS=$FRESHRSS_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar FRESHRSS_ADMIN_EMAIL_ADDRESS $FRESHRSS_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$FRESHRSS_ADMIN_PASSWORD" ]; then
+    FRESHRSS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRESHRSS_ADMIN_PASSWORD $FRESHRSS_ADMIN_PASSWORD
+  fi
+  if [ -z "$FRESHRSS_DATABASE_NAME" ]; then
+    FRESHRSS_DATABASE_NAME=freshrssdb
+    updateConfigVar FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_NAME
+  fi
+  if [ -z "$FRESHRSS_DATABASE_USER" ]; then
+    FRESHRSS_DATABASE_USER=freshrss-user
+    updateConfigVar FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER
+  fi
+  if [ -z "$FRESHRSS_DATABASE_USER_PASSWORD" ]; then
+    FRESHRSS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRESHRSS_DATABASE_USER_PASSWORD $FRESHRSS_DATABASE_USER_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -12153,6 +12181,7 @@ function initServiceVars()
   checkAddSvc "SVCD_FILEBROWSER=filebrowser,filebrowser,other,user,FileBrowser,filebrowser,hshq"
   checkAddSvc "SVCD_FILES=files,files,other,user,Files,files,hshq"
   checkAddSvc "SVCD_FIREFLY=firefly,firefly,home,admin,Firefly III,fireflyiii,hshq"
+  checkAddSvc "SVCD_FRESHRSS=freshrss,freshrss,primary,user,FreshRSS,freshrss,le"
   checkAddSvc "SVCD_GHOST=ghost,ghost,other,user,Ghost,ghost,hshq"
   checkAddSvc "SVCD_GITEA=gitea,gitea,primary,user,Gitea,gitea,le"
   checkAddSvc "SVCD_GITLAB=gitlab,gitlab,primary,user,Gitlab,gitlab,hshq"
@@ -12300,6 +12329,8 @@ function installStackByName()
       installStirlingPDF $is_integrate ;;
     bar-assistant)
       installBarAssistant $is_integrate ;;
+    freshrss)
+      installFreshRSS $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -12326,6 +12357,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FILEBROWSER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FRESHRSS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITEA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEIMDALL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - home.$HOMESERVER_DOMAIN\n"
@@ -12448,6 +12480,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_VAULTWARDEN}-Admin" https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV admin $VAULTWARDEN_ADMIN_TOKEN)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-Admin" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-User" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FRESHRSS}-Admin" https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_PASSWORD)"\n"
   fi
   # Relay Server
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -12530,6 +12563,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0 "calibre-web.png"
   insertIntoHeimdallDB "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0 "linkwarden.png"
   insertIntoHeimdallDB "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0 "stirlingpdf.png"
+  insertIntoHeimdallDB "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0 "freshrss.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -12604,7 +12638,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0
-
+  insertServiceUptimeKuma "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -26216,7 +26250,7 @@ function installCalibre()
 
   if [ $is_calibre_config = "false" ]; then
     # Not in configuration file, email credentials to mail admin
-    sendEmail -s "Calibre-Web Login Info" -b "Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nAdmin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Calibre-Web Admin Login Info" -b "Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nAdmin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
   fi
 
   pullImage $IMG_CALIBRE_SERVER
@@ -26503,6 +26537,7 @@ function installLinkwarden()
   mkdir $HSHQ_STACKS_DIR/linkwarden/db
   mkdir $HSHQ_STACKS_DIR/linkwarden/dbexport
   mkdir $HSHQ_STACKS_DIR/linkwarden/app
+  chmod 777 $HSHQ_STACKS_DIR/linkwarden/dbexport
 
   is_linkw_config=$(checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=")
   if [ -z "$LINKWARDEN_DATABASE_NAME" ]; then
@@ -27020,6 +27055,229 @@ EOFBA
 
 }
 
+function installFreshRSS()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory freshrss "FreshRSS"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/freshrss
+  mkdir $HSHQ_STACKS_DIR/freshrss/db
+  mkdir $HSHQ_STACKS_DIR/freshrss/dbexport
+  mkdir $HSHQ_STACKS_DIR/freshrss/data
+  mkdir $HSHQ_STACKS_DIR/freshrss/extensions
+  chmod 777 $HSHQ_STACKS_DIR/freshrss/dbexport
+
+  is_fr_config=$(checkAddServiceToConfig "FreshRSS" "FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD=")
+
+  if [ -z "$FRESHRSS_ADMIN_USERNAME" ]; then
+    FRESHRSS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_freshrss"
+    updateConfigVar FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_USERNAME
+    FRESHRSS_ADMIN_EMAIL_ADDRESS=$FRESHRSS_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar FRESHRSS_ADMIN_EMAIL_ADDRESS $FRESHRSS_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$FRESHRSS_ADMIN_PASSWORD" ]; then
+    FRESHRSS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRESHRSS_ADMIN_PASSWORD $FRESHRSS_ADMIN_PASSWORD
+  fi
+  if [ -z "$FRESHRSS_DATABASE_NAME" ]; then
+    FRESHRSS_DATABASE_NAME=freshrssdb
+    updateConfigVar FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_NAME
+  fi
+  if [ -z "$FRESHRSS_DATABASE_USER" ]; then
+    FRESHRSS_DATABASE_USER=freshrss-user
+    updateConfigVar FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER
+  fi
+  if [ -z "$FRESHRSS_DATABASE_USER_PASSWORD" ]; then
+    FRESHRSS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRESHRSS_DATABASE_USER_PASSWORD $FRESHRSS_DATABASE_USER_PASSWORD
+  fi
+
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $FRESHRSS_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $FRESHRSS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  if [ $is_fr_config = "false" ]; then
+    # Not in configuration file, email credentials to mail admin
+    sendEmail -s "FreshRSS Admin Login Info" -b "Admin Username: $FRESHRSS_ADMIN_USERNAME\nAdmin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  fi
+
+  pullImage $IMG_FRESHRSS
+  outputConfigFreshRSS
+  installStack freshrss freshrss-app "apache2 -D FOREGROUND" $HOME/freshrss.env
+  sleep 5
+
+  checkDisableStack freshrss
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://freshrss-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FRESHRSS $MANAGETLS_FRESHRSS "$is_integrate_hshq" $NETDEFAULT_FRESHRSS "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigFreshRSS()
+{
+  cat <<EOFBA > $HOME/freshrss-compose.yml
+version: '3.5'
+
+services:
+  freshrss-db:
+    image: $IMG_POSTGRES
+    container_name: freshrss-db
+    hostname: freshrss-db
+    user: \${UID}
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-freshrss-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/freshrss/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/freshrss/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.freshrss-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.freshrss-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.freshrss-hourly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.freshrss-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.freshrss-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.freshrss-hourly-db.email-from=FreshRSS Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.freshrss-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.freshrss-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.freshrss-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.freshrss-monthly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.freshrss-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.freshrss-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.freshrss-monthly-db.email-from=FreshRSS Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.freshrss-monthly-db.mail-only-on-error=false"
+
+  freshrss-app:
+    image: $IMG_FRESHRSS
+    container_name: freshrss-app
+    hostname: freshrss-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+    depends_on:
+      - freshrss-db
+    networks:
+      - int-freshrss-net
+      - dock-ext-net
+      - dock-proxy-net
+    volumes:
+      - v-freshrss-data:/var/www/FreshRSS/data
+      - v-freshrss-extensions:/var/www/FreshRSS/extensions
+    environment:
+      FRESHRSS_INSTALL: |-
+        --auth_type form
+        --environment production
+        --base_url \${BASE_URL}
+        --language en
+        --title FreshRSS
+        --api_enabled
+        --db-type pgsql
+        --db-host \${DB_HOST}
+        --db-user \${DB_USER}
+        --db-password \${DB_PASSWORD}
+        --db-base \${DB_BASE}
+        --default_user \${ADMIN_USERNAME}
+      FRESHRSS_USER: |-
+        --api_password \${ADMIN_API_PASSWORD}
+        --email \${ADMIN_EMAIL}
+        --language en
+        --password \${ADMIN_PASSWORD}
+        --user \${ADMIN_USERNAME}
+
+volumes:
+  v-freshrss-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/freshrss/data
+  v-freshrss-extensions:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/freshrss/extensions
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-freshrss-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFBA
+
+  cat <<EOFBA > $HOME/freshrss.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
+BASE_URL=https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN
+CRON_MIN=3,33
+TRUSTED_PROXY=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+POSTGRES_DB=$FRESHRSS_DATABASE_NAME
+POSTGRES_USER=$FRESHRSS_DATABASE_USER
+POSTGRES_PASSWORD=$FRESHRSS_DATABASE_USER_PASSWORD
+POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
+ADMIN_USERNAME=$FRESHRSS_ADMIN_USERNAME
+ADMIN_EMAIL=$FRESHRSS_ADMIN_EMAIL_ADDRESS
+ADMIN_PASSWORD=$FRESHRSS_ADMIN_PASSWORD
+ADMIN_API_PASSWORD=$FRESHRSS_ADMIN_PASSWORD
+OIDC_ENABLED=0
+DB_HOST=freshrss-db
+DB_BASE=freshrssdb
+DB_PASSWORD=$FRESHRSS_DATABASE_USER_PASSWORD
+DB_USER=freshrss-user
+EOFBA
+
+}
+
 function installSQLPad()
 {
   is_integrate_hshq=$1
@@ -27131,6 +27389,14 @@ SQLPAD_CONNECTIONS__firefly__username=$FIREFLY_DATABASE_USER
 SQLPAD_CONNECTIONS__firefly__password=$FIREFLY_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__firefly__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__firefly__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__freshrss__name=FreshRSS
+SQLPAD_CONNECTIONS__freshrss__driver=postgres
+SQLPAD_CONNECTIONS__freshrss__host=freshrss-db
+SQLPAD_CONNECTIONS__freshrss__database=$FRESHRSS_DATABASE_NAME
+SQLPAD_CONNECTIONS__freshrss__username=$FRESHRSS_DATABASE_USER
+SQLPAD_CONNECTIONS__freshrss__password=$FRESHRSS_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__freshrss__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__freshrss__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__ghost__name=Ghost
 SQLPAD_CONNECTIONS__ghost__driver=mysql
 SQLPAD_CONNECTIONS__ghost__host=ghost-db
@@ -27884,7 +28150,7 @@ function insertIntoHeimdallDB()
 
   curdt=$(getCurrentDate)
   user_id=$(getHeimdallUserIDFromType $user_type)
-  
+
   if [ "$user_type" = "admin" ]; then
     color_string=$ADMIN_COLOR_CODE
   elif [ "$user_type" = "user" ]; then
@@ -27896,7 +28162,15 @@ function insertIntoHeimdallDB()
   fi
 
   cp $HSHQ_ASSETS_DIR/images/$svc_img $HSHQ_STACKS_DIR/heimdall/config/www/icons/
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO items(id,title,colour,icon,url,description,pinned,deleted_at,created_at,updated_at,type,user_id,class,appid,appdescription) VALUES(NULL,'$svc_proper_name','$color_string','icons/$svc_img','$svc_url',NULL,$svc_is_active,NULL,'$curdt','$curdt',0,$user_id,NULL,'null',NULL);"
+
+  # Ensure we always add the next item at the end
+  lastOrder=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select max(\"order\") from items;")
+  if [ -z $lastOrder ]; then
+    thisOrder=1
+  else
+    thisOrder=$(($lastOrder + 1))
+  fi
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO items(id,title,colour,icon,url,description,pinned,\"order\",deleted_at,created_at,updated_at,type,user_id,class,appid,appdescription) VALUES(NULL,'$svc_proper_name','$color_string','icons/$svc_img','$svc_url',NULL,$svc_is_active,$thisOrder,NULL,'$curdt','$curdt',0,$user_id,NULL,'null',NULL);"
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO item_tag(item_id,tag_id,created_at,updated_at) VALUES($insert_id,0,NULL,NULL);"
 }
