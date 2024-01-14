@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=17
+HSHQ_SCRIPT_VERSION=18
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -59,7 +59,7 @@ function main()
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,sqlpad"
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
@@ -212,6 +212,9 @@ function showInstalledMenu()
     mbres=$?
     if [ $mbres -eq 0 ]; then
       rm -f $HSHQ_INSTALL_CFG
+      # Clean up the log files as well, don't need them anymore.
+      rm -f $HOME/hshq/$HSHQ_FULL_LOG_NAME
+      rm -f $HOME/hshq/$HSHQ_TIMESTAMP_LOG_NAME
     fi
   fi
   if [ -f /etc/sudoers.d/$SUDO_LONG_TIMEOUT_FILENAME ]; then
@@ -676,11 +679,11 @@ function initConfig()
     if [ $total_ram -lt 8 ]; then
       DISABLED_SERVICES=minimal
     elif [ $total_ram -lt 12 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila
     elif [ $total_ram -lt 16 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss
+      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila
     elif [ $total_ram -lt 24 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,calibre,netdata,linkwarden,stirlingpdf
+      DISABLED_SERVICES=gitlab,discourse,drawio,guacamole,kasm,netdata,linkwarden,stirlingpdf
     else
       DISABLED_SERVICES=gitlab,netdata
     fi
@@ -2857,6 +2860,9 @@ function install()
   echo "The system is rebooting..."
   echo -e "\n\n########################################\n\n"
   rm -f $HSHQ_SCRIPT_OPEN
+  # Successfull installation, clean up the logs
+  rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
+  rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME
   sudo reboot
 }
 
@@ -4891,6 +4897,7 @@ EOFDM
 }
 
 # This obtains/maintains the external ZeroSSL certificate for the postfix mail relay
+
 https://$RELAYSERVER_EXT_EMAIL_HOSTNAME {
   templates
   header Content-Type text/plain
@@ -4899,6 +4906,7 @@ https://$RELAYSERVER_EXT_EMAIL_HOSTNAME {
 
 # This provides a way to share files externally
 # The service is disabled by default.
+
 https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
   import safe-header
   reverse_proxy http://filebrowser {
@@ -4906,9 +4914,10 @@ https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
   }
 }
 
-# Sample for providing public internet access to a service
+# Sample for providing public internet access to a service.
 # Remove the # from the beginning of each line in the block
-# below and restart caddy to enable.
+# below and restart caddy to enable. If adding Mastodon or 
+# Matrix, you must also add a route for the base domain.
 
 #https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN {
 #  import safe-header
@@ -4916,6 +4925,8 @@ https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
 #    import sn-resolver
 #  }
 #}
+
+# Internal admin services only available on VPN to specific IPs.
 
 https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
   import rip-private-tls-$HOMESERVER_ABBREV
@@ -4986,6 +4997,12 @@ https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
   }
   respond 404
 }
+
+# Add any internal User services here
+
+
+
+# LetsEncrypt paths for HTTP challenge
 
 EOFCA
 
@@ -5328,7 +5345,7 @@ function uploadVPNInstallScripts()
       fi
       is_err=$?
       if [ $is_err -eq 0 ]; then
-        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $remote_pw | sudo -S getent group docker >/dev/null || sudo groupadd docker >/dev/null 2>/dev/null && echo $remote_pw | sudo -S usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME >/dev/null 2>/dev/null && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
+        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $remote_pw | sudo -S getent group docker >/dev/null || sudo groupadd docker >/dev/null 2>/dev/null && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME >/dev/null 2>/dev/null && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
         is_err=$?
         unloadSSHKey
       fi
@@ -5374,6 +5391,7 @@ EOF
     scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   else
     scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+    rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   fi
   unloadSSHKey
 }
@@ -9902,6 +9920,7 @@ MEALIE_ADMIN_PASSWORD=
 # Mealie (Service Details) END
 
 # Remotely (Service Details) BEGIN
+REMOTELY_INIT_ENV=true
 REMOTELY_ADMIN_USERNAME=
 REMOTELY_ADMIN_EMAIL_ADDRESS=
 REMOTELY_ADMIN_PASSWORD=
@@ -9941,6 +9960,7 @@ CADDY_SNIPPET_NOTHOMESUBNET=not-home-subnet
 # Caddy (Service Details) END
 
 # Calibre (Service Details) BEGIN
+CALIBRE_WEB_INIT_ENV=true
 CALIBRE_WEB_ADMIN_USERNAME=
 CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=
 CALIBRE_WEB_ADMIN_PASSWORD=
@@ -9959,6 +9979,7 @@ BARASSISTANT_MEILISEARCH_KEY=
 # Bar Assistant (Service Details) END
 
 # FreshRSS (Service Details) BEGIN
+FRESHRSS_INIT_ENV=true
 FRESHRSS_ADMIN_USERNAME=
 FRESHRSS_ADMIN_PASSWORD=
 FRESHRSS_ADMIN_EMAIL_ADDRESS=
@@ -9966,6 +9987,16 @@ FRESHRSS_DATABASE_NAME=
 FRESHRSS_DATABASE_USER=
 FRESHRSS_DATABASE_USER_PASSWORD=
 # FreshRSS (Service Details) END
+
+# Keila (Service Details) BEGIN
+KEILA_INIT_ENV=true
+KEILA_ADMIN_USERNAME=
+KEILA_ADMIN_EMAIL_ADDRESS=
+KEILA_ADMIN_PASSWORD=
+KEILA_DATABASE_NAME=
+KEILA_DATABASE_USER=
+KEILA_DATABASE_USER_PASSWORD=
+# Keila (Service Details) END
 
 # Service Details END
 EOFCF
@@ -10032,10 +10063,8 @@ function checkAddServiceToConfig()
   service_name=$1
   variable_list=$2
   set +e
-  is_in_config=true
   grep "# $service_name (Service Details)" $CONFIG_FILE >/dev/null 2>/dev/null
   if [ $? -ne 0 ]; then
-    is_in_config=false
     replace_block="# $service_name (Service Details) BEGIN\n"
     varListArr=($(echo $variable_list | tr "," "\n"))
     for curVar in "${varListArr[@]}"
@@ -10046,7 +10075,6 @@ function checkAddServiceToConfig()
     sed -i "s|# Service Details END|$replace_block|g" $CONFIG_FILE
   fi
   set -e
-  echo $is_in_config
 }
 
 function removeServiceFromConfig()
@@ -11434,6 +11462,7 @@ function loadPinnedDockerImages()
   IMG_JITSI_JICOFO=jitsi/jicofo:stable-9111
   IMG_JITSI_JVB=jitsi/jvb:stable-9111
   IMG_KASM=lscr.io/linuxserver/kasm:1.14.0
+  IMG_KEILA=pentacent/keila:0.13.1
   IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.4.8
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
@@ -11585,6 +11614,7 @@ function pullDockerImages()
   pullImage $IMG_MEILISEARCH
   pullImage $IMG_SALTRIM
   pullImage $IMG_FRESHRSS
+  pullImage $IMG_KEILA
 }
 
 function pullBaseServicesDockerImages()
@@ -11718,6 +11748,7 @@ function initServicesCredentials()
     WAZUH_USERS_DASHBOARD_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar WAZUH_USERS_DASHBOARD_PASSWORD $WAZUH_USERS_DASHBOARD_PASSWORD
   fi
+  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
   if [ -z "$COLLABORA_ADMIN_USERNAME" ]; then
     COLLABORA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_collabora"
     updateConfigVar COLLABORA_ADMIN_USERNAME $COLLABORA_ADMIN_USERNAME
@@ -11729,6 +11760,10 @@ function initServicesCredentials()
   if [ -z "$NEXTCLOUD_ADMIN_USERNAME" ]; then
     NEXTCLOUD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_nextcloud"
     updateConfigVar NEXTCLOUD_ADMIN_USERNAME $NEXTCLOUD_ADMIN_USERNAME
+  fi
+  if [ -z "$NEXTCLOUD_ADMIN_EMAIL_ADDRESS" ]; then
+    NEXTCLOUD_ADMIN_EMAIL_ADDRESS=$NEXTCLOUD_ADMIN_USERNAME"@"$HOMESERVER_DOMAIN
+    updateConfigVar NEXTCLOUD_ADMIN_EMAIL_ADDRESS $NEXTCLOUD_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$NEXTCLOUD_ADMIN_PASSWORD" ]; then
     NEXTCLOUD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
@@ -11758,14 +11793,6 @@ function initServicesCredentials()
     MATRIX_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MATRIX_DATABASE_USER_PASSWORD $MATRIX_DATABASE_USER_PASSWORD
   fi
-  if [ -z "$MASTODON_ADMIN_USERNAME" ]; then
-    MASTODON_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mastodon"
-    updateConfigVar MASTODON_ADMIN_USERNAME $MASTODON_ADMIN_USERNAME
-  fi
-  if [ -z "$MASTODON_ADMIN_EMAIL_ADDRESS" ]; then
-    MASTODON_ADMIN_EMAIL_ADDRESS=$MASTODON_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_EMAIL_ADDRESS
-  fi
   if [ -z "$WIKIJS_DATABASE_NAME" ]; then
     WIKIJS_DATABASE_NAME="wikijsdb"
     updateConfigVar WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_NAME
@@ -11781,6 +11808,14 @@ function initServicesCredentials()
   if [ -z "$DUPLICATI_ADMIN_PASSWORD" ]; then
     DUPLICATI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar DUPLICATI_ADMIN_PASSWORD $DUPLICATI_ADMIN_PASSWORD
+  fi
+  if [ -z "$MASTODON_ADMIN_USERNAME" ]; then
+    MASTODON_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mastodon"
+    updateConfigVar MASTODON_ADMIN_USERNAME $MASTODON_ADMIN_USERNAME
+  fi
+  if [ -z "$MASTODON_ADMIN_EMAIL_ADDRESS" ]; then
+    MASTODON_ADMIN_EMAIL_ADDRESS=$MASTODON_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$MASTODON_DATABASE_NAME" ]; then
     MASTODON_DATABASE_NAME=mastodondb
@@ -11870,6 +11905,10 @@ function initServicesCredentials()
     PEERTUBE_ADMIN_USERNAME="root"
     updateConfigVar PEERTUBE_ADMIN_USERNAME $PEERTUBE_ADMIN_USERNAME
   fi
+  if [ -z "$PEERTUBE_ADMIN_EMAIL_ADDRESS" ]; then
+    PEERTUBE_ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME_BASE"_peertube@"$HOMESERVER_DOMAIN
+    updateConfigVar PEERTUBE_ADMIN_EMAIL_ADDRESS $PEERTUBE_ADMIN_EMAIL_ADDRESS
+  fi
   if [ -z "$PEERTUBE_ADMIN_PASSWORD" ]; then
     PEERTUBE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PEERTUBE_ADMIN_PASSWORD $PEERTUBE_ADMIN_PASSWORD
@@ -11938,6 +11977,10 @@ function initServicesCredentials()
     DISCOURSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_discourse"
     updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
   fi
+  if [ -z "$DISCOURSE_ADMIN_EMAIL_ADDRESS" ]; then
+    DISCOURSE_ADMIN_EMAIL_ADDRESS=$DISCOURSE_ADMIN_USERNAME"@"$HOMESERVER_DOMAIN
+    updateConfigVar DISCOURSE_ADMIN_EMAIL_ADDRESS $DISCOURSE_ADMIN_EMAIL_ADDRESS
+  fi
   if [ -z "$DISCOURSE_ADMIN_PASSWORD" ]; then
     DISCOURSE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar DISCOURSE_ADMIN_PASSWORD $DISCOURSE_ADMIN_PASSWORD
@@ -11994,6 +12037,7 @@ function initServicesCredentials()
     FIREFLY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar FIREFLY_DATABASE_USER_PASSWORD $FIREFLY_DATABASE_USER_PASSWORD
   fi
+  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
   if [ -z "$INVIDIOUS_DATABASE_NAME" ]; then
     INVIDIOUS_DATABASE_NAME=invidiousdb
     updateConfigVar INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_NAME
@@ -12009,6 +12053,8 @@ function initServicesCredentials()
   if [ -z "$GITEA_ADMIN_USERNAME" ]; then
     GITEA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_gitea"
     updateConfigVar GITEA_ADMIN_USERNAME $GITEA_ADMIN_USERNAME
+  fi
+  if [ -z "$GITEA_ADMIN_EMAIL_ADDRESS" ]; then
     GITEA_ADMIN_EMAIL_ADDRESS=$GITEA_ADMIN_USERNAME@$HOMESERVER_DOMAIN
     updateConfigVar GITEA_ADMIN_EMAIL_ADDRESS $GITEA_ADMIN_EMAIL_ADDRESS
   fi
@@ -12076,17 +12122,25 @@ function initServicesCredentials()
     UPTIMEKUMA_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar UPTIMEKUMA_PASSWORD $UPTIMEKUMA_PASSWORD
   fi
+  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD="
   if [ -z "$MEALIE_ADMIN_USERNAME" ]; then
     MEALIE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mealie"
     updateConfigVar MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_USERNAME
+  fi
+  if [ -z "$MEALIE_ADMIN_EMAIL_ADDRESS" ]; then
+    MEALIE_ADMIN_EMAIL_ADDRESS=$MEALIE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MEALIE_ADMIN_EMAIL_ADDRESS $MEALIE_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$MEALIE_ADMIN_PASSWORD" ]; then
     MEALIE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MEALIE_ADMIN_PASSWORD $MEALIE_ADMIN_PASSWORD
   fi
+  checkAddServiceToConfig "Remotely" "REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
   if [ -z "$REMOTELY_ADMIN_USERNAME" ]; then
     REMOTELY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_remotely"
     updateConfigVar REMOTELY_ADMIN_USERNAME $REMOTELY_ADMIN_USERNAME
+  fi
+  if [ -z "$REMOTELY_ADMIN_EMAIL_ADDRESS" ]; then
     REMOTELY_ADMIN_EMAIL_ADDRESS=$REMOTELY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
     updateConfigVar REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_EMAIL_ADDRESS
   fi
@@ -12094,6 +12148,7 @@ function initServicesCredentials()
     REMOTELY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar REMOTELY_ADMIN_PASSWORD $REMOTELY_ADMIN_PASSWORD
   fi
+  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
   if [ -z "$CALIBRE_WEB_ADMIN_USERNAME" ]; then
     CALIBRE_WEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_calibre"
     updateConfigVar CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_USERNAME
@@ -12106,6 +12161,7 @@ function initServicesCredentials()
     CALIBRE_WEB_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar CALIBRE_WEB_ADMIN_PASSWORD $CALIBRE_WEB_ADMIN_PASSWORD
   fi
+  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET="
   if [ -z "$LINKWARDEN_DATABASE_NAME" ]; then
     LINKWARDEN_DATABASE_NAME=linkwardendb
     updateConfigVar LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_NAME
@@ -12118,9 +12174,12 @@ function initServicesCredentials()
     LINKWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar LINKWARDEN_DATABASE_USER_PASSWORD $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
+  checkAddServiceToConfig "FreshRSS" "FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD="
   if [ -z "$FRESHRSS_ADMIN_USERNAME" ]; then
     FRESHRSS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_freshrss"
     updateConfigVar FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_USERNAME
+  fi
+  if [ -z "$FRESHRSS_ADMIN_EMAIL_ADDRESS" ]; then
     FRESHRSS_ADMIN_EMAIL_ADDRESS=$FRESHRSS_ADMIN_USERNAME@$HOMESERVER_DOMAIN
     updateConfigVar FRESHRSS_ADMIN_EMAIL_ADDRESS $FRESHRSS_ADMIN_EMAIL_ADDRESS
   fi
@@ -12139,6 +12198,31 @@ function initServicesCredentials()
   if [ -z "$FRESHRSS_DATABASE_USER_PASSWORD" ]; then
     FRESHRSS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar FRESHRSS_DATABASE_USER_PASSWORD $FRESHRSS_DATABASE_USER_PASSWORD
+  fi
+  checkAddServiceToConfig "Keila" "KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
+  if [ -z "$KEILA_ADMIN_USERNAME" ]; then
+    KEILA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_keila"
+    updateConfigVar KEILA_ADMIN_USERNAME $KEILA_ADMIN_USERNAME
+  fi
+  if [ -z "$KEILA_ADMIN_EMAIL_ADDRESS" ]; then
+    KEILA_ADMIN_EMAIL_ADDRESS=$KEILA_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$KEILA_ADMIN_PASSWORD" ]; then
+    KEILA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KEILA_ADMIN_PASSWORD $KEILA_ADMIN_PASSWORD
+  fi
+  if [ -z "$KEILA_DATABASE_NAME" ]; then
+    KEILA_DATABASE_NAME=keiladb
+    updateConfigVar KEILA_DATABASE_NAME $KEILA_DATABASE_NAME
+  fi
+  if [ -z "$KEILA_DATABASE_USER" ]; then
+    KEILA_DATABASE_USER=keila-user
+    updateConfigVar KEILA_DATABASE_USER $KEILA_DATABASE_USER
+  fi
+  if [ -z "$KEILA_DATABASE_USER_PASSWORD" ]; then
+    KEILA_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KEILA_DATABASE_USER_PASSWORD $KEILA_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -12201,6 +12285,7 @@ function initServiceVars()
   checkAddSvc "SVCD_LINKWARDEN=linkwarden,linkwarden,primary,user,Linkwarden,linkwarden,hshq"
   checkAddSvc "SVCD_KASM=kasm,kasm,primary,user,Kasm,kasm,hshq"
   checkAddSvc "SVCD_KASM_WIZARD=kasm,kasm-wizard,home,admin,Kasm Wizard,kasm-wizard,hshq"
+  checkAddSvc "SVCD_KEILA=keila,keila,primary,user,Keila,keila,hshq"
   checkAddSvc "SVCD_MAILU=mailu,mailu,primary,user,Mailu,mailu,hshq"
   checkAddSvc "SVCD_MASTODON=mastodon,mastodon,other,user,Mastodon,mastodon,le"
   checkAddSvc "SVCD_MATRIX_ELEMENT_PRIVATE=matrix,element-private,other,user,Matrix Element (Private Jitsi),element-private,hshq"
@@ -12331,6 +12416,8 @@ function installStackByName()
       installBarAssistant $is_integrate ;;
     freshrss)
       installFreshRSS $is_integrate ;;
+    keila)
+      installKeila $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -12368,6 +12455,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_IMAGES.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JITSI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_KEILA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MAILU.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MASTODON.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN\n"
@@ -12481,6 +12569,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-Admin" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-User" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FRESHRSS}-Admin" https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KEILA}-Admin" https://$SUB_KEILA.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_PASSWORD)"\n"
   fi
   # Relay Server
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -12564,6 +12653,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0 "linkwarden.png"
   insertIntoHeimdallDB "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0 "stirlingpdf.png"
   insertIntoHeimdallDB "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0 "freshrss.png"
+  insertIntoHeimdallDB "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0 "keila.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -12639,6 +12729,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -12668,15 +12759,9 @@ function installPortainer()
 
   mkdir $HSHQ_STACKS_DIR/portainer
   mkdir $HSHQ_STACKS_DIR/portainer/certs
+
+  initServicesCredentials
   outputConfigPortainer
-  if [ -z "$PORTAINER_ADMIN_USERNAME" ]; then
-    PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_portainer"
-    updateConfigVar PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_USERNAME
-  fi
-  if [ -z "$PORTAINER_ADMIN_PASSWORD" ]; then
-    PORTAINER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar PORTAINER_ADMIN_PASSWORD $PORTAINER_ADMIN_PASSWORD
-  fi
   generateCert portainer portainer $HOMESERVER_HOST_IP
   if [ -z "$PORTAINER_DB_KEY" ]; then
     PORTAINER_DB_KEY=$(pwgen -c -n 64 1)
@@ -12816,14 +12901,7 @@ function installAdGuard()
   mkdir $HSHQ_STACKS_DIR/adguard/conf
   mkdir $HSHQ_NONBACKUP_DIR/adguard/work
 
-  if [ -z "$ADGUARD_ADMIN_USERNAME" ]; then
-    ADGUARD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_adguard"
-    updateConfigVar ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_USERNAME
-  fi
-  if [ -z "$ADGUARD_ADMIN_PASSWORD" ]; then
-    ADGUARD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar ADGUARD_ADMIN_PASSWORD $ADGUARD_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
   outputConfigAdGuard
   generateCert adguard adguard
   sudo rm -f /etc/resolv.conf
@@ -13168,22 +13246,7 @@ function installSystemUtils()
   mkdir $HSHQ_NONBACKUP_DIR/sysutils
   mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
 
-  if [ -z "$GRAFANA_ADMIN_USERNAME" ]; then
-    GRAFANA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_grafana"
-    updateConfigVar GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_USERNAME
-  fi
-  if [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
-    GRAFANA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar GRAFANA_ADMIN_PASSWORD $GRAFANA_ADMIN_PASSWORD
-  fi
-  if [ -z "$INFLUXDB_ADMIN_USERNAME" ]; then
-    INFLUXDB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_influxdb"
-    updateConfigVar INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_USERNAME
-  fi
-  if [ -z "$INFLUXDB_ADMIN_PASSWORD" ]; then
-    INFLUXDB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar INFLUXDB_ADMIN_PASSWORD $INFLUXDB_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$INFLUXDB_ORG" ]; then
     INFLUXDB_ORG=$HOMESERVER_DOMAIN
     updateConfigVar INFLUXDB_ORG $INFLUXDB_ORG
@@ -15905,28 +15968,17 @@ function installOpenLDAP()
   mkdir $HSHQ_STACKS_DIR/openldap/ldapmanager
   mkdir $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig
 
-  if [ -z "$LDAP_BASE_DN"  ]; then
-    LDAP_BASE_DN=$(echo "dc="$(echo $HOMESERVER_DOMAIN | sed 's/\./,dc=/g'))
-    updateConfigVar LDAP_BASE_DN $LDAP_BASE_DN
-  fi
+  initServicesCredentials
+
   LDAP_URI="ldap://ldapserver:389"
   updateConfigVar LDAP_URI $LDAP_URI
   LDAPS_URI="ldaps://ldapserver:636"
   updateConfigVar LDAPS_URI $LDAPS_URI
 
-  # Secrets
-  if [ -z "$LDAP_ADMIN_BIND_DN"  ]; then
-    LDAP_ADMIN_BIND_DN="cn=admin,$LDAP_BASE_DN"
-    updateConfigVar LDAP_ADMIN_BIND_DN $LDAP_ADMIN_BIND_DN
-  fi
   rm -f $HSHQ_SECRETS_DIR/ldap_admin_bind_dn.txt
   echo "$LDAP_ADMIN_BIND_DN" > $HSHQ_SECRETS_DIR/ldap_admin_bind_dn.txt
   chmod 0400 $HSHQ_SECRETS_DIR/ldap_admin_bind_dn.txt
 
-  if [ -z "$LDAP_ADMIN_BIND_PASSWORD" ]; then
-    LDAP_ADMIN_BIND_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar LDAP_ADMIN_BIND_PASSWORD $LDAP_ADMIN_BIND_PASSWORD
-  fi
   rm -f $HSHQ_SECRETS_DIR/ldap_admin_bind_password.txt
   echo "$LDAP_ADMIN_BIND_PASSWORD" > $HSHQ_SECRETS_DIR/ldap_admin_bind_password.txt
   chmod 0400 $HSHQ_SECRETS_DIR/ldap_admin_bind_password.txt
@@ -15954,15 +16006,6 @@ function installOpenLDAP()
 
   LDAP_READONLY_USER_BIND_DN="cn=$LDAP_READONLY_USER_USERNAME,$LDAP_BASE_DN"
   updateConfigVar LDAP_READONLY_USER_BIND_DN $LDAP_READONLY_USER_BIND_DN
-
-  if [ -z "$LDAP_ADMIN_USER_USERNAME" ]; then
-    LDAP_ADMIN_USER_USERNAME=$ADMIN_USERNAME_BASE
-    updateConfigVar LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_USERNAME
-  fi
-  if [ -z "$LDAP_ADMIN_USER_PASSWORD" ]; then
-    LDAP_ADMIN_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar LDAP_ADMIN_USER_PASSWORD $LDAP_ADMIN_USER_PASSWORD
-  fi
   ADMIN_PASSWORD_CRYPT=$(openssl passwd -6 $LDAP_ADMIN_USER_PASSWORD)
 
   outputConfigOpenLDAP
@@ -16847,6 +16890,7 @@ function installWazuh()
   mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
   mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
 
+  initServicesCredentials
   if [ -z "$WAZUH_API_USERNAME" ]; then
     WAZUH_API_USERNAME=$ADMIN_USERNAME_BASE"_wazuh_api"
     updateConfigVar WAZUH_API_USERNAME $WAZUH_API_USERNAME
@@ -16862,10 +16906,6 @@ function installWazuh()
   if [ -z "$WAZUH_USERS_ADMIN_PASSWORD" ]; then
     WAZUH_USERS_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar WAZUH_USERS_ADMIN_PASSWORD $WAZUH_USERS_ADMIN_PASSWORD
-  fi
-  if [ -z "$WAZUH_USERS_DASHBOARD_PASSWORD" ]; then
-    WAZUH_USERS_DASHBOARD_PASSWORD=$(getPasswordWithSymbol 32)
-    updateConfigVar WAZUH_USERS_DASHBOARD_PASSWORD $WAZUH_USERS_DASHBOARD_PASSWORD
   fi
   if [ -z "$WAZUH_USERS_KIBANARO_PASSWORD" ]; then
     WAZUH_USERS_KIBANARO_PASSWORD=$(getPasswordWithSymbol 32)
@@ -17618,15 +17658,8 @@ function installCollabora()
   fi
   mkdir $HSHQ_STACKS_DIR/collabora
   set -e
-  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
-  if [ -z "$COLLABORA_ADMIN_USERNAME" ]; then
-    COLLABORA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_collabora"
-    updateConfigVar COLLABORA_ADMIN_USERNAME $COLLABORA_ADMIN_USERNAME
-  fi
-  if [ -z "$COLLABORA_ADMIN_PASSWORD" ]; then
-    COLLABORA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar COLLABORA_ADMIN_PASSWORD $COLLABORA_ADMIN_PASSWORD
-  fi
+
+  initServicesCredentials
 
   pullImage $IMG_COLLABORA
   outputConfigCollabora
@@ -17706,30 +17739,7 @@ function installNextCloud()
   fi
   set -e
 
-  if [ -z "$NEXTCLOUD_ADMIN_USERNAME" ]; then
-    NEXTCLOUD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_nextcloud"
-    updateConfigVar NEXTCLOUD_ADMIN_USERNAME $NEXTCLOUD_ADMIN_USERNAME
-  fi
-  if [ -z "$NEXTCLOUD_ADMIN_PASSWORD" ]; then
-    NEXTCLOUD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar NEXTCLOUD_ADMIN_PASSWORD $NEXTCLOUD_ADMIN_PASSWORD
-  fi
-  if [ -z "$NEXTCLOUD_ADMIN_EMAIL_ADDRESS" ]; then
-    NEXTCLOUD_ADMIN_EMAIL_ADDRESS=$NEXTCLOUD_ADMIN_USERNAME"@"$HOMESERVER_DOMAIN
-    updateConfigVar NEXTCLOUD_ADMIN_EMAIL_ADDRESS $NEXTCLOUD_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$NEXTCLOUD_DATABASE_NAME" ]; then
-    NEXTCLOUD_DATABASE_NAME="nextclouddb"
-    updateConfigVar NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_NAME
-  fi
-  if [ -z "$NEXTCLOUD_DATABASE_USER" ]; then
-    NEXTCLOUD_DATABASE_USER="nextcloud-user"
-    updateConfigVar NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER
-  fi
-  if [ -z "$NEXTCLOUD_DATABASE_USER_PASSWORD" ]; then
-    NEXTCLOUD_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar NEXTCLOUD_DATABASE_USER_PASSWORD $NEXTCLOUD_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$NEXTCLOUD_REDIS_PASSWORD" ]; then
     NEXTCLOUD_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar NEXTCLOUD_REDIS_PASSWORD $NEXTCLOUD_REDIS_PASSWORD
@@ -18811,18 +18821,7 @@ function installMatrix()
   mkdir $HSHQ_STACKS_DIR/matrix/element
   chmod 777 $HSHQ_STACKS_DIR/matrix/dbexport
 
-  if [ -z "$MATRIX_DATABASE_NAME" ]; then
-    MATRIX_DATABASE_NAME="matrixdb"
-    updateConfigVar MATRIX_DATABASE_NAME $MATRIX_DATABASE_NAME
-  fi
-  if [ -z "$MATRIX_DATABASE_USER" ]; then
-    MATRIX_DATABASE_USER="matrix-user"
-    updateConfigVar MATRIX_DATABASE_USER $MATRIX_DATABASE_USER
-  fi
-  if [ -z "$MATRIX_DATABASE_USER_PASSWORD" ]; then
-    MATRIX_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar MATRIX_DATABASE_USER_PASSWORD $MATRIX_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$MATRIX_REDIS_PASSWORD" ]; then
     MATRIX_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MATRIX_REDIS_PASSWORD $MATRIX_REDIS_PASSWORD
@@ -19339,18 +19338,7 @@ function installWikiJS()
   mkdir $HSHQ_STACKS_DIR/wikijs/web
   chmod 777 $HSHQ_STACKS_DIR/wikijs/dbexport
 
-  if [ -z "$WIKIJS_DATABASE_NAME" ]; then
-    WIKIJS_DATABASE_NAME="wikijsdb"
-    updateConfigVar WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_NAME
-  fi
-  if [ -z "$WIKIJS_DATABASE_USER" ]; then
-    WIKIJS_DATABASE_USER="wikijs-user"
-    updateConfigVar WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER
-  fi
-  if [ -z "$WIKIJS_DATABASE_USER_PASSWORD" ]; then
-    WIKIJS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar WIKIJS_DATABASE_USER_PASSWORD $WIKIJS_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
 
   pullImage $IMG_WIKIJS
 
@@ -19532,10 +19520,7 @@ function installDuplicati()
   mkdir $HSHQ_NONBACKUP_DIR/duplicati
   mkdir $HSHQ_NONBACKUP_DIR/duplicati/restore
 
-  if [ -z "$DUPLICATI_ADMIN_PASSWORD" ]; then
-    DUPLICATI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar DUPLICATI_ADMIN_PASSWORD $DUPLICATI_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
   echo "Installing Duplicati..."
   pullImage $IMG_DUPLICATI
 
@@ -19649,26 +19634,7 @@ function installMastodon()
   rm -f $HOME/vapid_private_key.pem
   rm -f $HOME/vapid_public_key.pem
 
-  if [ -z "$MASTODON_ADMIN_USERNAME" ]; then
-    MASTODON_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mastodon"
-    updateConfigVar MASTODON_ADMIN_USERNAME $MASTODON_ADMIN_USERNAME
-  fi
-  if [ -z "$MASTODON_ADMIN_EMAIL_ADDRESS" ]; then
-    MASTODON_ADMIN_EMAIL_ADDRESS=$MASTODON_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$MASTODON_DATABASE_NAME" ]; then
-    MASTODON_DATABASE_NAME=mastodondb
-    updateConfigVar MASTODON_DATABASE_NAME $MASTODON_DATABASE_NAME
-  fi
-  if [ -z "$MASTODON_DATABASE_USER" ]; then
-    MASTODON_DATABASE_USER=mastodon-user
-    updateConfigVar MASTODON_DATABASE_USER $MASTODON_DATABASE_USER
-  fi
-  if [ -z "$MASTODON_DATABASE_USER_PASSWORD" ]; then
-    MASTODON_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar MASTODON_DATABASE_USER_PASSWORD $MASTODON_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$MASTODON_REDIS_PASSWORD" ]; then
     MASTODON_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MASTODON_REDIS_PASSWORD $MASTODON_REDIS_PASSWORD
@@ -19701,7 +19667,7 @@ function installMastodon()
   MASTODON_ADMIN_PASSWORD=$(echo $addaccount_res | rev | cut -d" " -f1 | rev)
   updateConfigVar MASTODON_ADMIN_PASSWORD $MASTODON_ADMIN_PASSWORD
 
-  sendEmail -s "Mastodon Login Info" -b "Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nAdmin Password: $MASTODON_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "Mastodon Login Info" -b "Mastodon Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nMastodon Admin Password: $MASTODON_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
 
   docker exec mastodon-app tootctl settings registrations close
   rm -f $HOME/mastodon-compose-tmp.yml
@@ -20465,14 +20431,8 @@ function installDozzle()
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/dozzle
-  if [ -z "$DOZZLE_USERNAME" ]; then
-    DOZZLE_USERNAME=$ADMIN_USERNAME_BASE"_dozzle"
-    updateConfigVar DOZZLE_USERNAME $DOZZLE_USERNAME
-  fi
-  if [ -z "$DOZZLE_PASSWORD" ]; then
-    DOZZLE_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar DOZZLE_PASSWORD $DOZZLE_PASSWORD
-  fi
+
+  initServicesCredentials
   pullImage $IMG_DOZZLE
   outputConfigDozzle
   installStack dozzle dozzle "Accepting connections on" $HOME/dozzle.env
@@ -20848,14 +20808,7 @@ function installJellyfin()
   mkdir $HSHQ_STACKS_DIR/jellyfin/cache
   mkdir $HSHQ_STACKS_DIR/jellyfin/media
 
-  if [ -z "$JELLYFIN_ADMIN_USERNAME" ]; then
-    JELLYFIN_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_jellyfin"
-    updateConfigVar JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_USERNAME
-  fi
-  if [ -z "$JELLYFIN_ADMIN_PASSWORD" ]; then
-    JELLYFIN_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar JELLYFIN_ADMIN_PASSWORD $JELLYFIN_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
 
   pullImage $IMG_JELLYFIN
   outputConfigJellyfin
@@ -20982,14 +20935,7 @@ function installFileBrowser()
   mkdir $HSHQ_STACKS_DIR/filebrowser/srv
   pullImage $IMG_FILEBROWSER
 
-  if [ -z "$FILEBROWSER_USERNAME" ]; then
-    FILEBROWSER_USERNAME=$ADMIN_USERNAME_BASE"_filebrowser"
-    updateConfigVar FILEBROWSER_USERNAME $FILEBROWSER_USERNAME
-  fi
-  if [ -z "$FILEBROWSER_PASSWORD" ]; then
-    FILEBROWSER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar FILEBROWSER_PASSWORD $FILEBROWSER_PASSWORD
-  fi
+  initServicesCredentials
   FILEBROWSER_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $FILEBROWSER_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
 
   outputConfigFileBrowser
@@ -21088,21 +21034,10 @@ function installPhotoPrism()
   mkdir $HSHQ_STACKS_DIR/photoprism/app/storage
   chmod 777 $HSHQ_STACKS_DIR/photoprism/dbexport
 
+  initServicesCredentials
   if [ -z "$PHOTOPRISM_DATABASE_ROOT_PASSWORD" ]; then
     PHOTOPRISM_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PHOTOPRISM_DATABASE_ROOT_PASSWORD $PHOTOPRISM_DATABASE_ROOT_PASSWORD
-  fi
-  if [ -z "$PHOTOPRISM_DATABASE_NAME" ]; then
-    PHOTOPRISM_DATABASE_NAME="photoprismdb"
-    updateConfigVar PHOTOPRISM_DATABASE_NAME $PHOTOPRISM_DATABASE_NAME
-  fi
-  if [ -z "$PHOTOPRISM_DATABASE_USER" ]; then
-    PHOTOPRISM_DATABASE_USER="photoprism-user"
-    updateConfigVar PHOTOPRISM_DATABASE_USER $PHOTOPRISM_DATABASE_USER
-  fi
-  if [ -z "$PHOTOPRISM_DATABASE_USER_PASSWORD" ]; then
-    PHOTOPRISM_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar PHOTOPRISM_DATABASE_USER_PASSWORD $PHOTOPRISM_DATABASE_USER_PASSWORD
   fi
   pullImage $IMG_PHOTOPRISM_APP
   outputConfigPhotoPrism
@@ -21403,21 +21338,10 @@ function installGuacamole()
   mkdir $HSHQ_STACKS_DIR/guacamole/init
   chmod 777 $HSHQ_STACKS_DIR/guacamole/dbexport
 
+  initServicesCredentials
   if [ -z "$GUACAMOLE_DATABASE_ROOT_PASSWORD" ]; then
     GUACAMOLE_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GUACAMOLE_DATABASE_ROOT_PASSWORD $GUACAMOLE_DATABASE_ROOT_PASSWORD
-  fi
-  if [ -z "$GUACAMOLE_DATABASE_NAME" ]; then
-    GUACAMOLE_DATABASE_NAME="guacamoledb"
-    updateConfigVar GUACAMOLE_DATABASE_NAME $GUACAMOLE_DATABASE_NAME
-  fi
-  if [ -z "$GUACAMOLE_DATABASE_USER" ]; then
-    GUACAMOLE_DATABASE_USER="guacamole-user"
-    updateConfigVar GUACAMOLE_DATABASE_USER $GUACAMOLE_DATABASE_USER
-  fi
-  if [ -z "$GUACAMOLE_DATABASE_USER_PASSWORD" ]; then
-    GUACAMOLE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar GUACAMOLE_DATABASE_USER_PASSWORD $GUACAMOLE_DATABASE_USER_PASSWORD
   fi
 
   pullImage $IMG_GUACAMOLE_GUACD
@@ -21941,21 +21865,10 @@ function installWordPress()
   mkdir $HSHQ_STACKS_DIR/wordpress/web
   chmod 777 $HSHQ_STACKS_DIR/wordpress/dbexport
 
+  initServicesCredentials
   if [ -z "$WORDPRESS_DATABASE_ROOT_PASSWORD" ]; then
     WORDPRESS_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar WORDPRESS_DATABASE_ROOT_PASSWORD $WORDPRESS_DATABASE_ROOT_PASSWORD
-  fi
-  if [ -z "$WORDPRESS_DATABASE_NAME" ]; then
-    WORDPRESS_DATABASE_NAME=wordpressdb
-    updateConfigVar WORDPRESS_DATABASE_NAME $WORDPRESS_DATABASE_NAME
-  fi
-  if [ -z "$WORDPRESS_DATABASE_USER" ]; then
-    WORDPRESS_DATABASE_USER=wordpress-user
-    updateConfigVar WORDPRESS_DATABASE_USER $WORDPRESS_DATABASE_USER
-  fi
-  if [ -z "$WORDPRESS_DATABASE_USER_PASSWORD" ]; then
-    WORDPRESS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar WORDPRESS_DATABASE_USER_PASSWORD $WORDPRESS_DATABASE_USER_PASSWORD
   fi
 
   pullImage $IMG_WORDPRESS
@@ -22111,21 +22024,11 @@ function installGhost()
   mkdir $HSHQ_STACKS_DIR/ghost/dbexport
   mkdir $HSHQ_STACKS_DIR/ghost/web
   chmod 777 $HSHQ_STACKS_DIR/ghost/dbexport
+
+  initServicesCredentials
   if [ -z "$GHOST_DATABASE_ROOT_PASSWORD" ]; then
     GHOST_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GHOST_DATABASE_ROOT_PASSWORD $GHOST_DATABASE_ROOT_PASSWORD
-  fi
-  if [ -z "$GHOST_DATABASE_NAME" ]; then
-    GHOST_DATABASE_NAME=ghostdb
-    updateConfigVar GHOST_DATABASE_NAME $GHOST_DATABASE_NAME
-  fi
-  if [ -z "$GHOST_DATABASE_USER" ]; then
-    GHOST_DATABASE_USER=ghost-user
-    updateConfigVar GHOST_DATABASE_USER $GHOST_DATABASE_USER
-  fi
-  if [ -z "$GHOST_DATABASE_USER_PASSWORD" ]; then
-    GHOST_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar GHOST_DATABASE_USER_PASSWORD $GHOST_DATABASE_USER_PASSWORD
   fi
   pullImage $IMG_GHOST
   outputConfigGhost
@@ -22289,28 +22192,8 @@ function installPeerTube()
   mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
   mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
 
-  if [ -z "$PEERTUBE_ADMIN_USERNAME" ]; then
-    PEERTUBE_ADMIN_USERNAME="root"
-    updateConfigVar PEERTUBE_ADMIN_USERNAME $PEERTUBE_ADMIN_USERNAME
-  fi
-  if [ -z "$PEERTUBE_ADMIN_PASSWORD" ]; then
-    PEERTUBE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar PEERTUBE_ADMIN_PASSWORD $PEERTUBE_ADMIN_PASSWORD
-  fi
-  PEERTUBE_ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME_BASE"_peertube@"$HOMESERVER_DOMAIN
-  updateConfigVar PEERTUBE_ADMIN_EMAIL_ADDRESS $PEERTUBE_ADMIN_EMAIL_ADDRESS
-  if [ -z "$PEERTUBE_DATABASE_NAME" ]; then
-    PEERTUBE_DATABASE_NAME=peertubedb
-    updateConfigVar PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_NAME
-  fi
-  if [ -z "$PEERTUBE_DATABASE_USER" ]; then
-    PEERTUBE_DATABASE_USER=peertube-user
-    updateConfigVar PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER
-  fi
-  if [ -z "$PEERTUBE_DATABASE_USER_PASSWORD" ]; then
-    PEERTUBE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar PEERTUBE_DATABASE_USER_PASSWORD $PEERTUBE_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
+
   pt_secret=$(openssl rand -hex 32)
   pullImage $IMG_PEERTUBE_APP
   set +e
@@ -22539,26 +22422,7 @@ function installHomeAssistant()
   mkdir $HSHQ_STACKS_DIR/homeassistant/nodered
   chmod 777 $HSHQ_STACKS_DIR/homeassistant/dbexport
 
-  if [ -z "$HOMEASSISTANT_DATABASE_NAME" ]; then
-    HOMEASSISTANT_DATABASE_NAME=homeassistantdb
-    updateConfigVar HOMEASSISTANT_DATABASE_NAME $HOMEASSISTANT_DATABASE_NAME
-  fi
-  if [ -z "$HOMEASSISTANT_DATABASE_USER" ]; then
-    HOMEASSISTANT_DATABASE_USER=homeassistant-user
-    updateConfigVar HOMEASSISTANT_DATABASE_USER $HOMEASSISTANT_DATABASE_USER
-  fi
-  if [ -z "$HOMEASSISTANT_DATABASE_USER_PASSWORD" ]; then
-    HOMEASSISTANT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar HOMEASSISTANT_DATABASE_USER_PASSWORD $HOMEASSISTANT_DATABASE_USER_PASSWORD
-  fi
-  if [ -z "$HOMEASSISTANT_TASMOADMIN_USER" ]; then
-    HOMEASSISTANT_TASMOADMIN_USER=hass_tasmoadmin_user
-    updateConfigVar HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER
-  fi
-  if [ -z "$HOMEASSISTANT_TASMOADMIN_USER_PASSWORD" ]; then
-    HOMEASSISTANT_TASMOADMIN_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar HOMEASSISTANT_TASMOADMIN_USER_PASSWORD $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD
-  fi
+  initServicesCredentials
 
   pullImage $IMG_HOMEASSISTANT_APP
   pullImage $IMG_HOMEASSISTANT_CONFIGURATOR
@@ -22938,21 +22802,10 @@ function installGitlab()
   mkdir $HSHQ_NONBACKUP_DIR/gitlab
   mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
 
+  initServicesCredentials
   if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
     GITLAB_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GITLAB_ROOT_PASSWORD $GITLAB_ROOT_PASSWORD
-  fi
-  if [ -z "$GITLAB_DATABASE_NAME" ]; then
-    GITLAB_DATABASE_NAME=gitlabdb
-    updateConfigVar GITLAB_DATABASE_NAME $GITLAB_DATABASE_NAME
-  fi
-  if [ -z "$GITLAB_DATABASE_USER" ]; then
-    GITLAB_DATABASE_USER=gitlab-user
-    updateConfigVar GITLAB_DATABASE_USER $GITLAB_DATABASE_USER
-  fi
-  if [ -z "$GITLAB_DATABASE_USER_PASSWORD" ]; then
-    GITLAB_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar GITLAB_DATABASE_USER_PASSWORD $GITLAB_DATABASE_USER_PASSWORD
   fi
   if [ -z "$GITLAB_REDIS_PASSWORD" ]; then
     GITLAB_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -23226,23 +23079,8 @@ function installVaultwarden()
   mkdir $HSHQ_STACKS_DIR/vaultwarden/dbexport
   chmod 777 $HSHQ_STACKS_DIR/vaultwarden/dbexport
 
-  if [ -z "$VAULTWARDEN_ADMIN_TOKEN" ]; then
-    VAULTWARDEN_ADMIN_TOKEN=$(pwgen -c -n 64 1)
-    updateConfigVar VAULTWARDEN_ADMIN_TOKEN $VAULTWARDEN_ADMIN_TOKEN
-  fi
+  initServicesCredentials
   VAULTWARDEN_ADMIN_TOKEN_HASH=$(echo -n "$VAULTWARDEN_ADMIN_TOKEN" | argon2 $(pwgen -c -n 32 1) -id -e -m 16 | sed 's/\$/\$\$/g')
-  if [ -z "$VAULTWARDEN_DATABASE_NAME" ]; then
-    VAULTWARDEN_DATABASE_NAME=vaultwardendb
-    updateConfigVar VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_NAME
-  fi
-  if [ -z "$VAULTWARDEN_DATABASE_USER" ]; then
-    VAULTWARDEN_DATABASE_USER=vaultwarden-user
-    updateConfigVar VAULTWARDEN_DATABASE_USER $VAULTWARDEN_DATABASE_USER
-  fi
-  if [ -z "$VAULTWARDEN_DATABASE_USER_PASSWORD" ]; then
-    VAULTWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar VAULTWARDEN_DATABASE_USER_PASSWORD $VAULTWARDEN_DATABASE_USER_PASSWORD
-  fi
   pullImage $IMG_VAULTWARDEN_APP
   pullImage $IMG_VAULTWARDEN_LDAP
 
@@ -23441,26 +23279,7 @@ function installDiscourse()
   mkdir $HSHQ_NONBACKUP_DIR/discourse
   mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
 
-  if [ -z "$DISCOURSE_ADMIN_USERNAME" ]; then
-    DISCOURSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_discourse"
-    updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
-  fi
-  if [ -z "$DISCOURSE_ADMIN_PASSWORD" ]; then
-    DISCOURSE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar DISCOURSE_ADMIN_PASSWORD $DISCOURSE_ADMIN_PASSWORD
-  fi
-  if [ -z "$DISCOURSE_ADMIN_EMAIL_ADDRESS" ]; then
-    DISCOURSE_ADMIN_EMAIL_ADDRESS=$DISCOURSE_ADMIN_USERNAME"@"$HOMESERVER_DOMAIN
-    updateConfigVar DISCOURSE_ADMIN_EMAIL_ADDRESS $DISCOURSE_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$DISCOURSE_DATABASE_NAME" ]; then
-    DISCOURSE_DATABASE_NAME=discoursedb
-    updateConfigVar DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_NAME
-  fi
-  if [ -z "$DISCOURSE_DATABASE_USER" ]; then
-    DISCOURSE_DATABASE_USER=discourse-user
-    updateConfigVar DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER
-  fi
+  initServicesCredentials
   if [ -z "$DISCOURSE_DATABASE_USER_PASSWORD" ]; then
     DISCOURSE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar DISCOURSE_DATABASE_USER_PASSWORD $DISCOURSE_DATABASE_USER_PASSWORD
@@ -23709,14 +23528,7 @@ function installSyncthing()
   mkdir $HSHQ_STACKS_DIR/syncthing/config
   mkdir $HSHQ_STACKS_DIR/syncthing/data
 
-  if [ -z "$SYNCTHING_ADMIN_USERNAME" ]; then
-    SYNCTHING_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_syncthing"
-    updateConfigVar SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_USERNAME
-  fi
-  if [ -z "$SYNCTHING_ADMIN_PASSWORD" ]; then
-    SYNCTHING_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar SYNCTHING_ADMIN_PASSWORD $SYNCTHING_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
   SYNCTHING_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $SYNCTHING_ADMIN_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   SYNCTHING_API_KEY=$(pwgen -c -n 32 1)
   updateConfigVar SYNCTHING_API_KEY $SYNCTHING_API_KEY
@@ -23835,14 +23647,7 @@ function installCodeServer()
   mkdir $HSHQ_STACKS_DIR/codeserver/.config
   mkdir $HSHQ_STACKS_DIR/codeserver/.config/code-server
 
-  if [ -z "$CODESERVER_ADMIN_USERNAME" ]; then
-    CODESERVER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_codeserver"
-    updateConfigVar CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_USERNAME
-  fi
-  if [ -z "$CODESERVER_ADMIN_PASSWORD" ]; then
-    CODESERVER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar CODESERVER_ADMIN_PASSWORD $CODESERVER_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
   CODESERVER_ADMIN_PASSWORD_HASH=$(echo -n "$CODESERVER_ADMIN_PASSWORD" | argon2 $(pwgen -c -n 32 1) -e)
   pullImage $IMG_CODESERVER
 
@@ -24033,18 +23838,7 @@ function installShlink()
   mkdir $HSHQ_NONBACKUP_DIR/shlink/redis
   chmod 777 $HSHQ_STACKS_DIR/shlink/dbexport
 
-  if [ -z "$SHLINK_DATABASE_NAME" ]; then
-    SHLINK_DATABASE_NAME=shlinkdb
-    updateConfigVar SHLINK_DATABASE_NAME $SHLINK_DATABASE_NAME
-  fi
-  if [ -z "$SHLINK_DATABASE_USER" ]; then
-    SHLINK_DATABASE_USER=shlink-user
-    updateConfigVar SHLINK_DATABASE_USER $SHLINK_DATABASE_USER
-  fi
-  if [ -z "$SHLINK_DATABASE_USER_PASSWORD" ]; then
-    SHLINK_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar SHLINK_DATABASE_USER_PASSWORD $SHLINK_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$SHLINK_REDIS_PASSWORD" ]; then
     SHLINK_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar SHLINK_REDIS_PASSWORD $SHLINK_REDIS_PASSWORD
@@ -24263,18 +24057,7 @@ function installFirefly()
   mkdir $HSHQ_NONBACKUP_DIR/firefly/redis
   chmod 777 $HSHQ_STACKS_DIR/firefly/dbexport
 
-  if [ -z "$FIREFLY_DATABASE_NAME" ]; then
-    FIREFLY_DATABASE_NAME=fireflydb
-    updateConfigVar FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_NAME
-  fi
-  if [ -z "$FIREFLY_DATABASE_USER" ]; then
-    FIREFLY_DATABASE_USER=firefly-user
-    updateConfigVar FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER
-  fi
-  if [ -z "$FIREFLY_DATABASE_USER_PASSWORD" ]; then
-    FIREFLY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar FIREFLY_DATABASE_USER_PASSWORD $FIREFLY_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$FIREFLY_REDIS_PASSWORD" ]; then
     FIREFLY_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar FIREFLY_REDIS_PASSWORD $FIREFLY_REDIS_PASSWORD
@@ -24807,19 +24590,7 @@ function installInvidious()
   mkdir $HSHQ_STACKS_DIR/invidious/init
   chmod 777 $HSHQ_STACKS_DIR/invidious/dbexport
 
-  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
-  if [ -z "$INVIDIOUS_DATABASE_NAME" ]; then
-    INVIDIOUS_DATABASE_NAME=invidiousdb
-    updateConfigVar INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_NAME
-  fi
-  if [ -z "$INVIDIOUS_DATABASE_USER" ]; then
-    INVIDIOUS_DATABASE_USER=invidious-user
-    updateConfigVar INVIDIOUS_DATABASE_USER $INVIDIOUS_DATABASE_USER
-  fi
-  if [ -z "$INVIDIOUS_DATABASE_USER_PASSWORD" ]; then
-    INVIDIOUS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar INVIDIOUS_DATABASE_USER_PASSWORD $INVIDIOUS_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
   INVIDIOUS_HMAC_KEY=$(pwgen -c -n 32 1)
 
   pullImage $IMG_INVIDIOUS
@@ -25187,28 +24958,7 @@ function installGitea()
   mkdir $HSHQ_STACKS_DIR/gitea/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitea/dbexport
 
-  if [ -z "$GITEA_ADMIN_USERNAME" ]; then
-    GITEA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_gitea"
-    updateConfigVar GITEA_ADMIN_USERNAME $GITEA_ADMIN_USERNAME
-    GITEA_ADMIN_EMAIL_ADDRESS=$GITEA_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar GITEA_ADMIN_EMAIL_ADDRESS $GITEA_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$GITEA_ADMIN_PASSWORD" ]; then
-    GITEA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar GITEA_ADMIN_PASSWORD $GITEA_ADMIN_PASSWORD
-  fi
-  if [ -z "$GITEA_DATABASE_NAME" ]; then
-    GITEA_DATABASE_NAME=giteadb
-    updateConfigVar GITEA_DATABASE_NAME $GITEA_DATABASE_NAME
-  fi
-  if [ -z "$GITEA_DATABASE_USER" ]; then
-    GITEA_DATABASE_USER=gitea-user
-    updateConfigVar GITEA_DATABASE_USER $GITEA_DATABASE_USER
-  fi
-  if [ -z "$GITEA_DATABASE_USER_PASSWORD" ]; then
-    GITEA_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar GITEA_DATABASE_USER_PASSWORD $GITEA_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
 
   pullImage $IMG_GITEA_APP
   outputConfigGitea
@@ -25373,19 +25123,8 @@ function installMealie()
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/mealie
-  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD="
-  if [ -z "$MEALIE_ADMIN_USERNAME" ]; then
-    MEALIE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mealie"
-    updateConfigVar MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_USERNAME
-  fi
-  if [ -z "$MEALIE_ADMIN_EMAIL_ADDRESS" ]; then
-    MEALIE_ADMIN_EMAIL_ADDRESS=$MEALIE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar MEALIE_ADMIN_EMAIL_ADDRESS $MEALIE_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$MEALIE_ADMIN_PASSWORD" ]; then
-    MEALIE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar MEALIE_ADMIN_PASSWORD $MEALIE_ADMIN_PASSWORD
-  fi
+
+  initServicesCredentials
 
   pw_hash=$(htpasswd -bnBC 10 $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD | cut -d":" -f2-)
   set +e
@@ -26109,23 +25848,13 @@ function installRemotely()
   set -e
   mkdir $HSHQ_STACKS_DIR/remotely
 
-  checkAddServiceToConfig "Remotely" "REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
-  if [ -z "$REMOTELY_ADMIN_USERNAME" ]; then
-    REMOTELY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_remotely"
-    updateConfigVar REMOTELY_ADMIN_USERNAME $REMOTELY_ADMIN_USERNAME
-  fi
-  if [ -z "$REMOTELY_ADMIN_EMAIL_ADDRESS" ]; then
-    REMOTELY_ADMIN_EMAIL_ADDRESS=$REMOTELY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$REMOTELY_ADMIN_PASSWORD" ]; then
-    REMOTELY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar REMOTELY_ADMIN_PASSWORD $REMOTELY_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
   docker exec mailu-admin flask mailu alias-delete $REMOTELY_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $REMOTELY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
+  if ! [ "$REMOTELY_INIT_ENV" = "true" ]; then
+    sendEmail -s "Remotely Admin Login Info" -b "Remotely Admin Username: $REMOTELY_ADMIN_EMAIL_ADDRESS\nRemotely Admin Password: $REMOTELY_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  fi
   pullImage $IMG_REMOTELY
   outputConfigRemotely
   installStack remotely remotely "Starting Remotely server" $HOME/remotely.env
@@ -26229,30 +25958,15 @@ function installCalibre()
   mkdir $HSHQ_STACKS_DIR/calibre/library
   mkdir $HSHQ_STACKS_DIR/calibre/web
 
-  is_calibre_config=$(checkAddServiceToConfig "Calibre" "CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD=")
-  if [ -z "$CALIBRE_WEB_ADMIN_USERNAME" ]; then
-    CALIBRE_WEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_calibre"
-    updateConfigVar CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_USERNAME
-  fi
-  if [ -z "$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS" ]; then
-    CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=$CALIBRE_WEB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar CALIBRE_WEB_ADMIN_EMAIL_ADDRESS $CALIBRE_WEB_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$CALIBRE_WEB_ADMIN_PASSWORD" ]; then
-    CALIBRE_WEB_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
-    updateConfigVar CALIBRE_WEB_ADMIN_PASSWORD $CALIBRE_WEB_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
 
   set +e
   docker exec mailu-admin flask mailu alias-delete $CALIBRE_WEB_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $CALIBRE_WEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
-  if [ $is_calibre_config = "false" ]; then
-    # Not in configuration file, email credentials to mail admin
-    sendEmail -s "Calibre-Web Admin Login Info" -b "Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nAdmin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  if ! [ "$CALIBRE_WEB_INIT_ENV" = "true" ]; then
+    sendEmail -s "Calibre-Web Admin Login Info" -b "Calibre-Web Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nCalibre-Web Admin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
   fi
-
   pullImage $IMG_CALIBRE_SERVER
   pullImage $IMG_CALIBRE_WEB
   outputConfigCalibre
@@ -26539,19 +26253,7 @@ function installLinkwarden()
   mkdir $HSHQ_STACKS_DIR/linkwarden/app
   chmod 777 $HSHQ_STACKS_DIR/linkwarden/dbexport
 
-  is_linkw_config=$(checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=")
-  if [ -z "$LINKWARDEN_DATABASE_NAME" ]; then
-    LINKWARDEN_DATABASE_NAME=linkwardendb
-    updateConfigVar LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_NAME
-  fi
-  if [ -z "$LINKWARDEN_DATABASE_USER" ]; then
-    LINKWARDEN_DATABASE_USER=linkwarden-user
-    updateConfigVar LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER
-  fi
-  if [ -z "$LINKWARDEN_DATABASE_USER_PASSWORD" ]; then
-    LINKWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar LINKWARDEN_DATABASE_USER_PASSWORD $LINKWARDEN_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$LINKWARDEN_NEXTAUTH_SECRET" ]; then
     LINKWARDEN_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar LINKWARDEN_NEXTAUTH_SECRET $LINKWARDEN_NEXTAUTH_SECRET
@@ -26790,7 +26492,7 @@ function installBarAssistant()
   mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
   mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
 
-  is_ba_config=$(checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY=")
+  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY="
 
   if [ -z "$BARASSISTANT_REDIS_PASSWORD" ]; then
     BARASSISTANT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -27071,39 +26773,15 @@ function installFreshRSS()
   mkdir $HSHQ_STACKS_DIR/freshrss/extensions
   chmod 777 $HSHQ_STACKS_DIR/freshrss/dbexport
 
-  is_fr_config=$(checkAddServiceToConfig "FreshRSS" "FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD=")
-
-  if [ -z "$FRESHRSS_ADMIN_USERNAME" ]; then
-    FRESHRSS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_freshrss"
-    updateConfigVar FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_USERNAME
-    FRESHRSS_ADMIN_EMAIL_ADDRESS=$FRESHRSS_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar FRESHRSS_ADMIN_EMAIL_ADDRESS $FRESHRSS_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$FRESHRSS_ADMIN_PASSWORD" ]; then
-    FRESHRSS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar FRESHRSS_ADMIN_PASSWORD $FRESHRSS_ADMIN_PASSWORD
-  fi
-  if [ -z "$FRESHRSS_DATABASE_NAME" ]; then
-    FRESHRSS_DATABASE_NAME=freshrssdb
-    updateConfigVar FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_NAME
-  fi
-  if [ -z "$FRESHRSS_DATABASE_USER" ]; then
-    FRESHRSS_DATABASE_USER=freshrss-user
-    updateConfigVar FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER
-  fi
-  if [ -z "$FRESHRSS_DATABASE_USER_PASSWORD" ]; then
-    FRESHRSS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar FRESHRSS_DATABASE_USER_PASSWORD $FRESHRSS_DATABASE_USER_PASSWORD
-  fi
+  initServicesCredentials
 
   set +e
   docker exec mailu-admin flask mailu alias-delete $FRESHRSS_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $FRESHRSS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
-  if [ $is_fr_config = "false" ]; then
-    # Not in configuration file, email credentials to mail admin
-    sendEmail -s "FreshRSS Admin Login Info" -b "Admin Username: $FRESHRSS_ADMIN_USERNAME\nAdmin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  if ! [ "$FRESHRSS_INIT_ENV" = "true" ]; then
+    sendEmail -s "FreshRSS Admin Login Info" -b "FreshRSS Admin Username: $FRESHRSS_ADMIN_USERNAME\nFreshRSS Admin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
   fi
 
   pullImage $IMG_FRESHRSS
@@ -27278,6 +26956,185 @@ EOFBA
 
 }
 
+function installKeila()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory keila "Keila"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/keila
+  mkdir $HSHQ_STACKS_DIR/keila/db
+  mkdir $HSHQ_STACKS_DIR/keila/dbexport
+  mkdir $HSHQ_STACKS_DIR/keila/uploads
+  chmod 777 $HSHQ_STACKS_DIR/keila/dbexport
+
+  initServicesCredentials
+
+  KEILA_SECRET_KEY_BASE=$(pwgen -c -n 64 1)
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $KEILA_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $KEILA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  if ! [ "$KEILA_INIT_ENV" = "true" ]; then
+    sendEmail -s "Keila Admin Login Info" -b "Keila Admin Username: $KEILA_ADMIN_EMAIL_ADDRESS\nKeila Admin Password: $KEILA_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  fi
+
+  pullImage $IMG_KEILA
+  outputConfigKeila
+  installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env
+  sleep 5
+
+  checkDisableStack keila
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KEILA.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://keila-app:4000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KEILA $MANAGETLS_KEILA "$is_integrate_hshq" $NETDEFAULT_KEILA "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigKeila()
+{
+  cat <<EOFBA > $HOME/keila-compose.yml
+version: '3.5'
+
+services:
+  keila-db:
+    image: $IMG_POSTGRES
+    container_name: keila-db
+    hostname: keila-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-keila-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/keila/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/keila/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.keila-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.keila-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.keila-hourly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.keila-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.keila-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.keila-hourly-db.email-from=Keila Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.keila-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.keila-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.keila-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.keila-monthly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.keila-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.keila-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.keila-monthly-db.email-from=Keila Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.keila-monthly-db.mail-only-on-error=false"
+
+  keila-app:
+    image: $IMG_KEILA
+    container_name: keila-app
+    hostname: keila-app
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - keila-db
+    networks:
+      - int-keila-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-keila-uploads:/uploads
+
+volumes:
+  v-keila-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/keila/db
+  v-keila-uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/keila/uploads
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  int-keila-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+
+EOFBA
+
+  cat <<EOFBA > $HOME/keila.env
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$KEILA_DATABASE_NAME
+POSTGRES_USER=$KEILA_DATABASE_USER
+POSTGRES_PASSWORD=$KEILA_DATABASE_USER_PASSWORD
+SECRET_KEY_BASE=$KEILA_SECRET_KEY_BASE
+DB_URL=postgres://$KEILA_DATABASE_USER:$KEILA_DATABASE_USER_PASSWORD@keila-db/$KEILA_DATABASE_NAME
+URL_HOST=$SUB_KEILA.$HOMESERVER_DOMAIN
+URL_SCHEMA=https
+MAILER_SMTP_HOST=mailu-front
+MAILER_SMTP_PORT=25
+MAILER_SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
+MAILER_SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
+MAILER_SMTP_FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAILER_ENABLE_STARTTLS=true
+KEILA_USER=$KEILA_ADMIN_EMAIL_ADDRESS
+KEILA_PASSWORD=$KEILA_ADMIN_PASSWORD
+DISABLE_REGISTRATION=true
+USER_CONTENT_DIR=/uploads
+EOFBA
+
+}
+
 function installSQLPad()
 {
   is_integrate_hshq=$1
@@ -27290,14 +27147,7 @@ function installSQLPad()
 
   mkdir $HSHQ_STACKS_DIR/sqlpad
 
-  if [ -z "$SQLPAD_ADMIN_USERNAME" ]; then
-    SQLPAD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_sqlpad"
-    updateConfigVar SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_USERNAME
-  fi
-  if [ -z "$SQLPAD_ADMIN_PASSWORD" ]; then
-    SQLPAD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar SQLPAD_ADMIN_PASSWORD $SQLPAD_ADMIN_PASSWORD
-  fi
+  initServicesCredentials
   SQLPAD_PASSPHRASE=$(pwgen -c -n 64 1)
   pullImage $IMG_SQLPAD
   generateCert sqlpad sqlpad
@@ -27445,6 +27295,14 @@ SQLPAD_CONNECTIONS__invidious__username=$INVIDIOUS_DATABASE_USER
 SQLPAD_CONNECTIONS__invidious__password=$INVIDIOUS_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__invidious__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__invidious__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__keila__name=Keila
+SQLPAD_CONNECTIONS__keila__driver=postgres
+SQLPAD_CONNECTIONS__keila__host=keila-db
+SQLPAD_CONNECTIONS__keila__database=$KEILA_DATABASE_NAME
+SQLPAD_CONNECTIONS__keila__username=$KEILA_DATABASE_USER
+SQLPAD_CONNECTIONS__keila__password=$KEILA_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__keila__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__keila__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__linkwarden__name=Linkwarden
 SQLPAD_CONNECTIONS__linkwarden__driver=postgres
 SQLPAD_CONNECTIONS__linkwarden__host=linkwarden-db
@@ -27543,38 +27401,7 @@ function installHeimdall()
   mkdir $HSHQ_STACKS_DIR/heimdall/config
   mkdir $HSHQ_STACKS_DIR/heimdall/html
 
-  if [ -z "$HEIMDALL_ADMIN_USERNAME" ]; then
-    HEIMDALL_ADMIN_USERNAME="Admin"
-    updateConfigVar HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_USERNAME
-  fi
-  if [ -z "$HEIMDALL_ADMIN_PASSWORD" ]; then
-    HEIMDALL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar HEIMDALL_ADMIN_PASSWORD $HEIMDALL_ADMIN_PASSWORD
-  fi
-  if [ -z "$HEIMDALL_USER_USERNAME" ]; then
-    HEIMDALL_USER_USERNAME="Users"
-    updateConfigVar HEIMDALL_USER_USERNAME $HEIMDALL_USER_USERNAME
-  fi
-  if [ -z "$HEIMDALL_USER_PASSWORD" ]; then
-    HEIMDALL_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar HEIMDALL_USER_PASSWORD $HEIMDALL_USER_PASSWORD
-  fi
-  if [ -z "$HEIMDALL_HOMESERVERS_USERNAME" ]; then
-    HEIMDALL_HOMESERVERS_USERNAME="HomeServers"
-    updateConfigVar HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_USERNAME
-  fi
-  if [ -z "$HEIMDALL_HOMESERVERS_PASSWORD" ]; then
-    HEIMDALL_HOMESERVERS_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar HEIMDALL_HOMESERVERS_PASSWORD $HEIMDALL_HOMESERVERS_PASSWORD
-  fi
-  if [ -z "$HEIMDALL_RELAYSERVER_USERNAME" ]; then
-    HEIMDALL_RELAYSERVER_USERNAME="RelayServer"
-    updateConfigVar HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_USERNAME
-  fi
-  if [ -z "$HEIMDALL_RELAYSERVER_PASSWORD" ]; then
-    HEIMDALL_RELAYSERVER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar HEIMDALL_RELAYSERVER_PASSWORD $HEIMDALL_RELAYSERVER_PASSWORD
-  fi
+  initServicesCredentials
   if [ -z "$HEIMDALL_WINDOW_TITLE" ]; then
     HEIMDALL_WINDOW_TITLE="$HOMESERVER_NAME Home"
     updateConfigVar HEIMDALL_WINDOW_TITLE "$HEIMDALL_WINDOW_TITLE"
@@ -29043,14 +28870,8 @@ function installUptimeKuma()
 
   mkdir $HSHQ_STACKS_DIR/uptimekuma
   mkdir $HSHQ_STACKS_DIR/uptimekuma/app
-  if [ -z "$UPTIMEKUMA_USERNAME" ]; then
-    UPTIMEKUMA_USERNAME=$ADMIN_USERNAME_BASE"_uptimekuma"
-    updateConfigVar UPTIMEKUMA_USERNAME $UPTIMEKUMA_USERNAME
-  fi
-  if [ -z "$UPTIMEKUMA_PASSWORD" ]; then
-    UPTIMEKUMA_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar UPTIMEKUMA_PASSWORD $UPTIMEKUMA_PASSWORD
-  fi
+
+  initServicesCredentials
   UPTIMEKUMA_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $UPTIMEKUMA_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   outputConfigUptimeKuma
   installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env

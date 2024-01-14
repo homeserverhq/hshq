@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=1
+HSHQ_WRAPPER_SCRIPT_VERSION=2
 IS_DISABLE_UPDATE_CHECKS=false
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
@@ -202,8 +202,24 @@ EOF
       echo "Could not get latest release version, proceeding with local version..."
     fi
   elif ! [ -f $HSHQ_LIB_SCRIPT ]; then
-    hshq_latest_version=$(curl --silent $HSHQ_VER_URL)
     is_download_lib=true
+  fi
+
+  if [ "$is_download_lib" = "true" ]; then
+    echo "Downloading latest version..."
+    wget -q -O $HSHQ_LIB_TMP $HSHQ_LIB_URL
+    if [ $? -ne 0 ]; then
+      rm -f $HSHQ_LIB_TMP
+      if [ -f $HSHQ_LIB_SCRIPT ]; then
+        showMessageBox "Download Error" "There was an error obtaining the latest version, proceeding with local version."
+      else
+        showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
+        exit 1
+      fi
+      is_download_lib=false
+    fi
+    hshq_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
+    echo "Obtained Version $hshq_dl_version"
   fi
 
   if [ "$is_download_lib" = "true" ]; then
@@ -215,13 +231,15 @@ EOF
     gpg --list-keys $HSHQ_GPG_FINGERPRINT >/dev/null 2>/dev/null
     if [ $? -ne 0 ]; then
       showMessageBox "GPG Key Error" "There was an error obtaining HomeServerHQ's Public GPG Key, exiting..."
+      rm -f $HSHQ_LIB_TMP
       exit 1
     fi
-    wget -q -O $HOME/lib-${hshq_latest_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_latest_version}.sig
+    wget -q -O $HOME/lib-${hshq_dl_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_dl_version}.sig
     if [ $? -eq 0 ]; then
-      echo "Signature downloaded (lib-${hshq_latest_version}.sig)..."
+      echo "Signature downloaded (lib-${hshq_dl_version}.sig)..."
     else
-      rm -f $HOME/lib-${hshq_latest_version}.sig
+      rm -f $HOME/lib-${hshq_dl_version}.sig
+      rm -f $HSHQ_LIB_TMP
       if [ -f $HSHQ_LIB_SCRIPT ]; then
         showMessageBox "Download Error" "There was an error obtaining the signature, proceeding with local version."
       else
@@ -231,37 +249,28 @@ EOF
       is_download_lib=false
     fi
   fi
+
   if [ "$is_download_lib" = "true" ]; then
-    wget -q -O $HSHQ_LIB_TMP $HSHQ_LIB_URL
-    if [ $? -eq 0 ]; then
-      echo "Latest script downloaded..."
-      gpg --verify $HOME/lib-${hshq_latest_version}.sig $HSHQ_LIB_TMP >/dev/null 2>/dev/null
-      ver_res=$?
-      rm -f $HOME/lib-${hshq_latest_version}.sig
-      if [ $ver_res -eq 0 ]; then
-        # Verified
-        rm -f $HSHQ_LIB_SCRIPT
-        mv $HSHQ_LIB_TMP $HSHQ_LIB_SCRIPT
-      else
-        # Not verified, raise the red flag
-        rm -f $HSHQ_LIB_TMP
-        echo "**************************SECURITY ALERT**************************"
-        echo "There was a verification error on the latest version (Version ${hshq_latest_version})."
-        echo "Please email security@homeserverhq.com as soon as possible."
-        echo "******************************************************************"
-        if [ -f $HSHQ_LIB_SCRIPT ]; then
-          showMessageBox "Security Alert" "**************************SECURITY ALERT**************************\n       There was a verification error on the latest version (Version ${hshq_latest_version}).\n       Please email security@homeserverhq.com as soon as possible.\n       ******************************************************************\n\n       Proceeding safely with local version..."
-        else
-          showMessageBox "Security Alert" "**************************SECURITY ALERT**************************\n       There was a verification error on the downloaded script\n       Please email security@homeserverhq.com as soon as possible.\n       ******************************************************************\n       Exiting..."
-          exit 1
-        fi
-      fi
+    echo "Verifying with signature..."
+    gpg --verify $HOME/lib-${hshq_dl_version}.sig $HSHQ_LIB_TMP >/dev/null 2>/dev/null
+    ver_res=$?
+    rm -f $HOME/lib-${hshq_dl_version}.sig
+    if [ $ver_res -eq 0 ]; then
+      # Verified
+      echo "Source code verified!"
+      rm -f $HSHQ_LIB_SCRIPT
+      mv $HSHQ_LIB_TMP $HSHQ_LIB_SCRIPT
     else
+      # Not verified, raise the red flag
       rm -f $HSHQ_LIB_TMP
+      echo "**************************SECURITY ALERT**************************"
+      echo "There was a verification error on the latest version (Version ${hshq_dl_version})."
+      echo "Please email security@homeserverhq.com as soon as possible."
+      echo "******************************************************************"
       if [ -f $HSHQ_LIB_SCRIPT ]; then
-        showMessageBox "Download Error" "There was an error obtaining the latest version, proceeding with local version."
+        showMessageBox "Security Alert" "**************************SECURITY ALERT**************************\n       There was a verification error on the latest version (Version ${hshq_dl_version}).\n       Please email security@homeserverhq.com as soon as possible.\n       ******************************************************************\n\n       Proceeding safely with local version..."
       else
-        showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
+        showMessageBox "Security Alert" "**************************SECURITY ALERT**************************\n       There was a verification error on the downloaded script\n       Please email security@homeserverhq.com as soon as possible.\n       ******************************************************************\n       Exiting..."
         exit 1
       fi
     fi
