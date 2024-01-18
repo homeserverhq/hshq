@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=18
+HSHQ_SCRIPT_VERSION=19
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -640,7 +640,7 @@ function initConfig()
     exit 1
   fi
   total_disk_space=$(($(df | grep /$ | xargs | cut -d" " -f4) / 1048576))
-  if [ $total_disk_space -lt 150 ]; then
+  if [ $total_disk_space -lt 120 ]; then
     showMessageBox "Insufficient Disk Space" "Total available disk space is $total_disk_space GB. You must have at least 150 GB of available space to perform the installation, exiting..."
     exit 1
   fi
@@ -1254,9 +1254,9 @@ $logo
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$svcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-  "1" "Select Stack(s) From List" \
-  "2" "Install All Available Stacks" \
-  "3" "Remove Stack" \
+  "1" "Select Service(s) From List" \
+  "2" "Install All Available Services" \
+  "3" "Remove Service" \
   "4" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
@@ -8757,7 +8757,7 @@ function addLECertPathToRelayServerMsgbox()
   add_subdomains=""
   while [ -z "$add_subdomains" ]
   do
-    add_subdomains=$(promptUserInputMenu "" "Enter Subdomain" "Enter the subdomains that you wish to all LetsEncrypt to manage on relay server (separated by comma):")
+    add_subdomains=$(promptUserInputMenu "" "Enter Subdomain" "Enter the subdomains for which you want LetsEncrypt to manage the certificates(separated by comma):")
     if [ $? -ne 0 ]; then
       return
     elif [ $(checkValidString "$add_subdomains" ",.-") = "false" ]; then
@@ -9917,6 +9917,9 @@ INVIDIOUS_DATABASE_USER_PASSWORD=
 MEALIE_ADMIN_USERNAME=
 MEALIE_ADMIN_EMAIL_ADDRESS=
 MEALIE_ADMIN_PASSWORD=
+MEALIE_DATABASE_NAME=
+MEALIE_DATABASE_USER=
+MEALIE_DATABASE_USER_PASSWORD=
 # Mealie (Service Details) END
 
 # Remotely (Service Details) BEGIN
@@ -10060,7 +10063,7 @@ function fixConfigComments()
 
 function checkAddServiceToConfig()
 {
-  service_name=$1
+  service_name="$1"
   variable_list=$2
   set +e
   grep "# $service_name (Service Details)" $CONFIG_FILE >/dev/null 2>/dev/null
@@ -10074,6 +10077,23 @@ function checkAddServiceToConfig()
     replace_block=$replace_block"# $service_name (Service Details) END\n\n# Service Details END"
     sed -i "s|# Service Details END|$replace_block|g" $CONFIG_FILE
   fi
+  set -e
+}
+
+function checkAddVarsToServiceConfig()
+{
+  service_name="$1"
+  variable_list=$2
+  set +e
+  varListArr=($(echo $variable_list | tr "," "\n"))
+  for curVar in "${varListArr[@]}"
+  do
+    grep "$curVar" $CONFIG_FILE >/dev/null 2>/dev/null
+    if [ $? -ne 0 ]; then
+      replace_block="$curVar\n# $service_name (Service Details) END"
+      sed -i "s|# $service_name (Service Details) END|$replace_block|g" $CONFIG_FILE
+    fi
+  done
   set -e
 }
 
@@ -11347,6 +11367,7 @@ EOFCN
 function generateCertDialog()
 {
   set +e
+
   cert_name=""
   while [ -z "$cert_name" ]
   do
@@ -11359,19 +11380,36 @@ function generateCertDialog()
       showMessageBox "Filename Empty" "The Filename cannot be empty"
     fi
   done
-  cert_string=""
-  while [ -z "$cert_string" ]
+
+  cert_dom_string=""
+  while [ -z "$cert_dom_string" ]
   do
-    cert_string=$(promptUserInputMenu "" "Enter Certificate CN" "Enter the domain names and/or ip addresses for this certificate. Domain names and ip addresses should be grouped together as a comma separated list with a space between the two groups. Domains first, then IP Addresses:")
+    cert_dom_string=$(promptUserInputMenu "" "Enter Certificate CN" "Enter the domain names for this certificate. Domain names should be grouped together as a comma separated list:")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
     fi
-    if [ -z "$cert_string" ]; then
+    if [ -z "$cert_dom_string" ]; then
       showMessageBox "Domain Name Empty" "The Domain Name cannot be empty"
     fi
   done
-  generateCert $cert_name $cert_string
+
+  cert_ip_string=$(promptUserInputMenu "" "Enter IP Addresses" "Enter the IP addresses for this certificate. IP addresses should be grouped together as a comma separated list:")
+
+  ft_string=""
+  while [ -z "$ft_string" ]
+  do
+    ft_string=$(promptUserInputMenu "$(date '+%Y-%m-%d %H:%M:%S %Z')" "Enter Start Date" "Enter the Start Date for the Certificate (must be formatted as follows - 2023-01-01 00:00:00 GMT):")
+    mbres=$?
+    if [ $mbres -ne 0 ]; then
+      return 1
+    fi
+    if [ -z "$ft_string" ]; then
+      showMessageBox "Date Empty" "The Date cannot be empty"
+    fi
+  done
+
+  generateCert "$cert_name" "$cert_dom_string" "$cert_ip_string" "$ft_string"
 }
 
 function getUpdateAssets()
@@ -11431,7 +11469,7 @@ function loadPinnedDockerImages()
   IMG_COLLABORA=collabora/code:23.05.6.4.1
   IMG_DISCOURSE=bitnami/discourse:3.1.3
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v5.8.1
+  IMG_DOZZLE=amir20/dozzle:v6.0.8
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
   IMG_DRAWIO_WEB=jgraph/drawio:21.0.2
@@ -11439,7 +11477,7 @@ function loadPinnedDockerImages()
   IMG_EXCALIDRAW_SERVER=excalidraw/excalidraw-room
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
-  IMG_FILEBROWSER=filebrowser/filebrowser:v2.26.0
+  IMG_FILEBROWSER=filebrowser/filebrowser:v2.27.0
   IMG_FIREFLY=fireflyiii/core:version-6.1.1
   IMG_FRESHRSS=freshrss/freshrss:1.23.1
   IMG_GHOST=ghost:5.75.2-alpine
@@ -11449,7 +11487,7 @@ function loadPinnedDockerImages()
   IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.4
   IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.4
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
-  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2023.8
+  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2024.1.3
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
   IMG_HOMEASSISTANT_NODERED=nodered/node-red:3.0.2
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
@@ -11484,7 +11522,7 @@ function loadPinnedDockerImages()
   IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.11.3
   IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.52
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.98.0
-  IMG_MEALIE=hkotel/mealie:v0.5.6
+  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v1.0.0-RC2
   IMG_MEILISEARCH=getmeili/meilisearch:v1.4
   IMG_MYSQL=mariadb:10.7.3
   IMG_NETDATA=netdata/netdata:v1.44.1
@@ -12122,7 +12160,7 @@ function initServicesCredentials()
     UPTIMEKUMA_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar UPTIMEKUMA_PASSWORD $UPTIMEKUMA_PASSWORD
   fi
-  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
   if [ -z "$MEALIE_ADMIN_USERNAME" ]; then
     MEALIE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mealie"
     updateConfigVar MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_USERNAME
@@ -12134,6 +12172,18 @@ function initServicesCredentials()
   if [ -z "$MEALIE_ADMIN_PASSWORD" ]; then
     MEALIE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MEALIE_ADMIN_PASSWORD $MEALIE_ADMIN_PASSWORD
+  fi
+  if [ -z "$MEALIE_DATABASE_NAME" ]; then
+    MEALIE_DATABASE_NAME=mealiedb
+    updateConfigVar MEALIE_DATABASE_NAME $MEALIE_DATABASE_NAME
+  fi
+  if [ -z "$MEALIE_DATABASE_USER" ]; then
+    MEALIE_DATABASE_USER=mealie-user
+    updateConfigVar MEALIE_DATABASE_USER $MEALIE_DATABASE_USER
+  fi
+  if [ -z "$MEALIE_DATABASE_USER_PASSWORD" ]; then
+    MEALIE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MEALIE_DATABASE_USER_PASSWORD $MEALIE_DATABASE_USER_PASSWORD
   fi
   checkAddServiceToConfig "Remotely" "REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
   if [ -z "$REMOTELY_ADMIN_USERNAME" ]; then
@@ -12466,6 +12516,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}      policy: bypass\n"
@@ -12504,7 +12555,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PORTAINER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PROMETHEUS.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SQLPAD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SYNCTHING.$HOMESERVER_DOMAIN\n"
@@ -12553,7 +12603,8 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PRIVATE" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MEALIE" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Identity/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Identity/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
@@ -16266,8 +16317,8 @@ ou: groups
 
 # Admin User
 dn: uid=${LDAP_ADMIN_USER_USERNAME},ou=people,${LDAP_BASE_DN}
-givenName: ${LDAP_ADMIN_USER_USERNAME}
-sn: ${LDAP_ADMIN_USER_USERNAME}
+givenName:: $(echo -n "${HOMESERVER_ABBREV^^} " | base64)
+sn: Admin
 uid: ${LDAP_ADMIN_USER_USERNAME}
 mail: ${EMAIL_ADMIN_EMAIL_ADDRESS}
 objectClass: person
@@ -16277,13 +16328,13 @@ uidNumber: 2001
 gidNumber: 2001
 loginShell: /sbin/nologin
 homeDirectory: /home/${LDAP_ADMIN_USER_USERNAME}
-cn: ${LDAP_ADMIN_USER_USERNAME}
+cn: ${HOMESERVER_ABBREV^^} Admin
 userPassword: {CRYPT}${ADMIN_PASSWORD_CRYPT}
 
 # Basic User
 dn: uid=${LDAP_PRIMARY_USER_USERNAME},ou=people,${LDAP_BASE_DN}
-givenName: ${LDAP_PRIMARY_USER_USERNAME}
-sn: ${LDAP_PRIMARY_USER_USERNAME}
+givenName: ${LDAP_PRIMARY_USER_USERNAME^}
+sn:: IA==
 uid: ${LDAP_PRIMARY_USER_USERNAME}
 mail: ${LDAP_PRIMARY_USER_EMAIL_ADDRESS}
 objectClass: person
@@ -16293,7 +16344,7 @@ uidNumber: 2002
 gidNumber: 2001
 loginShell: /sbin/nologin
 homeDirectory: /home/${LDAP_PRIMARY_USER_USERNAME}
-cn: ${LDAP_PRIMARY_USER_USERNAME}
+cn:: $(echo -n "${LDAP_PRIMARY_USER_USERNAME^} " | base64)
 userPassword: {CRYPT}${LDAP_PRIMARY_USER_PASSWORD_HASH}
 
 # Last UID
@@ -25123,23 +25174,22 @@ function installMealie()
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/mealie
+  mkdir $HSHQ_STACKS_DIR/mealie/app
+  mkdir $HSHQ_STACKS_DIR/mealie/db
+  mkdir $HSHQ_STACKS_DIR/mealie/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/mealie/dbexport
 
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
   initServicesCredentials
 
-  pw_hash=$(htpasswd -bnBC 10 $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD | cut -d":" -f2-)
   set +e
   docker exec mailu-admin flask mailu alias-delete $MEALIE_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $MEALIE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   pullImage $IMG_MEALIE
   outputConfigMealie
-  installStack mealie mealie "Application startup complete" $HOME/mealie.env
-  sleep 5
-  mealie_db=$(find $HSHQ_STACKS_DIR/mealie/ -name "mealie*.db")
-  if ! [ -z $mealie_db ]; then
-    sudo sqlite3 $mealie_db "update users set full_name='$HOMESERVER_NAME Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;"
-  fi
-  docker container restart mealie
+  installStack mealie mealie-app "Application startup complete" $HOME/mealie.env 5
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MEALIE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -25147,7 +25197,7 @@ function installMealie()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://mealie {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://mealie-app:9000 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -25157,6 +25207,12 @@ function installMealie()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll mealie "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" "mealie.png"
     restartAllCaddyContainers
+
+    mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
+    adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
+    # Can't seem to get httpie to work, so switching to curl
+    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" >/dev/null 2>/dev/null
+    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" >/dev/null 2>/dev/null
   fi
 }
 
@@ -25166,24 +25222,73 @@ function outputConfigMealie()
 version: '3.5'
 
 services:
-  mealie:
-    image: $IMG_MEALIE
-    container_name: mealie
-    hostname: mealie
+  mealie-db:
+    image: $IMG_POSTGRES
+    container_name: mealie-db
+    hostname: mealie-db
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-mealie-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mealie/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/mealie/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.mealie-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.mealie-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mealie-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mealie-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mealie-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mealie-hourly-db.email-from=Mealie Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mealie-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.mealie-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.mealie-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mealie-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mealie-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mealie-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mealie-monthly-db.email-from=Mealie Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mealie-monthly-db.mail-only-on-error=false"
+
+  mealie-app:
+    image: $IMG_MEALIE
+    container_name: mealie-app
+    hostname: mealie-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - mealie-db
     networks:
       - dock-proxy-net
       - dock-ext-net
+      - dock-ldap-net
+      - dock-internalmail-net
+      - int-mealie-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mealie:/app/data
+      - v-mealie-app:/app/data
+
+volumes:
+  v-mealie-app:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/mealie/app
 
 networks:
   dock-proxy-net:
@@ -25192,21 +25297,65 @@ networks:
   dock-ext-net:
     name: dock-ext
     external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  int-mealie-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
 
 EOFGL
 
   cat <<EOFGL > $HOME/mealie.env
 HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
 PUID=$USERID
 PGID=$GROUPID
-TZ=$TZ
-RECIPE_PUBLIC=true
-RECIPE_SHOW_NUTRITION=true
-RECIPE_SHOW_ASSETS=true
-RECIPE_LANDSCAPE_VIEW=true
-RECIPE_DISABLE_COMMENTS=false
-RECIPE_DISABLE_AMOUNT=false
-
+DEFAULT_GROUP=Home
+PRODUCTION=True
+API_DOCS=True
+ALLOW_SIGNUP=false
+BASE_URL=https://$SUB_MEALIE.$HOMESERVER_DOMAIN
+DB_ENGINE=postgres
+POSTGRES_USER=$MEALIE_DATABASE_USER
+POSTGRES_PASSWORD=$MEALIE_DATABASE_USER_PASSWORD
+POSTGRES_SERVER=mealie-db
+POSTGRES_PORT=5432
+POSTGRES_DB=$MEALIE_DATABASE_NAME
+TOKEN_TIME=168
+SMTP_HOST=mailu-front
+SMTP_PORT=587
+SMTP_FROM_NAME=Mealie HSHQ Admin
+SMTP_AUTH_STRATEGY=TLS
+SMTP_FROM_EMAIL=$EMAIL_SMTP_EMAIL_ADDRESS
+SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
+SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
+LDAP_AUTH_ENABLED=True
+LDAP_SERVER_URL=$LDAP_URI
+LDAP_TLS_INSECURE=False
+LDAP_TLS_CACERTFILE=/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+LDAP_ENABLE_STARTTLS=True
+LDAP_BASE_DN=$LDAP_BASE_DN
+LDAP_QUERY_BIND=$LDAP_READONLY_USER_BIND_DN
+LDAP_QUERY_PASSWORD=$LDAP_READONLY_USER_PASSWORD
+LDAP_USER_FILTER=(&(|({id_attribute}={input})({mail_attribute}={input}))(objectClass=person)(|(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(memberOf=cn=mealie,ou=groups,$LDAP_BASE_DN)))
+LDAP_ADMIN_FILTER=(memberOf=cn=admins,ou=groups,$LDAP_BASE_DN)
+LDAP_ID_ATTRIBUTE=uid
+LDAP_NAME_ATTRIBUTE=cn
+LDAP_MAIL_ATTRIBUTE=mail
 EOFGL
 
 }
