@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=19
+HSHQ_SCRIPT_VERSION=20
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -281,7 +281,7 @@ EOF
   "4" "Download All Docker Images" \
   "5" "Update Linux OS and Reboot" \
   "6" "Uninstall and Remove Everything" \
-  "7" "Email VaultWarden Credentials" \
+  "7" "Email Vaultwarden Credentials" \
   "8" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
@@ -1626,7 +1626,7 @@ function setupHostedVPN()
   RELAYSERVER_LE_CERT_DOMAINS=unset
   while [ "$RELAYSERVER_LE_CERT_DOMAINS" = "unset" ]
   do
-    lecert_def="$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN"
+    lecert_def=$(getLetsEncryptCertsDefault)
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       RELAYSERVER_LE_CERT_DOMAINS="$lecert_def"
     else
@@ -6325,7 +6325,7 @@ function createOtherNetworkApplyHomeServerVPNConfig()
     RELAYSERVER_LE_CERT_DOMAINS=unset
     while [ "$RELAYSERVER_LE_CERT_DOMAINS" = "unset" ]
     do
-      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
+      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$(getLetsEncryptCertsDefault)" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
       if [ $? -ne 0 ]; then
         return 1
       fi
@@ -12633,9 +12633,9 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   fi
-  strInstructions="VaultWarden Import Instructions\n_________________________________________________________________________\n\n"
-  strInstructions=$strInstructions"1. VaultWarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive an email invite. Accept the invite and create an account. \n\n3. After creating account, log in through web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For item 1 (Select format) select Bitwarden(csv) from the drop down.  For item 2, Copy the data after the ======== line below (including field headers) and paste it into the empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (Do not check the Auto-fill on page load option without knowing how it works and the risks)\n\n8. Ensure to delete this email once you have imported the passwords into VaultWarden."
-  sendEmail -s "VaultWarden Login Import" -b "$strInstructions\n\n$strOutput" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+  strInstructions="Vaultwarden Import Instructions\n_________________________________________________________________________\n\n"
+  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive an email invite. Accept the invite and create an account. \n\n3. After creating account, log in through web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For item 1 (Select format) select Bitwarden(csv) from the drop down.  For item 2, Copy the data after the ======== line below (including field headers) and paste it into the empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (Do not check the Auto-fill on page load option without knowing how it works and the risks)\n\n8. Ensure to delete this email once you have imported the passwords into Vaultwarden."
+  sendEmail -s "Vaultwarden Login Import" -b "$strInstructions\n\n$strOutput" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function insertServicesHeimdall()
@@ -12789,6 +12789,11 @@ function insertServicesUptimeKuma()
     insertServiceUptimeKuma "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
   fi
+}
+
+function getLetsEncryptCertsDefault()
+{
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN"
 }
 
 # Containers Installation
@@ -20954,7 +20959,7 @@ EOFJF
   <LdapBindPassword>$LDAP_READONLY_USER_PASSWORD</LdapBindPassword>
   <LdapBaseDn>$LDAP_BASE_DN</LdapBaseDn>
   <LdapSearchFilter>(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)</LdapSearchFilter>
-  <LdapAdminBaseDn>cn=admins,ou=groups,$LDAP_BASE_DN</LdapAdminBaseDn>
+  <LdapAdminBaseDn>cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN</LdapAdminBaseDn>
   <LdapAdminFilter>_disabled_</LdapAdminFilter>
   <LdapSearchAttributes>uid, cn, mail, displayName</LdapSearchAttributes>
   <EnableCaseInsensitiveUsername>false</EnableCaseInsensitiveUsername>
@@ -25021,7 +25026,7 @@ function installGitea()
   sleep 5
   addUserMailu alias $GITEA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin user create --admin --username $GITEA_ADMIN_USERNAME --password $GITEA_ADMIN_PASSWORD --email $GITEA_ADMIN_EMAIL_ADDRESS
-  docker exec -u $USERID gitea-app gitea admin auth add-ldap --name OpenLDAP --security-protocol ldaps --host ldapserver --port 636 --bind-dn "$LDAP_READONLY_USER_BIND_DN" --bind-password "$LDAP_READONLY_USER_PASSWORD" --user-search-base "ou=people,$LDAP_BASE_DN" --user-filter "(&(&(uid=%s)(objectClass=person))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))" --admin-filter "(memberOf=cn=admins,ou=groups,$LDAP_BASE_DN)" --username-attribute uid --firstname-attribute givenName --surname-attribute sn --email-attribute mail --avatar-attribute jpegPhoto --synchronize-users --active
+  docker exec -u $USERID gitea-app gitea admin auth add-ldap --name OpenLDAP --security-protocol ldaps --host ldapserver --port 636 --bind-dn "$LDAP_READONLY_USER_BIND_DN" --bind-password "$LDAP_READONLY_USER_PASSWORD" --user-search-base "ou=people,$LDAP_BASE_DN" --user-filter "(&(&(uid=%s)(objectClass=person))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))" --admin-filter "(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)" --username-attribute uid --firstname-attribute givenName --surname-attribute sn --email-attribute mail --avatar-attribute jpegPhoto --synchronize-users --active
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITEA.$HOMESERVER_DOMAIN {\n"
@@ -25351,8 +25356,8 @@ LDAP_ENABLE_STARTTLS=True
 LDAP_BASE_DN=$LDAP_BASE_DN
 LDAP_QUERY_BIND=$LDAP_READONLY_USER_BIND_DN
 LDAP_QUERY_PASSWORD=$LDAP_READONLY_USER_PASSWORD
-LDAP_USER_FILTER=(&(|({id_attribute}={input})({mail_attribute}={input}))(objectClass=person)(|(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(memberOf=cn=mealie,ou=groups,$LDAP_BASE_DN)))
-LDAP_ADMIN_FILTER=(memberOf=cn=admins,ou=groups,$LDAP_BASE_DN)
+LDAP_USER_FILTER=(&(|({id_attribute}={input})({mail_attribute}={input}))(objectClass=person)(|(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)))
+LDAP_ADMIN_FILTER=(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)
 LDAP_ID_ATTRIBUTE=uid
 LDAP_NAME_ATTRIBUTE=cn
 LDAP_MAIL_ATTRIBUTE=mail
@@ -27476,6 +27481,14 @@ SQLPAD_CONNECTIONS__matrix__username=$MATRIX_DATABASE_USER
 SQLPAD_CONNECTIONS__matrix__password=$MATRIX_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__matrix__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__matrix__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__mealie__name=Mealie
+SQLPAD_CONNECTIONS__mealie__driver=postgres
+SQLPAD_CONNECTIONS__mealie__host=mealie-db
+SQLPAD_CONNECTIONS__mealie__database=$MEALIE_DATABASE_NAME
+SQLPAD_CONNECTIONS__mealie__username=$MEALIE_DATABASE_USER
+SQLPAD_CONNECTIONS__mealie__password=$MEALIE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__mealie__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__mealie__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
@@ -27653,19 +27666,6 @@ function installHeimdall()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_HEIMDALL $MANAGETLS_HEIMDALL "$is_integrate_hshq" $NETDEFAULT_HEIMDALL "$inner_block"
-
-  inner_block=""
-  inner_block=$inner_block">>https://home.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>redir https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks home $MANAGETLS_HEIMDALL "$is_integrate_hshq" $NETDEFAULT_HEIMDALL "$inner_block"
 }
 
 function outputConfigHeimdall()
@@ -28273,6 +28273,21 @@ EOFCF
 }
 # sn-base-domain END
 
+# sn-sub-home BEGIN
+(sn-sub-home) {
+  https://home.$HOMESERVER_DOMAIN {
+    import $CADDY_SNIPPET_TLS_HSHQ
+    import $CADDY_SNIPPET_RIP
+    import $CADDY_SNIPPET_FWDAUTH
+    import $CADDY_SNIPPET_SAFEHEADER
+    handle @subnet {
+      redir https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN
+    }
+    respond 404
+  }
+}
+# sn-sub-home END
+
 # sn-sub-${SUB_FILES} BEGIN
 (sn-sub-${SUB_FILES}) {
   http://$SUB_FILES.$HOMESERVER_DOMAIN {
@@ -28398,13 +28413,13 @@ EOFCF
       cat <<EOFCF > $HSHQ_STACKS_DIR/$caddy_net_name/Caddyfile
 {
   email $EMAIL_ADMIN_EMAIL_ADDRESS
+  renew_interval {\$CERT_RENEW_INTERVAL}
   pki {
     ca {\$CADDY_HSHQ_CA_NAME} {
-      intermediate_cn "$CERTS_INTERNAL_INTERMEDIATE_CN - $HOMESERVER_NAME"
+      intermediate_cn "$CERTS_INTERNAL_INTERMEDIATE_CN"
       intermediate_lifetime {\$CERT_INTERMEDIATE_LIFETIME}
     }
   }
-  renew_interval {\$CERT_RENEW_INTERVAL}
 }
 
 import /snippets/head.snip
@@ -28495,13 +28510,13 @@ EOFCF
 {
   email $EMAIL_ADMIN_EMAIL_ADDRESS
   acme_ca https://acme-v02.api.letsencrypt.org/directory
+  renew_interval {\$CERT_RENEW_INTERVAL}
   pki {
     ca {\$CADDY_HSHQ_CA_NAME} {
-      intermediate_cn "$CERTS_INTERNAL_INTERMEDIATE_CN - $HOMESERVER_NAME"
+      intermediate_cn "$CERTS_INTERNAL_INTERMEDIATE_CN"
       intermediate_lifetime {\$CERT_INTERMEDIATE_LIFETIME}
     }
   }
-  renew_interval {\$CERT_RENEW_INTERVAL}
 }
 
 import /snippets/head.snip
@@ -28613,7 +28628,7 @@ import /config/CaddyfileBody
 EOFCF
       else
         # This should never happen
-        echo "Undefined error in outputConfigCaddy, exiting..."
+        echo "Undefined error(1) in outputConfigCaddy, exiting..."
         exit 1
       fi
       ;;
@@ -28685,6 +28700,11 @@ import /snippets/head.snip
 import /config/CaddyfileBody
 
 EOFCF
+      ;;
+    *)
+      # This should never happen
+      echo "Undefined error(2) in outputConfigCaddy, exiting..."
+      exit 1
       ;;
   esac
 
