@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=20
+HSHQ_SCRIPT_VERSION=21
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -51,6 +51,9 @@ function main()
   NET_DBS_BRIDGE_NAME=brdockdbs
   NET_DBS_SUBNET=172.16.5.0/24
   NET_DBS_SUBNET_PREFIX=172.16.5
+  NET_LDAP_BRIDGE_NAME=brdockldap
+  NET_LDAP_SUBNET=172.16.6.0/24
+  NET_LDAP_SUBNET_PREFIX=172.16.6
   MAX_DOCKER_PULL_TRIES=20
   MENU_WIDTH=85
   MENU_HEIGHT=25
@@ -63,7 +66,7 @@ function main()
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
-  RELAYSERVER_UTILS_LIST="curl|curl whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
+  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
   checksumHash=$(echo $(sha256sum $0) | sed 's/ /\n/g' | sed -n '1p')
   while getopts ':a:c:e:i' opt; do
     case "$opt" in
@@ -149,7 +152,7 @@ EOF
 function showNotInstalledMenu()
 {
   set +e
-  sudo apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update
   notinstalledmenu=$(cat << EOF
 
 $logo
@@ -192,7 +195,7 @@ EOF
       set +e
       return 1 ;;
     3)
-      sudo apt update && sudo apt upgrade -y
+      sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y
       installDependencies
       pullBaseServicesDockerImages
       sudo reboot ;;
@@ -229,8 +232,9 @@ EOF
   menures=$(whiptail --title "Select an option" --menu "$installedmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Services" \
   "2" "Network" \
-  "3" "Misc Utils" \
-  "4" "Exit" 3>&1 1>&2 2>&3)
+  "3" "HSHQ Utils" \
+  "4" "System Utils" \
+  "5" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -257,15 +261,19 @@ EOF
       set +e
       return 1 ;;
     3)
-      showUtilsMenu
+      showHSHQUtilsMenu
       set +e
 	  return 1 ;;
     4)
+      showSysUtilsMenu
+      set +e
+	  return 1 ;;
+    5)
 	  return 0 ;;
   esac
 }
 
-function showUtilsMenu()
+function showHSHQUtilsMenu()
 {
   set +e
   utilmenu=$(cat << EOF
@@ -278,11 +286,8 @@ EOF
   "1" "Edit Configuration File" \
   "2" "Generate Signed Certificate" \
   "3" "Reset Caddy Data" \
-  "4" "Download All Docker Images" \
-  "5" "Update Linux OS and Reboot" \
-  "6" "Uninstall and Remove Everything" \
-  "7" "Email Vaultwarden Credentials" \
-  "8" "Exit" 3>&1 1>&2 2>&3)
+  "4" "Email Vaultwarden Credentials" \
+  "5" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -316,20 +321,53 @@ EOF
       set +e
       return 1 ;;
     4)
+      checkLoadConfig
+      emailVaultwardenCredentials false ;;
+    5)
+	  return 0 ;;
+  esac
+}
+
+function showSysUtilsMenu()
+{
+  set +e
+  utilmenu=$(cat << EOF
+
+$logo
+
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Update Linux OS and Reboot" \
+  "2" "Download All Docker Images" \
+  "3" "Restart All Stacks" \
+  "4" "Uninstall and Remove Everything" \
+  "5" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  set -e
+  case $menures in
+    0)
+      set +e
+	  return 1 ;;
+    1)
+      performExitFunctions
+      set +e
+      sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y
+      sudo reboot ;;
+    2)
       pullDockerImages
       set +e
       return 1 ;;
-    5)
-      performExitFunctions
-      set +e
-      sudo apt update && sudo apt upgrade -y
-      sudo reboot ;;
-    6)
-      nukeHSHQ ;;
-    7)
+    3)
       checkLoadConfig
-      emailVaultwardenCredentials false ;;
-    8)
+      restartAllStacks
+      set +e
+      return 1 ;;
+    4)
+      nukeHSHQ ;;
+    5)
 	  return 0 ;;
   esac
 }
@@ -459,18 +497,67 @@ EOFSC
   sudo sysctl --system >/dev/null 2>/dev/null
 }
 
+function updateMOTD()
+{
+  cat <<EOFMD > $HOME/88-hshq
+#!/bin/bash
+
+echo
+echo "#=================================================================#"
+echo "#░▒█░▒█░░▄▄░░▄▄░▄▄░▄▄▄░▒█▀▀▀█░▄▄▄░▄▄▄░░▄░░░▄░▄▄▄░▄▄▄░░▒█░▒█░▒█▀▀█ #"
+echo "#░▒█▀▀█░█░░█░█░█░█░▄▄▄░░▀▀▀▄▄░▄▄▄░▄▄▄▀░▀▄░▄▀░▄▄▄░▄▄▄▀░▒█▀▀█░▒█░▒█ #"
+echo "#░▒█░▒█░▀▄▄▀░█░░▒█░▄▄▄░▒█▄▄▄█░▄▄▄░▄▄▄▄░░▀█▀░░▄▄▄░▄▄▄▄░▒█░▒█░░▀▀█▄ #"
+echo "#=================================================================#"
+echo
+
+echo "    Linux OS:  \$(lsb_release -d | cut -d":" -f2 | xargs)"
+if [ -f /home/$USERNAME/hshq/data/lib/hshqlib.sh ]; then
+  echo "HSHQ Version:  \$(sed -n 2p /home/$USERNAME/hshq/data/lib/hshqlib.sh | cut -d'=' -f2)"
+fi
+printf "Memory Usage:  %.1f%% of \$(free -h | awk  '/Mem:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+printf "  Swap Usage:  %.1f%% of \$(free -h | awk  '/Swap:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+
+echo
+echo "Disks: "
+echo "-------------------------------------------------------------------"
+echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
+echo "-------------------------------------------------------------------"
+df -h | grep "^/dev"
+echo
+echo
+
+# Let's only show zombie count if greater than 10
+zombie_count=\$(ps aux | grep "defunct" | wc -l)
+if [ \$zombie_count -gt 10 ]; then
+  echo "=> There are \$zombie_count zombie processes."
+  echo
+  echo
+fi
+
+echo "Enter 'bash hshq.sh' to run the HomeServerHQ script."
+echo
+EOFMD
+  chmod 755 $HOME/88-hshq
+  sudo chown root:root $HOME/88-hshq
+  sudo chmod -x /etc/update-motd.d/*
+  sudo mv $HOME/88-hshq /etc/update-motd.d/
+  if [ -f /etc/motd ]; then
+    sudo mv /etc/motd /etc/motd.old
+  fi
+}
+
 function installDependencies()
 {
   set +e
   # Install utils
   if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
     echo "Installing ssmtp, please wait..."
-    sudo apt install -y ssmtp
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y ssmtp
   fi
 
   if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
     echo "Installing mailx, please wait..."
-    sudo apt install -y mailutils
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y mailutils
   fi
 
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
@@ -497,12 +584,12 @@ EOFSM
     if [[ "$(isProgramInstalled $util)" = "false" ]]; then
       lib_name=$(echo $util | cut -d"|" -f2)
       echo "Installing $lib_name, please wait..."
-      sudo apt install -y $lib_name
+      sudo DEBIAN_FRONTEND=noninteractive apt install -y $lib_name
     fi
   done
 
   for rem_util in $APT_REMOVE_LIST; do
-    sudo apt remove -y $rem_util
+    sudo DEBIAN_FRONTEND=noninteractive apt remove -y $rem_util
   done
 
   if ! [ -f /etc/rsyslog.d/docker-logs.conf ]; then
@@ -510,7 +597,7 @@ EOFSM
     sudo systemctl status rsyslog >/dev/null 2>/dev/null
     if [ $? -ne 0 ]; then
       echo "Installing rsyslog, please wait..."
-      sudo apt install -y rsyslog
+      sudo DEBIAN_FRONTEND=noninteractive apt install -y rsyslog
       sudo systemctl enable rsyslog
       sudo systemctl start rsyslog
     fi
@@ -535,25 +622,25 @@ EOFSM
   if ! [ -z $DESKTOP_ENV ]; then
     case $DESKTOP_ENV in
       "kde")
-        sudo apt install -y kde-full
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y kde-full
 	    ;;
       "gnome")
-        sudo apt install -y ubuntu-gnome-desktop
+        sudo DEBIAN_FRONTEND=noninteractive apt install -y ubuntu-gnome-desktop
 	    ;;
     esac
     if ! [ $DESKTOP_ENV = "na" ]; then
       # Default browsers are so-so...
       sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
       echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
-      sudo apt update
-      sudo apt install -y brave-browser
+      sudo DEBIAN_FRONTEND=noninteractive apt update
+      sudo DEBIAN_FRONTEND=noninteractive apt install -y brave-browser
       if ! [ -z "$CERTS_ROOT_CA_NAME" ]; then
         mkdir -p $HOME/.pki
         certutil -d sql:$HOME/.pki/nssdb -A -t "CT,C,C" -n "$HOMESERVER_NAME Root CA" -i /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
       fi
     fi
   fi
-  sudo apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
 }
 
@@ -932,7 +1019,7 @@ function initConfig()
 
   if [[ "$(isProgramInstalled pwgen)" = "false" ]]; then
     echo "Installing pwgen, please wait..."
-    sudo apt install -y pwgen >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y pwgen >/dev/null 2>/dev/null
   fi
 
   while [ -z "$EMAIL_ADMIN_USERNAME" ]
@@ -996,11 +1083,11 @@ function initInstallation()
 {
   if [[ "$(isProgramInstalled screen)" = "false" ]]; then
     echo "Installing screen, please wait..."
-    sudo apt install -y screen >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y screen >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled nano)" = "false" ]]; then
     echo "Installing nano, please wait..."
-    sudo apt install -y nano >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y nano >/dev/null 2>/dev/null
   fi
   # Show info to user and prompt for confirmation
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -1051,7 +1138,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}Two log files of the installation process are generated and stored in $HSHQ_BASE_DIR.\n\n"
   strInstallConfig="${strInstallConfig}The system will automatically reboot upon completion.\n\n"
   strInstallConfig="${strInstallConfig}If you want to completely remove everything, run the utility inside\n"
-  strInstallConfig="${strInstallConfig}this script(Misc Utils -> Uninstall and Remove Everything)\n"
+  strInstallConfig="${strInstallConfig}this script(System Utils -> Uninstall and Remove Everything)\n"
   strInstallConfig="${strInstallConfig}and follow the prompts.\n\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strInstallConfig="${strInstallConfig}The installation must also be performed on your Relay Server.\n"
@@ -1149,8 +1236,9 @@ function performBaseInstallation()
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set -e
   setSudoTimeoutInstall
-  sudo apt update && sudo apt upgrade -y
+  sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   setupStaticIP
+  updateMOTD
   installLogNotify "Install Dependencies"
   installDependencies
   pullBaseServicesDockerImages
@@ -1465,7 +1553,7 @@ function setupVPNConnection()
 {
   if [[ "$(isProgramInstalled wg)" = "false" ]]; then
     echo "Installing WireGuard utils, please wait..."
-    sudo apt install -y wireguard-tools >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y wireguard-tools >/dev/null 2>/dev/null
   fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "none" ]; then
     initWireguardDB
@@ -1543,23 +1631,23 @@ function setupHostedVPN()
 {
   if [[ "$(isProgramInstalled dig)" = "false" ]]; then
     echo "Installing dig, please wait..."
-    sudo apt install -y dnsutils >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsutils >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled sshpass)" = "false" ]]; then
     echo "Installing sshpass, please wait..."
-    sudo apt install -y sshpass >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y sshpass >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled sipcalc)" = "false" ]]; then
     echo "Installing sipcalc, please wait..."
-    sudo apt install -y sipcalc >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y sipcalc >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled jq)" = "false" ]]; then
     echo "Installing jq, please wait..."
-    sudo apt install -y jq >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y jq >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled grepcidr)" = "false" ]]; then
     echo "Installing grepcidr, please wait..."
-    sudo apt install -y grepcidr >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr >/dev/null 2>/dev/null
   fi
 
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
@@ -2159,20 +2247,67 @@ EOFSC
   sudo sysctl --system >/dev/null 2>/dev/null
 }
 
+function updateMOTD()
+{
+  cat <<EOFMD > \$HOME/88-hshq
+#!/bin/bash
+
+echo
+echo "#=================================================================#"
+echo "#░▒█░▒█░░▄▄░░▄▄░▄▄░▄▄▄░▒█▀▀▀█░▄▄▄░▄▄▄░░▄░░░▄░▄▄▄░▄▄▄░░▒█░▒█░▒█▀▀█ #"
+echo "#░▒█▀▀█░█░░█░█░█░█░▄▄▄░░▀▀▀▄▄░▄▄▄░▄▄▄▀░▀▄░▄▀░▄▄▄░▄▄▄▀░▒█▀▀█░▒█░▒█ #"
+echo "#░▒█░▒█░▀▄▄▀░█░░▒█░▄▄▄░▒█▄▄▄█░▄▄▄░▄▄▄▄░░▀█▀░░▄▄▄░▄▄▄▄░▒█░▒█░░▀▀█▄ #"
+echo "#=================================================================#"
+echo
+
+echo "    Linux OS:  \\\$(lsb_release -d | cut -d":" -f2 | xargs)"
+if [ -f /home/\$USERNAME/hshq/data/lib/hshqlib.sh ]; then
+  echo "HSHQ Version:  \\\$(sed -n 2p /home/\$USERNAME/hshq/data/lib/hshqlib.sh | cut -d'=' -f2)"
+fi
+printf "Memory Usage:  %.1f%% of \\\$(free -h | awk  '/Mem:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+printf "  Swap Usage:  %.1f%% of \\\$(free -h | awk  '/Swap:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+
+echo
+echo "Disks: "
+echo "-------------------------------------------------------------------"
+echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
+echo "-------------------------------------------------------------------"
+df -h | grep "^/dev"
+echo
+echo
+
+# Let's only show zombie count if greater than 10
+zombie_count=\\\$(ps aux | grep "defunct" | wc -l)
+if [ \\\$zombie_count -gt 10 ]; then
+  echo "=> There are \\\$zombie_count zombie processes."
+  echo
+  echo
+fi
+
+EOFMD
+  chmod 755 \$HOME/88-hshq
+  sudo chown root:root \$HOME/88-hshq
+  sudo chmod -x /etc/update-motd.d/*
+  sudo mv \$HOME/88-hshq /etc/update-motd.d/
+  if [ -f /etc/motd ]; then
+    sudo mv /etc/motd /etc/motd.old
+  fi
+}
+
 function installDependencies()
 {
   UTILS_LIST="$RELAYSERVER_UTILS_LIST"
   APT_REMOVE_LIST="$APT_REMOVE_LIST"
 
-  sudo apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update
   if [[ "\$(isProgramInstalled needrestart)" = "true" ]]; then
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\\\$nrconf{kernelhints} = -1;/\\\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-    sudo apt remove -y needrestart >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart >/dev/null 2>/dev/null
   fi
-  sudo apt upgrade -y
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
 
-  sudo apt install ssmtp -y
+  sudo DEBIAN_FRONTEND=noninteractive apt install ssmtp -y
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
 mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
@@ -2189,7 +2324,7 @@ root:$EMAIL_SMTP_EMAIL_ADDRESS
 \$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
 EOFSM
 
-  sudo apt install mailutils -y
+  sudo DEBIAN_FRONTEND=noninteractive apt install mailutils -y
   getent group mailsenders >/dev/null || sudo groupadd mailsenders
   sudo usermod -aG mailsenders \$USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
@@ -2199,7 +2334,7 @@ EOFSM
   sudo systemctl status rsyslog >/dev/null 2>/dev/null
   if [ \$? -ne 0 ]; then
     echo "Installing rsyslog, please wait..."
-    sudo apt install -y rsyslog >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y rsyslog >/dev/null 2>/dev/null
     sudo systemctl enable rsyslog
     sudo systemctl start rsyslog
   fi
@@ -2209,30 +2344,31 @@ EOFSM
     if [[ "\$(isProgramInstalled \$util)" = "false" ]]; then
       lib_name=\$(echo \$util | cut -d"|" -f2)
       echo "Installing \$lib_name, please wait..."
-      sudo apt install -y \$lib_name >/dev/null 2>/dev/null
+      sudo DEBIAN_FRONTEND=noninteractive apt install -y \$lib_name >/dev/null 2>/dev/null
     fi
   done
 
   for rem_util in \$APT_REMOVE_LIST; do
-    sudo apt remove -y \$rem_util
+    sudo DEBIAN_FRONTEND=noninteractive apt remove -y \$rem_util
   done
 
   updateSysctl
+  updateMOTD
 
   util="docker|docker"
   if ! [ "\$(isProgramInstalled \$util)" = "true" ]; then
     # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
     echo "Installing docker, please wait..."
-    sudo apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
     sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
     echo "deb [arch=\$(dpkg --print-architecture) \
     signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
     https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | \
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt update
     echo "Installing docker, please wait..."
-    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
   fi
 
   sudo usermod -aG docker \$USERNAME
@@ -2277,7 +2413,7 @@ EOFRL
   fi
   sudo systemctl restart rsyslog
   sudo systemctl restart docker
-  sudo apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
 }
 
 function outputNukeScript()
@@ -2342,7 +2478,7 @@ function main()
   sudo docker network prune -f
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
-  sudo apt-get remove --purge wazuh-agent -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -2352,6 +2488,12 @@ function main()
   sudo rm -f \$HOME/$NUKE_SCRIPT_NAME
   sudo rm -fr \$HOME/.ssh/*
   sudo rm -f $HSHQ_SCRIPT_OPEN
+  sudo rm /etc/update-motd.d/88-hshq
+  if [ -f /etc/motd.old ]; then
+    sudo mv /etc/motd.old /etc/motd
+  else
+    sudo chmod +x /etc/update-motd.d/*
+  fi
 }
 
 main "\\\$@"
@@ -2714,8 +2856,8 @@ function startWazuhAgent()
 {
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo apt-get update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" apt-get install wazuh-agent
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -2775,8 +2917,8 @@ function main()
   else
     if [[ "\$(isProgramInstalled screen)" = "false" ]]; then
       echo "Installing screen, please wait..."
-      sudo apt update
-      sudo apt install -y screen >/dev/null 2>/dev/null
+      sudo DEBIAN_FRONTEND=noninteractive apt update
+      sudo DEBIAN_FRONTEND=noninteractive apt install -y screen >/dev/null 2>/dev/null
     fi
     screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i
   fi
@@ -3450,8 +3592,8 @@ function startWazuhAgent()
 {
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo apt-get update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" apt-get install wazuh-agent
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -3905,6 +4047,7 @@ function installMailRelay()
   mail_relay_subnet=\$(getDockerSubnet mail-relay-tmp)
   mail_relay_net_prefix=\$(echo \$mail_relay_subnet | rev | cut -d '.' -f2- | rev)
   docker network rm mail-relay-tmp
+  docker network create -o com.docker.network.bridge.name=brd-mailrelay --driver=bridge --subnet \$mail_relay_subnet dock-mailrelay
 
   pw_hash=\$(docker run --rm $IMG_MAIL_RELAY_RSPAMD rspamadm pw -p $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)
   outputConfigMailRelay
@@ -3933,7 +4076,7 @@ services:
       - no-new-privileges:true
     networks:
       - dock-ext-net
-      - int-mail-relay-net
+      - dock-mailrelay-net
     ports:
       - 25:25
       - 587:587
@@ -3979,7 +4122,7 @@ services:
     networks:
       - dock-ext-net
       - dock-proxy-net
-      - int-mail-relay-net
+      - dock-mailrelay-net
     dns:
       - \\\${SUBNET_PREFIX}.253
     depends_on:
@@ -4005,7 +4148,7 @@ services:
       - no-new-privileges:true
     networks:
       dock-ext-net:
-      int-mail-relay-net:
+      dock-mailrelay-net:
         ipv4_address: \\\${SUBNET_PREFIX}.253
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -4023,7 +4166,7 @@ services:
 #      - no-new-privileges:true
 #    networks:
 #      - dock-ext-net
-#      - int-mail-relay-net
+#      - dock-mailrelay-net
 #    volumes:
 #      - /etc/localtime:/etc/localtime:ro
 #      - /etc/timezone:/etc/timezone:ro
@@ -4037,7 +4180,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - int-mail-relay-net
+      - dock-mailrelay-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -4080,14 +4223,9 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
-  int-mail-relay-net:
-    driver: bridge
-    internal: true
-    enable_ipv6: false
-    ipam:
-      driver: default
-      config:
-        - subnet: \\\${SUBNET}
+  dock-mailrelay-net:
+    name: dock-mailrelay
+    external: true
 
 EOFPF
 
@@ -4319,6 +4457,7 @@ function installWireGuard()
   clientdns_subnet=\$(getDockerSubnet tmpnet)
   clientdns_subnet_prefix=\$(echo \$clientdns_subnet | rev | cut -d "." -f2- | rev)
   docker network rm tmpnet >/dev/null
+  docker network create -o com.docker.network.bridge.name=brcd-user1 --driver=bridge --subnet \$clientdns_subnet cdns-user1
 
   outputConfigWireGuard
   sudo ln /etc/wireguard/$RELAYSERVER_WG_INTERFACE_NAME.conf \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/$RELAYSERVER_WG_INTERFACE_NAME.conf
@@ -4568,7 +4707,7 @@ services:
     networks:
       dock-ext-net:
       dock-proxy-net:
-      int-clientdns-net:
+      cdns-user1-net:
         ipv4_address: \\\${CLIENTDNS_SUBNET_PREFIX}.253
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -4588,7 +4727,7 @@ services:
       - NET_ADMIN
     networks:
       - dock-ext-net
-      - int-clientdns-net
+      - cdns-user1-net
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
     volumes:
@@ -4604,14 +4743,9 @@ networks:
   dock-ext-net:
     name: dock-ext
     external: true
-  int-clientdns-net:
-    driver: bridge
-    internal: true
-    enable_ipv6: false
-    ipam:
-      driver: default
-      config:
-        - subnet: \\\${CLIENTDNS_SUBNET_PREFIX}.0/24
+  cdns-user1-net:
+    name: cdns-user1
+    external: true
 EOFCD
 
   cat <<EOFCD > \$HOME/clientdns.env
@@ -7927,6 +8061,445 @@ function getStackID()
   fi
 }
 
+function restartAllStacks()
+{
+  sudo -k
+  sudo -v
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]} - 1))
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
+    sleep 1
+  done
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
+  echo "Restarting Docker..."
+  sudo systemctl restart docker
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} start $portainerToken
+    sleep 3
+  done
+}
+
+function updateDockerNetworkingV21()
+{
+  showMessageBox "Version 21 Update" "An update needs to be applied to your system. Please be patient as it will take around 10 minutes to complete. All running stacks will be stopped and then restarted. Press okay to continue."
+  sudo -v
+  set -e
+  cdns_stack_name="user1"
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  set +e
+  startStopStack uptimekuma stop $portainerToken > /dev/null 2> /dev/null
+  set -e
+  mailuStackID=$(getStackID mailu "$portainerToken")
+  cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
+
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]} - 1))
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
+    sleep 1
+  done
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2> /dev/null
+  echo "Restarting Docker..."
+  sudo systemctl restart docker
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2> /dev/null
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  docker network rm dock-ldap > /dev/null 2> /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
+  set +e
+  docker network rm dock-mailu-ext > /dev/null 2> /dev/null
+  docker network rm dock-mailu-int > /dev/null 2> /dev/null
+  docker network rm cdns-${cdns_stack_name} > /dev/null 2> /dev/null
+  set -e
+
+  # Create temp network to determine available subnet
+  docker network create --driver=bridge mailu-ext-tmp > /dev/null 2> /dev/null
+  mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
+  mailu_external_net_prefix=$(echo $mailu_external_subnet | rev | cut -d '.' -f2- | rev)
+  docker network rm mailu-ext-tmp > /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext > /dev/null 2> /dev/null
+
+  # Create temp network to determine available subnet
+  docker network create --driver=bridge mailu-int-tmp > /dev/null 2> /dev/null
+  mailu_internal_subnet=$(getDockerSubnet mailu-int-tmp)
+  docker network rm mailu-int-tmp > /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int > /dev/null 2> /dev/null
+
+  if ! [ -z $cdnsStackID ]; then
+    docker network create --driver=bridge tmpnet > /dev/null 2> /dev/null
+    clientdns_subnet=$(getDockerSubnet tmpnet)
+    clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
+    docker network rm tmpnet >/dev/null
+    docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null 2> /dev/null
+  fi
+
+  # Replace Mailu stack
+  is_antivirus_commented_out=""
+  if [ "$(isServiceDisabled clamav)" = "true" ]; then
+    is_antivirus_commented_out="#"
+  fi
+  cat <<EOFMC > $HOME/mailu-compose.yml
+version: '3.5'
+
+services:
+  front:
+    image: $IMG_MAILU_FRONT
+    container_name: mailu-front
+    hostname: mailu-front
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-front
+    networks:
+      - dock-mailu-ext-net
+      - dock-internalmail-net
+      - dock-proxy-net
+    ports:
+      - "25:25"
+      - "465:465"
+      - "587:587"
+      - "110:110"
+      - "995:995"
+      - "143:143"
+      - "993:993"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
+
+  resolver:
+    image: $IMG_MAILU_UNBOUND
+    container_name: mailu-unbound
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      dock-mailu-ext-net:
+        ipv4_address: \${SUBNET_PREFIX}.253
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  redis:
+    image: $IMG_REDIS
+    container_name: mailu-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-mailu-redis:/bitnami/redis/data
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+
+  admin:
+    image: $IMG_MAILU_ADMIN
+    container_name: mailu-admin
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-admin
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - redis
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/data:/data
+      - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
+
+  imap:
+    image: $IMG_MAILU_IMAP
+    container_name: mailu-imap
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-imap
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/mail:/mail
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
+
+  smtp:
+    image: $IMG_MAILU_SMTP
+    container_name: mailu-smtp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-smtp
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
+      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
+
+  oletools:
+    image: $IMG_MAILU_OLETOOLS
+    container_name: mailu-oletools
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-int-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  antispam:
+    image: $IMG_MAILU_ANTISPAM
+    container_name: mailu-antispam
+    hostname: antispam
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-antispam
+    networks:
+      - dock-mailu-ext-net
+      - dock-mailu-int-net
+      - dock-proxy-net
+    dns:
+      - \${SUBNET_PREFIX}.253
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd:/etc/rspamd/override.d
+
+$is_antivirus_commented_out  antivirus:
+$is_antivirus_commented_out    image: $IMG_MAILU_ANTIVIRUS
+$is_antivirus_commented_out    container_name: mailu-antivirus
+$is_antivirus_commented_out    restart: unless-stopped
+$is_antivirus_commented_out    env_file: stack.env
+$is_antivirus_commented_out    security_opt:
+$is_antivirus_commented_out      - no-new-privileges:true
+$is_antivirus_commented_out    networks:
+$is_antivirus_commented_out      - dock-mailu-ext-net
+$is_antivirus_commented_out      - dock-proxy-net
+$is_antivirus_commented_out    volumes:
+$is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
+$is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
+$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
+
+  webdav:
+    image: $IMG_MAILU_WEBDAV
+    container_name: mailu-webdav
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/dav:/data
+
+  fetchmail:
+    image: $IMG_MAILU_FETCHMAIL
+    container_name: mailu-fetchmail
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
+
+  webmail:
+    image: $IMG_MAILU_WEBMAIL
+    container_name: mailu-webmail
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - imap
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/webmail:/data
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
+
+volumes:
+  v-mailu-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/mailu/redis
+
+networks:
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-mailu-int-net:
+    name: dock-mailu-int
+    external: true
+  dock-mailu-ext-net:
+    name: dock-mailu-ext
+    external: true
+EOFMC
+
+  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$mailuStackID/stack.env $HOME/mailu.env
+  sudo chown $USERNAME:$USERNAME $HOME/mailu.env
+  sed -i "s|^SUBNET=.*|SUBNET=${mailu_external_subnet}|g" $HOME/mailu.env
+  sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${mailu_external_net_prefix}|g" $HOME/mailu.env
+  echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2> /dev/null
+  rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
+
+  if ! [ -z $cdnsStackID ]; then
+    # Replace ClientDNS stack
+    cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
+version: '3.5'
+
+services:
+  clientdns-${cdns_stack_name}-dnsmasq:
+    image: $IMG_DNSMASQ
+    container_name: clientdns-${cdns_stack_name}-dnsmasq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      dock-ext-net:
+      dock-proxy-net:
+      cdns-${cdns_stack_name}-net:
+        ipv4_address: \${CLIENTDNS_SUBNET_PREFIX}.253
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/dnsmasq.conf:/etc/dnsmasq.conf
+    environment:
+      - HTTP_USER=$CLIENTDNS_USER1_ADMIN_USERNAME
+      - HTTP_PASS=$CLIENTDNS_USER1_ADMIN_PASSWORD
+
+  clientdns-${cdns_stack_name}-wireguard:
+    image: $IMG_WIREGUARD
+    container_name: clientdns-${cdns_stack_name}-wireguard
+    hostname: clientdns-${cdns_stack_name}-wireguard
+    restart: unless-stopped
+    env_file: stack.env
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - dock-ext-net
+      - cdns-${cdns_stack_name}-net
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/Corefile:/config/coredns/Corefile:ro
+      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf:/config/wg0.conf
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  cdns-${cdns_stack_name}-net:
+    name: cdns-${cdns_stack_name}
+    external: true
+
+EOFGL
+
+    rm -f $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/Corefile
+    cat <<EOFCF > $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/Corefile
+. {
+    loop
+    reload 15s
+    forward . ${clientdns_subnet_prefix}.253
+}
+EOFCF
+
+    sudo cp $HSHQ_STACKS_DIR/portainer/compose/$cdnsStackID/stack.env $HOME/clientdns-${cdns_stack_name}.env
+    sudo chown $USERNAME:$USERNAME $HOME/clientdns-${cdns_stack_name}.env
+    sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
+    echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2> /dev/null
+    rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
+  fi
+
+  set +e
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} start $portainerToken > /dev/null 2> /dev/null
+    sleep 2
+  done
+  startStopStack uptimekuma start $portainerToken
+  docker container restart ofelia
+  set -e
+}
+
 function envToJson()
 {
   # A kludgy function, but spaces and multiple equal signs in the values are just a pain...
@@ -8097,6 +8670,17 @@ function startStopStack()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   stackID=$(getStackID $stackname "$portainerToken")
+  startStopStackByID $stackID $startStop $portainerToken
+}
+
+function startStopStackByID()
+{
+  stackID=$1
+  startStop=$2
+  portainerToken=$3
+  if [ -z "$portainerToken" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
 }
 
@@ -10036,6 +10620,13 @@ function checkUpdateVersion()
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 21 ]; then
+    echo "Updating to Version 21..."
+    updateMOTD
+    updateDockerNetworkingV21
+    HSHQ_VERSION=21
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -10173,7 +10764,7 @@ function nukeHSHQ()
   sudo docker network prune -f
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
-  sudo apt-get remove --purge wazuh-agent -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -10184,6 +10775,12 @@ function nukeHSHQ()
   sudo rm -fr $HSHQ_BASE_DIR/*.log
   sudo rm -fr $HSHQ_INSTALL_CFG
   sudo rm -fr $HOME/.ssh/*
+  sudo rm /etc/update-motd.d/88-hshq
+  if [ -f /etc/motd.old ]; then
+    sudo mv /etc/motd.old /etc/motd
+  else
+    sudo chmod +x /etc/update-motd.d/*
+  fi
   sudo rm -f $HSHQ_SCRIPT_OPEN
   #sudo reboot
   exit 2
@@ -10638,7 +11235,7 @@ function outputWireguardScripts()
 {
   if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
     echo "Installing networkd-dispatcher, please wait..."
-    sudo apt update && sudo apt install -y networkd-dispatcher >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y networkd-dispatcher >/dev/null 2>/dev/null
   fi
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh >/dev/null <<EOFWG
 #!/bin/bash
@@ -10956,7 +11553,7 @@ EOFWG
   sudo systemctl enable createWGDockerNetworks
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
     echo "Installing sqlite3, please wait..."
-    sudo apt install -y sqlite3 >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y sqlite3 >/dev/null 2>/dev/null
   fi
 }
 
@@ -11032,8 +11629,8 @@ function installDocker()
 function removeDocker()
 {
   sudo systemctl stop docker
-  sudo apt-get purge -y docker-engine docker docker.io docker-ce docker-ce-cli docker-compose
-  sudo apt-get autoremove -y --purge docker-engine docker docker.io docker-ce docker-compose
+  sudo DEBIAN_FRONTEND=noninteractive apt purge -y docker-engine docker docker.io docker-ce docker-ce-cli docker-compose
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y --purge docker-engine docker docker.io docker-ce docker-compose
   sudo rm -rf /var/lib/docker /etc/docker
   sudo rm -rf /etc/apparmor.d/docker
   sudo rm -rf /var/run/docker.sock
@@ -11101,21 +11698,21 @@ function installDockerUbuntu2004Rooted()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   echo "Installing docker, please wait..."
-  sudo apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
   sudo systemctl restart rsyslog
   sudo systemctl restart docker
 }
 
 function installDockerUbuntu2004Rootless()
 {
-  sudo apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update
   # Install dependencies for rootless docker (https://linuxhandbook.com/rootless-docker/)
-  sudo apt install -y uidmap dbus-user-session fuse-overlayfs >/dev/null 2>/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y uidmap dbus-user-session fuse-overlayfs >/dev/null 2>/dev/null
   sudo systemctl disable --now docker.service docker.socket
   # Install the rootless docker package (https://linuxhandbook.com/rootless-docker/)
   curl -fsSL https://get.docker.com/rootless | sh
@@ -11136,19 +11733,19 @@ function initCertificateAuthority()
   fi
   if [[ "$(isProgramInstalled openssl)" = "false" ]]; then
     echo "Installing openssl, please wait..."
-    sudo apt install -y openssl >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y openssl >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled faketime)" = "false" ]]; then
     echo "Installing faketime, please wait..."
-    sudo apt install -y faketime >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y faketime >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled bc)" = "false" ]]; then
     echo "Installing bc, please wait..."
-    sudo apt install -y bc >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y bc >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled htpasswd)" = "false" ]]; then
     echo "Installing htpasswd, please wait..."
-    sudo apt install -y apache2-utils >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y apache2-utils >/dev/null 2>/dev/null
   fi
 
   if [ -z "$CERTS_ROOT_CA_NAME" ]; then
@@ -11453,6 +12050,7 @@ function createDockerNetworks()
   sudo $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
   docker network create -o com.docker.network.bridge.name=$NET_INTERNALMAIL_BRIDGE_NAME --driver=bridge --subnet $NET_INTERNALMAIL_SUBNET --internal dock-internalmail > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_DBS_BRIDGE_NAME --driver=bridge --subnet $NET_DBS_SUBNET --internal dock-dbs > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
 }
 
 # Services Functions
@@ -16072,9 +16670,6 @@ function installOpenLDAP()
 
   cp $HSHQ_SSL_DIR/dhparam.pem $HSHQ_STACKS_DIR/openldap/certs/dhparam.pem
   cp $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt $HSHQ_STACKS_DIR/openldap/certs/${CERTS_ROOT_CA_NAME}.crt
-  set +e
-  docker network create --driver=bridge --internal dock-ldap >/dev/null 2>/dev/null
-  set -e
   installStack openldap ldapserver "slapd starting" $HOME/openldap.env
 
   docker exec ldapserver chmod +x /tmp/initconfig/initdbscript.sh
@@ -16430,11 +17025,13 @@ function installMailu()
   mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
   mailu_external_net_prefix=$(echo $mailu_external_subnet | rev | cut -d '.' -f2- | rev)
   docker network rm mailu-ext-tmp > /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext
 
   # Create temp network to determine available subnet
   docker network create --driver=bridge mailu-int-tmp > /dev/null
   mailu_internal_subnet=$(getDockerSubnet mailu-int-tmp)
   docker network rm mailu-int-tmp > /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int
 
   # Generate email certificate if not joining another VPN
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
@@ -16520,7 +17117,7 @@ services:
       options:
         tag: mailu-front
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
       - dock-internalmail-net
       - dock-proxy-net
     ports:
@@ -16550,7 +17147,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      dock-mailu-net:
+      dock-mailu-ext-net:
         ipv4_address: \${SUBNET_PREFIX}.253
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -16563,7 +17160,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -16583,7 +17180,7 @@ services:
       options:
         tag: mailu-admin
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
     depends_on:
       - redis
     volumes:
@@ -16604,7 +17201,7 @@ services:
       options:
         tag: mailu-imap
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
     depends_on:
       - front
     volumes:
@@ -16625,7 +17222,7 @@ services:
       options:
         tag: mailu-smtp
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
     depends_on:
       - front
     volumes:
@@ -16645,7 +17242,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - int-mailu-net
+      - dock-mailu-int-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -16663,8 +17260,8 @@ services:
       options:
         tag: mailu-antispam
     networks:
-      - dock-mailu-net
-      - int-mailu-net
+      - dock-mailu-ext-net
+      - dock-mailu-int-net
       - dock-proxy-net
     dns:
       - \${SUBNET_PREFIX}.253
@@ -16684,7 +17281,7 @@ $is_antivirus_commented_out    env_file: stack.env
 $is_antivirus_commented_out    security_opt:
 $is_antivirus_commented_out      - no-new-privileges:true
 $is_antivirus_commented_out    networks:
-$is_antivirus_commented_out      - dock-mailu-net
+$is_antivirus_commented_out      - dock-mailu-ext-net
 $is_antivirus_commented_out      - dock-proxy-net
 $is_antivirus_commented_out    volumes:
 $is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
@@ -16699,7 +17296,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -16713,7 +17310,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -16727,7 +17324,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
     security_opt:
       - no-new-privileges:true
     networks:
-      - dock-mailu-net
+      - dock-mailu-ext-net
     depends_on:
       - imap
     volumes:
@@ -16751,21 +17348,12 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
-  int-mailu-net:
-    driver: bridge
-    internal: true
-    enable_ipv6: false
-    ipam:
-      driver: default
-      config:
-        - subnet: $mailu_internal_subnet
-  dock-mailu-net:
-    driver: bridge
-    name: dock-mailu
-    ipam:
-      driver: default
-      config:
-        - subnet: \${SUBNET}
+  dock-mailu-int-net:
+    name: dock-mailu-int
+    external: true
+  dock-mailu-ext-net:
+    name: dock-mailu-ext
+    external: true
 
 EOFMC
 
@@ -16997,8 +17585,8 @@ function installWazuh()
 
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo apt-get update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" apt-get install wazuh-agent
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install wazuh-agent
   sudo systemctl daemon-reload
   checkDisableStack wazuh
   set +e
@@ -21617,8 +22205,6 @@ function installAuthelia()
   mkdir $HSHQ_STACKS_DIR/authelia/config/certs
   mkdir $HSHQ_STACKS_DIR/authelia/config/cacerts
   mkdir $HSHQ_STACKS_DIR/authelia/keys
-  mkdir $HSHQ_NONBACKUP_DIR/authelia
-  mkdir $HSHQ_NONBACKUP_DIR/authelia/redis
 
   if [ -z "$AUTHELIA_REDIRECTION_URL" ]; then
     AUTHELIA_REDIRECTION_URL=home.$HOMESERVER_DOMAIN
@@ -21720,7 +22306,6 @@ services:
       - \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro
       - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
       - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
-      - v-authelia-redis:/bitnami/redis/data
     environment:
       - REDIS_PASSWORD=$AUTHELIA_REDIS_PASSWORD
 
@@ -21735,14 +22320,6 @@ secrets:
     file: \${HSHQ_SECRETS_DIR}/ldap_admin_bind_password.txt
   authelia_redis_password:
     file: \${HSHQ_SECRETS_DIR}/authelia_redis_password.txt
-
-volumes:
-  v-authelia-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/authelia/redis
 
 networks:
   dock-proxy-net:
@@ -21778,6 +22355,7 @@ AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_
 AUTHELIA_SESSION_REDIS_PASSWORD_FILE=/run/secrets/authelia_redis_password
 ALLOW_EMPTY_PASSWORD=no
 REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+REDIS_AOF_ENABLED=no
 REDIS_TLS_ENABLED=yes
 REDIS_TLS_PORT=6379
 REDIS_TLS_CERT_FILE=/tls/authelia-redis.crt
@@ -28864,6 +29442,7 @@ function installClientDNS()
   clientdns_subnet=$(getDockerSubnet tmpnet)
   clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
   docker network rm tmpnet >/dev/null
+  docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null
   pullImage $IMG_WIREGUARD
   pullImage $IMG_DNSMASQ
   outputConfigClientDNS $cdns_stack_name
@@ -28905,7 +29484,7 @@ services:
     networks:
       dock-ext-net:
       dock-proxy-net:
-      int-clientdns-${cdns_stack_name}-net:
+      cdns-${cdns_stack_name}-net:
         ipv4_address: \${CLIENTDNS_SUBNET_PREFIX}.253
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -28925,7 +29504,7 @@ services:
       - NET_ADMIN
     networks:
       - dock-ext-net
-      - int-clientdns-${cdns_stack_name}-net
+      - cdns-${cdns_stack_name}-net
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
     volumes:
@@ -28941,14 +29520,9 @@ networks:
   dock-ext-net:
     name: dock-ext
     external: true
-  int-clientdns-${cdns_stack_name}-net:
-    driver: bridge
-    internal: true
-    enable_ipv6: false
-    ipam:
-      driver: default
-      config:
-        - subnet: \${CLIENTDNS_SUBNET_PREFIX}.0/24
+  cdns-${cdns_stack_name}-net:
+    name: cdns-${cdns_stack_name}
+    external: true
 
 EOFGL
 
