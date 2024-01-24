@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=21
+HSHQ_SCRIPT_VERSION=22
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -64,7 +64,7 @@ function main()
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
   HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,sqlpad"
   loadPinnedDockerImages
-  UTILS_LIST="whiptail|whiptail screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
   checksumHash=$(echo $(sha256sum $0) | sed 's/ /\n/g' | sed -n '1p')
@@ -341,8 +341,9 @@ EOF
   "1" "Update Linux OS and Reboot" \
   "2" "Download All Docker Images" \
   "3" "Restart All Stacks" \
-  "4" "Uninstall and Remove Everything" \
-  "5" "Exit" 3>&1 1>&2 2>&3)
+  "4" "Change Host Static IP" \
+  "5" "Uninstall and Remove Everything" \
+  "6" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -366,8 +367,13 @@ EOF
       set +e
       return 1 ;;
     4)
-      nukeHSHQ ;;
+      checkLoadConfig
+      changeHostStaticIP
+      set +e
+      return 1 ;;
     5)
+      nukeHSHQ ;;
+    6)
 	  return 0 ;;
   esac
 }
@@ -901,8 +907,10 @@ function initConfig()
         HOMESERVER_HOST_IP=""
       else
         updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
-        JITSI_ADVERTISE_IPS=$HOMESERVER_HOST_IP
-        updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
+        HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
+        updateConfigVar HOMESERVER_HOST_ISPRIVATE $HOMESERVER_HOST_ISPRIVATE
+        HOMESERVER_HOST_RANGE=$(getHomeServerPrivateRange)
+        updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
       fi
     fi
   done
@@ -1237,7 +1245,7 @@ function performBaseInstallation()
   set -e
   setSudoTimeoutInstall
   sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
-  setupStaticIP
+  setStaticIPToCurrent
   updateMOTD
   installLogNotify "Install Dependencies"
   installDependencies
@@ -3663,8 +3671,7 @@ function installPortainer()
 
 function outputConfigPortainer()
 {
-  portainer_compose=\$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
-  cat <<EOFPC > \$portainer_compose
+  cat <<EOFPC > \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
 version: '3.5'
 
 services:
@@ -3675,6 +3682,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    env_file: portainer.env
     networks:
       - dock-proxy-net
       # Comment out the external network to disable external (web) access
@@ -3694,8 +3702,6 @@ services:
       --sslcert /certs/portainer.crt
       --sslkey /certs/portainer.key
       --http-disabled
-    environment:
-      - TZ=\$TZ
 
 networks:
   dock-proxy-net:
@@ -3706,6 +3712,17 @@ networks:
     external: true
 EOFPC
 
+  cat <<EOFPC > \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_DATA_DIR
+RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
+RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_SCRIPTS_DIR
+RELAYSERVER_HSHQ_SECRETS_DIR=\$RELAYSERVER_HSHQ_SECRETS_DIR
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
+TZ=\$TZ
+UID=\$USERID
+GID=\$GROUPID
+EOFPC
 }
 
 function installAdGuard()
@@ -3777,9 +3794,6 @@ networks:
 EOFAC
 
   cat <<EOFAC > \$HOME/adguard.env
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
-RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
-RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
 UID=\$USERID
 GID=\$GROUPID
 EOFAC
@@ -4230,8 +4244,7 @@ networks:
 EOFPF
 
   cat <<EOFPF > \$HOME/mail-relay.env
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
-TZ=$TZ
+TZ=\\\${TZ}
 MAIL_FQDN=$RELAYSERVER_EXT_EMAIL_HOSTNAME
 POSTMASTER_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
 INTERNAL_CA_CERT_FILENAME=${CERTS_ROOT_CA_NAME}.crt
@@ -4660,7 +4673,6 @@ services:
 EOFWP
 
   cat <<EOFWP > \$HOME/wgportal.env
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
 CONFIG_FILE=/app/data/config.yml
 EOFWP
 
@@ -4749,8 +4761,7 @@ networks:
 EOFCD
 
   cat <<EOFCD > \$HOME/clientdns.env
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
-TZ=\$TZ
+TZ=\\\${TZ}
 CLIENTDNS_SUBNET_PREFIX=\$clientdns_subnet_prefix
 USE_COREDNS=true
 EOFCD
@@ -4839,7 +4850,6 @@ networks:
 EOFFB
 
   cat <<EOFFB > \$HOME/filebrowser.env
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
 UID=\$USERID
 GID=\$GROUPID
 FB_USERNAME=$RELAYSERVER_FILEBROWSER_ADMIN_USERNAME
@@ -4936,9 +4946,6 @@ networks:
 EOFCC
 
   cat <<EOFCC > \$HOME/caddy.env
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
-RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
-RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
 CERT_RENEW_INTERVAL=1h
 PRIVATE_SUBNETS=${RELAYSERVER_WG_HS_IP}/32 ${RELAYSERVER_WG_USER_IP}/32 \$(getConnectingIPAddress)/32
 INTERNAL_SUBNETS=10.0.0.0/8
@@ -5341,10 +5348,6 @@ networks:
 EOFST
 
   cat <<EOFST > \$HOME/syncthing.env
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
-RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
-RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_DATA_DIR
-RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
 PUID=0
 PGID=0
 STCONFDIR=/var/syncthing/config
@@ -7712,9 +7715,7 @@ function checkAvailablePort()
 
 function getPrivateIPRangesCaddy()
 {
-  if [ "$(checkDefaultRouteIPIsPrivateIP)" = "true" ]; then
-    ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1
-  else
+  if ! [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
     str_res=""
     if ! [ -z $CONNECTING_IP ]; then
       str_res="${CONNECTING_IP}/32"
@@ -7723,19 +7724,22 @@ function getPrivateIPRangesCaddy()
     if ! [ -z $rsip ] && ! [ "$rsip" = "$CONNECTING_IP" ]; then
       str_res=${str_res}" ${rsip}/32"
     fi
-    set +e
-    echo $str_res | grep $HOMESERVER_HOST_IP
-    if [ $? -ne 0 ]; then
-      str_res=${str_res}" ${HOMESERVER_HOST_IP}/32"
-    fi
-    set -e
     echo "$str_res"
+  fi
+}
+
+function getHomeServerPrivateRange()
+{
+  if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
+    ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1
+  else
+    echo "${HOMESERVER_HOST_IP}/32"
   fi
 }
 
 function getNonPrivateConnectingIP()
 {
-  if ! [ "$(checkDefaultRouteIPIsPrivateIP)" = "true" ]; then
+  if ! [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
     str_res=""
     if ! [ -z $CONNECTING_IP ]; then
       str_res="${CONNECTING_IP}/32"
@@ -7801,17 +7805,24 @@ function checkDefaultRouteIPIsPrivateIP()
   echo "false"
 }
 
-function setupStaticIP()
+function setStaticIPToCurrent()
 {
-  if ! [ "$(checkDefaultRouteIPIsPrivateIP)" = "true" ]; then
+  if ! [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
     return
   fi
   cur_ip=$(getDefaultRouteIPAddress)
   def_route=$(ip route | grep -e "^default")
   cidr_part=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
-  adapter_name=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
   ip_cidr=$cur_ip"/"$cidr_part
   cur_gate=$(echo $def_route | awk '{print $3}')
+  setStaticIP $ip_cidr $cur_gate
+}
+
+function setStaticIP()
+{
+  ip_cidr=$1
+  cur_gate=$2
+  adapter_name=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
   cat <<EOFSI > $HOME/00-installer-config.yaml
 network:
   version: 2
@@ -7831,6 +7842,60 @@ EOFSI
   sudo chown root:root $HOME/00-installer-config.yaml
   sudo mv -f $HOME/00-installer-config.yaml /etc/netplan/00-installer-config.yaml
   sudo netplan apply
+}
+
+function changeHostStaticIP()
+{
+  set +e
+  if ! [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
+    showMessageBox "Error" "The current static IP is a public IP, you likely do not have the ability to change this."
+    return
+  fi
+  checkChange=$(promptUserInputMenu "" "Confirm Change IP" "You must be physically logged directly into the host machine to change the IP. Enter 'change' to continue.")
+  if ! [ "$checkChange" = "change" ]; then
+    showMessageBox "Error" "Text does not match, returning..."
+    return
+  fi
+  curHostIP=$HOMESERVER_HOST_IP
+  newHostIPCIDR=$(promptUserInputMenu "${HOMESERVER_HOST_IP}/24" "New Static IP" "Enter the static IP address in full CIDR notation:")
+  gwGuess=$(sipcalc $newHostIPCIDR | grep "^Usable range" | xargs | cut -d"-" -f2 | xargs)
+  newHostGateway=$(promptUserInputMenu "$gwGuess" "New Gateway" "Enter the gateway IP address. This is typically the IP address of your router, the first IP in the range:")
+  newHSHostIP=$(echo $newHostIPCIDR | cut -d"/" -f1)
+  newHSHostRange=$(sipcalc $newHostIPCIDR | grep "^Network range" | xargs | cut -d"-" -f2 | xargs)"/"$(echo $newHostIPCIDR | cut -d"/" -f2)
+  set +e
+  echo "Setting new static IP on host..."
+  setStaticIP $newHostIPCIDR $newHostGateway
+  if [ $? -ne 0 ]; then
+    showMessageBox "Networking Error" "There was an error changing the IP Address, please try again..."
+    return
+  fi
+  HOMESERVER_HOST_IP=$newHSHostIP
+  updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
+  HOMESERVER_HOST_RANGE=$newHSHostRange
+  updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
+  echo "Restarting Portainer..."
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2> /dev/null
+  outputConfigPortainer
+  generateCert portainer portainer $HOMESERVER_HOST_IP
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2> /dev/null
+  echo "Restarting Heimdall..."
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$curHostIP%';"
+  docker container restart heimdall > /dev/null 2> /dev/null
+  echo "Updating Adguard..."
+  addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
+  echo "Restarting Caddy stacks..."
+  caddy_arr=($(docker ps --filter name=caddy- --format "{{.Names}}"))
+  for curcaddy in "${caddy_arr[@]}"
+  do
+    startStopStack $curcaddy stop
+    sleep 2
+    startStopStack $curcaddy start
+  done
+  echo "Restarting Jitsi..."
+  startStopStack jitsi stop
+  sleep 2
+  startStopStack jitsi start
+  echo "Change Static IP Complete!"
 }
 
 function initWireguardDB()
@@ -8088,41 +8153,74 @@ function restartAllStacks()
   done
 }
 
-function updateDockerNetworkingV21()
+function version22Update()
 {
-  showMessageBox "Version 21 Update" "An update needs to be applied to your system. Please be patient as it will take around 10 minutes to complete. All running stacks will be stopped and then restarted. Press okay to continue."
-  sudo -v
   set -e
+  showMessageBox "Version 22 Update" "A large update needs to be applied to your system. Please be patient as it will take around 10 minutes to complete. All running stacks will be stopped and then restarted. Press okay to continue."
+  sudo -v
+  set +e
   cdns_stack_name="user1"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  set +e
+  uptimekumaStackID=$(getStackID uptimekuma "$portainerToken")
   startStopStack uptimekuma stop $portainerToken > /dev/null 2> /dev/null
+  grep "HOMESERVER_HOST_ISPRIVATE" $CONFIG_FILE > /dev/null 2> /dev/null
+  if [ $? -ne 0 ]; then
+    HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
+    sed -i "s|^HOMESERVER_HOST_IP=.*|HOMESERVER_HOST_IP=$HOMESERVER_HOST_IP\nHOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE|g" $CONFIG_FILE
+  fi
+  grep "HOMESERVER_HOST_RANGE" $CONFIG_FILE > /dev/null 2> /dev/null
+  if [ $? -ne 0 ]; then
+    HOMESERVER_HOST_RANGE=$(getHomeServerPrivateRange)
+    sed -i "s|^HOMESERVER_HOST_ISPRIVATE=.*|HOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE\nHOMESERVER_HOST_RANGE=$HOMESERVER_HOST_RANGE|g" $CONFIG_FILE
+  fi
   set -e
+
   mailuStackID=$(getStackID mailu "$portainerToken")
   cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
 
   rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
   rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
-  numItems=$((${#rstackIDs[@]} - 1))
+  numItems=$((${#rstackIDs[@]}-1))
+
   for curID in $(seq 0 $numItems);
   do
     echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
     startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
     sleep 1
   done
+
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2> /dev/null
-  echo "Restarting Docker..."
-  sudo systemctl restart docker
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2> /dev/null
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  docker network rm dock-ldap > /dev/null 2> /dev/null
-  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
   set +e
   docker network rm dock-mailu-ext > /dev/null 2> /dev/null
   docker network rm dock-mailu-int > /dev/null 2> /dev/null
   docker network rm cdns-${cdns_stack_name} > /dev/null 2> /dev/null
+  docker network rm dock-ldap > /dev/null 2> /dev/null
   set -e
+  echo "Restarting Docker..."
+  sudo systemctl restart docker
+  sleep 3
+  outputConfigPortainer
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2> /dev/null
+  set +e
+  total_tries=10
+  num_tries=1
+  sleep 5
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  retVal=$?
+  while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
+  do
+    echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
+    sleep 5
+    ((num_tries++))
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    retVal=$?
+  done
+  if [ $retVal -ne 0 ]; then
+    echo "Error getting portainer token, exiting..."
+    exit 1
+  fi
 
+  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
   # Create temp network to determine available subnet
   docker network create --driver=bridge mailu-ext-tmp > /dev/null 2> /dev/null
   mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
@@ -8404,9 +8502,9 @@ networks:
     name: dock-mailu-ext
     external: true
 EOFMC
-
   sudo cp $HSHQ_STACKS_DIR/portainer/compose/$mailuStackID/stack.env $HOME/mailu.env
   sudo chown $USERNAME:$USERNAME $HOME/mailu.env
+  updateGlobalVarsEnvFile $HOME/mailu.env
   sed -i "s|^SUBNET=.*|SUBNET=${mailu_external_subnet}|g" $HOME/mailu.env
   sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${mailu_external_net_prefix}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
@@ -8482,22 +8580,85 @@ EOFCF
 
     sudo cp $HSHQ_STACKS_DIR/portainer/compose/$cdnsStackID/stack.env $HOME/clientdns-${cdns_stack_name}.env
     sudo chown $USERNAME:$USERNAME $HOME/clientdns-${cdns_stack_name}.env
+    updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
     sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
     echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
     http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2> /dev/null
     rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
   fi
 
-  set +e
+  rstackIDs[$(($numItems+1))]=$uptimekumaStackID
+  rstackNames[$(($numItems+1))]=uptimekuma
+  numItems=$((${#rstackIDs[@]}-1))
+  
   for curID in $(seq 0 $numItems);
   do
-    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} start $portainerToken > /dev/null 2> /dev/null
-    sleep 2
+    case ${rstackNames[$curID]} in
+      mailu|clientdns-${cdns_stack_name})
+        continue
+      ;;
+      *)
+        echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+        if sudo test -f $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env; then
+          sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env $HOME/${rstackIDs[$curID]}.env
+          sudo chown $USERNAME:$USERNAME $HOME/${rstackIDs[$curID]}.env
+          updateGlobalVarsEnvFile $HOME/${rstackIDs[$curID]}.env
+        fi
+        sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/docker-compose.yml $HOME/${rstackIDs[$curID]}.yml
+        sudo chown $USERNAME:$USERNAME $HOME/${rstackIDs[$curID]}.yml
+      ;;
+    esac
+
+    case ${rstackNames[$curID]} in
+      caddy-home)
+        sed -i "s|$HOMESERVER_HOST_IP|\${HOMESERVER_HOST_IP}|g" $HOME/${rstackIDs[$curID]}.yml
+        sed -i "s|^CADDY_HSHQ_PRIVATE_IPS=.*|CADDY_HSHQ_PRIVATE_IPS=\${HOMESERVER_HOST_RANGE} $(getPrivateIPRangesCaddy)|g" $HOME/${rstackIDs[$curID]}.env
+      ;;
+      jitsi)
+        sed -i "s|^DOCKER_HOST_ADDRESS=.*|DOCKER_HOST_ADDRESS=\${HOMESERVER_HOST_IP}|g" $HOME/${rstackIDs[$curID]}.env
+        JITSI_ADVERTISE_IPS=$(echo $JITSI_ADVERTISE_IPS | sed "s|$HOMESERVER_HOST_IP||g")
+        updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
+        sed -i "s|^JVB_ADVERTISE_IPS=.*|JVB_ADVERTISE_IPS=\${HOMESERVER_HOST_IP}$JITSI_ADVERTISE_IPS|g" $HOME/${rstackIDs[$curID]}.env
+        sed -i '/^CONFIG=/d' $HOME/${rstackIDs[$curID]}.env
+      ;;
+    esac
+
+    if ! [ -f $HOME/${rstackIDs[$curID]}.env ] || ! [ -s $HOME/${rstackIDs[$curID]}.env ]; then
+      echo "TZ=\${TZ}" > $HOME/${rstackIDs[$curID]}.env
+    fi
+    echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/${rstackIDs[$curID]}.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/${rstackIDs[$curID]}.env)}" > $HOME/${rstackIDs[$curID]}-json.tmp
+    num_tries=1
+    while [ $num_tries -lt $total_tries ]
+    do
+      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
+      if [ $? -eq 0 ]; then
+        break
+      else
+        echo "Failed update, retrying ($(($num_tries + 1)) of $total_tries)..."
+        sleep 5
+        portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+      fi
+      ((num_tries++))
+    done
+    rm -f $HOME/${rstackIDs[$curID]}.yml $HOME/${rstackIDs[$curID]}.env $HOME/${rstackIDs[$curID]}-json.tmp
+    sleep 5
   done
-  startStopStack uptimekuma start $portainerToken
   docker container restart ofelia
   set -e
+}
+
+function updateGlobalVarsEnvFile()
+{
+  curEnv=$1
+  sed -i '/^HSHQ_BACKUP_DIR=/d' $curEnv
+  sed -i '/^HSHQ_NONBACKUP_DIR=/d' $curEnv
+  sed -i '/^HSHQ_ASSETS_DIR=/d' $curEnv
+  sed -i '/^HSHQ_SCRIPTS_DIR=/d' $curEnv
+  sed -i '/^HSHQ_SECRETS_DIR=/d' $curEnv
+  sed -i '/^HSHQ_SSL_DIR=/d' $curEnv
+  sed -i '/^HSHQ_STACKS_DIR=/d' $curEnv
+  sed -i '/^HSHQ_WIREGUARD_DIR=/d' $curEnv
+  sed -i "s|^TZ=.*|TZ=\${TZ}|g" $curEnv
 }
 
 function envToJson()
@@ -8944,7 +9105,7 @@ function addAdvertiseIP()
   echo $JITSI_ADVERTISE_IPS | grep $add_ip >/dev/null
   if [ $? -ne 0 ]; then
     if [ -z $JITSI_ADVERTISE_IPS ]; then
-      JITSI_ADVERTISE_IPS=$add_ip
+      JITSI_ADVERTISE_IPS=","$add_ip
     else
       JITSI_ADVERTISE_IPS=$JITSI_ADVERTISE_IPS","$add_ip
     fi
@@ -10089,6 +10250,8 @@ HOMESERVER_DOMAIN=
 HOMESERVER_NAME=
 HOMESERVER_ABBREV=
 HOMESERVER_HOST_IP=
+HOMESERVER_HOST_ISPRIVATE=
+HOMESERVER_HOST_RANGE=
 EXT_DOMAIN_PREFIX=
 INT_DOMAIN_PREFIX=
 TZ=
@@ -10609,7 +10772,7 @@ function checkUpdateVersion()
 {
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
-    setupStaticIP
+    setStaticIPToCurrent
     HSHQ_VERSION=11
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
@@ -10620,10 +10783,10 @@ function checkUpdateVersion()
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 21 ]; then
-    echo "Updating to Version 21..."
+  if [ $HSHQ_VERSION -lt 22 ]; then
+    echo "Updating to Version 22..."
     updateMOTD
-    updateDockerNetworkingV21
+    version22Update
     HSHQ_VERSION=21
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
@@ -10925,7 +11088,7 @@ done
   ip6tables -P OUTPUT ACCEPT
 
 EOFBS
-  if [ "$(checkDefaultRouteIPIsPrivateIP)" = "false" ]; then
+  if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
     # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
     sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFPO
 # Special case when HomeServer is on non-private network
@@ -13488,6 +13651,12 @@ function outputConfigPortainer()
   if [ "$IS_ROOTLESS_DOCKER" = "true" ]; then
 	  DOCKER_SOCKET='$XDG_RUNTIME_DIR/docker.sock'
   fi
+  if ! [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
+    pdocknet=dock-ext
+  else
+    pdocknet=dock-privateip
+  fi
+
   cat <<EOFPC > $HSHQ_STACKS_DIR/portainer/docker-compose.yml
 version: '3.5'
 
@@ -13499,10 +13668,10 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    env_file: portainer.env
     networks:
       - dock-proxy-net
-      - dock-ext-net
-      #- dock-privateip-net
+      - ${pdocknet}-net
     ports:
       - 127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT:9443
       - $HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT:9443
@@ -13521,23 +13690,35 @@ services:
       - ${HSHQ_SSL_DIR}/portainer.crt:/data/certs/portainer.crt:ro
       - ${HSHQ_SSL_DIR}/portainer.key:/data/certs/portainer.key:ro
       - ${HSHQ_SECRETS_DIR}/portainer_key.txt:/run/secrets/portainer
-    environment:
-      - TZ=$TZ
-      - UID=$USERID
-      - GID=$GROUPID
 
 networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
-  dock-ext-net:
-    name: dock-ext
+  ${pdocknet}-net:
+    name: ${pdocknet}
     external: true
-#  dock-privateip-net:
-#    name: dock-privateip
-#    external: true
 EOFPC
 
+  rm -f $HSHQ_STACKS_DIR/portainer/portainer.env
+  cat <<EOFPC > $HSHQ_STACKS_DIR/portainer/portainer.env
+HSHQ_DATA_DIR=$HSHQ_DATA_DIR
+HSHQ_BACKUP_DIR=$HSHQ_BACKUP_DIR
+HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+HSHQ_ASSETS_DIR=$HSHQ_ASSETS_DIR
+HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+HSHQ_SECRETS_DIR=$HSHQ_SECRETS_DIR
+HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
+HOMESERVER_HOST_IP=$HOMESERVER_HOST_IP
+HOMESERVER_HOST_RANGE=$HOMESERVER_HOST_RANGE
+TZ=$TZ
+UID=$USERID
+GID=$GROUPID
+EOFPC
+
+  chmod 600 $HSHQ_STACKS_DIR/portainer/portainer.env
 }
 
 function installAdGuard()
@@ -13630,9 +13811,6 @@ networks:
 EOFAC
 
   cat <<EOFAD > $HOME/adguard.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 NET_EXTERNAL_SUBNET_PREFIX=$NET_EXTERNAL_SUBNET_PREFIX
 UID=$USERID
 GID=$GROUPID
@@ -14308,10 +14486,7 @@ networks:
 EOFGF
 
   cat <<EOFGF > $HOME/sysutils.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 INFLUXD_TLS_CERT=/certs/influxdb.crt
@@ -16833,10 +17008,7 @@ networks:
 EOFLC
 
   cat <<EOFLD > $HOME/openldap.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SECRETS_DIR=$HSHQ_SECRETS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 LDAP_OPENLDAP_UID=$USERID
@@ -17358,8 +17530,7 @@ networks:
 EOFMC
 
   cat <<EOFMC > $HOME/mailu.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+TZ=\${TZ}
 SECRET_KEY=$(pwgen -c -n 16 1)
 SUBNET=$mailu_external_subnet
 SUBNET_PREFIX=$mailu_external_net_prefix
@@ -17403,7 +17574,6 @@ COMPOSE_PROJECT_NAME=mailu
 CREDENTIAL_ROUNDS=12
 REJECT_UNLISTED_RECIPIENT=yes
 LOG_LEVEL=WARNING
-TZ=$TZ
 DB_FLAVOR=sqlite
 EOFMC
 
@@ -17813,10 +17983,7 @@ networks:
 EOFWZ
 
   cat <<EOFWZ > $HOME/wazuh.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 INDEXER_URL=https://wazuh.indexer:9200
@@ -19274,10 +19441,7 @@ networks:
 EOFNC
 
   cat <<EOFNC > $HOME/nextcloud.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
@@ -19426,13 +19590,10 @@ networks:
 EOFJT
 
   cat <<EOFJT > $HOME/jitsi.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-CONFIG=$HSHQ_STACKS_DIR/jitsi
 JVB_COLIBRI_PORT=8020
 PUBLIC_URL=https://$SUB_JITSI.$HOMESERVER_DOMAIN
-JVB_ADVERTISE_IPS=$JITSI_ADVERTISE_IPS
-DOCKER_HOST_ADDRESS=$HOMESERVER_HOST_IP
+JVB_ADVERTISE_IPS=\${HOMESERVER_HOST_IP}${JITSI_ADVERTISE_IPS}
+DOCKER_HOST_ADDRESS=\${HOMESERVER_HOST_IP}
 ENABLE_LETSENCRYPT=0
 ENABLE_AUTH=0
 JICOFO_AUTH_PASSWORD=$(openssl rand -hex 16)
@@ -19691,10 +19852,7 @@ networks:
 EOFJT
 
   cat <<EOFJT > $HOME/matrix.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
@@ -20102,9 +20260,6 @@ networks:
 EOFWJ
 
   cat <<EOFWJ > $HOME/wikijs.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$WIKIJS_DATABASE_NAME
@@ -20235,11 +20390,6 @@ networks:
 EOFDP
 
   cat <<EOFDP > $HOME/duplicati.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_BACKUP_DIR=$HSHQ_BACKUP_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-HSHQ_DATA_DIR=$HSHQ_DATA_DIR
 PUID=0
 PGID=0
 EOFDP
@@ -20861,11 +21011,7 @@ networks:
 EOFMD
 
   cat <<EOFMD > $HOME/mastodon.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 LOCAL_DOMAIN=$HOMESERVER_DOMAIN
@@ -21133,7 +21279,6 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/dozzle.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 DOZZLE_NO_ANALYTICS=true
 DOZZLE_AUTH_PROVIDER=simple
 EOFDZ
@@ -21293,9 +21438,6 @@ networks:
 EOFSE
 
   cat <<EOFSE > $HOME/searxng.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 SEARXNG_BASE_URL=https://$SUB_SEARXNG.$HOMESERVER_DOMAIN/
 EOFSE
 
@@ -21530,7 +21672,6 @@ networks:
 EOFJF
 
   cat <<EOFJF > $HOME/jellyfin.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 UID=$USERID
 GID=$GROUPID
 EOFJF
@@ -21638,7 +21779,6 @@ networks:
 EOFJF
 
   cat <<EOFJF > $HOME/filebrowser.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 UID=$USERID
 GID=$GROUPID
 FB_USERNAME=$FILEBROWSER_USERNAME
@@ -21926,8 +22066,6 @@ networks:
 EOFPP
 
   cat <<EOFPP > $HOME/photoprism.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 PHOTOPRISM_UID=$USERID
 PHOTOPRISM_GID=$GROUPID
 PHOTOPRISM_AUTH_MODE=public
@@ -22176,8 +22314,6 @@ networks:
 EOFGC
 
   cat <<EOFGC > $HOME/guacamole.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 UID=$USERID
 GID=$GROUPID
 GUACD_HOSTNAME=guacamole-daemon
@@ -22341,11 +22477,7 @@ networks:
 EOFAC
 
   cat <<EOFAE > $HOME/authelia.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SECRETS_DIR=$HSHQ_SECRETS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 AUTHELIA_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
@@ -22629,8 +22761,6 @@ networks:
 EOFWP
 
   cat <<EOFWP > $HOME/wordpress.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 MYSQL_ROOT_PASSWORD=$WORDPRESS_DATABASE_ROOT_PASSWORD
 MYSQL_DATABASE=$WORDPRESS_DATABASE_NAME
 MYSQL_USER=$WORDPRESS_DATABASE_USER
@@ -22788,8 +22918,6 @@ networks:
 EOFGW
 
   cat <<EOFGW > $HOME/ghost.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 MYSQL_DATABASE=$GHOST_DATABASE_NAME
 MYSQL_ROOT_PASSWORD=$GHOST_DATABASE_ROOT_PASSWORD
 MYSQL_USER=$GHOST_DATABASE_USER
@@ -22991,9 +23119,6 @@ networks:
 EOFPT
 
   cat <<EOFPT > $HOME/peertube.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$PEERTUBE_DATABASE_NAME
@@ -23302,9 +23427,6 @@ networks:
 EOFHA
 
   cat <<EOFHA > $HOME/homeassistant.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
 UID=$USERID
 GID=$GROUPID
 EOFHA
@@ -23616,10 +23738,6 @@ networks:
 EOFGL
 
   cat <<EOFGL > $HOME/gitlab.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$GITLAB_DATABASE_NAME
@@ -23860,9 +23978,6 @@ networks:
 EOFVW
 
   cat <<EOFVW > $HOME/vaultwarden.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
 UID=$USERID
 GID=$GROUPID
 ADMIN_TOKEN=$VAULTWARDEN_ADMIN_TOKEN_HASH
@@ -24111,10 +24226,6 @@ networks:
 EOFDC
 
   cat <<EOFDC > $HOME/discourse.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 UID=$USERID
 GID=$GROUPID
 DISCOURSE_USERNAME=$DISCOURSE_ADMIN_USERNAME
@@ -24253,10 +24364,6 @@ networks:
 EOFST
 
   cat <<EOFST > $HOME/syncthing.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_BACKUP_DIR=$HSHQ_BACKUP_DIR
-HSHQ_RELAYSERVER_DIR=$HSHQ_RELAYSERVER_DIR
 PUID=0
 PGID=0
 STCONFDIR=/var/syncthing/config
@@ -24425,8 +24532,6 @@ networks:
 EOFCS
 
   cat <<EOFCS > $HOME/codeserver.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
 UID=$USERID
 GID=$GROUPID
 DOCKER_USER=$USERNAME
@@ -24641,9 +24746,6 @@ networks:
 EOFST
 
   cat <<EOFST > $HOME/shlink.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$SHLINK_DATABASE_NAME
@@ -24846,10 +24948,7 @@ networks:
 EOFFF
 
   cat <<EOFFF > $HOME/firefly.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 SITE_OWNER=$EMAIL_ADMIN_EMAIL_ADDRESS
@@ -24858,7 +24957,6 @@ TRUSTED_PROXIES=**
 APP_KEY=$FIREFLY_INITIAL_API_KEY
 DEFAULT_LANGUAGE=en_US
 DEFAULT_LOCALE=equal
-TZ=$TZ
 MAIL_MAILER=smtp
 MAIL_HOST=$SMTP_HOSTNAME
 MAIL_PORT=$SMTP_HOSTPORT
@@ -25055,7 +25153,6 @@ networks:
 EOFEX
 
   cat <<EOFEX > $HOME/excalidraw.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 ALLOW_EMPTY_PASSWORD=no
 REDIS_PASSWORD=$EXCALIDRAW_REDIS_PASSWORD
 REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
@@ -25067,7 +25164,6 @@ LIBRARY_BACKEND=https://us-central1-excalidraw-room-persistence.cloudfunctions.n
 STORAGE_BACKEND=http
 HTTP_STORAGE_BACKEND_URL=https://$SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN/api/v2
 SOCKET_SERVER_URL=https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN
-
 EOFEX
 }
 
@@ -25199,12 +25295,10 @@ networks:
 EOFDI
 
   cat <<EOFDI > $HOME/drawio.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 DRAWIO_SELF_CONTAINED=1
 PLANTUML_URL=http://drawio-plantuml:8080/
 EXPORT_URL=http://drawio-export:8000/
 DRAWIO_BASE_URL=https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN
-
 EOFDI
 }
 
@@ -25348,9 +25442,7 @@ networks:
 EOFIV
 
   cat <<EOFIV > $HOME/invidious.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
@@ -25719,9 +25811,6 @@ networks:
 EOFGL
 
   cat <<EOFGL > $HOME/gitea.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
 USER_UID=$USERID
 USER_GID=$GROUPID
 POSTGRES_DB=$GITEA_DATABASE_NAME
@@ -25898,11 +25987,7 @@ networks:
 EOFGL
 
   cat <<EOFGL > $HOME/mealie.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 PUID=$USERID
@@ -26044,8 +26129,6 @@ networks:
 EOFGL
 
   cat <<EOFGL > $HOME/kasm.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 KASM_PORT=443
 EOFGL
 
@@ -26126,8 +26209,7 @@ networks:
 EOFNT
 
   cat <<EOFNT > $HOME/ntfy.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 EOFNT
@@ -26671,7 +26753,7 @@ networks:
 EOFRM
 
   cat <<EOFRM > $HOME/remotely.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+TZ=\${TZ}
 EOFRM
 
 }
@@ -26827,11 +26909,9 @@ networks:
 EOFNT
 
   cat <<EOFNT > $HOME/calibre.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-PUID=1000
-PGID=1000
-TZ=America/Chicago
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
 CALIBRE_LDAP_AUTO_CREATE=true
 EOFNT
 
@@ -26959,11 +27039,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/netdata.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 EOFDZ
@@ -27107,11 +27183,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/linkwarden.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$LINKWARDEN_DATABASE_NAME
@@ -27197,11 +27269,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/stirlingpdf.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 EOFDZ
@@ -27427,11 +27495,7 @@ networks:
 EOFBA
 
   cat <<EOFBA > $HOME/bar-assistant.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 BASE_URL=https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN
@@ -27661,11 +27725,7 @@ networks:
 EOFBA
 
   cat <<EOFBA > $HOME/freshrss.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 BASE_URL=https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN
@@ -27839,11 +27899,7 @@ networks:
 EOFBA
 
   cat <<EOFBA > $HOME/keila.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-TZ=$TZ
+TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$KEILA_DATABASE_NAME
@@ -27884,7 +27940,7 @@ function installSQLPad()
   pullImage $IMG_SQLPAD
   generateCert sqlpad sqlpad
   outputConfigSQLPad
-  installStack sqlpad sqlpad "Welcome to SQLPad" $HOME/sqlpad.env
+  installStack sqlpad sqlpad "Welcome to SQLPad" $HOME/sqlpad.env 5
   checkDisableStack sqlpad
 
   inner_block=""
@@ -27944,8 +28000,6 @@ networks:
 EOFSP
 
   cat <<EOFSP > $HOME/sqlpad.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
 SQLPAD_ADMIN=$SQLPAD_ADMIN_USERNAME
 SQLPAD_ADMIN_PASSWORD=$SQLPAD_ADMIN_PASSWORD
 SQLPAD_APP_LOG_LEVEL=info
@@ -28336,8 +28390,6 @@ networks:
 EOFHC
 
   cat <<EOFHE > $HOME/heimdall.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
 PUID=$USERID
 PGID=$GROUPID
 APP_NAME=$HEIMDALL_APP_NAME
@@ -28960,8 +29012,8 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "$bind_ip:80:80"
-      - "$bind_ip:443:443"
+      - "\${HOMESERVER_HOST_IP}:80:80"
+      - "\${HOMESERVER_HOST_IP}:443:443"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -29287,15 +29339,12 @@ EOFCF
   esac
 
   cat <<EOFCE > $HOME/$caddy_net_name.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_ASSETS_DIR=$HSHQ_ASSETS_DIR
 CERT_RENEW_INTERVAL=$CADDY_CERT_RENEW_INTERVAL
 CERT_INTERMEDIATE_LIFETIME=$CADDY_CERT_INTERMEDIATE_LIFETIME
 CERT_LEAF_LIFETIME=$CADDY_CERT_LEAF_LIFETIME
 CADDY_HSHQ_CA_NAME=$ca_name
 CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_rip
-CADDY_HSHQ_PRIVATE_IPS=$(getPrivateIPRangesCaddy)
+CADDY_HSHQ_PRIVATE_IPS=\${HOMESERVER_HOST_RANGE} $(getPrivateIPRangesCaddy)
 CADDY_HSHQ_CA_URL=$ca_url
 EOFCE
 
@@ -29527,10 +29576,9 @@ networks:
 EOFGL
 
   cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+TZ=\${TZ}
 PUID=$USERID
 PGID=$GROUPID
-TZ=$TZ
 CLIENTDNS_SUBNET_PREFIX=$clientdns_subnet_prefix
 USE_COREDNS=true
 EOFGL
@@ -29563,7 +29611,7 @@ EOFCF
 function installOfelia()
 {
   outputConfigOfelia
-  installStack ofelia ofelia " "
+  installStack ofelia ofelia " " $HOME/ofelia.env
 }
 
 function outputConfigOfelia()
@@ -29598,6 +29646,10 @@ networks:
     name: dock-internalmail
     external: true
 EOFOF
+
+  cat <<EOFRM > $HOME/ofelia.env
+TZ=\${TZ}
+EOFRM
 
 }
 
@@ -29686,7 +29738,6 @@ networks:
 EOFUK
 
   cat <<EOFUK > $HOME/uptimekuma.env
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 PUID=$USERID
 PGID=$GROUPID
