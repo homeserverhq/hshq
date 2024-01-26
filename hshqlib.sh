@@ -29913,9 +29913,9 @@ function deleteSvcUptimeKuma()
 # with the prior version of the wrapper script, hshq.sh.
 case "$1" in
   "lib")     init;;
-  "run")     main "@";;
-  "install") main "@";;
-  "-a")      main "@";;
-  "")        main "@";;
-  *)         main "@";;
+  "run")     main "$@";;
+  "install") main "$@";;
+  "-a")      main "$@";;
+  "")        main "$@";;
+  *)         main "$@";;
 esac
