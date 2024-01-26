@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=2
+HSHQ_WRAPPER_SCRIPT_VERSION=3
 IS_DISABLE_UPDATE_CHECKS=false
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
@@ -275,7 +275,7 @@ EOF
       fi
     fi
   fi
-  bash $HSHQ_LIB_SCRIPT $ciparg
+  bash $HSHQ_LIB_SCRIPT run $CONNECTING_IP
 }
 
 function isProgramInstalled()

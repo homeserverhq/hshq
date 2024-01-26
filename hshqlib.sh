@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=22
+HSHQ_SCRIPT_VERSION=23
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -18,7 +18,7 @@ HSHQ_SCRIPT_VERSION=22
 
 set -e
 
-function main()
+function init()
 {
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
@@ -67,23 +67,22 @@ function main()
   UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
-  checksumHash=$(echo $(sha256sum $0) | sed 's/ /\n/g' | sed -n '1p')
-  while getopts ':a:c:e:i' opt; do
-    case "$opt" in
-      a)
-        CONNECTING_IP="$OPTARG" ;;
-      c)
-        CONFIG_FILE="$OPTARG" ;;
-      e)
-        ENC_CONFIG_FILE="$OPTARG" ;;
-      i)
-        IS_PERFORM_INSTALL=true ;;
-      ?|h)
-        echo "Usage: $(basename $0) [-c arg] [-e arg] [-i arg]"
-        exit 1 ;;
-    esac
-  done
-  shift "$(($OPTIND -1))"
+}
+
+function main()
+{
+  init
+  case "$1" in
+    "install")
+      CONNECTING_IP=$2
+      IS_PERFORM_INSTALL=true
+      ;;
+    "-a"|"run")
+      CONNECTING_IP=$2
+      ;;
+    *)
+      ;;
+  esac
 
   logo=$(cat << EOF
 
@@ -500,7 +499,11 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
 
-  sudo sysctl --system >/dev/null 2>/dev/null
+  sudo sysctl --system > /dev/null 2>&1
+
+  # Disable ipv6 in GRUB
+  sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"ipv6.disable=0\"|g" /etc/default/grub > /dev/null 2>&1
+  sudo update-grub > /dev/null 2>&1
 }
 
 function updateMOTD()
@@ -600,7 +603,7 @@ EOFSM
 
   if ! [ -f /etc/rsyslog.d/docker-logs.conf ]; then
     # Install Rsyslog
-    sudo systemctl status rsyslog >/dev/null 2>/dev/null
+    sudo systemctl status rsyslog > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       echo "Installing rsyslog, please wait..."
       sudo DEBIAN_FRONTEND=noninteractive apt install -y rsyslog
@@ -622,7 +625,7 @@ EOFSM
   if [ $? -ne 0 ]; then
     echo "* - nofile 65536" | sudo tee -a /etc/security/limits.conf >/dev/null
   fi
-  sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null 2>/dev/null
+  sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target > /dev/null 2>&1
 
   installDocker
   if ! [ -z $DESKTOP_ENV ]; then
@@ -686,23 +689,13 @@ function checkLoadConfig()
 
 function checkConfigAvailable()
 {
-  if ! [ -z $CONFIG_FILE ] && [ -f $CONFIG_FILE ]; then
+  if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
+    CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
     return
   fi
-  if ! [ -z $ENC_CONFIG_FILE ] && [ -f $ENC_CONFIG_FILE ]; then
+  if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCODED_CONFIG_FILE_DEFAULT_FILENAME ]; then
+    ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCODED_CONFIG_FILE_DEFAULT_FILENAME
     return
-  fi
-  if [ -z $CONFIG_FILE ] || ! [ -f $CONFIG_FILE ]; then
-    if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
-      CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
-      return
-    fi
-  fi
-  if [ -z $ENC_CONFIG_FILE ] || ! [ -f $ENC_CONFIG_FILE ]; then
-    if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCODED_CONFIG_FILE_DEFAULT_FILENAME ]; then
-      ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCODED_CONFIG_FILE_DEFAULT_FILENAME
-      return
-    fi
   fi
 }
 
@@ -711,7 +704,7 @@ function addToDisabledServices()
   dis_svc=$1
   curE=${-//[^e]/}
   set +e
-  echo $DISABLED_SERVICES | grep $dis_svc >/dev/null 2>/dev/null
+  echo $DISABLED_SERVICES | grep $dis_svc > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     if [ "$DISABLED_SERVICES" = "" ]; then
       DISABLED_SERVICES="$dis_svc"
@@ -778,7 +771,7 @@ function initConfig()
     elif [ $total_ram -lt 24 ]; then
       DISABLED_SERVICES=gitlab,discourse,drawio,guacamole,kasm,netdata,linkwarden,stirlingpdf
     else
-      DISABLED_SERVICES=gitlab,netdata
+      DISABLED_SERVICES=gitlab,netdata,discourse
     fi
     updateConfigVar DISABLED_SERVICES $DISABLED_SERVICES
   fi
@@ -1027,7 +1020,7 @@ function initConfig()
 
   if [[ "$(isProgramInstalled pwgen)" = "false" ]]; then
     echo "Installing pwgen, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y pwgen >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y pwgen > /dev/null 2>&1
   fi
 
   while [ -z "$EMAIL_ADMIN_USERNAME" ]
@@ -1091,11 +1084,11 @@ function initInstallation()
 {
   if [[ "$(isProgramInstalled screen)" = "false" ]]; then
     echo "Installing screen, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y screen >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y screen > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled nano)" = "false" ]]; then
     echo "Installing nano, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y nano >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y nano > /dev/null 2>&1
   fi
   # Show info to user and prompt for confirmation
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -1211,12 +1204,7 @@ function initInstallation()
   RELAYSERVER_IS_INIT=true
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
   sudo -v
-  ciparg=""
-  if ! [ -z $CONNECTING_IP ]; then
-    ciparg="-a $CONNECTING_IP"
-  fi
-  #bash $0 -i -c $CONFIG_FILE $ciparg
-  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME -S hshqInstall bash $0 -i -c $CONFIG_FILE $ciparg
+  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME -S hshqInstall bash $0 install $CONNECTING_IP
   exit 0
 }
 
@@ -1561,7 +1549,7 @@ function setupVPNConnection()
 {
   if [[ "$(isProgramInstalled wg)" = "false" ]]; then
     echo "Installing WireGuard utils, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y wireguard-tools >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y wireguard-tools > /dev/null 2>&1
   fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "none" ]; then
     initWireguardDB
@@ -1639,23 +1627,23 @@ function setupHostedVPN()
 {
   if [[ "$(isProgramInstalled dig)" = "false" ]]; then
     echo "Installing dig, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsutils >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsutils > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled sshpass)" = "false" ]]; then
     echo "Installing sshpass, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y sshpass >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y sshpass > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled sipcalc)" = "false" ]]; then
     echo "Installing sipcalc, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y sipcalc >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y sipcalc > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled jq)" = "false" ]]; then
     echo "Installing jq, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y jq >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y jq > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled grepcidr)" = "false" ]]; then
     echo "Installing grepcidr, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr > /dev/null 2>&1
   fi
 
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
@@ -2252,7 +2240,7 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
 
-  sudo sysctl --system >/dev/null 2>/dev/null
+  sudo sysctl --system > /dev/null 2>&1
 }
 
 function updateMOTD()
@@ -2311,7 +2299,7 @@ function installDependencies()
   if [[ "\$(isProgramInstalled needrestart)" = "true" ]]; then
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\\\$nrconf{kernelhints} = -1;/\\\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart > /dev/null 2>&1
   fi
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
 
@@ -2339,10 +2327,10 @@ EOFSM
   sudo chmod 750 /usr/bin/mail.mailutils
 
   # Install Rsyslog
-  sudo systemctl status rsyslog >/dev/null 2>/dev/null
+  sudo systemctl status rsyslog > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     echo "Installing rsyslog, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y rsyslog >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y rsyslog > /dev/null 2>&1
     sudo systemctl enable rsyslog
     sudo systemctl start rsyslog
   fi
@@ -2352,7 +2340,7 @@ EOFSM
     if [[ "\$(isProgramInstalled \$util)" = "false" ]]; then
       lib_name=\$(echo \$util | cut -d"|" -f2)
       echo "Installing \$lib_name, please wait..."
-      sudo DEBIAN_FRONTEND=noninteractive apt install -y \$lib_name >/dev/null 2>/dev/null
+      sudo DEBIAN_FRONTEND=noninteractive apt install -y \$lib_name > /dev/null 2>&1
     fi
   done
 
@@ -2367,7 +2355,7 @@ EOFSM
   if ! [ "\$(isProgramInstalled \$util)" = "true" ]; then
     # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
     echo "Installing docker, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
     sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
     echo "deb [arch=\$(dpkg --print-architecture) \
@@ -2376,7 +2364,7 @@ EOFSM
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo DEBIAN_FRONTEND=noninteractive apt update
     echo "Installing docker, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
   fi
 
   sudo usermod -aG docker \$USERNAME
@@ -2396,7 +2384,7 @@ EOFSM
 }
 EOFRL
   set +e
-  grep DockerDaemonLogFileName /etc/rsyslog.d/docker-logs.conf >/dev/null 2>/dev/null
+  grep DockerDaemonLogFileName /etc/rsyslog.d/docker-logs.conf > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     sudo tee /etc/rsyslog.d/docker-logs.conf >/dev/null <<EOFRL
 \\\$FileCreateMode 0644
@@ -2477,7 +2465,7 @@ function main()
   sudo \\\$HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo \\\$HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo rm -f /etc/sysctl.d/88-hshq.conf
-  sudo sysctl --system >/dev/null 2>/dev/null
+  sudo sysctl --system > /dev/null 2>&1
   sudo sed -i "s|^DNS=.*|DNS=9.9.9.9|g" /etc/systemd/resolved.conf
   sudo systemctl restart systemd-resolved
   sudo systemctl restart docker
@@ -2543,7 +2531,7 @@ function pullImage()
   do
     # Refresh the sudo timestamp
     sudo -v
-    docker pull \$img_and_version >/dev/null 2>/dev/null
+    docker pull \$img_and_version > /dev/null 2>&1
     img_name=\$(echo \$img_and_version | cut -d":" -f1)
     docker image ls | grep "\$img_name"
     is_success=\$?
@@ -2807,7 +2795,7 @@ EOFR
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
-  sudo netplan apply >/dev/null 2>/dev/null
+  sudo netplan apply > /dev/null 2>&1
   sudo systemctl restart systemd-resolved
   startStopStack adguard stop
   startStopStack adguard start
@@ -2926,7 +2914,7 @@ function main()
     if [[ "\$(isProgramInstalled screen)" = "false" ]]; then
       echo "Installing screen, please wait..."
       sudo DEBIAN_FRONTEND=noninteractive apt update
-      sudo DEBIAN_FRONTEND=noninteractive apt install -y screen >/dev/null 2>/dev/null
+      sudo DEBIAN_FRONTEND=noninteractive apt install -y screen > /dev/null 2>&1
     fi
     screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i
   fi
@@ -3179,62 +3167,62 @@ do
 done
 
   # Drop invalid packets
-  iptables -t mangle -C PREROUTING -m conntrack --ctstate INVALID -j DROP > /dev/null 2> /dev/null ||  iptables -t mangle -A PREROUTING -m conntrack --ctstate INVALID -j DROP
+  iptables -t mangle -C PREROUTING -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 ||  iptables -t mangle -A PREROUTING -m conntrack --ctstate INVALID -j DROP
 
   # Drop TCP packets that are new and are not SYN
-  iptables -t mangle -C PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP
+  iptables -t mangle -C PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP
 
   # Drop SYN packets with suspicious MSS value
-  iptables -t mangle -C PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
+  iptables -t mangle -C PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Block packets with bogus TCP flags
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL NONE -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL ALL -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL ALL -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL NONE -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL ALL -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL ALL -j DROP
 
   # Block spoofed packets
-  iptables -t mangle -C PREROUTING -s 224.0.0.0/3 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 224.0.0.0/3 -j DROP
-  iptables -t mangle -C PREROUTING -s 169.254.0.0/16 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 169.254.0.0/16 -j DROP
-  iptables -t mangle -C PREROUTING -s 192.0.2.0/24 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 192.0.2.0/24 -j DROP
-  iptables -t mangle -C PREROUTING -s 192.168.0.0/16 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 192.168.0.0/16 -j DROP
-  iptables -t mangle -C PREROUTING -s 10.0.0.0/8 -i \$default_iface -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 10.0.0.0/8 -i \$default_iface -j DROP
-  iptables -t mangle -C PREROUTING -s 0.0.0.0/8 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 0.0.0.0/8 -j DROP
-  iptables -t mangle -C PREROUTING -s 240.0.0.0/5 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 240.0.0.0/5 -j DROP
-  iptables -t mangle -C PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP
-  iptables -t mangle -C PREROUTING -s 172.16.0.0/12 -i \$default_iface -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -s 172.16.0.0/12 -i \$default_iface -j DROP
+  iptables -t mangle -C PREROUTING -s 224.0.0.0/3 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 224.0.0.0/3 -j DROP
+  iptables -t mangle -C PREROUTING -s 169.254.0.0/16 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 169.254.0.0/16 -j DROP
+  iptables -t mangle -C PREROUTING -s 192.0.2.0/24 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 192.0.2.0/24 -j DROP
+  iptables -t mangle -C PREROUTING -s 192.168.0.0/16 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 192.168.0.0/16 -j DROP
+  iptables -t mangle -C PREROUTING -s 10.0.0.0/8 -i \$default_iface -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 10.0.0.0/8 -i \$default_iface -j DROP
+  iptables -t mangle -C PREROUTING -s 0.0.0.0/8 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 0.0.0.0/8 -j DROP
+  iptables -t mangle -C PREROUTING -s 240.0.0.0/5 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 240.0.0.0/5 -j DROP
+  iptables -t mangle -C PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP
+  iptables -t mangle -C PREROUTING -s 172.16.0.0/12 -i \$default_iface -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 172.16.0.0/12 -i \$default_iface -j DROP
 
   # Drop ICMP on external interface
-  iptables -t mangle -C PREROUTING -p icmp -i \$default_iface -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p icmp -i \$default_iface -j DROP
+  iptables -t mangle -C PREROUTING -p icmp -i \$default_iface -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p icmp -i \$default_iface -j DROP
 
   # Drop fragments in all chains
-  iptables -t mangle -C PREROUTING -f -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -f -j DROP
+  iptables -t mangle -C PREROUTING -f -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -f -j DROP
 
   # Limit connections per source IP
-  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
 
   # Configure loopback
-  iptables -C INPUT -i lo -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -i lo -j ACCEPT
-  iptables -C INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2> /dev/null || iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
+  iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
+  iptables -C INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1 || iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
 
   # Allow ICMP for internal (mangle table drops requests to external IP)
-  iptables -C INPUT -p icmp --icmp-type 8 -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p icmp --icmp-type 8 -j ACCEPT
+  iptables -C INPUT -p icmp --icmp-type 8 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p icmp --icmp-type 8 -j ACCEPT
 
   # Allow established connections
-  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   # Allow SSH
-  iptables -C INPUT -p tcp -m tcp --dport $RELAYSERVER_SSH_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp --dport $RELAYSERVER_SSH_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp --dport $RELAYSERVER_SSH_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport $RELAYSERVER_SSH_PORT -j ACCEPT
 
   # Allow WireGuard
-  iptables -C INPUT -p udp --dport $RELAYSERVER_WG_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p udp --dport $RELAYSERVER_WG_PORT -j ACCEPT
+  iptables -C INPUT -p udp --dport $RELAYSERVER_WG_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p udp --dport $RELAYSERVER_WG_PORT -j ACCEPT
 
   # Special case for WG Portal from reverse proxy
-  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $RELAYSERVER_WG_PORTAL_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $RELAYSERVER_WG_PORTAL_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $RELAYSERVER_WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $RELAYSERVER_WG_PORTAL_PORT -j ACCEPT
 
   # Policy drop for input and forward
   iptables -P INPUT DROP
@@ -3245,7 +3233,7 @@ done
   ip6tables -P FORWARD DROP
   ip6tables -P OUTPUT DROP
 
-  sysctl --system >/dev/null 2>/dev/null
+  sysctl --system > /dev/null 2>&1
 
 EOFBS
   sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
@@ -3743,7 +3731,7 @@ function installAdGuard()
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
-  sudo netplan apply >/dev/null 2>/dev/null
+  sudo netplan apply > /dev/null 2>&1
   sudo systemctl restart systemd-resolved
 
   installStack adguard adguard "entering tls listener loop on" \$HOME/adguard.env
@@ -5482,7 +5470,7 @@ function uploadVPNInstallScripts()
       fi
       is_err=$?
       if [ $is_err -eq 0 ]; then
-        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $remote_pw | sudo -S getent group docker >/dev/null || sudo groupadd docker >/dev/null 2>/dev/null && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME >/dev/null 2>/dev/null && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
+        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $remote_pw | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
         is_err=$?
         unloadSSHKey
       fi
@@ -5536,7 +5524,7 @@ EOF
 function loadSSHKey()
 {
   set +e
-  ssh-add -L >/dev/null 2>/dev/null
+  ssh-add -L > /dev/null 2>&1
   if [ $? -eq 2 ]; then
     eval "$(ssh-agent)"
   fi
@@ -7060,7 +7048,7 @@ function createOtherNetworkJoinHomeServerVPNConfig()
   join_rootca_name=${ifaceName}.crt
   join_rootca_file=$HOME/$join_rootca_name
   echo -e "$root_ca_section" > $join_rootca_file
-  openssl x509 -in $join_rootca_file -noout -text 1>/dev/null 2>/dev/null
+  openssl x509 -in $join_rootca_file -noout -text 1> /dev/null 2>&1
   check_cert=$?
   if [ $check_cert -ne 0 ]; then
     showMessageBox "Certificate Parsing Error" "There was an unknown error parsing the provided root certificate, exiting..."
@@ -7112,7 +7100,7 @@ function createOtherNetworkJoinHomeServerVPNConfig()
       return 1
     fi
     echo -e "$mail_crt_section" > $HOME/mail-cert.crt
-    openssl x509 -in $HOME/mail-cert.crt -noout -text 1>/dev/null 2>/dev/null
+    openssl x509 -in $HOME/mail-cert.crt -noout -text 1> /dev/null 2>&1
     check_cert=$?
     if [ $check_cert -ne 0 ]; then
       showMessageBox "Certificate Parsing Error" "There was an unknown error parsing the provided mail certificate, exiting..."
@@ -7123,7 +7111,7 @@ function createOtherNetworkJoinHomeServerVPNConfig()
       return 1
     fi
     echo -e "$mail_key_section" > $HOME/mail-key.key
-    openssl rsa -in $HOME/mail-key.key -check 1>/dev/null 2>/dev/null
+    openssl rsa -in $HOME/mail-key.key -check 1> /dev/null 2>&1
     check_cert=$?
     if [ $check_cert -ne 0 ]; then
       showMessageBox "Certificate Parsing Error" "There was an unknown error parsing the provided mail certificate key, exiting..."
@@ -7148,7 +7136,7 @@ function createOtherNetworkJoinHomeServerVPNConfig()
     updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
     RELAYSERVER_EXT_EMAIL_HOSTNAME=$relayserver_ext_email
     updateConfigVar RELAYSERVER_EXT_EMAIL_HOSTNAME $RELAYSERVER_EXT_EMAIL_HOSTNAME
-    docker ps | grep mailu-front >/dev/null 2>/dev/null
+    docker ps | grep mailu-front > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       startStopStack mailu stop
       sleep 5
@@ -7180,10 +7168,11 @@ function createOtherNetworkJoinHomeServerVPNConfig()
   sudo cp $HSHQ_SSL_DIR/$join_rootca_name /usr/local/share/ca-certificates/
   sudo update-ca-certificates
   if [ "$IS_INSTALLED" = "true" ]; then
-    docker ps | grep nextcloud-app >/dev/null 2>/dev/null
+    docker ps | grep nextcloud-app > /dev/null 2>&1
     if [ $? -eq 0 ]; then
-    docker exec -u www-data nextcloud-app php occ --no-warnings security:certificates:import /usr/local/share/ca-certificates/$join_rootca_name
+      docker exec -u www-data nextcloud-app php occ --no-warnings security:certificates:import /usr/local/share/ca-certificates/$join_rootca_name
     fi
+    restartStackIfRunning homeassistant 10
   fi
   addAdvertiseIP $new_ip
   set -e
@@ -7874,13 +7863,13 @@ function changeHostStaticIP()
   HOMESERVER_HOST_RANGE=$newHSHostRange
   updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
   echo "Restarting Portainer..."
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2> /dev/null
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   outputConfigPortainer
   generateCert portainer portainer $HOMESERVER_HOST_IP
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2> /dev/null
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   echo "Restarting Heimdall..."
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$curHostIP%';"
-  docker container restart heimdall > /dev/null 2> /dev/null
+  docker container restart heimdall > /dev/null 2>&1
   echo "Updating Adguard..."
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
   echo "Restarting Caddy stacks..."
@@ -7938,7 +7927,7 @@ function isIPInSubnet()
   check_subnet=$2
   curE=${-//[^e]/}
   set +e
-  grepcidr ${check_subnet} <(echo ${check_ipaddr}) >/dev/null 2>/dev/null
+  grepcidr ${check_subnet} <(echo ${check_ipaddr}) > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     echo "true"
   else
@@ -8062,10 +8051,10 @@ function getNextAvailableWGDockerNetwork()
 {
   docker_network_name=$1
   conn_mtu=$2
-  docker network create --driver=bridge $docker_network_name >/dev/null 2>/dev/null
+  docker network create --driver=bridge $docker_network_name > /dev/null 2>&1
   docker_subnet=$(getDockerSubnet $docker_network_name)
-  docker network rm $docker_network_name >/dev/null 2>/dev/null
-  docker network create $docker_network_name --driver=bridge --subnet $docker_subnet -o com.docker.network.driver.mtu=$conn_mtu -o com.docker.network.bridge.name=$docker_network_name >/dev/null 2>/dev/null
+  docker network rm $docker_network_name > /dev/null 2>&1
+  docker network create $docker_network_name --driver=bridge --subnet $docker_subnet -o com.docker.network.driver.mtu=$conn_mtu -o com.docker.network.bridge.name=$docker_network_name > /dev/null 2>&1
   echo $docker_subnet
 }
 
@@ -8089,15 +8078,6 @@ function getPortainerToken()
     esac
   done
   shift "$(($OPTIND -1))"
-
-  if [ -z "$port_username" ]; then
-    read -p "Enter the portainer username: " port_username
-	echo
-  fi
-  if [ -z "$port_password" ]; then
-    read -s -p "Enter the portainer password: " port_password
-	echo
-  fi
   echo $(http --check-status --ignore-stdin --verify=no https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/auth username=$port_username password=$port_password | jq -r .jwt)
 }
 
@@ -8162,13 +8142,13 @@ function version22Update()
   cdns_stack_name="user1"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   uptimekumaStackID=$(getStackID uptimekuma "$portainerToken")
-  startStopStack uptimekuma stop $portainerToken > /dev/null 2> /dev/null
-  grep "HOMESERVER_HOST_ISPRIVATE" $CONFIG_FILE > /dev/null 2> /dev/null
+  startStopStack uptimekuma stop $portainerToken > /dev/null 2>&1
+  grep "HOMESERVER_HOST_ISPRIVATE" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
     sed -i "s|^HOMESERVER_HOST_IP=.*|HOMESERVER_HOST_IP=$HOMESERVER_HOST_IP\nHOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE|g" $CONFIG_FILE
   fi
-  grep "HOMESERVER_HOST_RANGE" $CONFIG_FILE > /dev/null 2> /dev/null
+  grep "HOMESERVER_HOST_RANGE" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     HOMESERVER_HOST_RANGE=$(getHomeServerPrivateRange)
     sed -i "s|^HOMESERVER_HOST_ISPRIVATE=.*|HOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE\nHOMESERVER_HOST_RANGE=$HOMESERVER_HOST_RANGE|g" $CONFIG_FILE
@@ -8189,18 +8169,18 @@ function version22Update()
     sleep 1
   done
 
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2> /dev/null
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   set +e
-  docker network rm dock-mailu-ext > /dev/null 2> /dev/null
-  docker network rm dock-mailu-int > /dev/null 2> /dev/null
-  docker network rm cdns-${cdns_stack_name} > /dev/null 2> /dev/null
-  docker network rm dock-ldap > /dev/null 2> /dev/null
+  docker network rm dock-mailu-ext > /dev/null 2>&1
+  docker network rm dock-mailu-int > /dev/null 2>&1
+  docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
+  docker network rm dock-ldap > /dev/null 2>&1
   set -e
   echo "Restarting Docker..."
   sudo systemctl restart docker
   sleep 3
   outputConfigPortainer
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2> /dev/null
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   set +e
   total_tries=10
   num_tries=1
@@ -8222,24 +8202,24 @@ function version22Update()
 
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
   # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-ext-tmp > /dev/null 2> /dev/null
+  docker network create --driver=bridge mailu-ext-tmp > /dev/null 2>&1
   mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
   mailu_external_net_prefix=$(echo $mailu_external_subnet | rev | cut -d '.' -f2- | rev)
   docker network rm mailu-ext-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext > /dev/null 2> /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext > /dev/null 2>&1
 
   # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-int-tmp > /dev/null 2> /dev/null
+  docker network create --driver=bridge mailu-int-tmp > /dev/null 2>&1
   mailu_internal_subnet=$(getDockerSubnet mailu-int-tmp)
   docker network rm mailu-int-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int > /dev/null 2> /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int > /dev/null 2>&1
 
   if ! [ -z $cdnsStackID ]; then
-    docker network create --driver=bridge tmpnet > /dev/null 2> /dev/null
+    docker network create --driver=bridge tmpnet > /dev/null 2>&1
     clientdns_subnet=$(getDockerSubnet tmpnet)
     clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
     docker network rm tmpnet >/dev/null
-    docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null 2> /dev/null
+    docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null 2>&1
   fi
 
   # Replace Mailu stack
@@ -8508,7 +8488,7 @@ EOFMC
   sed -i "s|^SUBNET=.*|SUBNET=${mailu_external_subnet}|g" $HOME/mailu.env
   sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${mailu_external_net_prefix}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2> /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
 
   if ! [ -z $cdnsStackID ]; then
@@ -8583,7 +8563,7 @@ EOFCF
     updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
     sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
     echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2> /dev/null
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
     rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
   fi
 
@@ -8702,7 +8682,7 @@ function performExitFunctions()
   #unloadSSHKey
   # This is more aggressive, but cleans up any pre-existing sessions (in case the script terminated abnormally)
   set +e
-  killall ssh-agent > /dev/null 2> /dev/null
+  killall ssh-agent > /dev/null 2>&1
   set -e
   if [ -z "$IS_CONFIG_INIT" ] || ! [ "$IS_INSTALLED" = "true" ]; then
     return
@@ -8843,6 +8823,46 @@ function startStopStackByID()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+}
+
+function restartStackIfRunning()
+{
+  stackName=$1
+  waitTime=$2
+  portainerToken=$3
+  if [ -z "$portainerToken" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  stackID=$(getStackID $stackName "$portainerToken")
+  stackStatus=$(getStackStatusByID $stackID "$portainerToken")
+  if [ "$stackStatus" = "1" ]; then
+    startStopStackByID $stackID stop $portainerToken
+    sleep $waitTime
+    startStopStackByID $stackID start $portainerToken
+  fi
+}
+
+function getStackStatusByID()
+{
+  stackID=$1
+  portainerToken=$2
+  if [ -z "$portainerToken" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.Status')
+  echo $stackStatus
+}
+
+function getStackStatusByName()
+{
+  stackName=$1
+  portainerToken=$2
+  if [ -z "$portainerToken" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  stackID=$(getStackID $stackName "$portainerToken")
+  stackStatus=$(getStackStatusByID $stackID "$portainerToken")
+  echo $stackStatus
 }
 
 function deleteStack()
@@ -10067,7 +10087,7 @@ function addDomainAdguardNoReplaceHS()
   add_domain="$1"
   add_ip_addr="$2"
   basic_auth="$(getAdguardCredentialsHS)"
-  curl -s -H "Authorization: Basic $basic_auth" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/rewrite/list | jq -r --arg add_domain $add_domain '.[] | select(.domain==$add_domain) | .domain' | grep $add_domain >/dev/null 2>/dev/null
+  curl -s -H "Authorization: Basic $basic_auth" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/rewrite/list | jq -r --arg add_domain $add_domain '.[] | select(.domain==$add_domain) | .domain' | grep $add_domain > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     dom_json=$(jq -n --arg add_domain $add_domain --arg add_ip_addr $add_ip_addr '{domain: $add_domain, answer: $add_ip_addr}')
     curl -s -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$dom_json" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/rewrite/add
@@ -10147,7 +10167,7 @@ function addDomainAdguardNoReplaceRS()
   add_domain="$1"
   add_ip_addr="$2"
   basic_auth="$(getAdguardCredentialsRS)"
-  curl -s -H "Authorization: Basic $basic_auth" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/list | jq -r --arg add_domain $add_domain '.[] | select(.domain==$add_domain) | .domain' | grep $add_domain >/dev/null 2>/dev/null
+  curl -s -H "Authorization: Basic $basic_auth" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/list | jq -r --arg add_domain $add_domain '.[] | select(.domain==$add_domain) | .domain' | grep $add_domain > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     dom_json=$(jq -n --arg add_domain $add_domain --arg add_ip_addr $add_ip_addr '{domain: $add_domain, answer: $add_ip_addr}')
     curl -s -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$dom_json" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/add
@@ -10787,7 +10807,15 @@ function checkUpdateVersion()
     echo "Updating to Version 22..."
     updateMOTD
     version22Update
-    HSHQ_VERSION=21
+    HSHQ_VERSION=22
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 23 ]; then
+    echo "Updating to Version 23..."
+    outputBootScripts
+    appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null 2>&1"
+    updateSysctl
+    HSHQ_VERSION=23
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -10820,7 +10848,7 @@ function checkAddServiceToConfig()
   service_name="$1"
   variable_list=$2
   set +e
-  grep "# $service_name (Service Details)" $CONFIG_FILE >/dev/null 2>/dev/null
+  grep "# $service_name (Service Details)" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     replace_block="# $service_name (Service Details) BEGIN\n"
     varListArr=($(echo $variable_list | tr "," "\n"))
@@ -10842,7 +10870,7 @@ function checkAddVarsToServiceConfig()
   varListArr=($(echo $variable_list | tr "," "\n"))
   for curVar in "${varListArr[@]}"
   do
-    grep "$curVar" $CONFIG_FILE >/dev/null 2>/dev/null
+    grep "$curVar" $CONFIG_FILE > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       replace_block="$curVar\n# $service_name (Service Details) END"
       sed -i "s|# $service_name (Service Details) END|$replace_block|g" $CONFIG_FILE
@@ -10855,7 +10883,7 @@ function removeServiceFromConfig()
 {
   service_name=$1
   set +e
-  grep "# $service_name (Service Details)" $CONFIG_FILE >/dev/null 2>/dev/null
+  grep "# $service_name (Service Details)" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     removeTextBlockInFile "# $service_name (Service Details)" "# $service_name (Service Details) END" $CONFIG_FILE
   fi
@@ -10898,7 +10926,7 @@ function nukeHSHQ()
     exit 1
   fi
   sudo crontab -r
-  killall ssh-agent > /dev/null 2> /dev/null
+  killall ssh-agent > /dev/null 2>&1
   sudo docker ps -q | xargs sudo docker stop
   sleep 5
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
@@ -10910,7 +10938,7 @@ function nukeHSHQ()
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
   sudo $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo rm -f /etc/sysctl.d/88-hshq.conf
-  sudo sysctl --system >/dev/null 2>/dev/null
+  sudo sysctl --system > /dev/null 2>&1
   sudo docker container prune -f
   sudo docker volume rm $(sudo docker volume ls -q)
   sudo docker network prune -f
@@ -10956,14 +10984,7 @@ function getExposedPortsList()
 
 function outputBootScripts()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
-run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/bootscripts
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -10985,51 +11006,54 @@ done
   iptables -I DOCKER-USER -s 127.0.0.0/8,$NET_DBS_SUBNET -m conntrack --ctorigdstport $HOMEASSISTANT_DB_LOCALHOST_PORT --ctdir ORIGINAL -j ACCEPT
 
   # Drop invalid packets
-  iptables -t mangle -C PREROUTING -m conntrack --ctstate INVALID -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -m conntrack --ctstate INVALID -j DROP
+  iptables -t mangle -C PREROUTING -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -m conntrack --ctstate INVALID -j DROP
 
   # Drop TCP packets that are new and are not SYN
-  iptables -t mangle -C PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP
+  iptables -t mangle -C PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP
 
   # Drop SYN packets with suspicious MSS value
-  iptables -t mangle -C PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
+  iptables -t mangle -C PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Block packets with bogus TCP flags
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL NONE -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL ALL -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL NONE -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
+  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL ALL -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
 
   # Drop fragments in all chains
-  iptables -t mangle -C PREROUTING -f -j DROP > /dev/null 2> /dev/null || iptables -t mangle -A PREROUTING -f -j DROP
+  iptables -t mangle -C PREROUTING -f -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -f -j DROP
 
   # Limit connections per source IP
-  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
 
   # Configure loopback
-  iptables -C INPUT -i lo -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -i lo -j ACCEPT
-  iptables -C INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2> /dev/null || iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
+  iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
+  iptables -C INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1 || iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
 
   # Allow ICMP
-  iptables -C INPUT -p icmp --icmp-type 8 -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p icmp --icmp-type 8 -j ACCEPT
+  iptables -C INPUT -p icmp --icmp-type 8 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p icmp --icmp-type 8 -j ACCEPT
 
   # Allow established connections
-  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   # Allow SSH
-  iptables -C INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT
 
   # Allow HTTPS
-  iptables -C INPUT -p tcp -m tcp --dport 443 -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp --dport 443 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
 
   # Special case for HomeAssistant since it is using host networking
-  iptables -C INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
 
   # Special case for Docker metrics
-  iptables -C INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2> /dev/null || iptables -A INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
+
+  # Add UPNP
+  iptables -C INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
 
   # Policy drop for input and forward
   iptables -P INPUT DROP
@@ -11040,7 +11064,7 @@ done
   ip6tables -P FORWARD DROP
   ip6tables -P OUTPUT DROP
 
-  sysctl --system >/dev/null 2>/dev/null
+  sysctl --system > /dev/null 2>&1
 
 EOFBS
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
@@ -11080,6 +11104,7 @@ done
   iptables -D INPUT -p tcp -m tcp --dport 443 -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
+  iptables -D INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
 
   iptables -P INPUT ACCEPT
 
@@ -11107,15 +11132,23 @@ do
 done
 EOFPT
   fi
-
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   util="docker|docker"
   if ! [ "$(isProgramInstalled $util)" = "false" ]; then
     sudo $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
     # Just in case
-    sudo iptables -C INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT > /dev/null 2> /dev/null || sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT
+    sudo iptables -C INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT
   fi
+
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
+#!/bin/bash
+
+chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
+run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
+EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
   sudo tee $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
 [Unit]
@@ -11135,6 +11168,33 @@ EOFBS
   sudo ln -s $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRoot
+  outputHABandaidScript
+}
+
+function outputHABandaidScript()
+{
+  sudo tee $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null <<EOFBS
+#!/bin/bash
+
+# This script is a bandaid solution to fix the startup
+# issues with HomeAssistant after a reboot. At some
+# point, need to find the real problem and fix it.
+
+function main()
+{
+  sleep 60
+  docker ps > /dev/null 2>&1
+  sleep 30
+  source $HSHQ_DATA_DIR/lib/hshqlib.sh lib
+  PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
+  PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
+  PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
+  restartStackIfRunning homeassistant 15
+}
+main
+EOFBS
+
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh
 }
 
 function outputDBExportScripts()
@@ -11386,19 +11446,34 @@ EOFWG
 
 function initCronJobs()
 {
-  echo "MAILTO=$EMAIL_ADMIN_EMAIL_ADDRESS" | sudo tee $HSHQ_BASE_DIR/rootcron >/dev/null
-  echo "*/$LECERTS_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null 2>&1" | sudo tee -a $HSHQ_BASE_DIR/rootcron >/dev/null
-  echo "*/$WIREGUARD_DNS_REFRESH_RATE * * * * bash $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null 2>&1" | sudo tee -a $HSHQ_BASE_DIR/rootcron >/dev/null
-  echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HSHQ_BASE_DIR/rootcron >/dev/null
-  sudo crontab $HSHQ_BASE_DIR/rootcron
-  sudo rm $HSHQ_BASE_DIR/rootcron
+  echo "MAILTO=$EMAIL_ADMIN_EMAIL_ADDRESS" | sudo tee $HOME/rootcron >/dev/null
+  echo "*/$LECERTS_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "*/$WIREGUARD_DNS_REFRESH_RATE * * * * bash $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
+  sudo crontab $HOME/rootcron
+  sudo rm $HOME/rootcron
+}
+
+function appendToRoonCron()
+{
+  cr_string="$1"
+  sudo crontab -l > $HOME/rootcron
+  set +e
+  grep "$cr_string" $HOME/rootcron > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "$cr_string" | sudo tee -a $HOME/rootcron >/dev/null
+    sudo crontab $HOME/rootcron
+    sudo rm $HOME/rootcron
+  fi
+  set -e
 }
 
 function outputWireguardScripts()
 {
   if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
     echo "Installing networkd-dispatcher, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y networkd-dispatcher >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y networkd-dispatcher > /dev/null 2>&1
   fi
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh >/dev/null <<EOFWG
 #!/bin/bash
@@ -11553,7 +11628,7 @@ scripts_dir=$HSHQ_SCRIPTS_DIR
 
 \$scripts_dir/root/dockPrivateIP.sh
 
-ls \$wgdir/internet/*.conf >/dev/null 2>/dev/null
+ls \$wgdir/internet/*.conf > /dev/null 2>&1
 if [ \$? -eq 0 ]; then
   ls \$wgdir/internet/*.conf | while read conf
   do
@@ -11682,7 +11757,7 @@ function main()
     DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
     DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
     CONN=\$(getConfigVar \#MTU)
-    docker network inspect \$DOCKER_NETWORK_NAME &>/dev/null
+    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
       docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
     fi
@@ -11716,7 +11791,7 @@ EOFWG
   sudo systemctl enable createWGDockerNetworks
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
     echo "Installing sqlite3, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y sqlite3 >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y sqlite3 > /dev/null 2>&1
   fi
 }
 
@@ -11861,12 +11936,12 @@ function installDockerUbuntu2004Rooted()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   echo "Installing docker, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release >/dev/null 2>/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin >/dev/null 2>/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
   sudo systemctl restart rsyslog
   sudo systemctl restart docker
 }
@@ -11875,7 +11950,7 @@ function installDockerUbuntu2004Rootless()
 {
   sudo DEBIAN_FRONTEND=noninteractive apt update
   # Install dependencies for rootless docker (https://linuxhandbook.com/rootless-docker/)
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y uidmap dbus-user-session fuse-overlayfs >/dev/null 2>/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y uidmap dbus-user-session fuse-overlayfs > /dev/null 2>&1
   sudo systemctl disable --now docker.service docker.socket
   # Install the rootless docker package (https://linuxhandbook.com/rootless-docker/)
   curl -fsSL https://get.docker.com/rootless | sh
@@ -11896,19 +11971,19 @@ function initCertificateAuthority()
   fi
   if [[ "$(isProgramInstalled openssl)" = "false" ]]; then
     echo "Installing openssl, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y openssl >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y openssl > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled faketime)" = "false" ]]; then
     echo "Installing faketime, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y faketime >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y faketime > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled bc)" = "false" ]]; then
     echo "Installing bc, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y bc >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y bc > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled htpasswd)" = "false" ]]; then
     echo "Installing htpasswd, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y apache2-utils >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y apache2-utils > /dev/null 2>&1
   fi
 
   if [ -z "$CERTS_ROOT_CA_NAME" ]; then
@@ -12192,7 +12267,7 @@ function pullImage()
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
     # Need to run docker pull with sudo in case current user added to docker group hasn't reflected yet.
-    sudo docker pull $img_and_version > /dev/null 2> /dev/null
+    sudo docker pull $img_and_version > /dev/null 2>&1
     img_name=$(echo $img_and_version | cut -d":" -f1)
     sudo docker image ls | grep "$img_name"
     is_success=$?
@@ -12243,12 +12318,12 @@ function loadPinnedDockerImages()
   IMG_FRESHRSS=freshrss/freshrss:1.23.1
   IMG_GHOST=ghost:5.75.2-alpine
   IMG_GITEA_APP=gitea/gitea:1.21.3
-  IMG_GITLAB_APP=gitlab/gitlab-ce:16.7.0-ce.0
+  IMG_GITLAB_APP=gitlab/gitlab-ce:16.8.1-ce.0
   IMG_GRAFANA=grafana/grafana-oss:9.5.15
   IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.4
   IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.4
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
-  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2024.1.3
+  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2024.1.5
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
   IMG_HOMEASSISTANT_NODERED=nodered/node-red:3.0.2
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
@@ -12522,6 +12597,18 @@ function initServicesCredentials()
   if [ -z "$INFLUXDB_ADMIN_PASSWORD" ]; then
     INFLUXDB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar INFLUXDB_ADMIN_PASSWORD $INFLUXDB_ADMIN_PASSWORD
+  fi
+  if [ -z "$INFLUXDB_ORG" ]; then
+    INFLUXDB_ORG=$HOMESERVER_DOMAIN
+    updateConfigVar INFLUXDB_ORG $INFLUXDB_ORG
+  fi
+  if [ -z "$INFLUXDB_TOKEN" ]; then
+    INFLUXDB_TOKEN=$(pwgen -c -n 64 1)
+    updateConfigVar INFLUXDB_TOKEN $INFLUXDB_TOKEN
+  fi
+  if [ -z "$INFLUXDB_HA_BUCKET" ]; then
+    INFLUXDB_HA_BUCKET="home_assistant"
+    updateConfigVar INFLUXDB_HA_BUCKET $INFLUXDB_HA_BUCKET
   fi
   if [ -z "$LDAP_BASE_DN"  ]; then
     LDAP_BASE_DN=$(echo "dc="$(echo $HOMESERVER_DOMAIN | sed 's/\./,dc=/g'))
@@ -13747,7 +13834,7 @@ function installAdGuard()
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
   done
-  sudo netplan apply >/dev/null 2>/dev/null
+  sudo netplan apply > /dev/null 2>&1
   sudo systemctl restart systemd-resolved
   installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
   inner_block=""
@@ -14079,18 +14166,6 @@ function installSystemUtils()
   mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
 
   initServicesCredentials
-  if [ -z "$INFLUXDB_ORG" ]; then
-    INFLUXDB_ORG=$HOMESERVER_DOMAIN
-    updateConfigVar INFLUXDB_ORG $INFLUXDB_ORG
-  fi
-  if [ -z "$INFLUXDB_TOKEN" ]; then
-    INFLUXDB_TOKEN=$(pwgen -c -n 64 1)
-    updateConfigVar INFLUXDB_TOKEN $INFLUXDB_TOKEN
-  fi
-  if [ -z "$INFLUXDB_HA_BUCKET" ]; then
-    INFLUXDB_HA_BUCKET="home_assistant"
-    updateConfigVar INFLUXDB_HA_BUCKET $INFLUXDB_HA_BUCKET
-  fi
 
   pullImage $IMG_GRAFANA
   pullImage $IMG_PROMETHEUS
@@ -14150,12 +14225,12 @@ function installSystemUtils()
   sleep 3
 
   datasource_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false}')
-  echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources >/dev/null 2>/dev/null
+  echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
 
-  cat $HOME/gfdashboard.json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/dashboards/db >/dev/null 2>/dev/null
+  cat $HOME/gfdashboard.json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/dashboards/db > /dev/null 2>&1
 
   pref_string=$(jq -n --arg gfid "$gf_dashboard_uid" --arg tz "$TZ" '{theme: "dark", homeDashboardUID: $gfid, timezone: $tz}')
-  echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences >/dev/null 2>/dev/null
+  echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
 
   sleep 2
   docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
@@ -16848,7 +16923,7 @@ function installOpenLDAP()
   installStack openldap ldapserver "slapd starting" $HOME/openldap.env
 
   docker exec ldapserver chmod +x /tmp/initconfig/initdbscript.sh
-  docker exec ldapserver sh /tmp/initconfig/initdbscript.sh >/dev/null 2>/dev/null
+  docker exec ldapserver sh /tmp/initconfig/initdbscript.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/*
   chmod 644 $HSHQ_SSL_DIR/dhparam.pem
 
@@ -18731,7 +18806,7 @@ function installNextCloud()
       docker container stop $curcont
       docker container rm $curcont
     done
-    docker volume rm nextcloud_v-nextcloud >/dev/null 2>/dev/null
+    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
     echo "Nextcloud did not start up correctly, exiting..."
     exit 1
   fi
@@ -21643,7 +21718,8 @@ services:
       - dock-ext-net
       - dock-ldap-net
     ports:
-      - 1901:1900/udp
+      # UPnP Conflicts with HomeAssistant
+      #- 1900:1900/udp
       - 7359:7359/udp
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -23327,8 +23403,7 @@ services:
     hostname: homeassistant-app
     restart: unless-stopped
     env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
+    privileged: true
     depends_on:
       - homeassistant-db
     network_mode: host
@@ -23338,6 +23413,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro
       - \${HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
       - \${HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
       - \${HSHQ_STACKS_DIR}/homeassistant/config:/config
@@ -23479,6 +23555,8 @@ EOFCF
 default_config:
 
 homeassistant:
+  time_zone: $TZ
+  external_url: "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN"
   internal_url: "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN"
   country: US
 
@@ -23496,9 +23574,12 @@ scene: !include scenes.yaml
 http:
   use_x_forwarded_for: true
   trusted_proxies:
-  - 172.16.0.0/12
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
   ip_ban_enabled: true
   login_attempts_threshold: 5
+  server_host: 0.0.0.0
   server_port: $HOMEASSISTANT_LOCALHOST_PORT
   ssl_certificate: /certs/homeassistant-app.crt
   ssl_key: /certs/homeassistant-app.key
@@ -23750,15 +23831,16 @@ external_url 'https://$SUB_GITLAB.$HOMESERVER_DOMAIN'
 gitlab_rails['smtp_enable'] = true
 gitlab_rails['smtp_address'] = '$SMTP_HOSTNAME'
 gitlab_rails['smtp_port'] = $SMTP_HOSTPORT
+gitlab_rails['smtp_user_name'] = '$EMAIL_SMTP_EMAIL_ADDRESS'
+gitlab_rails['smtp_password'] = '$EMAIL_SMTP_PASSWORD'
 gitlab_rails['smtp_domain'] = '$SMTP_HOSTNAME'
+gitlab_rails['smtp_authentication'] = 'login'
 gitlab_rails['smtp_enable_starttls_auto'] = true
 gitlab_rails['gitlab_email_enabled'] = true
-gitlab_rails['gitlab_email_from'] = '$EMAIL_ADMIN_EMAIL_ADDRESS'
-gitlab_rails['gitlab_email_display_name'] = 'Gitlab'
+gitlab_rails['gitlab_email_from'] = '$EMAIL_SMTP_EMAIL_ADDRESS'
+gitlab_rails['gitlab_email_display_name'] = 'Gitlab HSHQ Admin'
 gitlab_rails['gitlab_email_reply_to'] = '$EMAIL_ADMIN_EMAIL_ADDRESS'
-gitlab_rails['incoming_email_enabled'] = true
-gitlab_rails['incoming_email_address'] = '$EMAIL_ADMIN_EMAIL_ADDRESS'
-gitlab_rails['incoming_email_email'] = '$EMAIL_ADMIN_EMAIL_ADDRESS'
+gitlab_rails['incoming_email_enabled'] = false
 alertmanager['admin_email'] = '$EMAIL_ADMIN_EMAIL_ADDRESS'
 gitlab_rails['gitlab_default_theme'] = 11
 gitlab_rails['trusted_proxies'] = [ '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16' ]
@@ -23792,9 +23874,14 @@ gitlab_rails['db_host'] = 'gitlab-db'
 gitlab_rails['db_port'] = 5432
 gitlab_rails['redis_host'] = 'gitlab-redis'
 gitlab_rails['redis_password'] = '$GITLAB_REDIS_PASSWORD'
+postgresql['shared_buffers'] = '256MB'
+postgresql['enable'] = false
+redis['enable'] = false
 puma['worker_processes'] = 2
 puma['max_threads'] = 4
+sidekiq['concurrency'] = 2
 sidekiq['max_concurrency'] = 5
+grafana['enable'] = false
 prometheus_monitoring['enable'] = false
 nginx['redirect_http_to_https'] = true
 nginx['ssl_certificate'] = '/certs/gitlab-app.crt'
@@ -25192,7 +25279,7 @@ function installDrawIO()
 
   if ! [ "$(isServiceDisabled drawio)" = "true" ]; then
     set +e
-    docker container ps | grep nextcloud-app >/dev/null 2>/dev/null
+    docker container ps | grep nextcloud-app > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       docker exec -u www-data nextcloud-app php occ --no-warnings config:app:set drawio DrawioUrl --value="https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN"
     fi
@@ -25883,8 +25970,8 @@ function installMealie()
     mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
     adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
     # Can't seem to get httpie to work, so switching to curl
-    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" >/dev/null 2>/dev/null
-    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" >/dev/null 2>/dev/null
+    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
+    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
   fi
 }
 
@@ -29778,7 +29865,7 @@ function insertEnableSvcUptimeKuma()
 
   svc_is_active=$(if [ "$(isServiceDisabled $svc_stack_name)" = "true" ]; then echo 0; else echo 1; fi)
   set +e
-  docker container stop uptimekuma >/dev/null 2>/dev/null
+  docker container stop uptimekuma > /dev/null 2>&1
   set -e
   svc_id=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
   if [ -z $svc_id ]; then
@@ -29787,7 +29874,7 @@ function insertEnableSvcUptimeKuma()
     sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set active=$svc_is_active where url='$svc_url';"
   fi
   set +e
-  docker container start uptimekuma >/dev/null 2>/dev/null
+  docker container start uptimekuma > /dev/null 2>&1
   set -e
 }
 
@@ -29821,4 +29908,14 @@ function deleteSvcUptimeKuma()
   fi
 }
 
-main "$@"
+# Purposely verbose, to list all of the current methods used to call this script.
+# The -a option is deprecated, but will remain to provide backwards-compatibility
+# with the prior version of the wrapper script, hshq.sh.
+case "$1" in
+  "lib")     init;;
+  "run")     main "@";;
+  "install") main "@";;
+  "-a")      main "@";;
+  "")        main "@";;
+  *)         main "@";;
+esac
