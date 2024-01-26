@@ -29034,6 +29034,7 @@ EOFCF
   cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
 import /snippets/svcs.snip
 import sn-base-domain
+import sn-base-home
 import sn-sub-${SUB_FILES}
 import sn-sub-${SUB_IMAGES}
 EOFCF
