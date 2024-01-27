@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=23
+HSHQ_SCRIPT_VERSION=24
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -61,8 +61,7 @@ function init()
   SUDO_NORMAL_TIMEOUT=15
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
-  HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,sqlpad"
+  initServiceDefaults
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
@@ -763,15 +762,15 @@ function initConfig()
   fi
   if [ -z "$DISABLED_SERVICES" ]; then
     if [ $total_ram -lt 8 ]; then
-      DISABLED_SERVICES=minimal
+      DISABLED_SERVICES=$DS_MEM_LOW
     elif [ $total_ram -lt 12 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila
+      DISABLED_SERVICES=$DS_MEM_12
     elif [ $total_ram -lt 16 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila
+      DISABLED_SERVICES=$DS_MEM_16
     elif [ $total_ram -lt 24 ]; then
-      DISABLED_SERVICES=gitlab,discourse,drawio,guacamole,kasm,netdata,linkwarden,stirlingpdf
+      DISABLED_SERVICES=$DS_MEM_24
     else
-      DISABLED_SERVICES=gitlab,netdata,discourse
+      DISABLED_SERVICES=$DS_MEM_32
     fi
     updateConfigVar DISABLED_SERVICES $DISABLED_SERVICES
   fi
@@ -10768,6 +10767,18 @@ KEILA_DATABASE_USER=
 KEILA_DATABASE_USER_PASSWORD=
 # Keila (Service Details) END
 
+# Wallabag (Service Details) BEGIN
+WALLABAG_INIT_ENV=true
+WALLABAG_ADMIN_USERNAME=
+WALLABAG_ADMIN_EMAIL_ADDRESS=
+WALLABAG_ADMIN_PASSWORD=
+WALLABAG_DATABASE_NAME=
+WALLABAG_DATABASE_USER=
+WALLABAG_DATABASE_USER_PASSWORD=
+WALLABAG_ENV_SECRET=
+WALLABAG_REDIS_PASSWORD=
+# Wallabag (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -10818,6 +10829,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=23
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 24 ]; then
+    echo "Updating to Version 24..."
+    addNewEnvVars
+    HSHQ_VERSION=24
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -10841,6 +10858,49 @@ function fixConfigComments()
   if ! [ -z $curE ]; then
     set -e
   fi
+}
+
+function addNewEnvVars()
+{
+  initServicesCredentials
+  set +e
+
+  if [ -z $REMOTELY_INIT_ENV ]; then
+    # This was added later, add it to config
+    grep REMOTELY_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      sed -i "s|^# Remotely (Service Details) BEGIN.*|# Remotely (Service Details) BEGIN\nREMOTELY_INIT_ENV=false|g" $CONFIG_FILE
+      REMOTELY_INIT_ENV=false
+    fi
+  fi
+
+  if [ -z $CALIBRE_WEB_INIT_ENV ]; then
+    # This was added later, add it to config
+    grep CALIBRE_WEB_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      sed -i "s|^# Calibre (Service Details) BEGIN.*|# Calibre (Service Details) BEGIN\nCALIBRE_WEB_INIT_ENV=false|g" $CONFIG_FILE
+      CALIBRE_WEB_INIT_ENV=false
+    fi
+  fi
+
+  if [ -z $FRESHRSS_INIT_ENV ]; then
+    # This was added later, add it to config
+    grep FRESHRSS_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      sed -i "s|^# FreshRSS (Service Details) BEGIN.*|# FreshRSS (Service Details) BEGIN\nFRESHRSS_INIT_ENV=false|g" $CONFIG_FILE
+      FRESHRSS_INIT_ENV=false
+    fi
+  fi
+
+  if [ -z $KEILA_INIT_ENV ]; then
+    # This was added later, add it to config
+    grep KEILA_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      sed -i "s|^# Keila (Service Details) BEGIN.*|# Keila (Service Details) BEGIN\nKEILA_INIT_ENV=false|g" $CONFIG_FILE
+      KEILA_INIT_ENV=false
+    fi
+  fi
+
 }
 
 function checkAddServiceToConfig()
@@ -12291,6 +12351,43 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
 }
 
+function checkAddDBSqlPad()
+{
+  sdb_name=$1
+  sdb_formal=$2
+  sdb_driver=$3
+  sdb_host=$4
+  sdb_database=$5
+  sdb_username=$6
+  sdb_password=$7
+  stackID=$(getStackID sqlpad)
+  if [ -z $stackID ]; then
+    return
+  fi
+  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$stackID/stack.env $HOME/$stackID.env
+  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$stackID/docker-compose.yml $HOME/$stackID.yml
+  sudo chown $USERNAME:$USERNAME $HOME/$stackID.env
+  sudo chown $USERNAME:$USERNAME $HOME/$stackID.yml
+  set +e
+  grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/$stackID.env > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    rm -f $HOME/$stackID.env $HOME/$stackID.yml
+    return
+  fi
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__name=$sdb_formal" >> $HOME/$stackID.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__driver=$sdb_driver" >> $HOME/$stackID.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__host=$sdb_host" >> $HOME/$stackID.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__database=$sdb_database" >> $HOME/$stackID.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__username=$sdb_username" >> $HOME/$stackID.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__password=$sdb_password" >> $HOME/$stackID.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__multiStatementTransactionEnabled='false'" >> $HOME/$stackID.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__idleTimeoutSeconds=900" >> $HOME/$stackID.env
+
+  echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/$stackID.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/$stackID.env)}" > $HOME/${stackID}-json.tmp
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${stackID}-json.tmp > /dev/null 2>&1
+  rm -f $HOME/$stackID.env $HOME/$stackID.yml $HOME/${stackID}-json.tmp
+}
+
 # Services Functions
 function loadPinnedDockerImages()
 {
@@ -12388,6 +12485,7 @@ function loadPinnedDockerImages()
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.11-alpine
   IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.1-alpine
   IMG_VAULTWARDEN_LDAP=thegeeklab/vaultwarden-ldap:0.6.2
+  IMG_WALLABAG=wallabag/wallabag:2.6.8
   IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.1
   IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.1
   IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.7.1
@@ -12489,6 +12587,7 @@ function pullDockerImages()
   pullImage $IMG_SALTRIM
   pullImage $IMG_FRESHRSS
   pullImage $IMG_KEILA
+  pullImage $IMG_WALLABAG
 }
 
 function pullBaseServicesDockerImages()
@@ -13033,7 +13132,7 @@ function initServicesCredentials()
     MEALIE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MEALIE_DATABASE_USER_PASSWORD $MEALIE_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "Remotely" "REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
   if [ -z "$REMOTELY_ADMIN_USERNAME" ]; then
     REMOTELY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_remotely"
     updateConfigVar REMOTELY_ADMIN_USERNAME $REMOTELY_ADMIN_USERNAME
@@ -13046,7 +13145,7 @@ function initServicesCredentials()
     REMOTELY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar REMOTELY_ADMIN_PASSWORD $REMOTELY_ADMIN_PASSWORD
   fi
-  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
   if [ -z "$CALIBRE_WEB_ADMIN_USERNAME" ]; then
     CALIBRE_WEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_calibre"
     updateConfigVar CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_USERNAME
@@ -13072,7 +13171,7 @@ function initServicesCredentials()
     LINKWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar LINKWARDEN_DATABASE_USER_PASSWORD $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "FreshRSS" "FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD="
   if [ -z "$FRESHRSS_ADMIN_USERNAME" ]; then
     FRESHRSS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_freshrss"
     updateConfigVar FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_USERNAME
@@ -13097,7 +13196,7 @@ function initServicesCredentials()
     FRESHRSS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar FRESHRSS_DATABASE_USER_PASSWORD $FRESHRSS_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "Keila" "KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
   if [ -z "$KEILA_ADMIN_USERNAME" ]; then
     KEILA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_keila"
     updateConfigVar KEILA_ADMIN_USERNAME $KEILA_ADMIN_USERNAME
@@ -13121,6 +13220,31 @@ function initServicesCredentials()
   if [ -z "$KEILA_DATABASE_USER_PASSWORD" ]; then
     KEILA_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar KEILA_DATABASE_USER_PASSWORD $KEILA_DATABASE_USER_PASSWORD
+  fi
+  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
+  if [ -z "$WALLABAG_ADMIN_USERNAME" ]; then
+    WALLABAG_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_wallabag"
+    updateConfigVar WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_USERNAME
+  fi
+  if [ -z "$WALLABAG_ADMIN_EMAIL_ADDRESS" ]; then
+    WALLABAG_ADMIN_EMAIL_ADDRESS=$WALLABAG_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar WALLABAG_ADMIN_EMAIL_ADDRESS $WALLABAG_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$WALLABAG_ADMIN_PASSWORD" ]; then
+    WALLABAG_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WALLABAG_ADMIN_PASSWORD $WALLABAG_ADMIN_PASSWORD
+  fi
+  if [ -z "$WALLABAG_DATABASE_NAME" ]; then
+    WALLABAG_DATABASE_NAME=wallabagdb
+    updateConfigVar WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_NAME
+  fi
+  if [ -z "$WALLABAG_DATABASE_USER" ]; then
+    WALLABAG_DATABASE_USER=wallabag-user
+    updateConfigVar WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER
+  fi
+  if [ -z "$WALLABAG_DATABASE_USER_PASSWORD" ]; then
+    WALLABAG_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WALLABAG_DATABASE_USER_PASSWORD $WALLABAG_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -13211,6 +13335,7 @@ function initServiceVars()
   checkAddSvc "SVCD_SYSUTILS=sysutils,sysutils,primary,admin,SysUtils,sysutils,hshq"
   checkAddSvc "SVCD_UPTIMEKUMA=uptimekuma,uptimekuma,primary,admin,UptimeKuma,uptimekuma,hshq"
   checkAddSvc "SVCD_VAULTWARDEN=vaultwarden,vaultwarden,primary,user,Vaultwarden,vaultwarden,hshq"
+  checkAddSvc "SVCD_WALLABAG=wallabag,wallabag,primary,user,Wallabag,wallabag,le"
   checkAddSvc "SVCD_WAZUH=wazuh,wazuh,primary,admin,Wazuh,wazuh,hshq"
   checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WireGuard Portal,wgportal,hshq"
   checkAddSvc "SVCD_WIKIJS=wikijs,wikijs,other,user,Wiki.js,wikijs,hshq"
@@ -13316,6 +13441,8 @@ function installStackByName()
       installFreshRSS $is_integrate ;;
     keila)
       installKeila $is_integrate ;;
+    wallabag)
+      installWallabag $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -13367,6 +13494,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
   retval="${retval}        - $SUB_DISCOURSE.$HOMESERVER_DOMAIN\n"
@@ -13469,6 +13597,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-User" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FRESHRSS}-Admin" https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KEILA}-Admin" https://$SUB_KEILA.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WALLABAG}-Admin" https://$SUB_WALLABAG.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_PASSWORD)"\n"
   fi
   # Relay Server
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -13553,6 +13682,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0 "stirlingpdf.png"
   insertIntoHeimdallDB "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0 "freshrss.png"
   insertIntoHeimdallDB "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0 "keila.png"
+  insertIntoHeimdallDB "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0 "wallabag.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -13629,6 +13759,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -13641,7 +13772,19 @@ function insertServicesUptimeKuma()
 
 function getLetsEncryptCertsDefault()
 {
-  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN"
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN"
+}
+
+function initServiceDefaults()
+{
+  HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,sqlpad"
+
+  DS_MEM_LOW=minimal
+  DS_MEM_12=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_16=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_24=gitlab,discourse,drawio,guacamole,kasm,netdata,linkwarden,stirlingpdf
+  DS_MEM_32=gitlab,netdata,discourse
 }
 
 # Containers Installation
@@ -26753,8 +26896,11 @@ function installRemotely()
   docker exec mailu-admin flask mailu alias-delete $REMOTELY_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $REMOTELY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
   if ! [ "$REMOTELY_INIT_ENV" = "true" ]; then
     sendEmail -s "Remotely Admin Login Info" -b "Remotely Admin Username: $REMOTELY_ADMIN_EMAIL_ADDRESS\nRemotely Admin Password: $REMOTELY_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    REMOTELY_INIT_ENV=true
+    updateConfigVar REMOTELY_INIT_ENV $REMOTELY_INIT_ENV
   fi
   pullImage $IMG_REMOTELY
   outputConfigRemotely
@@ -26865,8 +27011,11 @@ function installCalibre()
   docker exec mailu-admin flask mailu alias-delete $CALIBRE_WEB_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $CALIBRE_WEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
   if ! [ "$CALIBRE_WEB_INIT_ENV" = "true" ]; then
     sendEmail -s "Calibre-Web Admin Login Info" -b "Calibre-Web Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nCalibre-Web Admin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    CALIBRE_WEB_INIT_ENV=true
+    updateConfigVar CALIBRE_WEB_INIT_ENV $CALIBRE_WEB_INIT_ENV
   fi
   pullImage $IMG_CALIBRE_SERVER
   pullImage $IMG_CALIBRE_WEB
@@ -27136,7 +27285,7 @@ EOFDZ
 function installLinkwarden()
 {
   is_integrate_hshq=$1
-  checkDeleteStackAndDirectory linkwarden "Linkwarden"
+  checkDeleteStackAndDirectory linkwarden "$FMLNAME_LINKWARDEN"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
     return
@@ -27178,6 +27327,7 @@ function installLinkwarden()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
     restartAllCaddyContainers
+    checkAddDBSqlPad linkwarden $FMLNAME_LINKWARDEN postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -27665,6 +27815,8 @@ function installFreshRSS()
 
   if ! [ "$FRESHRSS_INIT_ENV" = "true" ]; then
     sendEmail -s "FreshRSS Admin Login Info" -b "FreshRSS Admin Username: $FRESHRSS_ADMIN_USERNAME\nFreshRSS Admin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    FRESHRSS_INIT_ENV=true
+    updateConfigVar FRESHRSS_INIT_ENV $FRESHRSS_INIT_ENV
   fi
 
   pullImage $IMG_FRESHRSS
@@ -27692,6 +27844,7 @@ function installFreshRSS()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
     restartAllCaddyContainers
+    checkAddDBSqlPad freshrss $FMLNAME_FRESHRSS postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -27860,6 +28013,8 @@ function installKeila()
 
   if ! [ "$KEILA_INIT_ENV" = "true" ]; then
     sendEmail -s "Keila Admin Login Info" -b "Keila Admin Username: $KEILA_ADMIN_EMAIL_ADDRESS\nKeila Admin Password: $KEILA_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    KEILA_INIT_ENV=true
+    updateConfigVar KEILA_INIT_ENV $KEILA_INIT_ENV
   fi
 
   pullImage $IMG_KEILA
@@ -27887,6 +28042,7 @@ function installKeila()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
     restartAllCaddyContainers
+    checkAddDBSqlPad keila $FMLNAME_KEILA postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -28008,6 +28164,232 @@ DISABLE_REGISTRATION=true
 USER_CONTENT_DIR=/uploads
 EOFBA
 
+}
+
+function installWallabag()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory wallabag "Wallabag"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/wallabag
+  mkdir $HSHQ_STACKS_DIR/wallabag/db
+  mkdir $HSHQ_STACKS_DIR/wallabag/dbexport
+  mkdir $HSHQ_STACKS_DIR/wallabag/images
+  mkdir $HSHQ_NONBACKUP_DIR/wallabag
+  mkdir $HSHQ_NONBACKUP_DIR/wallabag/redis
+  chmod 777 $HSHQ_STACKS_DIR/wallabag/dbexport
+
+  initServicesCredentials
+  if [ -z "$WALLABAG_ENV_SECRET" ]; then
+    WALLABAG_ENV_SECRET=$(pwgen -c -n 30 1)
+    updateConfigVar WALLABAG_ENV_SECRET $WALLABAG_ENV_SECRET
+  fi
+  if [ -z "$WALLABAG_REDIS_PASSWORD" ]; then
+    WALLABAG_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WALLABAG_REDIS_PASSWORD $WALLABAG_REDIS_PASSWORD
+  fi
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $WALLABAG_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $WALLABAG_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  if ! [ "$WALLABAG_INIT_ENV" = "true" ]; then
+    sendEmail -s "Wallabag Admin Login Info" -b "Wallabag Admin Username: $WALLABAG_ADMIN_USERNAME\nWallabag Admin Password: $WALLABAG_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    WALLABAG_INIT_ENV=true
+    updateConfigVar WALLABAG_INIT_ENV $WALLABAG_INIT_ENV
+  fi
+
+  pullImage $IMG_WALLABAG
+  outputConfigWallabag
+  installStack wallabag wallabag-app "wallabag is ready" $HOME/wallabag.env
+  sleep 5
+
+  docker exec -t wallabag-app /var/www/wallabag/bin/console wallabag:install --env=prod --no-interaction > /dev/null 2>&1
+  docker exec -t wallabag-app /var/www/wallabag/bin/console doctrine:migrations:migrate --env=prod --no-interaction > /dev/null 2>&1
+  docker exec -t wallabag-app /var/www/wallabag/bin/console fos:user:create --env=prod --super-admin $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_EMAIL_ADDRESS $WALLABAG_ADMIN_PASSWORD > /dev/null 2>&1
+  docker exec -t wallabag-app /var/www/wallabag/bin/console fos:user:deactivate --env=prod wallabag > /dev/null 2>&1
+  docker exec wallabag-db /dbexport/setupRedis.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/wallabag/dbexport/setupRedis.sh
+
+  startStopStack wallabag stop
+  if ! [ "$(isServiceDisabled $1)" = "true" ]; then
+    startStopStack wallabag start
+  fi
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_WALLABAG.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://wallabag-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_WALLABAG $MANAGETLS_WALLABAG "$is_integrate_hshq" $NETDEFAULT_WALLABAG "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad wallabag $FMLNAME_WALLABAG postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigWallabag()
+{
+  cat <<EOFBA > $HOME/wallabag-compose.yml
+version: '3.5'
+
+services:
+  wallabag-db:
+    image: $IMG_POSTGRES
+    container_name: wallabag-db
+    hostname: wallabag-db
+    user: \${UID}
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-wallabag-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/wallabag/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/wallabag/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.wallabag-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.wallabag-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.wallabag-hourly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.wallabag-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.wallabag-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.wallabag-hourly-db.email-from=Wallabag Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.wallabag-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.wallabag-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.wallabag-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.wallabag-monthly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.wallabag-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.wallabag-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.wallabag-monthly-db.email-from=Wallabag Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.wallabag-monthly-db.mail-only-on-error=false"
+
+  wallabag-redis:
+    image: $IMG_REDIS
+    container_name: wallabag-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-wallabag-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-wallabag-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$WALLABAG_REDIS_PASSWORD
+
+  wallabag-app:
+    image: $IMG_WALLABAG
+    container_name: wallabag-app
+    hostname: wallabag-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - wallabag-db
+      - wallabag-redis
+    healthcheck:
+      test: ["CMD", "wget" ,"--no-verbose", "--tries=1", "--spider", "http://localhost"]
+      interval: 1m
+      timeout: 3s
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - int-wallabag-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/wallabag/images:/var/www/wallabag/web/assets/images
+
+volumes:
+  v-wallabag-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/wallabag/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-wallabag-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFBA
+
+  cat <<EOFBA > $HOME/wallabag.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$WALLABAG_DATABASE_NAME
+POSTGRES_USER=$WALLABAG_DATABASE_USER
+POSTGRES_PASSWORD=$WALLABAG_DATABASE_USER_PASSWORD
+POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
+POPULATE_DATABASE=false
+SYMFONY__ENV__DATABASE_DRIVER=pdo_pgsql
+SYMFONY__ENV__DATABASE_HOST=wallabag-db
+SYMFONY__ENV__DATABASE_PORT=5432
+SYMFONY__ENV__DATABASE_NAME=$WALLABAG_DATABASE_NAME
+SYMFONY__ENV__DATABASE_USER=$WALLABAG_DATABASE_USER
+SYMFONY__ENV__DATABASE_PASSWORD=$WALLABAG_DATABASE_USER_PASSWORD
+SYMFONY__ENV__MAILER_DSN=smtp://mailu-front:25
+SYMFONY__ENV__FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+SYMFONY__ENV__DOMAIN_NAME=https://$SUB_WALLABAG.$HOMESERVER_DOMAIN
+SYMFONY__ENV__SERVER_NAME=$HOMESERVER_NAME
+SYMFONY__ENV__SECRET=$WALLABAG_ENV_SECRET
+SYMFONY__ENV__TWOFACTOR_SENDER=$EMAIL_ADMIN_EMAIL_ADDRESS
+SYMFONY__ENV__REDIS_HOST=wallabag-redis
+SYMFONY__ENV__REDIS_PASSWORD=$WALLABAG_REDIS_PASSWORD
+EOFBA
+
+  cat <<EOFPT > $HSHQ_STACKS_DIR/wallabag/dbexport/setupRedis.sh
+#!/bin/bash
+
+PGPASSWORD=$WALLABAG_DATABASE_USER_PASSWORD
+sqlcmd="update wallabag_internal_setting set value=1 where name='import_with_redis';"
+echo "\$sqlcmd" | psql -U $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_NAME
+EOFPT
+
+  chmod +x $HSHQ_STACKS_DIR/wallabag/dbexport/setupRedis.sh
 }
 
 function installSQLPad()
@@ -28248,6 +28630,14 @@ SQLPAD_CONNECTIONS__vaultwarden__username=$VAULTWARDEN_DATABASE_USER
 SQLPAD_CONNECTIONS__vaultwarden__password=$VAULTWARDEN_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__vaultwarden__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__vaultwarden__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__wallabag__name=Wallabag
+SQLPAD_CONNECTIONS__wallabag__driver=postgres
+SQLPAD_CONNECTIONS__wallabag__host=wallabag-db
+SQLPAD_CONNECTIONS__wallabag__database=$WALLABAG_DATABASE_NAME
+SQLPAD_CONNECTIONS__wallabag__username=$WALLABAG_DATABASE_USER
+SQLPAD_CONNECTIONS__wallabag__password=$WALLABAG_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__wallabag__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__wallabag__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__wikijs__name=Wikijs
 SQLPAD_CONNECTIONS__wikijs__driver=postgres
 SQLPAD_CONNECTIONS__wikijs__host=wikijs-db

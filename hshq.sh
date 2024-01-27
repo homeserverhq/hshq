@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=3
+HSHQ_WRAPPER_SCRIPT_VERSION=4
 IS_DISABLE_UPDATE_CHECKS=false
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
@@ -36,6 +36,7 @@ function main()
   HSHQ_LIB_DIR=$HSHQ_DATA_DIR/lib
   HSHQ_LIB_SCRIPT=$HSHQ_LIB_DIR/hshqlib.sh
   HSHQ_LIB_TMP=$HOME/hshqlib.tmp
+  MIN_REQUIRED_LIB_VERSION=23
 
   logo=$(cat << EOF
 
@@ -274,6 +275,11 @@ EOF
         exit 1
       fi
     fi
+  fi
+  hshq_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  if [ $hshq_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
+    showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
+    exit 1
   fi
   bash $HSHQ_LIB_SCRIPT run $CONNECTING_IP
 }
