@@ -10312,35 +10312,31 @@ function checkUpdateVersion()
   fi
   if [ $HSHQ_VERSION -lt 14 ]; then
     echo "Updating to Version 14..."
-    fixConfigComments
-    addToDisabledServices netdata
+    version14Update
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 22 ]; then
     echo "Updating to Version 22..."
-    updateMOTD
     version22Update
     HSHQ_VERSION=22
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 23 ]; then
     echo "Updating to Version 23..."
-    outputBootScripts
-    appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null 2>&1"
-    updateSysctl
+    version23Update
     HSHQ_VERSION=23
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 24 ]; then
     echo "Updating to Version 24..."
-    addNewEnvVars
+    version24Update
     HSHQ_VERSION=24
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 25 ]; then
     echo "Updating to Version 25..."
-    fixDNS
+    version25Update
     HSHQ_VERSION=25
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
@@ -10351,7 +10347,7 @@ function checkUpdateVersion()
   fi
 }
 
-function fixConfigComments()
+function version14Update()
 {
   curE=${-//[^e]/}
   set +e
@@ -10367,10 +10363,12 @@ function fixConfigComments()
   if ! [ -z $curE ]; then
     set -e
   fi
+  addToDisabledServices netdata
 }
 
 function version22Update()
 {
+  updateMOTD
   set -e
   showMessageBox "Version 22 Update" "A large update needs to be applied to your system. Please be patient as it will take around 10 minutes to complete. All running stacks will be stopped and then restarted. Press okay to continue."
   sudo -v
@@ -10863,50 +10861,34 @@ EOFCF
   set -e
 }
 
-function addNewEnvVars()
+function version23Update()
 {
-  initServicesCredentials
-  set +e
-
-  if [ -z $REMOTELY_INIT_ENV ]; then
-    # This was added later, add it to config
-    grep REMOTELY_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      sed -i "s|^# Remotely (Service Details) BEGIN.*|# Remotely (Service Details) BEGIN\nREMOTELY_INIT_ENV=false|g" $CONFIG_FILE
-      REMOTELY_INIT_ENV=false
-    fi
-  fi
-
-  if [ -z $CALIBRE_WEB_INIT_ENV ]; then
-    # This was added later, add it to config
-    grep CALIBRE_WEB_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      sed -i "s|^# Calibre (Service Details) BEGIN.*|# Calibre (Service Details) BEGIN\nCALIBRE_WEB_INIT_ENV=false|g" $CONFIG_FILE
-      CALIBRE_WEB_INIT_ENV=false
-    fi
-  fi
-
-  if [ -z $FRESHRSS_INIT_ENV ]; then
-    # This was added later, add it to config
-    grep FRESHRSS_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      sed -i "s|^# FreshRSS (Service Details) BEGIN.*|# FreshRSS (Service Details) BEGIN\nFRESHRSS_INIT_ENV=false|g" $CONFIG_FILE
-      FRESHRSS_INIT_ENV=false
-    fi
-  fi
-
-  if [ -z $KEILA_INIT_ENV ]; then
-    # This was added later, add it to config
-    grep KEILA_INIT_ENV $CONFIG_FILE > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      sed -i "s|^# Keila (Service Details) BEGIN.*|# Keila (Service Details) BEGIN\nKEILA_INIT_ENV=false|g" $CONFIG_FILE
-      KEILA_INIT_ENV=false
-    fi
-  fi
-
+  outputBootScripts
+  appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null 2>&1"
+  updateSysctl
 }
 
-function fixDNS()
+function version24Update()
+{
+  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET="
+  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY="
+  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
+  checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false"
+  checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false"
+  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false"
+  checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false"
+  initServicesCredentials
+}
+
+function version25Update()
 {
   sudo systemctl stop systemd-resolved > /dev/null 2>&1
   sudo systemctl disable systemd-resolved > /dev/null 2>&1
@@ -10957,7 +10939,8 @@ function checkAddVarsToServiceConfig()
   varListArr=($(echo $variable_list | tr "," "\n"))
   for curVar in "${varListArr[@]}"
   do
-    grep "$curVar" $CONFIG_FILE > /dev/null 2>&1
+    curVarCheck=$(echo $curVar | cut -d"=" -f1)"="
+    grep "$curVarCheck" $CONFIG_FILE > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       replace_block="$curVar\n# $service_name (Service Details) END"
       sed -i "s|# $service_name (Service Details) END|$replace_block|g" $CONFIG_FILE
@@ -10972,7 +10955,7 @@ function removeServiceFromConfig()
   set +e
   grep "# $service_name (Service Details)" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    removeTextBlockInFile "# $service_name (Service Details)" "# $service_name (Service Details) END" $CONFIG_FILE
+    removeTextBlockInFile "# $service_name (Service Details) BEGIN" "# $service_name (Service Details) END" $CONFIG_FILE
   fi
   set -e
 }
@@ -12762,7 +12745,6 @@ function initServicesCredentials()
     WAZUH_USERS_DASHBOARD_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar WAZUH_USERS_DASHBOARD_PASSWORD $WAZUH_USERS_DASHBOARD_PASSWORD
   fi
-  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
   if [ -z "$COLLABORA_ADMIN_USERNAME" ]; then
     COLLABORA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_collabora"
     updateConfigVar COLLABORA_ADMIN_USERNAME $COLLABORA_ADMIN_USERNAME
@@ -13051,7 +13033,6 @@ function initServicesCredentials()
     FIREFLY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar FIREFLY_DATABASE_USER_PASSWORD $FIREFLY_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
   if [ -z "$INVIDIOUS_DATABASE_NAME" ]; then
     INVIDIOUS_DATABASE_NAME=invidiousdb
     updateConfigVar INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_NAME
@@ -13136,8 +13117,6 @@ function initServicesCredentials()
     UPTIMEKUMA_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar UPTIMEKUMA_PASSWORD $UPTIMEKUMA_PASSWORD
   fi
-  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
-  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
   if [ -z "$MEALIE_ADMIN_USERNAME" ]; then
     MEALIE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mealie"
     updateConfigVar MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_USERNAME
@@ -13162,7 +13141,6 @@ function initServicesCredentials()
     MEALIE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MEALIE_DATABASE_USER_PASSWORD $MEALIE_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
   if [ -z "$REMOTELY_ADMIN_USERNAME" ]; then
     REMOTELY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_remotely"
     updateConfigVar REMOTELY_ADMIN_USERNAME $REMOTELY_ADMIN_USERNAME
@@ -13175,7 +13153,6 @@ function initServicesCredentials()
     REMOTELY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar REMOTELY_ADMIN_PASSWORD $REMOTELY_ADMIN_PASSWORD
   fi
-  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
   if [ -z "$CALIBRE_WEB_ADMIN_USERNAME" ]; then
     CALIBRE_WEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_calibre"
     updateConfigVar CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_USERNAME
@@ -13188,7 +13165,6 @@ function initServicesCredentials()
     CALIBRE_WEB_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar CALIBRE_WEB_ADMIN_PASSWORD $CALIBRE_WEB_ADMIN_PASSWORD
   fi
-  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET="
   if [ -z "$LINKWARDEN_DATABASE_NAME" ]; then
     LINKWARDEN_DATABASE_NAME=linkwardendb
     updateConfigVar LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_NAME
@@ -13201,7 +13177,6 @@ function initServicesCredentials()
     LINKWARDEN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar LINKWARDEN_DATABASE_USER_PASSWORD $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD="
   if [ -z "$FRESHRSS_ADMIN_USERNAME" ]; then
     FRESHRSS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_freshrss"
     updateConfigVar FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_USERNAME
@@ -13226,7 +13201,6 @@ function initServicesCredentials()
     FRESHRSS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar FRESHRSS_DATABASE_USER_PASSWORD $FRESHRSS_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
   if [ -z "$KEILA_ADMIN_USERNAME" ]; then
     KEILA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_keila"
     updateConfigVar KEILA_ADMIN_USERNAME $KEILA_ADMIN_USERNAME
@@ -13251,7 +13225,6 @@ function initServicesCredentials()
     KEILA_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar KEILA_DATABASE_USER_PASSWORD $KEILA_DATABASE_USER_PASSWORD
   fi
-  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
   if [ -z "$WALLABAG_ADMIN_USERNAME" ]; then
     WALLABAG_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_wallabag"
     updateConfigVar WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_USERNAME
@@ -26102,7 +26075,6 @@ function installMealie()
   mkdir $HSHQ_STACKS_DIR/mealie/dbexport
   chmod 777 $HSHQ_STACKS_DIR/mealie/dbexport
 
-  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
   initServicesCredentials
 
   set +e
@@ -27549,8 +27521,6 @@ function installBarAssistant()
   mkdir $HSHQ_STACKS_DIR/bar-assistant/web
   mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
   mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
-
-  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY="
 
   if [ -z "$BARASSISTANT_REDIS_PASSWORD" ]; then
     BARASSISTANT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
