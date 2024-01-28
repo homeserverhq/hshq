@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=24
+HSHQ_SCRIPT_VERSION=25
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -2465,8 +2465,10 @@ function main()
   sudo \\\$HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
-  sudo sed -i "s|^DNS=.*|DNS=9.9.9.9|g" /etc/systemd/resolved.conf
-  sudo systemctl restart systemd-resolved
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo systemctl enable systemd-resolved > /dev/null 2>&1
+  sudo systemctl start systemd-resolved > /dev/null 2>&1
+  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
   sudo systemctl restart docker
   sudo docker container prune -f
   sudo docker volume rm \\\$(sudo docker volume ls -q)
@@ -2773,21 +2775,12 @@ function restorePortainer()
 
 function restoreAdguard()
 {
-  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFR
-[Resolve]
-DNS=127.0.0.1
-#FallbackDNS=
-#Domains=
-#LLMNR=no
-#MulticastDNS=no
-#DNSSEC=no
-#DNSOverTLS=no
-#Cache=no-negative
-DNSStubListener=no
-#ReadEtcHosts=yes
+  sudo systemctl stop systemd-resolved > /dev/null 2>&1
+  sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
 EOFR
-  sudo rm -f /etc/resolv.conf
-  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
   np_path="/etc/netplan/*"
   for cur_np in "\$np_path"
   do
@@ -2795,7 +2788,7 @@ EOFR
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
   sudo netplan apply > /dev/null 2>&1
-  sudo systemctl restart systemd-resolved
+
   startStopStack adguard stop
   startStopStack adguard start
 
@@ -3722,8 +3715,13 @@ function installAdGuard()
   outputConfigAdGuard
   generateCert adguard adguard
 
-  sudo rm -f /etc/resolv.conf
-  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  sudo systemctl stop systemd-resolved > /dev/null 2>&1
+  sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+
   np_path="/etc/netplan/*"
   for cur_np in "\$np_path"
   do
@@ -3731,7 +3729,6 @@ function installAdGuard()
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
   sudo netplan apply > /dev/null 2>&1
-  sudo systemctl restart systemd-resolved
 
   installStack adguard adguard "entering tls listener loop on" \$HOME/adguard.env
 }
@@ -8132,500 +8129,6 @@ function restartAllStacks()
   done
 }
 
-function version22Update()
-{
-  set -e
-  showMessageBox "Version 22 Update" "A large update needs to be applied to your system. Please be patient as it will take around 10 minutes to complete. All running stacks will be stopped and then restarted. Press okay to continue."
-  sudo -v
-  set +e
-  cdns_stack_name="user1"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  uptimekumaStackID=$(getStackID uptimekuma "$portainerToken")
-  startStopStack uptimekuma stop $portainerToken > /dev/null 2>&1
-  grep "HOMESERVER_HOST_ISPRIVATE" $CONFIG_FILE > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
-    sed -i "s|^HOMESERVER_HOST_IP=.*|HOMESERVER_HOST_IP=$HOMESERVER_HOST_IP\nHOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE|g" $CONFIG_FILE
-  fi
-  grep "HOMESERVER_HOST_RANGE" $CONFIG_FILE > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    HOMESERVER_HOST_RANGE=$(getHomeServerPrivateRange)
-    sed -i "s|^HOMESERVER_HOST_ISPRIVATE=.*|HOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE\nHOMESERVER_HOST_RANGE=$HOMESERVER_HOST_RANGE|g" $CONFIG_FILE
-  fi
-  set -e
-
-  mailuStackID=$(getStackID mailu "$portainerToken")
-  cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
-
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
-  numItems=$((${#rstackIDs[@]}-1))
-
-  for curID in $(seq 0 $numItems);
-  do
-    echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
-    sleep 1
-  done
-
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
-  set +e
-  docker network rm dock-mailu-ext > /dev/null 2>&1
-  docker network rm dock-mailu-int > /dev/null 2>&1
-  docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
-  docker network rm dock-ldap > /dev/null 2>&1
-  set -e
-  echo "Restarting Docker..."
-  sudo systemctl restart docker
-  sleep 3
-  outputConfigPortainer
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
-  set +e
-  total_tries=10
-  num_tries=1
-  sleep 5
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  retVal=$?
-  while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
-  do
-    echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
-    sleep 5
-    ((num_tries++))
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-    retVal=$?
-  done
-  if [ $retVal -ne 0 ]; then
-    echo "Error getting portainer token, exiting..."
-    exit 1
-  fi
-
-  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
-  # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-ext-tmp > /dev/null 2>&1
-  mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
-  mailu_external_net_prefix=$(echo $mailu_external_subnet | rev | cut -d '.' -f2- | rev)
-  docker network rm mailu-ext-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext > /dev/null 2>&1
-
-  # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-int-tmp > /dev/null 2>&1
-  mailu_internal_subnet=$(getDockerSubnet mailu-int-tmp)
-  docker network rm mailu-int-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int > /dev/null 2>&1
-
-  if ! [ -z $cdnsStackID ]; then
-    docker network create --driver=bridge tmpnet > /dev/null 2>&1
-    clientdns_subnet=$(getDockerSubnet tmpnet)
-    clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
-    docker network rm tmpnet >/dev/null
-    docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null 2>&1
-  fi
-
-  # Replace Mailu stack
-  is_antivirus_commented_out=""
-  if [ "$(isServiceDisabled clamav)" = "true" ]; then
-    is_antivirus_commented_out="#"
-  fi
-  cat <<EOFMC > $HOME/mailu-compose.yml
-version: '3.5'
-
-services:
-  front:
-    image: $IMG_MAILU_FRONT
-    container_name: mailu-front
-    hostname: mailu-front
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: journald
-      options:
-        tag: mailu-front
-    networks:
-      - dock-mailu-ext-net
-      - dock-internalmail-net
-      - dock-proxy-net
-    ports:
-      - "25:25"
-      - "465:465"
-      - "587:587"
-      - "110:110"
-      - "995:995"
-      - "143:143"
-      - "993:993"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
-
-  resolver:
-    image: $IMG_MAILU_UNBOUND
-    container_name: mailu-unbound
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      dock-mailu-ext-net:
-        ipv4_address: \${SUBNET_PREFIX}.253
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-
-  redis:
-    image: $IMG_REDIS
-    container_name: mailu-redis
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-mailu-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
-
-  admin:
-    image: $IMG_MAILU_ADMIN
-    container_name: mailu-admin
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: journald
-      options:
-        tag: mailu-admin
-    networks:
-      - dock-mailu-ext-net
-    depends_on:
-      - redis
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/data:/data
-      - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
-
-  imap:
-    image: $IMG_MAILU_IMAP
-    container_name: mailu-imap
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: journald
-      options:
-        tag: mailu-imap
-    networks:
-      - dock-mailu-ext-net
-    depends_on:
-      - front
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mail:/mail
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
-
-  smtp:
-    image: $IMG_MAILU_SMTP
-    container_name: mailu-smtp
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: journald
-      options:
-        tag: mailu-smtp
-    networks:
-      - dock-mailu-ext-net
-    depends_on:
-      - front
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
-
-  oletools:
-    image: $IMG_MAILU_OLETOOLS
-    container_name: mailu-oletools
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-mailu-int-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-
-  antispam:
-    image: $IMG_MAILU_ANTISPAM
-    container_name: mailu-antispam
-    hostname: antispam
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: journald
-      options:
-        tag: mailu-antispam
-    networks:
-      - dock-mailu-ext-net
-      - dock-mailu-int-net
-      - dock-proxy-net
-    dns:
-      - \${SUBNET_PREFIX}.253
-    depends_on:
-      - front
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd:/etc/rspamd/override.d
-
-$is_antivirus_commented_out  antivirus:
-$is_antivirus_commented_out    image: $IMG_MAILU_ANTIVIRUS
-$is_antivirus_commented_out    container_name: mailu-antivirus
-$is_antivirus_commented_out    restart: unless-stopped
-$is_antivirus_commented_out    env_file: stack.env
-$is_antivirus_commented_out    security_opt:
-$is_antivirus_commented_out      - no-new-privileges:true
-$is_antivirus_commented_out    networks:
-$is_antivirus_commented_out      - dock-mailu-ext-net
-$is_antivirus_commented_out      - dock-proxy-net
-$is_antivirus_commented_out    volumes:
-$is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
-$is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
-$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
-
-  webdav:
-    image: $IMG_MAILU_WEBDAV
-    container_name: mailu-webdav
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-mailu-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/dav:/data
-
-  fetchmail:
-    image: $IMG_MAILU_FETCHMAIL
-    container_name: mailu-fetchmail
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-mailu-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
-
-  webmail:
-    image: $IMG_MAILU_WEBMAIL
-    container_name: mailu-webmail
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-mailu-ext-net
-    depends_on:
-      - imap
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/webmail:/data
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
-
-volumes:
-  v-mailu-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${HSHQ_STACKS_DIR}/mailu/redis
-
-networks:
-  dock-internalmail-net:
-    name: dock-internalmail
-    external: true
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-mailu-int-net:
-    name: dock-mailu-int
-    external: true
-  dock-mailu-ext-net:
-    name: dock-mailu-ext
-    external: true
-EOFMC
-  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$mailuStackID/stack.env $HOME/mailu.env
-  sudo chown $USERNAME:$USERNAME $HOME/mailu.env
-  updateGlobalVarsEnvFile $HOME/mailu.env
-  sed -i "s|^SUBNET=.*|SUBNET=${mailu_external_subnet}|g" $HOME/mailu.env
-  sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${mailu_external_net_prefix}|g" $HOME/mailu.env
-  echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2>&1
-  rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
-
-  if ! [ -z $cdnsStackID ]; then
-    # Replace ClientDNS stack
-    cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
-version: '3.5'
-
-services:
-  clientdns-${cdns_stack_name}-dnsmasq:
-    image: $IMG_DNSMASQ
-    container_name: clientdns-${cdns_stack_name}-dnsmasq
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      dock-ext-net:
-      dock-proxy-net:
-      cdns-${cdns_stack_name}-net:
-        ipv4_address: \${CLIENTDNS_SUBNET_PREFIX}.253
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/dnsmasq.conf:/etc/dnsmasq.conf
-    environment:
-      - HTTP_USER=$CLIENTDNS_USER1_ADMIN_USERNAME
-      - HTTP_PASS=$CLIENTDNS_USER1_ADMIN_PASSWORD
-
-  clientdns-${cdns_stack_name}-wireguard:
-    image: $IMG_WIREGUARD
-    container_name: clientdns-${cdns_stack_name}-wireguard
-    hostname: clientdns-${cdns_stack_name}-wireguard
-    restart: unless-stopped
-    env_file: stack.env
-    cap_add:
-      - NET_ADMIN
-    networks:
-      - dock-ext-net
-      - cdns-${cdns_stack_name}-net
-    sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/Corefile:/config/coredns/Corefile:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf:/config/wg0.conf
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-ext-net:
-    name: dock-ext
-    external: true
-  cdns-${cdns_stack_name}-net:
-    name: cdns-${cdns_stack_name}
-    external: true
-
-EOFGL
-
-    rm -f $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/Corefile
-    cat <<EOFCF > $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/Corefile
-. {
-    loop
-    reload 15s
-    forward . ${clientdns_subnet_prefix}.253
-}
-EOFCF
-
-    sudo cp $HSHQ_STACKS_DIR/portainer/compose/$cdnsStackID/stack.env $HOME/clientdns-${cdns_stack_name}.env
-    sudo chown $USERNAME:$USERNAME $HOME/clientdns-${cdns_stack_name}.env
-    updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
-    sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
-    echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
-    rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
-  fi
-
-  rstackIDs[$(($numItems+1))]=$uptimekumaStackID
-  rstackNames[$(($numItems+1))]=uptimekuma
-  numItems=$((${#rstackIDs[@]}-1))
-  
-  for curID in $(seq 0 $numItems);
-  do
-    case ${rstackNames[$curID]} in
-      mailu|clientdns-${cdns_stack_name})
-        continue
-      ;;
-      *)
-        echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-        if sudo test -f $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env; then
-          sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env $HOME/${rstackIDs[$curID]}.env
-          sudo chown $USERNAME:$USERNAME $HOME/${rstackIDs[$curID]}.env
-          updateGlobalVarsEnvFile $HOME/${rstackIDs[$curID]}.env
-        fi
-        sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/docker-compose.yml $HOME/${rstackIDs[$curID]}.yml
-        sudo chown $USERNAME:$USERNAME $HOME/${rstackIDs[$curID]}.yml
-      ;;
-    esac
-
-    case ${rstackNames[$curID]} in
-      caddy-home)
-        sed -i "s|$HOMESERVER_HOST_IP|\${HOMESERVER_HOST_IP}|g" $HOME/${rstackIDs[$curID]}.yml
-        sed -i "s|^CADDY_HSHQ_PRIVATE_IPS=.*|CADDY_HSHQ_PRIVATE_IPS=\${HOMESERVER_HOST_RANGE} $(getPrivateIPRangesCaddy)|g" $HOME/${rstackIDs[$curID]}.env
-      ;;
-      jitsi)
-        sed -i "s|^DOCKER_HOST_ADDRESS=.*|DOCKER_HOST_ADDRESS=\${HOMESERVER_HOST_IP}|g" $HOME/${rstackIDs[$curID]}.env
-        JITSI_ADVERTISE_IPS=$(echo $JITSI_ADVERTISE_IPS | sed "s|$HOMESERVER_HOST_IP||g")
-        updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
-        sed -i "s|^JVB_ADVERTISE_IPS=.*|JVB_ADVERTISE_IPS=\${HOMESERVER_HOST_IP}$JITSI_ADVERTISE_IPS|g" $HOME/${rstackIDs[$curID]}.env
-        sed -i '/^CONFIG=/d' $HOME/${rstackIDs[$curID]}.env
-      ;;
-    esac
-
-    if ! [ -f $HOME/${rstackIDs[$curID]}.env ] || ! [ -s $HOME/${rstackIDs[$curID]}.env ]; then
-      echo "TZ=\${TZ}" > $HOME/${rstackIDs[$curID]}.env
-    fi
-    echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/${rstackIDs[$curID]}.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/${rstackIDs[$curID]}.env)}" > $HOME/${rstackIDs[$curID]}-json.tmp
-    num_tries=1
-    while [ $num_tries -lt $total_tries ]
-    do
-      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
-      if [ $? -eq 0 ]; then
-        break
-      else
-        echo "Failed update, retrying ($(($num_tries + 1)) of $total_tries)..."
-        sleep 5
-        portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-      fi
-      ((num_tries++))
-    done
-    rm -f $HOME/${rstackIDs[$curID]}.yml $HOME/${rstackIDs[$curID]}.env $HOME/${rstackIDs[$curID]}-json.tmp
-    sleep 5
-  done
-  docker container restart ofelia
-  set -e
-}
-
 function updateGlobalVarsEnvFile()
 {
   curEnv=$1
@@ -10835,6 +10338,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=24
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 25 ]; then
+    echo "Updating to Version 25..."
+    fixDNS
+    HSHQ_VERSION=25
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -10858,6 +10367,500 @@ function fixConfigComments()
   if ! [ -z $curE ]; then
     set -e
   fi
+}
+
+function version22Update()
+{
+  set -e
+  showMessageBox "Version 22 Update" "A large update needs to be applied to your system. Please be patient as it will take around 10 minutes to complete. All running stacks will be stopped and then restarted. Press okay to continue."
+  sudo -v
+  set +e
+  cdns_stack_name="user1"
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  uptimekumaStackID=$(getStackID uptimekuma "$portainerToken")
+  startStopStack uptimekuma stop $portainerToken > /dev/null 2>&1
+  grep "HOMESERVER_HOST_ISPRIVATE" $CONFIG_FILE > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
+    sed -i "s|^HOMESERVER_HOST_IP=.*|HOMESERVER_HOST_IP=$HOMESERVER_HOST_IP\nHOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE|g" $CONFIG_FILE
+  fi
+  grep "HOMESERVER_HOST_RANGE" $CONFIG_FILE > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    HOMESERVER_HOST_RANGE=$(getHomeServerPrivateRange)
+    sed -i "s|^HOMESERVER_HOST_ISPRIVATE=.*|HOMESERVER_HOST_ISPRIVATE=$HOMESERVER_HOST_ISPRIVATE\nHOMESERVER_HOST_RANGE=$HOMESERVER_HOST_RANGE|g" $CONFIG_FILE
+  fi
+  set -e
+
+  mailuStackID=$(getStackID mailu "$portainerToken")
+  cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
+
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]}-1))
+
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
+    sleep 1
+  done
+
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  set +e
+  docker network rm dock-mailu-ext > /dev/null 2>&1
+  docker network rm dock-mailu-int > /dev/null 2>&1
+  docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
+  docker network rm dock-ldap > /dev/null 2>&1
+  set -e
+  echo "Restarting Docker..."
+  sudo systemctl restart docker
+  sleep 3
+  outputConfigPortainer
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  set +e
+  total_tries=10
+  num_tries=1
+  sleep 5
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  retVal=$?
+  while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
+  do
+    echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
+    sleep 5
+    ((num_tries++))
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    retVal=$?
+  done
+  if [ $retVal -ne 0 ]; then
+    echo "Error getting portainer token, exiting..."
+    exit 1
+  fi
+
+  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
+  # Create temp network to determine available subnet
+  docker network create --driver=bridge mailu-ext-tmp > /dev/null 2>&1
+  mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
+  mailu_external_net_prefix=$(echo $mailu_external_subnet | rev | cut -d '.' -f2- | rev)
+  docker network rm mailu-ext-tmp > /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext > /dev/null 2>&1
+
+  # Create temp network to determine available subnet
+  docker network create --driver=bridge mailu-int-tmp > /dev/null 2>&1
+  mailu_internal_subnet=$(getDockerSubnet mailu-int-tmp)
+  docker network rm mailu-int-tmp > /dev/null
+  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int > /dev/null 2>&1
+
+  if ! [ -z $cdnsStackID ]; then
+    docker network create --driver=bridge tmpnet > /dev/null 2>&1
+    clientdns_subnet=$(getDockerSubnet tmpnet)
+    clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
+    docker network rm tmpnet >/dev/null
+    docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null 2>&1
+  fi
+
+  # Replace Mailu stack
+  is_antivirus_commented_out=""
+  if [ "$(isServiceDisabled clamav)" = "true" ]; then
+    is_antivirus_commented_out="#"
+  fi
+  cat <<EOFMC > $HOME/mailu-compose.yml
+version: '3.5'
+
+services:
+  front:
+    image: $IMG_MAILU_FRONT
+    container_name: mailu-front
+    hostname: mailu-front
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-front
+    networks:
+      - dock-mailu-ext-net
+      - dock-internalmail-net
+      - dock-proxy-net
+    ports:
+      - "25:25"
+      - "465:465"
+      - "587:587"
+      - "110:110"
+      - "995:995"
+      - "143:143"
+      - "993:993"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
+
+  resolver:
+    image: $IMG_MAILU_UNBOUND
+    container_name: mailu-unbound
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      dock-mailu-ext-net:
+        ipv4_address: \${SUBNET_PREFIX}.253
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  redis:
+    image: $IMG_REDIS
+    container_name: mailu-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-mailu-redis:/bitnami/redis/data
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+
+  admin:
+    image: $IMG_MAILU_ADMIN
+    container_name: mailu-admin
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-admin
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - redis
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/data:/data
+      - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
+
+  imap:
+    image: $IMG_MAILU_IMAP
+    container_name: mailu-imap
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-imap
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/mail:/mail
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
+
+  smtp:
+    image: $IMG_MAILU_SMTP
+    container_name: mailu-smtp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-smtp
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
+      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
+
+  oletools:
+    image: $IMG_MAILU_OLETOOLS
+    container_name: mailu-oletools
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-int-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  antispam:
+    image: $IMG_MAILU_ANTISPAM
+    container_name: mailu-antispam
+    hostname: antispam
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: journald
+      options:
+        tag: mailu-antispam
+    networks:
+      - dock-mailu-ext-net
+      - dock-mailu-int-net
+      - dock-proxy-net
+    dns:
+      - \${SUBNET_PREFIX}.253
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd:/etc/rspamd/override.d
+
+$is_antivirus_commented_out  antivirus:
+$is_antivirus_commented_out    image: $IMG_MAILU_ANTIVIRUS
+$is_antivirus_commented_out    container_name: mailu-antivirus
+$is_antivirus_commented_out    restart: unless-stopped
+$is_antivirus_commented_out    env_file: stack.env
+$is_antivirus_commented_out    security_opt:
+$is_antivirus_commented_out      - no-new-privileges:true
+$is_antivirus_commented_out    networks:
+$is_antivirus_commented_out      - dock-mailu-ext-net
+$is_antivirus_commented_out      - dock-proxy-net
+$is_antivirus_commented_out    volumes:
+$is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
+$is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
+$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
+
+  webdav:
+    image: $IMG_MAILU_WEBDAV
+    container_name: mailu-webdav
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/dav:/data
+
+  fetchmail:
+    image: $IMG_MAILU_FETCHMAIL
+    container_name: mailu-fetchmail
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
+
+  webmail:
+    image: $IMG_MAILU_WEBMAIL
+    container_name: mailu-webmail
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - imap
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/webmail:/data
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
+
+volumes:
+  v-mailu-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/mailu/redis
+
+networks:
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-mailu-int-net:
+    name: dock-mailu-int
+    external: true
+  dock-mailu-ext-net:
+    name: dock-mailu-ext
+    external: true
+EOFMC
+  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$mailuStackID/stack.env $HOME/mailu.env
+  sudo chown $USERNAME:$USERNAME $HOME/mailu.env
+  updateGlobalVarsEnvFile $HOME/mailu.env
+  sed -i "s|^SUBNET=.*|SUBNET=${mailu_external_subnet}|g" $HOME/mailu.env
+  sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${mailu_external_net_prefix}|g" $HOME/mailu.env
+  echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2>&1
+  rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
+
+  if ! [ -z $cdnsStackID ]; then
+    # Replace ClientDNS stack
+    cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
+version: '3.5'
+
+services:
+  clientdns-${cdns_stack_name}-dnsmasq:
+    image: $IMG_DNSMASQ
+    container_name: clientdns-${cdns_stack_name}-dnsmasq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      dock-ext-net:
+      dock-proxy-net:
+      cdns-${cdns_stack_name}-net:
+        ipv4_address: \${CLIENTDNS_SUBNET_PREFIX}.253
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/dnsmasq.conf:/etc/dnsmasq.conf
+    environment:
+      - HTTP_USER=$CLIENTDNS_USER1_ADMIN_USERNAME
+      - HTTP_PASS=$CLIENTDNS_USER1_ADMIN_PASSWORD
+
+  clientdns-${cdns_stack_name}-wireguard:
+    image: $IMG_WIREGUARD
+    container_name: clientdns-${cdns_stack_name}-wireguard
+    hostname: clientdns-${cdns_stack_name}-wireguard
+    restart: unless-stopped
+    env_file: stack.env
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - dock-ext-net
+      - cdns-${cdns_stack_name}-net
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/Corefile:/config/coredns/Corefile:ro
+      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf:/config/wg0.conf
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  cdns-${cdns_stack_name}-net:
+    name: cdns-${cdns_stack_name}
+    external: true
+
+EOFGL
+
+    rm -f $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/Corefile
+    cat <<EOFCF > $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/Corefile
+. {
+    loop
+    reload 15s
+    forward . ${clientdns_subnet_prefix}.253
+}
+EOFCF
+
+    sudo cp $HSHQ_STACKS_DIR/portainer/compose/$cdnsStackID/stack.env $HOME/clientdns-${cdns_stack_name}.env
+    sudo chown $USERNAME:$USERNAME $HOME/clientdns-${cdns_stack_name}.env
+    updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
+    sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
+    echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
+    rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
+  fi
+
+  rstackIDs[$(($numItems+1))]=$uptimekumaStackID
+  rstackNames[$(($numItems+1))]=uptimekuma
+  numItems=$((${#rstackIDs[@]}-1))
+  
+  for curID in $(seq 0 $numItems);
+  do
+    case ${rstackNames[$curID]} in
+      mailu|clientdns-${cdns_stack_name})
+        continue
+      ;;
+      *)
+        echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+        if sudo test -f $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env; then
+          sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env $HOME/${rstackIDs[$curID]}.env
+          sudo chown $USERNAME:$USERNAME $HOME/${rstackIDs[$curID]}.env
+          updateGlobalVarsEnvFile $HOME/${rstackIDs[$curID]}.env
+        fi
+        sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/docker-compose.yml $HOME/${rstackIDs[$curID]}.yml
+        sudo chown $USERNAME:$USERNAME $HOME/${rstackIDs[$curID]}.yml
+      ;;
+    esac
+
+    case ${rstackNames[$curID]} in
+      caddy-home)
+        sed -i "s|$HOMESERVER_HOST_IP|\${HOMESERVER_HOST_IP}|g" $HOME/${rstackIDs[$curID]}.yml
+        sed -i "s|^CADDY_HSHQ_PRIVATE_IPS=.*|CADDY_HSHQ_PRIVATE_IPS=\${HOMESERVER_HOST_RANGE} $(getPrivateIPRangesCaddy)|g" $HOME/${rstackIDs[$curID]}.env
+      ;;
+      jitsi)
+        sed -i "s|^DOCKER_HOST_ADDRESS=.*|DOCKER_HOST_ADDRESS=\${HOMESERVER_HOST_IP}|g" $HOME/${rstackIDs[$curID]}.env
+        JITSI_ADVERTISE_IPS=$(echo $JITSI_ADVERTISE_IPS | sed "s|$HOMESERVER_HOST_IP||g")
+        updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
+        sed -i "s|^JVB_ADVERTISE_IPS=.*|JVB_ADVERTISE_IPS=\${HOMESERVER_HOST_IP}$JITSI_ADVERTISE_IPS|g" $HOME/${rstackIDs[$curID]}.env
+        sed -i '/^CONFIG=/d' $HOME/${rstackIDs[$curID]}.env
+      ;;
+    esac
+
+    if ! [ -f $HOME/${rstackIDs[$curID]}.env ] || ! [ -s $HOME/${rstackIDs[$curID]}.env ]; then
+      echo "TZ=\${TZ}" > $HOME/${rstackIDs[$curID]}.env
+    fi
+    echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/${rstackIDs[$curID]}.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/${rstackIDs[$curID]}.env)}" > $HOME/${rstackIDs[$curID]}-json.tmp
+    num_tries=1
+    while [ $num_tries -lt $total_tries ]
+    do
+      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
+      if [ $? -eq 0 ]; then
+        break
+      else
+        echo "Failed update, retrying ($(($num_tries + 1)) of $total_tries)..."
+        sleep 5
+        portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+      fi
+      ((num_tries++))
+    done
+    rm -f $HOME/${rstackIDs[$curID]}.yml $HOME/${rstackIDs[$curID]}.env $HOME/${rstackIDs[$curID]}-json.tmp
+    sleep 5
+  done
+  docker container restart ofelia
+  set -e
 }
 
 function addNewEnvVars()
@@ -10900,6 +10903,30 @@ function addNewEnvVars()
       KEILA_INIT_ENV=false
     fi
   fi
+
+}
+
+function fixDNS()
+{
+  sudo systemctl stop systemd-resolved > /dev/null 2>&1
+  sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFR
+[Resolve]
+#DNS=127.0.0.1
+#FallbackDNS=
+#Domains=
+#LLMNR=no
+#MulticastDNS=no
+#DNSSEC=no
+#DNSOverTLS=no
+#Cache=no-negative
+#DNSStubListener=no
+#ReadEtcHosts=yes
+EOFR
 
 }
 
@@ -11007,8 +11034,10 @@ function nukeHSHQ()
     bname=$(basename $fname .conf)
     removeWGInterfaceQuick $bname
   done
-  sudo sed -i "s|^DNS=.*|DNS=9.9.9.9|g" /etc/systemd/resolved.conf
-  sudo systemctl restart systemd-resolved
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo systemctl enable systemd-resolved > /dev/null 2>&1
+  sudo systemctl start systemd-resolved > /dev/null 2>&1
+  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
   sudo systemctl restart docker
   sudo docker container prune -f
   sudo docker volume rm $(sudo docker volume ls -q)
@@ -13108,6 +13137,7 @@ function initServicesCredentials()
     updateConfigVar UPTIMEKUMA_PASSWORD $UPTIMEKUMA_PASSWORD
   fi
   checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
   if [ -z "$MEALIE_ADMIN_USERNAME" ]; then
     MEALIE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mealie"
     updateConfigVar MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_USERNAME
@@ -13969,8 +13999,13 @@ function installAdGuard()
   initServicesCredentials
   outputConfigAdGuard
   generateCert adguard adguard
-  sudo rm -f /etc/resolv.conf
-  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+
+  sudo systemctl stop systemd-resolved > /dev/null 2>&1
+  sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
   np_path="/etc/netplan/*"
   for cur_np in "$np_path"
   do
@@ -13978,7 +14013,7 @@ function installAdGuard()
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
   done
   sudo netplan apply > /dev/null 2>&1
-  sudo systemctl restart systemd-resolved
+
   installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
@@ -14045,20 +14080,6 @@ NET_EXTERNAL_SUBNET_PREFIX=$NET_EXTERNAL_SUBNET_PREFIX
 UID=$USERID
 GID=$GROUPID
 EOFAD
-
-  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFR
-[Resolve]
-DNS=127.0.0.1
-#FallbackDNS=
-#Domains=
-#LLMNR=no
-#MulticastDNS=no
-#DNSSEC=no
-#DNSOverTLS=no
-#Cache=no-negative
-DNSStubListener=no
-#ReadEtcHosts=yes
-EOFR
 
   cat <<EOFAD > $HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
 http:
@@ -14326,16 +14347,16 @@ function installSystemUtils()
   isFound="F"
   i=0
   set +e
-  while [ $i -le 60 ]
+  while [ $i -le 120 ]
   do
     findtext=$(docker logs grafana 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
       isFound="T"
       break
     fi
-    echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
-    sleep 1
-    ((i=$i+1))
+    echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
+    sleep 5
+    ((i=$i+5))
   done
   set -e
   if [ $isFound == "F" ]; then
