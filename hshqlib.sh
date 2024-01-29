@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=25
+HSHQ_SCRIPT_VERSION=26
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -54,6 +54,12 @@ function init()
   NET_LDAP_BRIDGE_NAME=brdockldap
   NET_LDAP_SUBNET=172.16.6.0/24
   NET_LDAP_SUBNET_PREFIX=172.16.6
+  NET_MAILU_EXT_BRIDGE_NAME=br-mailu-ext
+  NET_MAILU_EXT_SUBNET=172.16.7.0/24
+  NET_MAILU_EXT_SUBNET_PREFIX=172.16.7
+  NET_MAILU_INT_BRIDGE_NAME=br-mailu-int
+  NET_MAILU_INT_SUBNET=172.16.8.0/24
+  NET_MAILU_INT_SUBNET_PREFIX=172.16.8
   MAX_DOCKER_PULL_TRIES=20
   MENU_WIDTH=85
   MENU_HEIGHT=25
@@ -8104,9 +8110,12 @@ function getStackID()
 
 function restartAllStacks()
 {
+  set +e
   sudo -k
   sudo -v
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  startStopStack uptimekuma stop "$portainerToken"
+  set -e
   rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
   rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]} - 1))
@@ -8117,16 +8126,45 @@ function restartAllStacks()
     sleep 1
   done
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
+  set +e
+  docker network rm dock-ext > /dev/null 2>&1
+  docker network rm dock-proxy > /dev/null 2>&1
+  docker network rm dock-privateip > /dev/null 2>&1
+  docker network rm dock-internalmail > /dev/null 2>&1
+  docker network rm dock-dbs > /dev/null 2>&1
+  docker network rm dock-ldap > /dev/null 2>&1
+  docker network rm dock-mailu-ext > /dev/null 2>&1
+  docker network rm dock-mailu-int > /dev/null 2>&1
   echo "Restarting Docker..."
+  set -e
   sudo systemctl restart docker
+  createDockerNetworks
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  set +e
+  total_tries=10
+  num_tries=1
+  sleep 5
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  retVal=$?
+  while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
+  do
+    echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
+    sleep 5
+    ((num_tries++))
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    retVal=$?
+  done
+  if [ $retVal -ne 0 ]; then
+    echo "Error getting portainer token, exiting..."
+    exit 1
+  fi
   for curID in $(seq 0 $numItems);
   do
     echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
     startStopStackByID ${rstackIDs[$curID]} start $portainerToken
     sleep 3
   done
+  startStopStack uptimekuma start "$portainerToken"
 }
 
 function updateGlobalVarsEnvFile()
@@ -10340,6 +10378,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=25
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 26 ]; then
+    echo "Updating to Version 26..."
+    version26Update
+    HSHQ_VERSION=26
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -10405,14 +10449,20 @@ function version22Update()
 
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   set +e
+  docker network rm dock-ext > /dev/null 2>&1
+  docker network rm dock-proxy > /dev/null 2>&1
+  docker network rm dock-privateip > /dev/null 2>&1
+  docker network rm dock-internalmail > /dev/null 2>&1
+  docker network rm dock-dbs > /dev/null 2>&1
+  docker network rm dock-ldap > /dev/null 2>&1
   docker network rm dock-mailu-ext > /dev/null 2>&1
   docker network rm dock-mailu-int > /dev/null 2>&1
   docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
-  docker network rm dock-ldap > /dev/null 2>&1
   set -e
   echo "Restarting Docker..."
   sudo systemctl restart docker
   sleep 3
+  createDockerNetworks
   outputConfigPortainer
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   set +e
@@ -10433,20 +10483,6 @@ function version22Update()
     echo "Error getting portainer token, exiting..."
     exit 1
   fi
-
-  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
-  # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-ext-tmp > /dev/null 2>&1
-  mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
-  mailu_external_net_prefix=$(echo $mailu_external_subnet | rev | cut -d '.' -f2- | rev)
-  docker network rm mailu-ext-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext > /dev/null 2>&1
-
-  # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-int-tmp > /dev/null 2>&1
-  mailu_internal_subnet=$(getDockerSubnet mailu-int-tmp)
-  docker network rm mailu-int-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int > /dev/null 2>&1
 
   if ! [ -z $cdnsStackID ]; then
     docker network create --driver=bridge tmpnet > /dev/null 2>&1
@@ -10719,8 +10755,8 @@ EOFMC
   sudo cp $HSHQ_STACKS_DIR/portainer/compose/$mailuStackID/stack.env $HOME/mailu.env
   sudo chown $USERNAME:$USERNAME $HOME/mailu.env
   updateGlobalVarsEnvFile $HOME/mailu.env
-  sed -i "s|^SUBNET=.*|SUBNET=${mailu_external_subnet}|g" $HOME/mailu.env
-  sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${mailu_external_net_prefix}|g" $HOME/mailu.env
+  sed -i "s|^SUBNET=.*|SUBNET=${NET_MAILU_EXT_SUBNET}|g" $HOME/mailu.env
+  sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${NET_MAILU_EXT_SUBNET_PREFIX}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
   http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
@@ -10864,6 +10900,7 @@ EOFCF
 function version23Update()
 {
   outputBootScripts
+  deleteFromRootCron "restartHomeAssistantStack.sh"
   appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null 2>&1"
   updateSysctl
 }
@@ -10910,6 +10947,13 @@ EOFR
 #ReadEtcHosts=yes
 EOFR
 
+}
+
+function version26Update()
+{
+  outputHABandaidScript
+  deleteFromRootCron "restartHomeAssistantStack.sh"
+  appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh"
 }
 
 function checkAddServiceToConfig()
@@ -11261,7 +11305,23 @@ function main()
   PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
   PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
   PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
-  restartStackIfRunning homeassistant 15
+  num_tries=0
+  total_tries=10
+  set +e
+  portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
+  retVal=\$?
+  while [ \$retVal -ne 0 ] && [ \$num_tries -lt \$total_tries ]
+  do
+    sleep 5
+    ((num_tries++))
+    portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
+    retVal=\$?
+  done
+  if [ \$retVal -ne 0 ]; then
+    echo "Error restarting HomeAssistant stack, exiting..."
+    exit 1
+  fi
+  restartStackIfRunning homeassistant 15 \$portainerToken > /dev/null
 }
 main
 EOFBS
@@ -11535,6 +11595,20 @@ function appendToRoonCron()
   grep "$cr_string" $HOME/rootcron > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "$cr_string" | sudo tee -a $HOME/rootcron >/dev/null
+    sudo crontab $HOME/rootcron
+    sudo rm $HOME/rootcron
+  fi
+  set -e
+}
+
+function deleteFromRootCron()
+{
+  cr_string="$1"
+  sudo crontab -l > $HOME/rootcron
+  set +e
+  grep "$cr_string" $HOME/rootcron > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    sudo sed -i "/$cr_string/d" $HOME/rootcron
     sudo crontab $HOME/rootcron
     sudo rm $HOME/rootcron
   fi
@@ -12361,6 +12435,8 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_INTERNALMAIL_BRIDGE_NAME --driver=bridge --subnet $NET_INTERNALMAIL_SUBNET --internal dock-internalmail > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_DBS_BRIDGE_NAME --driver=bridge --subnet $NET_DBS_SUBNET --internal dock-dbs > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null 2>/dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null 2>/dev/null
 }
 
 function checkAddDBSqlPad()
@@ -13298,8 +13374,8 @@ function initServiceVars()
   checkAddSvc "SVCD_GUACAMOLE=guacamole,guacamole,primary,admin,Guacamole,guacamole,hshq"
   checkAddSvc "SVCD_HEIMDALL=heimdall,heimdall,other,user,Heimdall,heimdall,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_APP=homeassistant,homeassistant,primary,admin,HomeAssistant,homeassistant,hshq"
-  checkAddSvc "SVCD_HOMEASSISTANT_CONFIGURATOR=homeassistant,hass-configurator,primary,admin,HomeAssistant-NodeRed,hass-configurator,hshq"
-  checkAddSvc "SVCD_HOMEASSISTANT_NODERED=homeassistant,hass-nodered,primary,admin,HomeAssistant-Configurator,hass-nodered,hshq"
+  checkAddSvc "SVCD_HOMEASSISTANT_CONFIGURATOR=homeassistant,hass-configurator,primary,admin,HomeAssistant-Configurator,hass-configurator,hshq"
+  checkAddSvc "SVCD_HOMEASSISTANT_NODERED=homeassistant,hass-nodered,primary,admin,HomeAssistant-NodeRed,hass-nodered,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_TASMOADMIN=homeassistant,hass-tasmoadmin,primary,admin,HomeAssistant-Tasmoadmin,hass-tasmoadmin,hshq"
   checkAddSvc "SVCD_IMAGES=images,images,other,user,Images,images,hshq"
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
@@ -17404,19 +17480,6 @@ function installMailu()
   mkdir $HSHQ_STACKS_DIR/mailu/certs
   mkdir $HSHQ_STACKS_DIR/mailu/redis
 
-  # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-ext-tmp > /dev/null
-  mailu_external_subnet=$(getDockerSubnet mailu-ext-tmp)
-  mailu_external_net_prefix=$(echo $mailu_external_subnet | rev | cut -d '.' -f2- | rev)
-  docker network rm mailu-ext-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-ext --driver=bridge --subnet $mailu_external_subnet dock-mailu-ext
-
-  # Create temp network to determine available subnet
-  docker network create --driver=bridge mailu-int-tmp > /dev/null
-  mailu_internal_subnet=$(getDockerSubnet mailu-int-tmp)
-  docker network rm mailu-int-tmp > /dev/null
-  docker network create -o com.docker.network.bridge.name=br-mailu-int --driver=bridge --subnet $mailu_internal_subnet dock-mailu-int
-
   # Generate email certificate if not joining another VPN
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     generateCert mail "mailu-front,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
@@ -17744,8 +17807,8 @@ EOFMC
   cat <<EOFMC > $HOME/mailu.env
 TZ=\${TZ}
 SECRET_KEY=$(pwgen -c -n 16 1)
-SUBNET=$mailu_external_subnet
-SUBNET_PREFIX=$mailu_external_net_prefix
+SUBNET=$NET_MAILU_EXT_SUBNET
+SUBNET_PREFIX=$NET_MAILU_EXT_SUBNET_PREFIX
 DOMAIN=$HOMESERVER_DOMAIN
 HOSTNAMES=$SUB_POSTFIX.$HOMESERVER_DOMAIN
 POSTMASTER=$EMAIL_ADMIN_USERNAME
@@ -17792,7 +17855,7 @@ EOFMC
   cat <<EOFMO > $HSHQ_STACKS_DIR/mailu/postfix-override.cf
 smtp_tls_cert_file=/certs/mail.crt
 smtp_tls_key_file=/certs/mail.key
-mynetworks = 127.0.0.1/32 $mailu_external_subnet $NET_INTERNALMAIL_SUBNET
+mynetworks = 127.0.0.1/32 $NET_MAILU_EXT_SUBNET $NET_INTERNALMAIL_SUBNET
 EOFMO
 
   cat <<EOFMD > $HSHQ_STACKS_DIR/mailu/dovecot-override.conf
@@ -23387,6 +23450,10 @@ function installHomeAssistant()
 
   mkdir $HSHQ_STACKS_DIR/homeassistant
   mkdir $HSHQ_STACKS_DIR/homeassistant/config
+  mkdir $HSHQ_STACKS_DIR/homeassistant/config/www
+  mkdir $HSHQ_STACKS_DIR/homeassistant/config/www/images
+  mkdir $HSHQ_STACKS_DIR/homeassistant/config/www/plugins
+  mkdir $HSHQ_STACKS_DIR/homeassistant/config/www/themes
   mkdir $HSHQ_STACKS_DIR/homeassistant/configurator
   mkdir $HSHQ_STACKS_DIR/homeassistant/db
   mkdir $HSHQ_STACKS_DIR/homeassistant/dbexport
@@ -23479,9 +23546,7 @@ function installHomeAssistant()
     insertEnableSvcAll homeassistant "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" "homeassistant.png"
     insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" $USERTYPE_HOMEASSISTANT_CONFIGURATOR "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN"
     insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_NODERED" $USERTYPE_HOMEASSISTANT_NODERED "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN"
-    # Tasmota is problematic, will not start correctly on reboot.
-    # It has been commented out and disabled, but can be re-enabled with just a few steps.
-    #insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
+    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
     restartAllCaddyContainers
   fi
 }
@@ -23602,23 +23667,23 @@ services:
       - \${HSHQ_STACKS_DIR}/homeassistant/configurator:/config
       - \${HSHQ_STACKS_DIR}/homeassistant/config:/hass-config
 
-#  homeassistant-tasmoadmin:
-#    image: $IMG_HOMEASSISTANT_TASMOADMIN
-#    container_name: homeassistant-tasmoadmin
-#    hostname: homeassistant-tasmoadmin
-#    restart: unless-stopped
-#    env_file: stack.env
-#    security_opt:
-#      - no-new-privileges:true
-#    depends_on:
-#      - homeassistant-app
-#    networks:
-#      - dock-proxy-net
-#      - dock-privateip-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - \${HSHQ_STACKS_DIR}/homeassistant/tasmoadmin:/data
+  homeassistant-tasmoadmin:
+    image: $IMG_HOMEASSISTANT_TASMOADMIN
+    container_name: homeassistant-tasmoadmin
+    hostname: homeassistant-tasmoadmin
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - homeassistant-app
+    networks:
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/homeassistant/tasmoadmin:/data
 
 networks:
   dock-proxy-net:
@@ -23731,10 +23796,10 @@ panel_iframe:
     icon: mdi:wrench
     url: "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN"
     require_admin: true
-#  tasmoadmin:
-#    title: "TasmoAdmin"
-#    url: "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
-#    icon: mdi:home-automation
+  tasmoadmin:
+    title: "TasmoAdmin"
+    url: "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
+    icon: mdi:home-automation
 
 recorder:
   db_url: postgresql://$HOMEASSISTANT_DATABASE_USER:$HOMEASSISTANT_DATABASE_USER_PASSWORD@localhost:$HOMEASSISTANT_DB_LOCALHOST_PORT/$HOMEASSISTANT_DATABASE_NAME
