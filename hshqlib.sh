@@ -3788,20 +3788,6 @@ UID=\$USERID
 GID=\$GROUPID
 EOFAC
 
-  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFR
-[Resolve]
-DNS=127.0.0.1
-#FallbackDNS=
-#Domains=
-#LLMNR=no
-#MulticastDNS=no
-#DNSSEC=no
-#DNSOverTLS=no
-#Cache=no-negative
-DNSStubListener=no
-#ReadEtcHosts=yes
-EOFR
-
   cat <<EOFAD > \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
 http:
   pprof:
