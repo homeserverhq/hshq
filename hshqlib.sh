@@ -10983,6 +10983,7 @@ function version27Update()
 \$config['timezone'] = '$TZ';
 ?>
 EOFRO
+  sudo chown root:root $HOME/custom.inc.php
   sudo mv $HOME/custom.inc.php $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php
   docker container restart mailu-webmail
 }
@@ -17917,6 +17918,7 @@ EOFRS
 \$config['timezone'] = '$TZ';
 ?>
 EOFRO
+  sudo chown root:root $HSHQ_STACKS_DIR/mailu/custom.inc.php
 
   cat <<EOFRS > $HSHQ_STACKS_DIR/mailu/multimap.conf
 IP_WHITELIST {
