@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=26
+HSHQ_SCRIPT_VERSION=27
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -291,7 +291,8 @@ EOF
   "2" "Generate Signed Certificate" \
   "3" "Reset Caddy Data" \
   "4" "Email Vaultwarden Credentials" \
-  "5" "Exit" 3>&1 1>&2 2>&3)
+  "5" "Email Root CA" \
+  "6" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -328,6 +329,9 @@ EOF
       checkLoadConfig
       emailVaultwardenCredentials false ;;
     5)
+      checkLoadConfig
+      sendRootCAEmail ;;
+    6)
 	  return 0 ;;
   esac
 }
@@ -725,23 +729,6 @@ function addToDisabledServices()
 
 function initConfig()
 {
-  total_ram=$(free --giga | head -2 | tail -1 | xargs | cut -d" " -f2)
-  if [ $total_ram -lt 4 ]; then
-    showMessageBox "Insufficient Memory" "Total memory is $total_ram GB. You must have at least 4 GB perform the installation, exiting..."
-    exit 1
-  fi
-  total_disk_space=$(($(df | grep /$ | xargs | cut -d" " -f4) / 1048576))
-  if [ $total_disk_space -lt 120 ]; then
-    showMessageBox "Insufficient Disk Space" "Total available disk space is $total_disk_space GB. You must have at least 150 GB of available space to perform the installation, exiting..."
-    exit 1
-  fi
-  set -e
-  if [ -z "$CONFIG_FILE" ]; then
-    # Create new directories and config file
-    showYesNoMessageBox "No Config Found" "No configuration file found, create initial environment (y/n)?"
-	createInitialEnv
-    loadConfigVars
-  fi
   if [ "$IS_INSTALLING" = "true" ]; then
     showMessageBox "Active Installation" "There is an active installation in progress, exiting..."
     exit 1
@@ -749,6 +736,36 @@ function initConfig()
   if [ "$IS_INSTALLED" = "true" ]; then
     return 0
   fi
+  if [ -z "$CONFIG_FILE" ]; then
+    # Create new directories and config file
+    showYesNoMessageBox "No Config Found" "No configuration file found, create initial environment (y/n)?"
+	createInitialEnv
+    loadConfigVars
+  fi
+
+  set +e
+  total_ram=$(free --giga | grep "Mem:" | xargs | cut -d" " -f2)
+  # Obviously 6 != 8, but this allows a little leeway.
+  if [ $total_ram -lt 6 ]; then
+    showYesNoMessageBox "Insufficient Memory" "Total memory is $total_ram GB. You should have at least 8 GB perform the installation. The process could fail or your server could crash. Are you sure you want to continue?"
+    mbres=$?
+    if [ $mbres -ne 0 ]; then
+      exit 1
+    fi
+  fi
+  # Need to allow for docker images already downloaded, so look at total disk space.
+  # Obviously 120 != 150, but this allows a little leeway.
+  # The partitioning structure could be different than expected, so user can bypass this warning.
+  total_disk_space=$(($(df / | tail -1 | xargs | cut -d" " -f2) / 1048576))
+  if [ $total_disk_space -lt 120 ]; then
+    showYesNoMessageBox "Insufficient Disk Space" "Total size of disk is $total_disk_space GB. You should have at least 150 GB of available space to perform the installation. The process could fail or your server could crash. Are you sure you want to continue?"
+    mbres=$?
+    if [ $mbres -ne 0 ]; then
+      exit 1
+    fi
+  fi
+
+  set -e
   if [ -z "$USERID" ]; then
     USERID=$(id -u)
     updateConfigVar USERID $USERID
@@ -1293,6 +1310,7 @@ function postInstallation()
     #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
     echo ""
   fi
+  sleep 5
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
   echo "Sanitizing installation log..."
@@ -7793,6 +7811,15 @@ function setStaticIPToCurrent()
   ip_cidr=$cur_ip"/"$cidr_part
   cur_gate=$(echo $def_route | awk '{print $3}')
   setStaticIP $ip_cidr $cur_gate
+  if [ $? -ne 0 ]; then
+    showMessageBox "Networking Error" "There was an error setting the static IP Address, exiting..."
+    exit 1
+  fi
+  HOMESERVER_HOST_IP=$cur_ip
+  updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
+  HOMESERVER_HOST_RANGE=$(sipcalc $ip_cidr | grep "^Network range" | xargs | cut -d"-" -f2 | xargs)"/"$(echo $ip_cidr | cut -d"/" -f2)
+  updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
+
 }
 
 function setStaticIP()
@@ -7834,7 +7861,7 @@ function changeHostStaticIP()
     return
   fi
   curHostIP=$HOMESERVER_HOST_IP
-  newHostIPCIDR=$(promptUserInputMenu "${HOMESERVER_HOST_IP}/24" "New Static IP" "Enter the static IP address in full CIDR notation:")
+  newHostIPCIDR=$(promptUserInputMenu "${HOMESERVER_HOST_IP}/24" "New Static IP" "Enter the static IP address with the CIDR of the network:")
   gwGuess=$(sipcalc $newHostIPCIDR | grep "^Usable range" | xargs | cut -d"-" -f2 | xargs)
   newHostGateway=$(promptUserInputMenu "$gwGuess" "New Gateway" "Enter the gateway IP address. This is typically the IP address of your router, the first IP in the range:")
   newHSHostIP=$(echo $newHostIPCIDR | cut -d"/" -f1)
@@ -10370,6 +10397,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=26
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 27 ]; then
+    echo "Updating to Version 27..."
+    version27Update
+    HSHQ_VERSION=27
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -10940,6 +10973,18 @@ function version26Update()
   outputHABandaidScript
   deleteFromRootCron "restartHomeAssistantStack.sh"
   appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh"
+}
+
+function version27Update()
+{
+  cat <<EOFRO > $HOME/custom.inc.php
+<?php
+\$config['show_images'] = 3;
+\$config['timezone'] = '$TZ';
+?>
+EOFRO
+  sudo mv $HOME/custom.inc.php $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php
+  docker container restart mailu-webmail
 }
 
 function checkAddServiceToConfig()
@@ -12529,11 +12574,11 @@ function loadPinnedDockerImages()
   IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.11.3
   IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.52
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.98.0
-  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v1.0.0-RC2
+  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v1.1.0
   IMG_MEILISEARCH=getmeili/meilisearch:v1.4
   IMG_MYSQL=mariadb:10.7.3
   IMG_NETDATA=netdata/netdata:v1.44.1
-  IMG_NEXTCLOUD_APP=nextcloud:27.1.5-fpm-alpine
+  IMG_NEXTCLOUD_APP=nextcloud:27.1.6-fpm-alpine
   IMG_NEXTCLOUD_WEB=nginx:1.25.3-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:latest
   IMG_NTFY=binwiederhier/ntfy:v2.8.0
@@ -17491,6 +17536,7 @@ function installMailu()
   startStopStack mailu stop
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   sudo mv $HSHQ_STACKS_DIR/mailu/dovecot-override.conf $HSHQ_STACKS_DIR/mailu/overrides/dovecot/dovecot.conf
+  sudo mv $HSHQ_STACKS_DIR/mailu/custom.inc.php $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php
   sudo mv $HSHQ_STACKS_DIR/mailu/external_relay.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/external_relay.conf
   sudo mv $HSHQ_STACKS_DIR/mailu/ip_whitelist.map $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map
   sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map
@@ -17841,7 +17887,7 @@ EOFMC
   cat <<EOFMO > $HSHQ_STACKS_DIR/mailu/postfix-override.cf
 smtp_tls_cert_file=/certs/mail.crt
 smtp_tls_key_file=/certs/mail.key
-mynetworks = 127.0.0.1/32 $NET_MAILU_EXT_SUBNET $NET_INTERNALMAIL_SUBNET
+mynetworks = 127.0.0.1/32 $NET_MAILU_EXT_SUBNET $NET_INTERNALMAIL_SUBNET ${HOMESERVER_HOST_IP}/32
 EOFMO
 
   cat <<EOFMD > $HSHQ_STACKS_DIR/mailu/dovecot-override.conf
@@ -17860,9 +17906,17 @@ EOFSP
 
   cat <<EOFRS > $HSHQ_STACKS_DIR/mailu/ip_whitelist.map
 $NET_INTERNALMAIL_SUBNET
+${HOMESERVER_HOST_IP}/32
 EOFRS
 
   touch $HSHQ_STACKS_DIR/mailu/ip_blacklist.map
+
+  cat <<EOFRO > $HSHQ_STACKS_DIR/mailu/custom.inc.php
+<?php
+\$config['show_images'] = 3;
+\$config['timezone'] = '$TZ';
+?>
+EOFRO
 
   cat <<EOFRS > $HSHQ_STACKS_DIR/mailu/multimap.conf
 IP_WHITELIST {
@@ -18897,6 +18951,8 @@ function installNextCloud()
     echo "Nextcloud did not start up correctly, exiting..."
     exit 1
   fi
+  docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings email "$NEXTCLOUD_ADMIN_EMAIL_ADDRESS"
+  docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings display_name "${HOMESERVER_ABBREV^^} Nextcloud Admin"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install contacts
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install groupfolders
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install tasks
@@ -23754,6 +23810,19 @@ frontend:
 tts:
   - platform: picotts
     language: 'en-US'
+
+notify:
+  - name: "LOCAL_SMTP"
+    platform: smtp
+    server: "$SUB_POSTFIX.$HOMESERVER_DOMAIN"
+    port: 25
+    timeout: 15
+    sender: "$EMAIL_SMTP_EMAIL_ADDRESS"
+    encryption: starttls
+    verify_ssl: false
+    recipient:
+      - "$EMAIL_ADMIN_EMAIL_ADDRESS"
+    sender_name: "HomeAssistant HSHQ Admin"
 
 automation: !include automations.yaml
 script: !include scripts.yaml
