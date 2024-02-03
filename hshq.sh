@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=6
+HSHQ_WRAPPER_SCRIPT_VERSION=5
 IS_DISABLE_UPDATE_CHECKS=false
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
