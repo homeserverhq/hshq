@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=27
+HSHQ_SCRIPT_VERSION=28
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -82,8 +82,12 @@ function main()
       CONNECTING_IP=$2
       IS_PERFORM_INSTALL=true
       ;;
-    "-a"|"run")
+    "-a")
       CONNECTING_IP=$2
+      ;;
+    "run")
+      IS_NEW_LIB=$2
+      CONNECTING_IP=$3
       ;;
     *)
       ;;
@@ -144,6 +148,9 @@ EOF
   while  [[ $mainMenuResult -ne 0 ]]
   do
     if [ "$is_hshq_installed" = "true" ]; then
+      if [ "$IS_NEW_LIB" = "true" ]; then
+        checkLoadConfig
+      fi
       showInstalledMenu
     else
       showNotInstalledMenu
@@ -1361,10 +1368,12 @@ $logo
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$svcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-  "1" "Select Service(s) From List" \
+  "1" "Install Service(s) From List" \
   "2" "Install All Available Services" \
-  "3" "Remove Service" \
-  "4" "Exit" 3>&1 1>&2 2>&3)
+  "3" "Update Service(s) From List (Not implemented)" \
+  "4" "Update All Available Services (Not implemented)" \
+  "5" "Remove Service" \
+  "6" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -1380,12 +1389,65 @@ EOF
       set +e
       return 1 ;;
     3)
-      deleteStacks
+      # Not implemented yet
+      #listStacksToUpdate
       set +e
       return 1 ;;
     4)
+      set +e
+      return 1 ;;
+    5)
+      deleteStacks
+      set +e
+      return 1 ;;
+    6)
 	  return 0 ;;
   esac
+}
+
+function listStacksToUpdate()
+{
+  set +e
+  stackListArr=($(echo ${HSHQ_REQUIRED_STACKS}","${HSHQ_OPTIONAL_STACKS} | tr "," "\n"))
+  menu_items=""
+  for curStack in "${stackListArr[@]}"
+  do
+    if [ "$(checkUpdateStackByName $curStack)" = "true" ]; then
+      menu_items=${menu_items}"$curStack | OFF "
+    fi
+  done
+  if [ -z "$menu_items" ]; then
+    showMessageBox "No Available Updates" "All services are updated."
+    return
+  fi
+  selsvcsmenu=$(cat << EOF
+
+$logo
+
+Select the services that you wish to update:
+EOF
+  )
+  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  if [ -z $sel_svcs ]; then
+    showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
+    return 0
+  fi
+
+  showYesNoMessageBox "Confirm Updates" "This selected service(s) will be updated, Continue?"
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  setSudoTimeoutInstall
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  update_report=""
+  set +e
+  for cur_svc in "${sel_svcs[@]}"
+  do
+    echo "Updating ${cur_svc//\"}..."
+    update_report=${update_report}"\n"$(performUpdateStackByName ${cur_svc//\"} "$portainerToken")
+  done
+  removeSudoTimeoutInstall
+  sendEmail -s "Container Image Update Report" -b "Container Image Update Report:\n$update_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function installStacksFromList()
@@ -1920,7 +1982,7 @@ function setupHostedVPN()
   if [ "$IS_INSTALLED" = "true" ]; then
     startStopStack mailu stop
     sleep 5
-    generateCert mail "mailu-front,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
+    generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
     startStopStack mailu start
     insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png"
     insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
@@ -4655,8 +4717,6 @@ services:
     restart: unless-stopped
     env_file: stack.env
     network_mode: "host"
-    ports:
-      - 172.16.0.1:$RELAYSERVER_WG_PORTAL_PORT:$RELAYSERVER_WG_PORTAL_PORT
     cap_add:
       - NET_ADMIN
     volumes:
@@ -6747,7 +6807,7 @@ function createMyNetworkInviteHomeServerVPNConfig()
   mail_body=$mail_body"$(getMyNetworkHomeServerDNSList)"
   mail_body=$mail_body"\n#################### HomeServers DNS End ####################\n"
   if [ "$is_primary" = "true" ]; then
-    generateCert $mail_cert_dn "mailu-front,$mail_cert_dn"
+    generateCert $mail_cert_dn "$SMTP_HOSTNAME,$mail_cert_dn"
     mail_body=$mail_body"\n#################### mail.crt Start ####################\n\n"
     mail_body=$mail_body"""$(cat $HSHQ_SSL_DIR/${mail_cert_dn}.crt)"""
     mail_body=$mail_body"\n\n#################### mail.crt End ####################\n"
@@ -7142,7 +7202,7 @@ function createOtherNetworkJoinHomeServerVPNConfig()
     updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
     RELAYSERVER_EXT_EMAIL_HOSTNAME=$relayserver_ext_email
     updateConfigVar RELAYSERVER_EXT_EMAIL_HOSTNAME $RELAYSERVER_EXT_EMAIL_HOSTNAME
-    docker ps | grep mailu-front > /dev/null 2>&1
+    docker ps | grep $SMTP_HOSTNAME > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       startStopStack mailu stop
       sleep 5
@@ -8214,6 +8274,30 @@ function envToJson()
   jsonstring="${jsonstring%?}]"
   IFS=$OLDIFS
   echo $jsonstring
+}
+
+function extractStackToHome()
+{
+  extract_stack_name=$1
+  extract_stack_id=$2
+
+  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$extract_stack_id/stack.env $HOME/${extract_stack_name}.env
+  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$extract_stack_id/docker-compose.yml $HOME/${extract_stack_name}-compose.yml
+  sudo chown $USERNAME:$USERNAME $HOME/${extract_stack_name}.env
+  sudo chown $USERNAME:$USERNAME $HOME/${extract_stack_name}-compose.yml
+}
+
+function updateStackByID()
+{
+  update_stack_name=$1
+  update_stack_id=$2
+  update_compose_file=$3
+  update_env_file=$4
+  portainerToken=$5
+
+  echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
+  rm -f $update_compose_file $update_env_file $HOME/${update_stack_name}-json.tmp
 }
 
 function getPasswordWithSymbol()
@@ -10522,8 +10606,8 @@ version: '3.5'
 services:
   front:
     image: $IMG_MAILU_FRONT
-    container_name: mailu-front
-    hostname: mailu-front
+    container_name: $SMTP_HOSTNAME
+    hostname: $SMTP_HOSTNAME
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -10531,7 +10615,7 @@ services:
     logging:
       driver: journald
       options:
-        tag: mailu-front
+        tag: $SMTP_HOSTNAME
     networks:
       - dock-mailu-ext-net
       - dock-internalmail-net
@@ -11195,10 +11279,10 @@ done
   iptables -C INPUT -p tcp -m tcp --dport 443 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
 
   # Special case for HomeAssistant since it is using host networking
-  iptables -C INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
 
   # Special case for Docker metrics
-  iptables -C INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
 
   # Add UPNP
   iptables -C INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
@@ -11250,8 +11334,8 @@ done
   iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp --dport 443 -j ACCEPT 2> /dev/null
-  iptables -D INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
-  iptables -D INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
+  iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
+  iptables -D INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
 
   iptables -P INPUT ACCEPT
@@ -12454,7 +12538,7 @@ function pullImage()
   set -e
   if [ $is_success -ne 0 ]; then
     echo "Error pulling docker images..."
-    exit 5
+    return 5
   fi
 }
 
@@ -12511,72 +12595,72 @@ function checkAddDBSqlPad()
 # Services Functions
 function loadPinnedDockerImages()
 {
-  IMG_ADGUARD=adguard/adguardhome:v0.107.41
+  IMG_ADGUARD=adguard/adguardhome:v0.107.43
   IMG_AUTHELIA=authelia/authelia:4.37.5
   IMG_BARASSISTANT_APP=barassistant/server:v3
   IMG_BARASSISTANT_WEB=nginx:1.25.3-alpine
   IMG_CADDY=caddy:2.7.6
-  IMG_CALIBRE_SERVER=linuxserver/calibre:7.3.0
+  IMG_CALIBRE_SERVER=linuxserver/calibre:7.4.0
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.21
-  IMG_CODESERVER=codercom/code-server:4.20.0
-  IMG_COLLABORA=collabora/code:23.05.6.4.1
-  IMG_DISCOURSE=bitnami/discourse:3.1.3
+  IMG_CODESERVER=codercom/code-server:4.20.1
+  IMG_COLLABORA=collabora/code:23.05.8.2.1
+  IMG_DISCOURSE=bitnami/discourse:3.1.4
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v6.0.8
+  IMG_DOZZLE=amir20/dozzle:v6.1.2
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
-  IMG_DRAWIO_WEB=jgraph/drawio:21.0.2
+  IMG_DRAWIO_WEB=jgraph/drawio:23.1.0
   IMG_DUPLICATI=linuxserver/duplicati:2.0.7
   IMG_EXCALIDRAW_SERVER=excalidraw/excalidraw-room
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
   IMG_FILEBROWSER=filebrowser/filebrowser:v2.27.0
-  IMG_FIREFLY=fireflyiii/core:version-6.1.1
+  IMG_FIREFLY=fireflyiii/core:version-6.1.7
   IMG_FRESHRSS=freshrss/freshrss:1.23.1
-  IMG_GHOST=ghost:5.75.2-alpine
-  IMG_GITEA_APP=gitea/gitea:1.21.3
+  IMG_GHOST=ghost:5.78.0-alpine
+  IMG_GITEA_APP=gitea/gitea:1.21.4
   IMG_GITLAB_APP=gitlab/gitlab-ce:16.8.1-ce.0
-  IMG_GRAFANA=grafana/grafana-oss:9.5.15
+  IMG_GRAFANA=grafana/grafana-oss:10.3.1
   IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.4
   IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.4
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
-  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2024.1.5
+  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2024.1.6
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
   IMG_HOMEASSISTANT_NODERED=nodered/node-red:3.0.2
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
-  IMG_INFLUXDB=influxdb:2.7.4-alpine
+  IMG_INFLUXDB=influxdb:2.7.5-alpine
   IMG_INVIDIOUS=quay.io/invidious/invidious
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=jellyfin/jellyfin:10.8.13
-  IMG_JITSI_WEB=jitsi/web:stable-9111
-  IMG_JITSI_PROSODY=jitsi/prosody:stable-9111
-  IMG_JITSI_JICOFO=jitsi/jicofo:stable-9111
-  IMG_JITSI_JVB=jitsi/jvb:stable-9111
+  IMG_JITSI_WEB=jitsi/web:stable-9220
+  IMG_JITSI_PROSODY=jitsi/prosody:stable-9220
+  IMG_JITSI_JICOFO=jitsi/jicofo:stable-9220
+  IMG_JITSI_JVB=jitsi/jvb:stable-9220
   IMG_KASM=lscr.io/linuxserver/kasm:1.14.0
-  IMG_KEILA=pentacent/keila:0.13.1
+  IMG_KEILA=pentacent/keila:0.14.0
   IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.4.8
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
-  IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.1.1
-  IMG_MAIL_RELAY_UNBOUND=mvance/unbound:1.17.1
-  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2.0
-  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2.0
-  IMG_MAILU_ANTIVIRUS=ghcr.io/mailu/clamav:2.0
-  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2.0
-  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2.0
-  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2.0
-  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2.0
-  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2.0
-  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2.0
-  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2.0
-  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2.0
+  IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
+  IMG_MAIL_RELAY_UNBOUND=mvance/unbound:1.19.0
+  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2.0.37
+  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2.0.37
+  IMG_MAILU_ANTIVIRUS=ghcr.io/mailu/clamav:2.0.37
+  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2.0.37
+  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2.0.37
+  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2.0.37
+  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2.0.37
+  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2.0.37
+  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2.0.37
+  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2.0.37
+  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2.0.37
   IMG_MASTODON_APP=tootsuite/mastodon:v4.2.3
   IMG_MASTODON_WEB=nginx:1.25.3-alpine
-  IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.11.3
-  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.52
-  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.98.0
+  IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.12.0
+  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.57
+  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.100.0
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v1.1.0
-  IMG_MEILISEARCH=getmeili/meilisearch:v1.4
+  IMG_MEILISEARCH=getmeili/meilisearch:v1.6
   IMG_MYSQL=mariadb:10.7.3
   IMG_NETDATA=netdata/netdata:v1.44.1
   IMG_NEXTCLOUD_APP=nextcloud:27.1.6-fpm-alpine
@@ -12584,7 +12668,7 @@ function loadPinnedDockerImages()
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:latest
   IMG_NTFY=binwiederhier/ntfy:v2.8.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.7.0
-  IMG_OFELIA=mcuadros/ofelia:v0.3.7
+  IMG_OFELIA=mcuadros/ofelia:v0.3.9
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
@@ -12592,24 +12676,24 @@ function loadPinnedDockerImages()
   IMG_PHOTOPRISM_APP=photoprism/photoprism:220901-bullseye
   IMG_PORTAINER=portainer/portainer-ce:2.19.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
-  IMG_PROMETHEUS=prom/prometheus:v2.48.1
+  IMG_PROMETHEUS=prom/prometheus:v2.49.1
   IMG_REDIS=bitnami/redis:7.0.5
   IMG_REMOTELY=immybot/remotely:69
   IMG_SALTRIM=barassistant/salt-rim:v2
   IMG_SEARXNG=searxng/searxng:2023.12.29-27e26b3d6
-  IMG_SHLINK_APP=shlinkio/shlink:3.7.2
-  IMG_SHLINK_WEB=shlinkio/shlink-web-client:3.10.2
-  IMG_SQLPAD=sqlpad/sqlpad:7.2.0
-  IMG_STIRLINGPDF=frooodle/s-pdf:0.19.0
-  IMG_SYNCTHING=syncthing/syncthing:1.27.1
+  IMG_SHLINK_APP=shlinkio/shlink:3.7.3
+  IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.0.0
+  IMG_SQLPAD=sqlpad/sqlpad:7.3.1
+  IMG_STIRLINGPDF=frooodle/s-pdf:0.20.1
+  IMG_SYNCTHING=syncthing/syncthing:1.27.2
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.11-alpine
-  IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.1-alpine
+  IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.2-alpine
   IMG_VAULTWARDEN_LDAP=thegeeklab/vaultwarden-ldap:0.6.2
   IMG_WALLABAG=wallabag/wallabag:2.6.8
-  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.1
-  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.1
-  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.7.1
-  IMG_WGPORTAL=h44z/wg-portal:1.0.17
+  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.2
+  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.2
+  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.7.2
+  IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS=requarks/wiki:2.5
   IMG_WIREGUARD=linuxserver/wireguard:1.0.20210914
   IMG_WORDPRESS=wordpress:php8.3-apache
@@ -13463,7 +13547,7 @@ function installStackByName()
     adguard)
       installAdGuard $is_integrate ;;
     sysutils)
-      installSystemUtils $is_integrate ;;
+      installSysUtils $is_integrate ;;
     openldap)
       installOpenLDAP $is_integrate ;;
     mailu)
@@ -13473,13 +13557,13 @@ function installStackByName()
     collabora)
       installCollabora $is_integrate ;;
     nextcloud)
-      installNextCloud $is_integrate ;;
+      installNextcloud $is_integrate ;;
     jitsi)
       installJitsi $is_integrate ;;
     matrix)
       installMatrix $is_integrate ;;
     wikijs)
-      installWikiJS $is_integrate ;;
+      installWikijs $is_integrate ;;
     duplicati)
       installDuplicati $is_integrate ;;
     mastodon)
@@ -13562,6 +13646,230 @@ function installStackByName()
       installSQLPad $is_integrate ;;
     uptimekuma)
       installUptimeKuma $is_integrate ;;
+  esac
+}
+
+function checkUpdateStackByName()
+{
+  stack_name=$1
+  
+  case "$stack_name" in
+    portainer)
+      checkUpdatePortainer ;;
+    adguard)
+      checkUpdateAdGuard ;;
+    sysutils)
+      checkUpdateSysUtils ;;
+    openldap)
+      checkUpdateOpenLDAP ;;
+    mailu)
+      checkUpdateMailu ;;
+    wazuh)
+      checkUpdateWazuh ;;
+    collabora)
+      checkUpdateCollabora ;;
+    nextcloud)
+      checkUpdateNextcloud ;;
+    jitsi)
+      checkUpdateJitsi ;;
+    matrix)
+      checkUpdateMatrix ;;
+    wikijs)
+      checkUpdateWikijs ;;
+    duplicati)
+      checkUpdateDuplicati ;;
+    mastodon)
+      checkUpdateMastodon ;;
+    dozzle)
+      checkUpdateDozzle ;;
+    searxng)
+      checkUpdateSearxNG ;;
+    jellyfin)
+      checkUpdateJellyfin ;;
+    filebrowser)
+      checkUpdateFileBrowser ;;
+    photoprism)
+      checkUpdatePhotoPrism ;;
+    guacamole)
+      checkUpdateGuacamole ;;
+    authelia)
+      checkUpdateAuthelia ;;
+    wordpress)
+      checkUpdateWordPress ;;
+    ghost)
+      checkUpdateGhost ;;
+    peertube)
+      checkUpdatePeerTube ;;
+    homeassistant)
+      checkUpdateHomeAssistant ;;
+    gitlab)
+      checkUpdateGitlab ;;
+    vaultwarden)
+      checkUpdateVaultwarden ;;
+    discourse)
+      checkUpdateDiscourse ;;
+    syncthing)
+      checkUpdateSyncthing ;;
+    codeserver)
+      checkUpdateCodeServer ;;
+    shlink)
+      checkUpdateShlink ;;
+    firefly)
+      checkUpdateFirefly ;;
+    excalidraw)
+      checkUpdateExcalidraw ;;
+    drawio)
+      checkUpdateDrawIO ;;
+    invidious)
+      checkUpdateInvidious ;;
+    ittools)
+      checkUpdateITTools ;;
+    gitea)
+      checkUpdateGitea ;;
+    mealie)
+      checkUpdateMealie ;;
+    kasm)
+      checkUpdateKasm ;;
+    ntfy)
+      checkUpdateNTFY ;;
+    remotely)
+      checkUpdateRemotely ;;
+    calibre)
+      checkUpdateCalibre ;;
+    netdata)
+      checkUpdateNetdata ;;
+    linkwarden)
+      checkUpdateLinkwarden ;;
+    stirlingpdf)
+      checkUpdateStirlingPDF ;;
+    bar-assistant)
+      checkUpdateBarAssistant ;;
+    freshrss)
+      checkUpdateFreshRSS ;;
+    keila)
+      checkUpdateKeila ;;
+    wallabag)
+      checkUpdateWallabag ;;
+    heimdall)
+      checkUpdateHeimdall ;;
+    ofelia)
+      checkUpdateOfelia ;;
+    sqlpad)
+      checkUpdateSQLPad ;;
+    uptimekuma)
+      checkUpdateUptimeKuma ;;
+  esac
+}
+
+function performUpdateStackByName()
+{
+  stack_name=$1
+  portainerToken="$2"
+  case "$stack_name" in
+    portainer)
+      performUpdatePortainer ;;
+    adguard)
+      performUpdateAdGuard "$portainerToken" ;;
+    sysutils)
+      performUpdateSysUtils "$portainerToken" ;;
+    openldap)
+      performUpdateOpenLDAP "$portainerToken" ;;
+    mailu)
+      performUpdateMailu "$portainerToken" ;;
+    wazuh)
+      performUpdateWazuh "$portainerToken" ;;
+    collabora)
+      performUpdateCollabora "$portainerToken" ;;
+    nextcloud)
+      performUpdateNextcloud "$portainerToken" ;;
+    jitsi)
+      performUpdateJitsi "$portainerToken" ;;
+    matrix)
+      performUpdateMatrix "$portainerToken" ;;
+    wikijs)
+      performUpdateWikijs "$portainerToken" ;;
+    duplicati)
+      performUpdateDuplicati "$portainerToken" ;;
+    mastodon)
+      performUpdateMastodon "$portainerToken" ;;
+    dozzle)
+      performUpdateDozzle "$portainerToken" ;;
+    searxng)
+      performUpdateSearxNG "$portainerToken" ;;
+    jellyfin)
+      performUpdateJellyfin "$portainerToken" ;;
+    filebrowser)
+      performUpdateFileBrowser "$portainerToken" ;;
+    photoprism)
+      performUpdatePhotoPrism "$portainerToken" ;;
+    guacamole)
+      performUpdateGuacamole "$portainerToken" ;;
+    authelia)
+      performUpdateAuthelia "$portainerToken" ;;
+    wordpress)
+      performUpdateWordPress "$portainerToken" ;;
+    ghost)
+      performUpdateGhost "$portainerToken" ;;
+    peertube)
+      performUpdatePeerTube "$portainerToken" ;;
+    homeassistant)
+      performUpdateHomeAssistant "$portainerToken" ;;
+    gitlab)
+      performUpdateGitlab "$portainerToken" ;;
+    vaultwarden)
+      performUpdateVaultwarden "$portainerToken" ;;
+    discourse)
+      performUpdateDiscourse "$portainerToken" ;;
+    syncthing)
+      performUpdateSyncthing "$portainerToken" ;;
+    codeserver)
+      performUpdateCodeServer "$portainerToken" ;;
+    shlink)
+      performUpdateShlink "$portainerToken" ;;
+    firefly)
+      performUpdateFirefly "$portainerToken" ;;
+    excalidraw)
+      performUpdateExcalidraw "$portainerToken" ;;
+    drawio)
+      performUpdateDrawIO "$portainerToken" ;;
+    invidious)
+      performUpdateInvidious "$portainerToken" ;;
+    ittools)
+      performUpdateITTools "$portainerToken" ;;
+    gitea)
+      performUpdateGitea "$portainerToken" ;;
+    mealie)
+      performUpdateMealie "$portainerToken" ;;
+    kasm)
+      performUpdateKasm "$portainerToken" ;;
+    ntfy)
+      performUpdateNTFY "$portainerToken" ;;
+    remotely)
+      performUpdateRemotely "$portainerToken" ;;
+    calibre)
+      performUpdateCalibre "$portainerToken" ;;
+    netdata)
+      performUpdateNetdata "$portainerToken" ;;
+    linkwarden)
+      performUpdateLinkwarden "$portainerToken" ;;
+    stirlingpdf)
+      performUpdateStirlingPDF "$portainerToken" ;;
+    bar-assistant)
+      performUpdateBarAssistant "$portainerToken" ;;
+    freshrss)
+      performUpdateFreshRSS "$portainerToken" ;;
+    keila)
+      performUpdateKeila "$portainerToken" ;;
+    wallabag)
+      performUpdateWallabag "$portainerToken" ;;
+    heimdall)
+      performUpdateHeimdall "$portainerToken" ;;
+    ofelia)
+      performUpdateOfelia "$portainerToken" ;;
+    sqlpad)
+      performUpdateSQLPad "$portainerToken" ;;
+    uptimekuma)
+      performUpdateUptimeKuma "$portainerToken" ;;
   esac
 }
 
@@ -13898,7 +14206,420 @@ function initServiceDefaults()
   DS_MEM_32=gitlab,netdata,discourse
 }
 
-# Containers Installation
+function getScriptImageByContainerName()
+{
+  case "$1" in
+    "portainer")
+      container_image=$IMG_PORTAINER
+      ;;
+    "adguard")
+      container_image=$IMG_ADGUARD
+      ;;
+    "grafana")
+      container_image=$IMG_GRAFANA
+      ;;
+    "prometheus")
+      container_image=$IMG_PROMETHEUS
+      ;;
+    "node-exporter")
+      container_image=$IMG_NODE_EXPORTER
+      ;;
+    "influxdb")
+      container_image=$IMG_INFLUXDB
+      ;;
+    "ldapserver")
+      container_image=$IMG_OPENLDAP_SERVER
+      ;;
+    "ldapphp")
+      container_image=$IMG_OPENLDAP_PHP
+      ;;
+    "ldapmanager")
+      container_image=$IMG_OPENLDAP_MANAGER
+      ;;
+    "$SMTP_HOSTNAME")
+      container_image=$IMG_MAILU_FRONT
+      ;;
+    "mailu-unbound")
+      container_image=$IMG_MAILU_UNBOUND
+      ;;
+    "mailu-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "mailu-admin")
+      container_image=$IMG_MAILU_ADMIN
+      ;;
+    "mailu-imap")
+      container_image=$IMG_MAILU_IMAP
+      ;;
+    "mailu-smtp")
+      container_image=$IMG_MAILU_SMTP
+      ;;
+    "mailu-oletools")
+      container_image=$IMG_MAILU_OLETOOLS
+      ;;
+    "mailu-antispam")
+      container_image=$IMG_MAILU_ANTISPAM
+      ;;
+    "mailu-antivirus")
+      container_image=$IMG_MAILU_ANTIVIRUS
+      ;;
+    "mailu-webdav")
+      container_image=$IMG_MAILU_WEBDAV
+      ;;
+    "mailu-fetchmail")
+      container_image=$IMG_MAILU_FETCHMAIL
+      ;;
+    "mailu-webmail")
+      container_image=$IMG_MAILU_WEBMAIL
+      ;;
+    "wazuh.manager")
+      container_image=$IMG_WAZUH_MANAGER
+      ;;
+    "wazuh.indexer")
+      container_image=$IMG_WAZUH_INDEXER
+      ;;
+    "wazuh.dashboard")
+      container_image=$IMG_WAZUH_DASHBOARD
+      ;;
+    "collabora")
+      container_image=$IMG_COLLABORA
+      ;;
+    "nextcloud-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "nextcloud-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "nextcloud-app")
+      container_image=$IMG_NEXTCLOUD_APP
+      ;;
+    "nextcloud-cron")
+      container_image=$IMG_NEXTCLOUD_APP
+      ;;
+    "nextcloud-push")
+      container_image=$IMG_NEXTCLOUD_APP
+      ;;
+    "nextcloud-imaginary")
+      container_image=$IMG_NEXTCLOUD_IMAGINARY
+      ;;
+    "nextcloud-web")
+      container_image=$IMG_NEXTCLOUD_WEB
+      ;;
+    "jitsi-web")
+      container_image=$IMG_JITSI_WEB
+      ;;
+    "jitsi-prosody")
+      container_image=$IMG_JITSI_PROSODY
+      ;;
+    "jitsi-jicofo")
+      container_image=$IMG_JITSI_JICOFO
+      ;;
+    "jitsi-jvb")
+      container_image=$IMG_JITSI_JVB
+      ;;
+    "matrix-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "matrix-synapse")
+      container_image=$IMG_MATRIX_SYNAPSE
+      ;;
+    "matrix-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "matrix-element-private")
+      container_image=$IMG_MATRIX_ELEMENT
+      ;;
+    "matrix-element-public")
+      container_image=$IMG_MATRIX_ELEMENT
+      ;;
+    "wikijs-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "wikijs-web")
+      container_image=$IMG_WIKIJS
+      ;;
+    "duplicati")
+      container_image=$IMG_DUPLICATI
+      ;;
+    "mastodon-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "mastodon-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "mastodon-redis-cache")
+      container_image=$IMG_REDIS
+      ;;
+    "mastodon-app")
+      container_image=$IMG_MASTODON_APP
+      ;;
+    "mastodon-streaming")
+      container_image=$IMG_MASTODON_APP
+      ;;
+    "mastodon-sidekiq")
+      container_image=$IMG_MASTODON_APP
+      ;;
+    "mastodon-web")
+      container_image=$IMG_MASTODON_WEB
+      ;;
+    "mastodon-elasticsearch")
+      container_image=$IMG_MASTODON_ELASTICSEARCH
+      ;;
+    "dozzle")
+      container_image=$IMG_DOZZLE
+      ;;
+    "searxng-caddy")
+      container_image=$IMG_CADDY
+      ;;
+    "searxng-app")
+      container_image=$IMG_SEARXNG
+      ;;
+    "searxng-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "jellyfin")
+      container_image=$IMG_JELLYFIN
+      ;;
+    "filebrowser")
+      container_image=$IMG_FILEBROWSER
+      ;;
+    "photoprism-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "photoprism-app")
+      container_image=$IMG_PHOTOPRISM_APP
+      ;;
+    "guacamole-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "guacamole-daemon")
+      container_image=$IMG_GUACAMOLE_GUACD
+      ;;
+    "guacamole-web")
+      container_image=$IMG_GUACAMOLE_WEB
+      ;;
+    "authelia")
+      container_image=$IMG_AUTHELIA
+      ;;
+    "authelia-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "wordpress-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "wordpress-web")
+      container_image=$IMG_WORDPRESS
+      ;;
+    "ghost-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "ghost-web")
+      container_image=$IMG_GHOST
+      ;;
+    "peertube-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "peertube-app")
+      container_image=$IMG_PEERTUBE_APP
+      ;;
+    "peertube-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "homeassistant-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "homeassistant-app")
+      container_image=$IMG_HOMEASSISTANT_APP
+      ;;
+    "homeassistant-nodered")
+      container_image=$IMG_HOMEASSISTANT_NODERED
+      ;;
+    "homeassistant-configurator")
+      container_image=$IMG_HOMEASSISTANT_CONFIGURATOR
+      ;;
+    "homeassistant-tasmoadmin")
+      container_image=$IMG_HOMEASSISTANT_TASMOADMIN
+      ;;
+    "gitlab-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "gitlab-app")
+      container_image=$IMG_GITLAB_APP
+      ;;
+    "gitlab-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "vaultwarden-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "vaultwarden-app")
+      container_image=$IMG_VAULTWARDEN_APP
+      ;;
+    "vaultwarden-ldap")
+      container_image=$IMG_VAULTWARDEN_LDAP
+      ;;
+    "discourse-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "discourse-app")
+      container_image=$IMG_DISCOURSE
+      ;;
+    "discourse-sidekiq")
+      container_image=$IMG_DISCOURSE
+      ;;
+    "discourse-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "syncthing")
+      container_image=$IMG_SYNCTHING
+      ;;
+    "codeserver")
+      container_image=$IMG_CODESERVER
+      ;;
+    "shlink-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "shlink-app")
+      container_image=$IMG_SHLINK_APP
+      ;;
+    "shlink-web")
+      container_image=$IMG_SHLINK_WEB
+      ;;
+    "shlink-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "firefly-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "firefly-app")
+      container_image=$IMG_FIREFLY
+      ;;
+    "firefly-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "excalidraw-storage")
+      container_image=$IMG_EXCALIDRAW_STORAGE
+      ;;
+    "excalidraw-server")
+      container_image=$IMG_EXCALIDRAW_SERVER
+      ;;
+    "excalidraw-web")
+      container_image=$IMG_EXCALIDRAW_WEB
+      ;;
+    "excalidraw-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "drawio-plantuml")
+      container_image=$IMG_DRAWIO_PLANTUML
+      ;;
+    "drawio-export")
+      container_image=$IMG_DRAWIO_EXPORT
+      ;;
+    "drawio-web")
+      container_image=$IMG_DRAWIO_WEB
+      ;;
+    "invidious-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "invidious-web")
+      container_image=$IMG_INVIDIOUS
+      ;;
+    "gitea-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "gitea-app")
+      container_image=$IMG_GITEA_APP
+      ;;
+    "mealie-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "mealie-app")
+      container_image=$IMG_MEALIE
+      ;;
+    "kasm")
+      container_image=$IMG_KASM
+      ;;
+    "ntfy")
+      container_image=$IMG_NTFY
+      ;;
+    "ittools")
+      container_image=$IMG_ITTOOLS
+      ;;
+    "remotely")
+      container_image=$IMG_REMOTELY
+      ;;
+    "calibre-server")
+      container_image=$IMG_CALIBRE_SERVER
+      ;;
+    "calibre-web")
+      container_image=$IMG_CALIBRE_WEB
+      ;;
+    "linkwarden-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "linkwarden-app")
+      container_image=$IMG_LINKWARDEN
+      ;;
+    "stirlingpdf")
+      container_image=$IMG_STIRLINGPDF
+      ;;
+    "bar-assistant-app")
+      container_image=$IMG_BARASSISTANT_APP
+      ;;
+    "bar-assistant-meilisearch")
+      container_image=$IMG_MEILISEARCH
+      ;;
+    "bar-assistant-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "bar-assistant-saltrim")
+      container_image=$IMG_SALTRIM
+      ;;
+    "bar-assistant-web")
+      container_image=$IMG_BARASSISTANT_WEB
+      ;;
+    "freshrss-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "freshrss-app")
+      container_image=$IMG_FRESHRSS
+      ;;
+    "keila-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "keila-app")
+      container_image=$IMG_KEILA
+      ;;
+    "wallabag-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "wallabag-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "wallabag-app")
+      container_image=$IMG_WALLABAG
+      ;;
+    "sqlpad")
+      container_image=$IMG_SQLPAD
+      ;;
+    "heimdall")
+      container_image=$IMG_HEIMDALL
+      ;;
+    "ofelia")
+      container_image=$IMG_OFELIA
+      ;;
+    "uptimekuma")
+      container_image=$IMG_UPTIMEKUMA
+      ;;
+    *)
+      ;;
+  esac
+  echo "$container_image"
+}
+
+# Stacks Installation/Update Functions
+
+# Portainer
 function installPortainer()
 {
   is_containers=$(docker ps -q)
@@ -14003,7 +14724,7 @@ version: '3.5'
 
 services:
   portainer:
-    image: $IMG_PORTAINER
+    image: $(getScriptImageByContainerName portainer)
     container_name: portainer
     hostname: portainer
     restart: unless-stopped
@@ -14062,6 +14783,7 @@ EOFPC
   chmod 600 $HSHQ_STACKS_DIR/portainer/portainer.env
 }
 
+# Adguard
 function installAdGuard()
 {
   is_integrate_hshq=$1
@@ -14120,7 +14842,7 @@ version: '3.5'
 
 services:
   adguard:
-    image: $IMG_ADGUARD
+    image: $(getScriptImageByContainerName adguard)
     container_name: adguard
     hostname: adguard
     restart: unless-stopped
@@ -14389,7 +15111,8 @@ schema_version: 27
 EOFAD
 }
 
-function installSystemUtils()
+# SysUtils
+function installSysUtils()
 {
   is_integrate_hshq=$1
   # Don't install if directory exists
@@ -14421,7 +15144,7 @@ function installSystemUtils()
 
   gf_dataset_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
-  outputConfigSystemUtils
+  outputConfigSysUtils
   docker-compose -f $HOME/sysutils-compose-tmp.yml up -d
 
   search="HTTP Server Listen"
@@ -14539,14 +15262,14 @@ function installSystemUtils()
   fi
 }
 
-function outputConfigSystemUtils()
+function outputConfigSysUtils()
 {
   cat <<EOFGF > $HOME/sysutils-compose-tmp.yml
 version: '3.5'
 
 services:
   grafana:
-    image: $IMG_GRAFANA
+    image: $(getScriptImageByContainerName grafana)
     container_name: grafana
     hostname: grafana
     user: "$UID"
@@ -14570,7 +15293,7 @@ services:
       - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-clock-panel,grafana-simple-json-datasource
 
   prometheus:
-    image: $IMG_PROMETHEUS
+    image: $(getScriptImageByContainerName prometheus)
     container_name: prometheus
     hostname: prometheus
     restart: unless-stopped
@@ -14595,7 +15318,7 @@ services:
       - v-sysutils-prometheus:/prometheus
       
   node-exporter:
-    image: $IMG_NODE_EXPORTER
+    image: $(getScriptImageByContainerName node-exporter)
     container_name: node-exporter
     hostname: node-exporter
     restart: unless-stopped
@@ -14617,7 +15340,7 @@ services:
       - /:/rootfs:ro
 
   influxdb:
-    image: $IMG_INFLUXDB
+    image: $(getScriptImageByContainerName influxdb)
     container_name: influxdb
     hostname: influxdb
     user: "$USERID"
@@ -14685,7 +15408,7 @@ version: '3.5'
 
 services:
   grafana:
-    image: $IMG_GRAFANA
+    image: $(getScriptImageByContainerName grafana)
     container_name: grafana
     hostname: grafana
     user: \${UID}
@@ -14702,7 +15425,7 @@ services:
       - v-sysutils-grafana:/var/lib/grafana
 
   prometheus:
-    image: $IMG_PROMETHEUS
+    image: $(getScriptImageByContainerName prometheus)
     container_name: prometheus
     hostname: prometheus
     restart: unless-stopped
@@ -14728,7 +15451,7 @@ services:
       - v-sysutils-prometheus:/prometheus
       
   node-exporter:
-    image: $IMG_NODE_EXPORTER
+    image: $(getScriptImageByContainerName node-exporter)
     container_name: node-exporter
     hostname: node-exporter
     restart: unless-stopped
@@ -14751,7 +15474,7 @@ services:
       - /:/rootfs:ro
 
   influxdb:
-    image: $IMG_INFLUXDB
+    image: $(getScriptImageByContainerName influxdb)
     container_name: influxdb
     hostname: influxdb
     user: "\${UID}"
@@ -17099,6 +17822,7 @@ EOFJS
 
 }
 
+# OpenLDAP
 function installOpenLDAP()
 {
   is_integrate_hshq=$1
@@ -17218,7 +17942,7 @@ version: '3.5'
 
 services:
   ldapserver:
-    image: $IMG_OPENLDAP_SERVER
+    image: $(getScriptImageByContainerName ldapserver)
     container_name: ldapserver
     hostname: ldapserver
     restart: unless-stopped
@@ -17246,7 +17970,7 @@ services:
       - ldap_readonly_user_password
 
   ldapphp:
-    image: $IMG_OPENLDAP_PHP
+    image: $(getScriptImageByContainerName ldapphp)
     container_name: ldapphp
     hostname: ldapphp
     restart: unless-stopped
@@ -17275,7 +17999,7 @@ services:
       - "PHPLDAPADMIN_LDAP_HOSTS=#PYTHON2BASH:[{'ldapserver': [{'server': [{'tls': True}]}]}]"
 
   ldapmanager:
-    image: $IMG_OPENLDAP_MANAGER
+    image: $(getScriptImageByContainerName ldapmanager)
     container_name: ldapmanager
     hostname: ldapmanager
     restart: unless-stopped
@@ -17497,6 +18221,7 @@ EOFLB
 
 }
 
+# Mailu
 function installMailu()
 {
   is_integrate_hshq=$1
@@ -17514,7 +18239,7 @@ function installMailu()
 
   # Generate email certificate if not joining another VPN
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    generateCert mail "mailu-front,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
+    generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
   fi
   if [ -z SMTP_RELAY_HOST ] || [ -z SMTP_RELAY_USERNAME ]; then
     # Set these to something
@@ -17563,7 +18288,7 @@ function installMailu()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy https://mailu-front {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://$SMTP_HOSTNAME {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -17585,9 +18310,9 @@ version: '3.5'
 
 services:
   front:
-    image: $IMG_MAILU_FRONT
-    container_name: mailu-front
-    hostname: mailu-front
+    image: $(getScriptImageByContainerName $SMTP_HOSTNAME)
+    container_name: $SMTP_HOSTNAME
+    hostname: $SMTP_HOSTNAME
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -17595,7 +18320,7 @@ services:
     logging:
       driver: journald
       options:
-        tag: mailu-front
+        tag: $SMTP_HOSTNAME
     networks:
       - dock-mailu-ext-net
       - dock-internalmail-net
@@ -17620,7 +18345,7 @@ services:
       - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
 
   resolver:
-    image: $IMG_MAILU_UNBOUND
+    image: $(getScriptImageByContainerName mailu-unbound)
     container_name: mailu-unbound
     restart: unless-stopped
     env_file: stack.env
@@ -17634,7 +18359,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
 
   redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName mailu-redis)
     container_name: mailu-redis
     restart: unless-stopped
     security_opt:
@@ -17649,7 +18374,7 @@ services:
       - ALLOW_EMPTY_PASSWORD=yes
 
   admin:
-    image: $IMG_MAILU_ADMIN
+    image: $(getScriptImageByContainerName mailu-admin)
     container_name: mailu-admin
     restart: unless-stopped
     env_file: stack.env
@@ -17670,7 +18395,7 @@ services:
       - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
 
   imap:
-    image: $IMG_MAILU_IMAP
+    image: $(getScriptImageByContainerName mailu-imap)
     container_name: mailu-imap
     restart: unless-stopped
     env_file: stack.env
@@ -17691,7 +18416,7 @@ services:
       - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
 
   smtp:
-    image: $IMG_MAILU_SMTP
+    image: $(getScriptImageByContainerName mailu-smtp)
     container_name: mailu-smtp
     restart: unless-stopped
     env_file: stack.env
@@ -17715,7 +18440,7 @@ services:
       - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
 
   oletools:
-    image: $IMG_MAILU_OLETOOLS
+    image: $(getScriptImageByContainerName mailu-oletools)
     container_name: mailu-oletools
     restart: unless-stopped
     env_file: stack.env
@@ -17728,7 +18453,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
 
   antispam:
-    image: $IMG_MAILU_ANTISPAM
+    image: $(getScriptImageByContainerName mailu-antispam)
     container_name: mailu-antispam
     hostname: antispam
     restart: unless-stopped
@@ -17754,7 +18479,7 @@ services:
       - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd:/etc/rspamd/override.d
 
 $is_antivirus_commented_out  antivirus:
-$is_antivirus_commented_out    image: $IMG_MAILU_ANTIVIRUS
+$is_antivirus_commented_out    image: $(getScriptImageByContainerName mailu-antivirus)
 $is_antivirus_commented_out    container_name: mailu-antivirus
 $is_antivirus_commented_out    restart: unless-stopped
 $is_antivirus_commented_out    env_file: stack.env
@@ -17769,7 +18494,7 @@ $is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
 $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
 
   webdav:
-    image: $IMG_MAILU_WEBDAV
+    image: $(getScriptImageByContainerName mailu-webdav)
     container_name: mailu-webdav
     restart: unless-stopped
     env_file: stack.env
@@ -17783,7 +18508,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
       - \${HSHQ_STACKS_DIR}/mailu/dav:/data
 
   fetchmail:
-    image: $IMG_MAILU_FETCHMAIL
+    image: $(getScriptImageByContainerName mailu-fetchmail)
     container_name: mailu-fetchmail
     restart: unless-stopped
     env_file: stack.env
@@ -17797,7 +18522,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
       - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
 
   webmail:
-    image: $IMG_MAILU_WEBMAIL
+    image: $(getScriptImageByContainerName mailu-webmail)
     container_name: mailu-webmail
     restart: unless-stopped
     env_file: stack.env
@@ -17988,6 +18713,7 @@ function addUserMailu()
   set -e
 }
 
+# Wazuh
 function installWazuh()
 {
   is_integrate_hshq=$1
@@ -18112,7 +18838,7 @@ version: '3.5'
 
 services:
   wazuh.manager:
-    image: $IMG_WAZUH_MANAGER
+    image: $(getScriptImageByContainerName wazuh.manager)
     container_name: wazuh.manager
     hostname: wazuh.manager
     restart: unless-stopped
@@ -18155,7 +18881,7 @@ services:
       - v-wazuh-filebeat-var:/var/lib/filebeat
 
   wazuh.indexer:
-    image: $IMG_WAZUH_INDEXER
+    image: $(getScriptImageByContainerName wazuh.indexer)
     container_name: wazuh.indexer
     hostname: wazuh.indexer
     restart: unless-stopped
@@ -18187,7 +18913,7 @@ services:
       - v-wazuh-indexer-data:/var/lib/wazuh-indexer
 
   wazuh.dashboard:
-    image: $IMG_WAZUH_DASHBOARD
+    image: $(getScriptImageByContainerName wazuh.dashboard)
     container_name: wazuh.dashboard
     hostname: wazuh.dashboard
     restart: unless-stopped
@@ -18775,6 +19501,7 @@ hosts:
 EOFWZ
 }
 
+# Collabora
 function installCollabora()
 {
   is_integrate_hshq=$1
@@ -18823,7 +19550,7 @@ version: '3.5'
 
 services:
   collabora:
-    image: $IMG_COLLABORA
+    image: $(getScriptImageByContainerName collabora)
     container_name: collabora
     hostname: collabora
     restart: unless-stopped
@@ -18856,7 +19583,8 @@ extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:net.frame_ancesto
 EOFCO
 }
 
-function installNextCloud()
+# Nextcloud
+function installNextcloud()
 {
   is_integrate_hshq=$1
   # With great power comes great responsibility
@@ -18897,7 +19625,7 @@ function installNextCloud()
     mkdir $HSHQ_STACKS_DIR/nextcloud/web
     mkdir $HSHQ_STACKS_DIR/nextcloud/ssl
     chmod 777 $HSHQ_STACKS_DIR/nextcloud/dbexport
-    outputConfigNextCloud
+    outputConfigNextcloud
     docker-compose -f $HOME/nextcloud-compose-tmp.yml up -d
     search="ready to handle connections"
     error_text="rsync error"
@@ -19087,7 +19815,7 @@ function installNextCloud()
   docker exec -u www-data nextcloud-app php occ notify_push:setup https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/push
 }
 
-function outputConfigNextCloud()
+function outputConfigNextcloud()
 {
   cat <<EOFNG > $HSHQ_STACKS_DIR/nextcloud/web/nginx.conf
 worker_processes auto;
@@ -19327,7 +20055,7 @@ version: '3.5'
 
 services:
   nextcloud-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName nextcloud-db)
     container_name: nextcloud-db
     hostname: nextcloud-db
     user: "${USERID}"
@@ -19348,7 +20076,7 @@ services:
       - POSTGRES_PASSWORD=$NEXTCLOUD_DATABASE_USER_PASSWORD
 
   nextcloud-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName nextcloud-redis)
     container_name: nextcloud-redis
     hostname: nextcloud-redis
     restart: unless-stopped
@@ -19367,7 +20095,7 @@ services:
       - REDIS_TLS_ENABLED=no
 
   nextcloud-app:
-    image: $IMG_NEXTCLOUD_APP
+    image: $(getScriptImageByContainerName nextcloud-app)
     container_name: nextcloud-app
     hostname: nextcloud-app
     restart: unless-stopped
@@ -19416,7 +20144,7 @@ services:
       - NEXTCLOUD_DATA_DIR=/var/www/html/data
 
   nextcloud-cron:
-    image: $IMG_NEXTCLOUD_APP
+    image: $(getScriptImageByContainerName nextcloud-cron)
     container_name: nextcloud-cron
     hostname: nextcloud-cron
     restart: unless-stopped
@@ -19465,7 +20193,7 @@ services:
       - NEXTCLOUD_DATA_DIR=/var/www/html/data
 
   nextcloud-imaginary:
-    image: $IMG_NEXTCLOUD_IMAGINARY
+    image: $(getScriptImageByContainerName nextcloud-imaginary)
     container_name: nextcloud-imaginary
     hostname: nextcloud-imaginary
     restart: unless-stopped
@@ -19481,7 +20209,7 @@ services:
       - PORT=$NEXTCLOUD_IMAGINARY_PORT
 
   nextcloud-web:
-    image: $IMG_NEXTCLOUD_WEB
+    image: $(getScriptImageByContainerName nextcloud-web)
     container_name: nextcloud-web
     hostname: nextcloud-web
     restart: unless-stopped
@@ -19539,7 +20267,7 @@ version: '3.5'
 
 services:
   nextcloud-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName nextcloud-db)
     container_name: nextcloud-db
     hostname: nextcloud-db
     user: \${UID}
@@ -19581,7 +20309,7 @@ services:
       - "ofelia.job-exec.nextcloud-monthly-db.mail-only-on-error=false"
 
   nextcloud-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName nextcloud-redis)
     container_name: nextcloud-redis
     hostname: nextcloud-redis
     restart: unless-stopped
@@ -19598,7 +20326,7 @@ services:
       - REDIS_PASSWORD=$NEXTCLOUD_REDIS_PASSWORD
 
   nextcloud-app:
-    image: $IMG_NEXTCLOUD_APP
+    image: $(getScriptImageByContainerName nextcloud-app)
     container_name: nextcloud-app
     hostname: nextcloud-app
     restart: unless-stopped
@@ -19627,7 +20355,7 @@ services:
       - nextcloud-redis
 
   nextcloud-cron:
-    image: $IMG_NEXTCLOUD_APP
+    image: $(getScriptImageByContainerName nextcloud-cron)
     container_name: nextcloud-cron
     hostname: nextcloud-cron
     restart: unless-stopped
@@ -19656,7 +20384,7 @@ services:
       - v-nextcloud:/var/www/html
 
   nextcloud-push:
-    image: $IMG_NEXTCLOUD_APP
+    image: $(getScriptImageByContainerName nextcloud-push)
     container_name: nextcloud-push
     hostname: nextcloud-push
     restart: unless-stopped
@@ -19688,7 +20416,7 @@ services:
       - NEXTCLOUD_URL=http://nextcloud-web
 
   nextcloud-imaginary:
-    image: $IMG_NEXTCLOUD_IMAGINARY
+    image: $(getScriptImageByContainerName nextcloud-imaginary)
     container_name: nextcloud-imaginary
     hostname: nextcloud-imaginary
     restart: unless-stopped
@@ -19704,7 +20432,7 @@ services:
       - PORT=$NEXTCLOUD_IMAGINARY_PORT
 
   nextcloud-web:
-    image: $IMG_NEXTCLOUD_WEB
+    image: $(getScriptImageByContainerName nextcloud-web)
     container_name: nextcloud-web
     hostname: nextcloud-web
     restart: unless-stopped
@@ -19768,6 +20496,7 @@ REDIS_TLS_ENABLED=no
 EOFNC
 }
 
+# Jitsi
 function installJitsi()
 {
   is_integrate_hshq=$1
@@ -19820,7 +20549,7 @@ version: '3.5'
 
 services:
   jitsi-web:
-    image: $IMG_JITSI_WEB
+    image: $(getScriptImageByContainerName jitsi-web)
     container_name: jitsi-web
     hostname: jitsi-web
     restart: unless-stopped
@@ -19840,7 +20569,7 @@ services:
       - \${HSHQ_SSL_DIR}/jitsi-web.key:/config/keys/cert.key
 
   jitsi-prosody:
-    image: $IMG_JITSI_PROSODY
+    image: $(getScriptImageByContainerName jitsi-prosody)
     container_name: jitsi-prosody
     hostname: jitsi-prosody
     restart: unless-stopped
@@ -19858,7 +20587,7 @@ services:
       - \${HSHQ_STACKS_DIR}/jitsi/prosody/prosody-plugins-custom:/prosody-plugins-custom:Z
 
   jitsi-jicofo:
-    image: $IMG_JITSI_JICOFO
+    image: $(getScriptImageByContainerName jitsi-jicofo)
     container_name: jitsi-jicofo
     hostname: jitsi-jicofo
     restart: unless-stopped
@@ -19875,7 +20604,7 @@ services:
       - \${HSHQ_STACKS_DIR}/jitsi/jicofo:/config:Z
 
   jitsi-jvb:
-    image: $IMG_JITSI_JVB
+    image: $(getScriptImageByContainerName jitsi-jvb)
     container_name: jitsi-jvb
     hostname: jitsi-jvb
     restart: unless-stopped
@@ -19927,6 +20656,7 @@ EOFJT
 
 }
 
+# Matrix
 function installMatrix()
 {
   is_integrate_hshq=$1
@@ -20036,7 +20766,7 @@ version: '3.5'
 
 services:
   matrix-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName matrix-db)
     container_name: matrix-db
     hostname: matrix-db
     user: \${UID}
@@ -20076,7 +20806,7 @@ services:
       - "ofelia.job-exec.matrix-monthly-db.mail-only-on-error=false"
 
   matrix-synapse:
-    image: $IMG_MATRIX_SYNAPSE
+    image: $(getScriptImageByContainerName matrix-synapse)
     container_name: matrix-synapse
     hostname: matrix-synapse
     restart: unless-stopped
@@ -20100,7 +20830,7 @@ services:
       - \${HSHQ_STACKS_DIR}/matrix/synapse:/data
 
   matrix-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName matrix-redis)
     container_name: matrix-redis
     hostname: matrix-redis
     restart: unless-stopped
@@ -20116,7 +20846,7 @@ services:
       - REDIS_PASSWORD=$MATRIX_REDIS_PASSWORD
 
   matrix-element-private:
-    image: $IMG_MATRIX_ELEMENT
+    image: $(getScriptImageByContainerName matrix-element-private)
     container_name: matrix-element-private
     hostname: matrix-element-private
     restart: unless-stopped
@@ -20132,7 +20862,7 @@ services:
       - \${HSHQ_STACKS_DIR}/matrix/element/element-private-config.json:/app/config.json
 
   matrix-element-public:
-    image: $IMG_MATRIX_ELEMENT
+    image: $(getScriptImageByContainerName matrix-element-public)
     container_name: matrix-element-public
     hostname: matrix-element-public
     restart: unless-stopped
@@ -20442,7 +21172,8 @@ EOFEL
 
 }
 
-function installWikiJS()
+# Wikijs
+function installWikijs()
 {
   is_integrate_hshq=$1
   # Test if directory exists
@@ -20499,7 +21230,7 @@ version: '3.5'
 
 services:
   wikijs-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName wikijs-db)
     container_name: wikijs-db
     hostname: wikijs-db
     user: \${UID}
@@ -20535,7 +21266,7 @@ services:
       - "ofelia.job-exec.wikijs-monthly-db.mail-only-on-error=false"
 
   wikijs-web:
-    image: $IMG_WIKIJS
+    image: $(getScriptImageByContainerName wikijs-web)
     container_name: wikijs-web
     hostname: wikijs-web
     depends_on:
@@ -20621,6 +21352,7 @@ EOFWJ
 
 }
 
+# Duplicati
 function installDuplicati()
 {
   is_integrate_hshq=$1
@@ -20678,7 +21410,7 @@ version: '3.5'
 
 services:
   duplicati:
-    image: $IMG_DUPLICATI
+    image: $(getScriptImageByContainerName duplicati)
     container_name: duplicati
     hostname: duplicati
     restart: unless-stopped
@@ -20714,6 +21446,7 @@ PGID=0
 EOFDP
 }
 
+# Mastodon
 function installMastodon()
 {
   is_integrate_hshq=$1
@@ -20813,7 +21546,7 @@ version: '3.5'
 
 services:
   mastodon-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName mastodon-db)
     container_name: mastodon-db
     hostname: mastodon-db
     user: "$UID"
@@ -20834,7 +21567,7 @@ services:
       - POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
 
   mastodon-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName mastodon-redis)
     container_name: mastodon-redis
     hostname: mastodon-redis
     restart: unless-stopped
@@ -20850,7 +21583,7 @@ services:
       - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
 
   mastodon-redis-cache:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName mastodon-redis-cache)
     container_name: mastodon-redis-cache
     restart: unless-stopped
     security_opt:
@@ -20918,7 +21651,7 @@ services:
       - ES_ENABLED=false
 
   mastodon-streaming:
-    image: $IMG_MASTODON_APP
+    image: $(getScriptImageByContainerName mastodon-streaming)
     container_name: mastodon-streaming
     hostname: mastodon-streaming
     restart: unless-stopped
@@ -20969,7 +21702,7 @@ services:
       - ES_ENABLED=false
 
   mastodon-sidekiq:
-    image: $IMG_MASTODON_APP
+    image: $(getScriptImageByContainerName mastodon-sidekiq)
     container_name: mastodon-sidekiq
     hostname: mastodon-sidekiq
     restart: unless-stopped
@@ -21021,7 +21754,7 @@ services:
       - ES_ENABLED=false
 
   mastodon-web:
-    image: $IMG_MASTODON_WEB
+    image: $(getScriptImageByContainerName mastodon-web)
     container_name: mastodon-web
     hostname: mastodon-web
     restart: unless-stopped
@@ -21082,7 +21815,7 @@ version: '3.5'
 
 services:
   mastodon-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName mastodon-db)
     container_name: mastodon-db
     hostname: mastodon-db
     user: \${UID}
@@ -21118,7 +21851,7 @@ services:
       - "ofelia.job-exec.mastodon-monthly-db.mail-only-on-error=false"
 
   mastodon-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName mastodon-redis)
     container_name: mastodon-redis
     restart: unless-stopped
     security_opt:
@@ -21133,7 +21866,7 @@ services:
       - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
 
   mastodon-redis-cache:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName mastodon-redis-cache)
     container_name: mastodon-redis-cache
     restart: unless-stopped
     security_opt:
@@ -21147,7 +21880,7 @@ services:
       - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
 
   mastodon-app:
-    image: $IMG_MASTODON_APP
+    image: $(getScriptImageByContainerName mastodon-app)
     container_name: mastodon-app
     hostname: mastodon-app
     restart: unless-stopped
@@ -21176,7 +21909,7 @@ services:
       - v-mastodon-static:/mastodon/public
 
   mastodon-streaming:
-    image: $IMG_MASTODON_APP
+    image: $(getScriptImageByContainerName mastodon-streaming)
     container_name: mastodon-streaming
     hostname: mastodon-streaming
     restart: unless-stopped
@@ -21200,7 +21933,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
   mastodon-sidekiq:
-    image: $IMG_MASTODON_APP
+    image: $(getScriptImageByContainerName mastodon-sidekiq)
     container_name: mastodon-sidekiq
     hostname: mastodon-sidekiq
     restart: unless-stopped
@@ -21226,7 +21959,7 @@ services:
       - \${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
 
   mastodon-web:
-    image: $IMG_MASTODON_WEB
+    image: $(getScriptImageByContainerName mastodon-web)
     container_name: mastodon-web
     hostname: mastodon-web
     restart: unless-stopped
@@ -21250,7 +21983,7 @@ services:
       - v-mastodon-static:/var/www/html:ro
 
 #  mastodon-elasticsearch:
-#    image: $IMG_MASTODON_ELASTICSEARCH
+#    image: $(getScriptImageByContainerName mastodon-elasticsearch)
 #    container_name: mastodon-elasticsearch
 #    hostname: mastodon-elasticsearch
 #    restart: unless-stopped
@@ -21529,6 +22262,7 @@ http {
 EOFMD
 }
 
+# Dozzle
 function installDozzle()
 {
   is_integrate_hshq=$1
@@ -21576,7 +22310,7 @@ version: '3.5'
 
 services:
   dozzle:
-    image: $IMG_DOZZLE
+    image: $(getScriptImageByContainerName dozzle)
     container_name: dozzle
     hostname: dozzle
     restart: unless-stopped
@@ -21611,6 +22345,7 @@ EOFDZ
 
 }
 
+# SearxNG
 function installSearxNG()
 {
   is_integrate_hshq=$1
@@ -21671,7 +22406,7 @@ version: '3.5'
 
 services:
   searxng-caddy:
-    image: $IMG_CADDY
+    image: $(getScriptImageByContainerName searxng-caddy)
     container_name: searxng-caddy
     hostname: searxng-caddy
     restart: unless-stopped
@@ -21694,7 +22429,7 @@ services:
       - \${HSHQ_STACKS_DIR}/searxng/caddy/config:/config
 
   searxng-app:
-    image: $IMG_SEARXNG
+    image: $(getScriptImageByContainerName searxng-app)
     container_name: searxng-app
     hostname: searxng-app
     restart: unless-stopped
@@ -21718,7 +22453,7 @@ services:
         max-file: "1"
 
   searxng-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName searxng-redis)
     container_name: searxng-redis
     restart: unless-stopped
     env_file: stack.env
@@ -21897,6 +22632,7 @@ EOFSE
 
 }
 
+# Jellyfin
 function installJellyfin()
 {
   is_integrate_hshq=$1
@@ -21951,7 +22687,7 @@ version: '3.5'
 
 services:
   jellyfin:
-    image: $IMG_JELLYFIN
+    image: $(getScriptImageByContainerName jellyfin)
     container_name: jellyfin
     hostname: jellyfin
     restart: unless-stopped
@@ -22024,6 +22760,7 @@ EOFLD
   chmod 644 $HOME/jellyfin-ldap.xml
 }
 
+# FileBrowser
 function installFileBrowser()
 {
   is_integrate_hshq=$1
@@ -22074,7 +22811,7 @@ version: '3.5'
 
 services:
   filebrowser:
-    image: $IMG_FILEBROWSER
+    image: $(getScriptImageByContainerName filebrowser)
     container_name: filebrowser
     hostname: filebrowser
     restart: unless-stopped
@@ -22118,6 +22855,7 @@ EOFJF
 
 }
 
+# PhotoPrism
 function installPhotoPrism()
 {
   is_integrate_hshq=$1
@@ -22201,7 +22939,7 @@ version: '3.5'
 
 services:
   photoprism-db:
-    image: $IMG_MYSQL
+    image: $(getScriptImageByContainerName photoprism-db)
     container_name: photoprism-db
     hostname: photoprism-db
     restart: unless-stopped
@@ -22219,7 +22957,7 @@ services:
       - MYSQL_PASSWORD=$PHOTOPRISM_DATABASE_USER_PASSWORD
 
   photoprism-app:
-    image: $IMG_PHOTOPRISM_APP
+    image: $(getScriptImageByContainerName photoprism-app)
     container_name: photoprism-app
     hostname: photoprism-app
     restart: unless-stopped
@@ -22303,7 +23041,7 @@ version: '3.5'
 
 services:
   photoprism-db:
-    image: $IMG_MYSQL
+    image: $(getScriptImageByContainerName photoprism-db)
     container_name: photoprism-db
     hostname: photoprism-db
     restart: unless-stopped
@@ -22338,7 +23076,7 @@ services:
       - "ofelia.job-exec.photoprism-monthly-db.mail-only-on-error=false"
 
   photoprism-app:
-    image: $IMG_PHOTOPRISM_APP
+    image: $(getScriptImageByContainerName photoprism-app)
     container_name: photoprism-app
     hostname: photoprism-app
     restart: unless-stopped
@@ -22423,6 +23161,7 @@ EOFPP
 
 }
 
+# Guacamole
 function installGuacamole()
 {
   is_integrate_hshq=$1
@@ -22514,7 +23253,7 @@ version: '3.5'
 
 services:
   guacamole-db:
-    image: $IMG_MYSQL
+    image: $(getScriptImageByContainerName guacamole-db)
     container_name: guacamole-db
     hostname: guacamole-db
     user: "$USERID"
@@ -22547,7 +23286,7 @@ version: '3.5'
 
 services:
   guacamole-db:
-    image: $IMG_MYSQL
+    image: $(getScriptImageByContainerName guacamole-db)
     container_name: guacamole-db
     hostname: guacamole-db
     user: \${UID}
@@ -22582,7 +23321,7 @@ services:
       - "ofelia.job-exec.guacamole-monthly-db.mail-only-on-error=false"
 
   guacamole-daemon:
-    image: $IMG_GUACAMOLE_GUACD
+    image: $(getScriptImageByContainerName guacamole-daemon)
     container_name: guacamole-daemon
     hostname: guacamole-daemon
     restart: unless-stopped
@@ -22596,7 +23335,7 @@ services:
       - /etc/timezone:/etc/timezone:ro
 
   guacamole-web:
-    image: $IMG_GUACAMOLE_WEB
+    image: $(getScriptImageByContainerName guacamole-web)
     container_name: guacamole-web
     hostname: guacamole-web
     restart: unless-stopped
@@ -22645,6 +23384,7 @@ EOFGC
 
 }
 
+# Authelia
 function installAuthelia()
 {
   is_integrate_hshq=$1
@@ -22709,7 +23449,7 @@ version: '3.5'
 
 services:
   authelia:
-    image: $IMG_AUTHELIA
+    image: $(getScriptImageByContainerName authelia)
     container_name: authelia
     hostname: authelia
     restart: unless-stopped
@@ -22743,7 +23483,7 @@ services:
       - authelia_redis_password
 
   authelia-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName authelia-redis)
     container_name: authelia-redis
     hostname: authelia-redis
     restart: unless-stopped
@@ -22934,6 +23674,7 @@ EOFAC
   set -e
 }
 
+# WordPress
 function installWordPress()
 {
   is_integrate_hshq=$1
@@ -22995,7 +23736,7 @@ version: '3.5'
 
 services:
   wordpress-db:
-    image: $IMG_MYSQL
+    image: $(getScriptImageByContainerName wordpress-db)
     container_name: wordpress-db
     hostname: wordpress-db
     restart: unless-stopped
@@ -23030,7 +23771,7 @@ services:
       - "ofelia.job-exec.wordpress-monthly-db.mail-only-on-error=false"
 
   wordpress-web:
-    image: $IMG_WORDPRESS
+    image: $(getScriptImageByContainerName wordpress-web)
     container_name: wordpress-web
     hostname: wordpress-web
     restart: unless-stopped
@@ -23092,6 +23833,7 @@ WORDPRESS_DB_PASSWORD=$WORDPRESS_DATABASE_USER_PASSWORD
 EOFWP
 }
 
+# Ghost
 function installGhost()
 {
   is_integrate_hshq=$1
@@ -23150,7 +23892,7 @@ version: '3.5'
 
 services:
   ghost-db:
-    image: $IMG_MYSQL
+    image: $(getScriptImageByContainerName ghost-db)
     container_name: ghost-db
     hostname: ghost-db
     restart: unless-stopped
@@ -23185,7 +23927,7 @@ services:
       - "ofelia.job-exec.ghost-monthly-db.mail-only-on-error=false"
 
   ghost-web:
-    image: $IMG_GHOST
+    image: $(getScriptImageByContainerName ghost-web)
     container_name: ghost-web
     hostname: ghost-web
     restart: unless-stopped
@@ -23252,6 +23994,7 @@ NODE_ENV=development
 EOFGW
 }
 
+# PeerTube
 function installPeerTube()
 {
   is_integrate_hshq=$1
@@ -23320,7 +24063,7 @@ version: '3.5'
 
 services:
   peertube-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName peertube-db)
     container_name: peertube-db
     hostname: peertube-db
     user: "\${UID}:\${GID}"
@@ -23358,7 +24101,7 @@ services:
       - "ofelia.job-exec.peertube-monthly-db.mail-only-on-error=false"
 
   peertube-app:
-    image: $IMG_PEERTUBE_APP
+    image: $(getScriptImageByContainerName peertube-app)
     container_name: peertube-app
     hostname: peertube-app
     restart: unless-stopped
@@ -23386,7 +24129,7 @@ services:
       - PEERTUBE_TRUST_PROXY=["127.0.0.1", "loopback", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 
   peertube-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName peertube-redis)
     container_name: peertube-redis
     hostname: peertube-redis
     restart: unless-stopped
@@ -23481,6 +24224,7 @@ EOFPT
   chmod +x $HSHQ_STACKS_DIR/peertube/dbexport/setupLDAP.sh
 }
 
+# HomeAssistant
 function installHomeAssistant()
 {
   is_integrate_hshq=$1
@@ -23602,7 +24346,7 @@ version: '3.5'
 
 services:
   homeassistant-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName homeassistant-db)
     container_name: homeassistant-db
     hostname: homeassistant-db
     user: "\${UID}:\${GID}"
@@ -23644,7 +24388,7 @@ services:
       - "ofelia.job-exec.homeassistant-monthly-db.mail-only-on-error=false"
 
   homeassistant-app:
-    image: $IMG_HOMEASSISTANT_APP
+    image: $(getScriptImageByContainerName homeassistant-app)
     container_name: homeassistant-app
     hostname: homeassistant-app
     restart: unless-stopped
@@ -23666,7 +24410,7 @@ services:
       - \${HSHQ_STACKS_DIR}/homeassistant/media:/media
 
   homeassistant-nodered:
-    image: $IMG_HOMEASSISTANT_NODERED
+    image: $(getScriptImageByContainerName homeassistant-nodered)
     container_name: homeassistant-nodered
     hostname: homeassistant-nodered
     restart: unless-stopped
@@ -23689,7 +24433,7 @@ services:
       - \${HSHQ_SSL_DIR}/homeassistant-nodered.key:/data/homeassistant-nodered.key
 
   homeassistant-configurator:
-    image: $IMG_HOMEASSISTANT_CONFIGURATOR
+    image: $(getScriptImageByContainerName homeassistant-configurator)
     container_name: homeassistant-configurator
     hostname: homeassistant-configurator
     restart: unless-stopped
@@ -23712,7 +24456,7 @@ services:
       - \${HSHQ_STACKS_DIR}/homeassistant/config:/hass-config
 
   homeassistant-tasmoadmin:
-    image: $IMG_HOMEASSISTANT_TASMOADMIN
+    image: $(getScriptImageByContainerName homeassistant-tasmoadmin)
     container_name: homeassistant-tasmoadmin
     hostname: homeassistant-tasmoadmin
     restart: unless-stopped
@@ -23875,6 +24619,7 @@ influxdb:
 EOFHC
 }
 
+# Gitlab
 function installGitlab()
 {
   is_integrate_hshq=$1
@@ -23964,7 +24709,7 @@ version: '3.5'
 
 services:
   gitlab-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName gitlab-db)
     container_name: gitlab-db
     hostname: gitlab-db
     user: "\${UID}:\${GID}"
@@ -24002,7 +24747,7 @@ services:
       - "ofelia.job-exec.gitlab-monthly-db.mail-only-on-error=false"
 
   gitlab-app:
-    image: $IMG_GITLAB_APP
+    image: $(getScriptImageByContainerName gitlab-app)
     container_name: gitlab-app
     hostname: gitlab-app
     restart: unless-stopped
@@ -24030,7 +24775,7 @@ services:
       - GITLAB_POST_RECONFIGURE_SCRIPT=/etc/gitlab/gitlab-postconfigure.sh
 
   gitlab-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName gitlab-redis)
     container_name: gitlab-redis
     hostname: gitlab-redis
     restart: unless-stopped
@@ -24160,6 +24905,7 @@ echo "Gitlab Postconfigure Scirpt Completed"
 EOFGL
 }
 
+# Vaultwarden
 function installVaultwarden()
 {
   is_integrate_hshq=$1
@@ -24221,7 +24967,7 @@ version: '3.5'
 
 services:
   vaultwarden-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName vaultwarden-db)
     container_name: vaultwarden-db
     hostname: vaultwarden-db
     user: "\${UID}:\${GID}"
@@ -24257,7 +25003,7 @@ services:
       - "ofelia.job-exec.vaultwarden-monthly-db.mail-only-on-error=false"
 
   vaultwarden-app:
-    image: $IMG_VAULTWARDEN_APP
+    image: $(getScriptImageByContainerName vaultwarden-app)
     container_name: vaultwarden-app
     hostname: vaultwarden-app
     restart: unless-stopped
@@ -24281,7 +25027,7 @@ services:
       - \${HSHQ_STACKS_DIR}/vaultwarden/app:/data
 
   vaultwarden-ldap:
-    image: $IMG_VAULTWARDEN_LDAP
+    image: $(getScriptImageByContainerName vaultwarden-ldap)
     container_name: vaultwarden-ldap
     hostname: vaultwarden-ldap
     restart: unless-stopped
@@ -24353,6 +25099,7 @@ EOFVW
 
 }
 
+# Discourse
 function installDiscourse()
 {
   is_integrate_hshq=$1
@@ -24436,7 +25183,7 @@ version: '3.5'
 
 services:
   discourse-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName discourse-db)
     container_name: discourse-db
     hostname: discourse-db
     user: "\${UID}:\${GID}"
@@ -24472,7 +25219,7 @@ services:
       - "ofelia.job-exec.discourse-monthly-db.mail-only-on-error=false"
 
   discourse-app:
-    image: $IMG_DISCOURSE
+    image: $(getScriptImageByContainerName discourse-app)
     container_name: discourse-app
     hostname: discourse-app
     restart: unless-stopped
@@ -24494,7 +25241,7 @@ services:
       - v-discourse-data:/bitnami/discourse
 
   discourse-sidekiq:
-    image: $IMG_DISCOURSE
+    image: $(getScriptImageByContainerName discourse-sidekiq)
     container_name: discourse-sidekiq
     hostname: discourse-sidekiq
     restart: unless-stopped
@@ -24516,7 +25263,7 @@ services:
       - v-discourse-sidekiq:/bitnami/discourse
 
   discourse-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName discourse-redis)
     container_name: discourse-redis
     hostname: discourse-redis
     restart: unless-stopped
@@ -24604,6 +25351,7 @@ EOFDC
 
 }
 
+# Syncthing
 function installSyncthing()
 {
   is_integrate_hshq=$1
@@ -24670,7 +25418,7 @@ version: '3.5'
 
 services:
   syncthing:
-    image: $IMG_SYNCTHING
+    image: $(getScriptImageByContainerName syncthing)
     container_name: syncthing
     hostname: syncthing
     restart: unless-stopped
@@ -24719,6 +25467,7 @@ EOFST
 
 }
 
+# CodeServer
 function installCodeServer()
 {
   is_integrate_hshq=$1
@@ -24801,7 +25550,7 @@ version: '3.5'
 
 services:
   codeserver:
-    image: $IMG_CODESERVER
+    image: $(getScriptImageByContainerName codeserver)
     container_name: codeserver
     hostname: codeserver
     restart: unless-stopped
@@ -24839,7 +25588,7 @@ version: '3.5'
 
 services:
   codeserver:
-    image: $IMG_CODESERVER
+    image: $(getScriptImageByContainerName codeserver)
     container_name: codeserver
     hostname: codeserver
     restart: unless-stopped
@@ -24905,6 +25654,7 @@ EOFCS
 
 }
 
+# Shlink
 function installShlink()
 {
   is_integrate_hshq=$1
@@ -24946,7 +25696,7 @@ function installShlink()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://shlink-web {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://shlink-web:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -24980,7 +25730,7 @@ version: '3.5'
 
 services:
   shlink-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName shlink-db)
     container_name: shlink-db
     hostname: shlink-db
     user: "\${UID}:\${GID}"
@@ -25016,7 +25766,7 @@ services:
       - "ofelia.job-exec.shlink-monthly-db.mail-only-on-error=false"
 
   shlink-app:
-    image: $IMG_SHLINK_APP
+    image: $(getScriptImageByContainerName shlink-app)
     container_name: shlink-app
     hostname: shlink-app
     restart: unless-stopped
@@ -25034,7 +25784,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
   shlink-web:
-    image: $IMG_SHLINK_WEB
+    image: $(getScriptImageByContainerName shlink-web)
     container_name: shlink-web
     hostname: shlink-web
     restart: unless-stopped
@@ -25054,7 +25804,7 @@ services:
       - \${HSHQ_STACKS_DIR}/shlink/web/servers.json:/usr/share/nginx/html/servers.json
 
   shlink-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName shlink-redis)
     container_name: shlink-redis
     hostname: shlink-redis
     restart: unless-stopped
@@ -25121,6 +25871,7 @@ EOFST
 EOFST
 }
 
+# Firefly
 function installFirefly()
 {
   is_integrate_hshq=$1
@@ -25183,7 +25934,7 @@ version: '3.5'
 
 services:
   firefly-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName firefly-db)
     container_name: firefly-db
     hostname: firefly-db
     user: "\${UID}:\${GID}"
@@ -25221,7 +25972,7 @@ services:
       - "ofelia.job-exec.firefly-monthly-db.mail-only-on-error=false"
 
   firefly-app:
-    image: $IMG_FIREFLY
+    image: $(getScriptImageByContainerName firefly-app)
     container_name: firefly-app
     hostname: firefly-app
     restart: unless-stopped
@@ -25241,7 +25992,7 @@ services:
       - v-firefly-data:/var/www/html/storage/upload
 
   firefly-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName firefly-redis)
     container_name: firefly-redis
     hostname: firefly-redis
     restart: unless-stopped
@@ -25324,6 +26075,7 @@ EOFFF
 
 }
 
+# Excalidraw
 function installExcalidraw()
 {
   is_integrate_hshq=$1
@@ -25407,7 +26159,7 @@ version: '3.5'
 
 services:
   excalidraw-storage:
-    image: $IMG_EXCALIDRAW_STORAGE
+    image: $(getScriptImageByContainerName excalidraw-storage)
     container_name: excalidraw-storage
     hostname: excalidraw-storage
     restart: unless-stopped
@@ -25425,7 +26177,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
   excalidraw-server:
-    image: $IMG_EXCALIDRAW_SERVER
+    image: $(getScriptImageByContainerName excalidraw-server)
     container_name: excalidraw-server
     hostname: excalidraw-server
     restart: unless-stopped
@@ -25443,7 +26195,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
   excalidraw-web:
-    image: $IMG_EXCALIDRAW_WEB
+    image: $(getScriptImageByContainerName excalidraw-web)
     container_name: excalidraw-web
     hostname: excalidraw-web
     restart: unless-stopped
@@ -25461,7 +26213,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
  
   excalidraw-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName excalidraw-redis)
     container_name: excalidraw-redis
     hostname: excalidraw-redis
     restart: unless-stopped
@@ -25513,6 +26265,7 @@ SOCKET_SERVER_URL=https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN
 EOFEX
 }
 
+# DrawIO
 function installDrawIO()
 {
   is_integrate_hshq=$1
@@ -25572,7 +26325,7 @@ version: '3.5'
 
 services:
   drawio-plantuml:
-    image: $IMG_DRAWIO_PLANTUML
+    image: $(getScriptImageByContainerName drawio-plantuml)
     container_name: drawio-plantuml
     hostname: drawio-plantuml
     restart: unless-stopped
@@ -25587,7 +26340,7 @@ services:
       - v-drawio-fonts:/usr/share/fonts/drawio
 
   drawio-export:
-    image: $IMG_DRAWIO_EXPORT
+    image: $(getScriptImageByContainerName drawio-export)
     container_name: drawio-export
     hostname: drawio-export
     restart: unless-stopped
@@ -25602,7 +26355,7 @@ services:
       - v-drawio-fonts:/usr/share/fonts/drawio
 
   drawio-web:
-    image: $IMG_DRAWIO_WEB
+    image: $(getScriptImageByContainerName drawio-web)
     container_name: drawio-web
     hostname: drawio-web
     restart: unless-stopped
@@ -25648,6 +26401,7 @@ DRAWIO_BASE_URL=https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN
 EOFDI
 }
 
+# Invidious
 function installInvidious()
 {
   is_integrate_hshq=$1
@@ -25702,7 +26456,7 @@ version: '3.5'
 
 services:
   invidious-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName invidious-db)
     container_name: invidious-db
     hostname: invidious-db
     user: \${UID}
@@ -25742,7 +26496,7 @@ services:
       - "ofelia.job-exec.invidious-monthly-db.email-from=Invidious Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 
   invidious-web:
-    image: $IMG_INVIDIOUS
+    image: $(getScriptImageByContainerName invidious-web)
     container_name: invidious-web
     hostname: invidious-web
     restart: unless-stopped
@@ -26014,6 +26768,7 @@ GRANT ALL ON TABLE public.playlist_videos TO current_user;
 EOFIV
 }
 
+# Gitea
 function installGitea()
 {
   is_integrate_hshq=$1
@@ -26071,7 +26826,7 @@ version: '3.5'
 
 services:
   gitea-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName gitea-db)
     container_name: gitea-db
     hostname: gitea-db
     user: "\${UID}:\${GID}"
@@ -26107,7 +26862,7 @@ services:
       - "ofelia.job-exec.gitea-monthly-db.mail-only-on-error=false"
 
   gitea-app:
-    image: $IMG_GITEA_APP
+    image: $(getScriptImageByContainerName gitea-app)
     container_name: gitea-app
     hostname: gitea-app
     restart: unless-stopped
@@ -26162,6 +26917,7 @@ USER_GID=$GROUPID
 POSTGRES_DB=$GITEA_DATABASE_NAME
 POSTGRES_USER=$GITEA_DATABASE_USER
 POSTGRES_PASSWORD=$GITEA_DATABASE_USER_PASSWORD
+DISABLE_QUERY_AUTH_TOKEN=true
 GITEA__APP_NAME=$HOMESERVER_NAME
 GITEA__server__ROOT_URL=https://$SUB_GITEA.$HOMESERVER_DOMAIN/
 GITEA__database__DB_TYPE=postgres
@@ -26182,6 +26938,7 @@ EOFGL
 
 }
 
+# Mealie
 function installMealie()
 {
   is_integrate_hshq=$1
@@ -26240,7 +26997,7 @@ version: '3.5'
 
 services:
   mealie-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName mealie-db)
     container_name: mealie-db
     hostname: mealie-db
     user: "\${UID}:\${GID}"
@@ -26276,7 +27033,7 @@ services:
       - "ofelia.job-exec.mealie-monthly-db.mail-only-on-error=false"
 
   mealie-app:
-    image: $IMG_MEALIE
+    image: $(getScriptImageByContainerName mealie-app)
     container_name: mealie-app
     hostname: mealie-app
     restart: unless-stopped
@@ -26349,7 +27106,7 @@ POSTGRES_SERVER=mealie-db
 POSTGRES_PORT=5432
 POSTGRES_DB=$MEALIE_DATABASE_NAME
 TOKEN_TIME=168
-SMTP_HOST=mailu-front
+SMTP_HOST=$SMTP_HOSTNAME
 SMTP_PORT=587
 SMTP_FROM_NAME=Mealie HSHQ Admin
 SMTP_AUTH_STRATEGY=TLS
@@ -26373,6 +27130,7 @@ EOFGL
 
 }
 
+# Kasm
 function installKasm()
 {
   is_integrate_hshq=$1
@@ -26445,7 +27203,7 @@ version: '3.5'
 
 services:
   kasm:
-    image: $IMG_KASM
+    image: $(getScriptImageByContainerName kasm)
     container_name: kasm
     privileged: true
     hostname: kasm
@@ -26479,6 +27237,7 @@ EOFGL
 
 }
 
+# NTFY
 function installNTFY()
 {
   is_integrate_hshq=$1
@@ -26523,7 +27282,7 @@ version: '3.5'
 
 services:
   ntfy:
-    image: $IMG_NTFY
+    image: $(getScriptImageByContainerName ntfy)
     container_name: ntfy
     hostname: ntfy
     restart: unless-stopped
@@ -26688,7 +27447,7 @@ behind-proxy: true
 # - smtp-sender-from is the e-mail address of the sender
 # - smtp-sender-user/smtp-sender-pass are the username and password of the SMTP user (leave blank for no auth)
 #
-smtp-sender-addr: mailu-front:25
+smtp-sender-addr: $SMTP_HOSTNAME:25
 smtp-sender-from: $EMAIL_ADMIN_EMAIL_ADDRESS
 # smtp-sender-user:
 # smtp-sender-pass:
@@ -26928,6 +27687,7 @@ EOFNT
 
 }
 
+# ITTools
 function installITTools()
 {
   is_integrate_hshq=$1
@@ -26969,7 +27729,7 @@ version: '3.5'
 
 services:
   ittools:
-    image: $IMG_ITTOOLS
+    image: $(getScriptImageByContainerName ittools)
     container_name: ittools
     hostname: ittools
     restart: unless-stopped
@@ -26996,6 +27756,7 @@ EOFNT
 
 }
 
+# Remotely
 function installRemotely()
 {
   is_integrate_hshq=$1
@@ -27027,8 +27788,9 @@ function installRemotely()
   cat $HSHQ_STACKS_DIR/remotely/appsettings.json | \
     jq '.ApplicationOptions.ForceClientHttps |= true' | \
     jq '.ApplicationOptions.SmtpDisplayName |= "Remotely HSHQ Admin"' | \
-    jq --arg email_addr $EMAIL_ADMIN_EMAIL_ADDRESS '.ApplicationOptions.SmtpEmail |= $email_addr' | \
-    jq '.ApplicationOptions.SmtpHost |= "mailu-front"' | \
+    jq --arg email_addr $EMAIL_ADMIN_EMAIL_ADDRESS --arg smtp_host $SMTP_HOSTNAME \
+    '.ApplicationOptions.SmtpEmail |= $email_addr' | \
+    jq '.ApplicationOptions.SmtpHost |= "$smtp_host"' | \
     jq '.ApplicationOptions.SmtpPort |= 25' | \
     jq '.ApplicationOptions.SmtpCheckCertificateRevocation |= false' \
     > $HSHQ_STACKS_DIR/remotely/newsettings.json
@@ -27069,7 +27831,7 @@ version: '3.5'
 
 services:
   remotely:
-    image: $IMG_REMOTELY
+    image: $(getScriptImageByContainerName remotely)
     container_name: remotely
     hostname: remotely
     restart: unless-stopped
@@ -27106,6 +27868,7 @@ EOFRM
 
 }
 
+# Calibre
 function installCalibre()
 {
   is_integrate_hshq=$1
@@ -27149,7 +27912,7 @@ function installCalibre()
   
   rm $HSHQ_STACKS_DIR/calibre/web/getencpw.py
   sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE user set name='$CALIBRE_WEB_ADMIN_USERNAME', email='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS', kindle_mail='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS' where id=1;"
-  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='mailu-front', mail_port=25, mail_use_ssl=1, mail_from='Calibre-Web HSHQ Admin <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
+  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='$SMTP_HOSTNAME', mail_port=25, mail_use_ssl=1, mail_from='Calibre-Web HSHQ Admin <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
 
   if ! [ "$(isServiceDisabled calibre)" = "true" ]; then
     echo "Starting Calibre..."
@@ -27200,7 +27963,7 @@ version: '3.5'
 
 services:
   calibre-server:
-    image: $IMG_CALIBRE_SERVER
+    image: $(getScriptImageByContainerName calibre-server)
     container_name: calibre-server
     hostname: calibre-server
     restart: unless-stopped
@@ -27220,7 +27983,7 @@ services:
       - \${HSHQ_STACKS_DIR}/calibre/library:/library
 
   calibre-web:
-    image: $IMG_CALIBRE_WEB
+    image: $(getScriptImageByContainerName calibre-web)
     container_name: calibre-web
     hostname: calibre-web
     restart: unless-stopped
@@ -27278,8 +28041,10 @@ configpw = "$LDAP_READONLY_USER_PASSWORD"
 configpw_e=crypter.encrypt(configpw.encode())
 print(configpw_e)
 EOFPY
+
 }
 
+# Netdata
 function installNetdata()
 {
   is_integrate_hshq=$1
@@ -27329,7 +28094,7 @@ version: '3.5'
 
 services:
   netdata:
-    image: $IMG_NETDATA
+    image: $(getScriptImageByContainerName netdata)
     container_name: netdata
     hostname: netdata
     restart: unless-stopped
@@ -27397,6 +28162,7 @@ EOFDZ
 
 }
 
+# Linkwarden
 function installLinkwarden()
 {
   is_integrate_hshq=$1
@@ -27453,7 +28219,7 @@ version: '3.5'
 
 services:
   linkwarden-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName linkwarden-db)
     container_name: linkwarden-db
     hostname: linkwarden-db
     user: "${UID}:${GID}"
@@ -27489,7 +28255,7 @@ services:
       - "ofelia.job-exec.linkwarden-monthly-db.mail-only-on-error=false"
 
   linkwarden-app:
-    image: $IMG_LINKWARDEN
+    image: $(getScriptImageByContainerName linkwarden-app)
     container_name: linkwarden-app
     hostname: linkwarden-app
     restart: unless-stopped
@@ -27548,6 +28314,7 @@ EOFDZ
 
 }
 
+# StirlingPDF
 function installStirlingPDF()
 {
   is_integrate_hshq=$1
@@ -27597,7 +28364,7 @@ version: '3.5'
 
 services:
   stirlingpdf:
-    image: $IMG_STIRLINGPDF
+    image: $(getScriptImageByContainerName stirlingpdf)
     container_name: stirlingpdf
     hostname: stirlingpdf
     restart: unless-stopped
@@ -27628,6 +28395,7 @@ EOFDZ
 
 }
 
+# BarAssistant
 function installBarAssistant()
 {
   is_integrate_hshq=$1
@@ -27691,7 +28459,7 @@ version: '3.5'
 
 services:
   bar-assistant-app:
-    image: $IMG_BARASSISTANT_APP
+    image: $(getScriptImageByContainerName bar-assistant-app)
     container_name: bar-assistant-app
     hostname: bar-assistant-app
     restart: unless-stopped
@@ -27720,7 +28488,7 @@ services:
       - v-bar-assistant-app:/var/www/cocktails/storage/bar-assistant
 
   bar-assistant-meilisearch:
-    image: $IMG_MEILISEARCH
+    image: $(getScriptImageByContainerName bar-assistant-meilisearch)
     container_name: bar-assistant-meilisearch
     hostname: bar-assistant-meilisearch
     restart: unless-stopped
@@ -27744,7 +28512,7 @@ services:
       - v-bar-assistant-meilisearch:/meili_data
 
   bar-assistant-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName bar-assistant-redis)
     container_name: bar-assistant-redis
     hostname: bar-assistant-redis
     restart: unless-stopped
@@ -27760,7 +28528,7 @@ services:
       - REDIS_PASSWORD=$BARASSISTANT_REDIS_PASSWORD
 
   bar-assistant-saltrim:
-    image: $IMG_SALTRIM
+    image: $(getScriptImageByContainerName bar-assistant-saltrim)
     container_name: bar-assistant-saltrim
     hostname: bar-assistant-saltrim
     restart: unless-stopped
@@ -27785,7 +28553,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
   bar-assistant-web:
-    image: $IMG_BARASSISTANT_WEB
+    image: $(getScriptImageByContainerName bar-assistant-web)
     container_name: bar-assistant-web
     hostname: bar-assistant-web
     restart: unless-stopped
@@ -27864,7 +28632,7 @@ ALLOW_REGISTRATION=true
 MAIL_MAILER=smtp
 MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
 MAIL_FROM_NAME=Bar Assistant HSHQ Admin
-MAIL_HOST=mailu-front
+MAIL_HOST=$SMTP_HOSTNAME
 MAIL_PORT=25
 MAIL_ENCRYPTION=tls
 MAIL_REQUIRE_CONFIRMATION=false
@@ -27903,6 +28671,7 @@ EOFBA
 
 }
 
+# FreshRSS
 function installFreshRSS()
 {
   is_integrate_hshq=$1
@@ -27968,7 +28737,7 @@ version: '3.5'
 
 services:
   freshrss-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName freshrss-db)
     container_name: freshrss-db
     hostname: freshrss-db
     user: \${UID}
@@ -27990,21 +28759,21 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.freshrss-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.freshrss-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.freshrss-hourly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.freshrss-hourly-db.smtp-host=$SMTP_HOSTNAME"
       - "ofelia.job-exec.freshrss-hourly-db.smtp-port=25"
       - "ofelia.job-exec.freshrss-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.freshrss-hourly-db.email-from=FreshRSS Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.freshrss-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.freshrss-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.freshrss-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.freshrss-monthly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.freshrss-monthly-db.smtp-host=$SMTP_HOSTNAME"
       - "ofelia.job-exec.freshrss-monthly-db.smtp-port=25"
       - "ofelia.job-exec.freshrss-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.freshrss-monthly-db.email-from=FreshRSS Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.freshrss-monthly-db.mail-only-on-error=false"
 
   freshrss-app:
-    image: $IMG_FRESHRSS
+    image: $(getScriptImageByContainerName freshrss-app)
     container_name: freshrss-app
     hostname: freshrss-app
     restart: unless-stopped
@@ -28101,6 +28870,7 @@ EOFBA
 
 }
 
+# Keila
 function installKeila()
 {
   is_integrate_hshq=$1
@@ -28166,7 +28936,7 @@ version: '3.5'
 
 services:
   keila-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName keila-db)
     container_name: keila-db
     hostname: keila-db
     user: "\${UID}:\${GID}"
@@ -28188,21 +28958,21 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.keila-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.keila-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.keila-hourly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.keila-hourly-db.smtp-host=$SMTP_HOSTNAME"
       - "ofelia.job-exec.keila-hourly-db.smtp-port=25"
       - "ofelia.job-exec.keila-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.keila-hourly-db.email-from=Keila Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.keila-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.keila-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.keila-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.keila-monthly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.keila-monthly-db.smtp-host=$SMTP_HOSTNAME"
       - "ofelia.job-exec.keila-monthly-db.smtp-port=25"
       - "ofelia.job-exec.keila-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.keila-monthly-db.email-from=Keila Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.keila-monthly-db.mail-only-on-error=false"
 
   keila-app:
-    image: $IMG_KEILA
+    image: $(getScriptImageByContainerName keila-app)
     container_name: keila-app
     hostname: keila-app
     restart: unless-stopped
@@ -28265,7 +29035,7 @@ SECRET_KEY_BASE=$KEILA_SECRET_KEY_BASE
 DB_URL=postgres://$KEILA_DATABASE_USER:$KEILA_DATABASE_USER_PASSWORD@keila-db/$KEILA_DATABASE_NAME
 URL_HOST=$SUB_KEILA.$HOMESERVER_DOMAIN
 URL_SCHEMA=https
-MAILER_SMTP_HOST=mailu-front
+MAILER_SMTP_HOST=$SMTP_HOSTNAME
 MAILER_SMTP_PORT=25
 MAILER_SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
 MAILER_SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
@@ -28279,6 +29049,7 @@ EOFBA
 
 }
 
+# Wallabag
 function installWallabag()
 {
   is_integrate_hshq=$1
@@ -28362,7 +29133,7 @@ version: '3.5'
 
 services:
   wallabag-db:
-    image: $IMG_POSTGRES
+    image: $(getScriptImageByContainerName wallabag-db)
     container_name: wallabag-db
     hostname: wallabag-db
     user: \${UID}
@@ -28384,21 +29155,21 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.wallabag-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.wallabag-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.wallabag-hourly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.wallabag-hourly-db.smtp-host=$SMTP_HOSTNAME"
       - "ofelia.job-exec.wallabag-hourly-db.smtp-port=25"
       - "ofelia.job-exec.wallabag-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.wallabag-hourly-db.email-from=Wallabag Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.wallabag-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.wallabag-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.wallabag-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.wallabag-monthly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.wallabag-monthly-db.smtp-host=$SMTP_HOSTNAME"
       - "ofelia.job-exec.wallabag-monthly-db.smtp-port=25"
       - "ofelia.job-exec.wallabag-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.wallabag-monthly-db.email-from=Wallabag Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.wallabag-monthly-db.mail-only-on-error=false"
 
   wallabag-redis:
-    image: $IMG_REDIS
+    image: $(getScriptImageByContainerName wallabag-redis)
     container_name: wallabag-redis
     restart: unless-stopped
     security_opt:
@@ -28413,7 +29184,7 @@ services:
       - REDIS_PASSWORD=$WALLABAG_REDIS_PASSWORD
 
   wallabag-app:
-    image: $IMG_WALLABAG
+    image: $(getScriptImageByContainerName wallabag-app)
     container_name: wallabag-app
     hostname: wallabag-app
     restart: unless-stopped
@@ -28484,7 +29255,7 @@ SYMFONY__ENV__DATABASE_PORT=5432
 SYMFONY__ENV__DATABASE_NAME=$WALLABAG_DATABASE_NAME
 SYMFONY__ENV__DATABASE_USER=$WALLABAG_DATABASE_USER
 SYMFONY__ENV__DATABASE_PASSWORD=$WALLABAG_DATABASE_USER_PASSWORD
-SYMFONY__ENV__MAILER_DSN=smtp://mailu-front:25
+SYMFONY__ENV__MAILER_DSN=smtp://$SMTP_HOSTNAME:25
 SYMFONY__ENV__FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
 SYMFONY__ENV__DOMAIN_NAME=https://$SUB_WALLABAG.$HOMESERVER_DOMAIN
 SYMFONY__ENV__SERVER_NAME=$HOMESERVER_NAME
@@ -28505,6 +29276,7 @@ EOFPT
   chmod +x $HSHQ_STACKS_DIR/wallabag/dbexport/setupRedis.sh
 }
 
+# SQLPad
 function installSQLPad()
 {
   is_integrate_hshq=$1
@@ -28552,7 +29324,7 @@ version: '3.5'
 
 services:
   sqlpad:
-    image: $IMG_SQLPAD
+    image: $(getScriptImageByContainerName sqlpad)
     container_name: sqlpad
     hostname: sqlpad
     restart: unless-stopped
@@ -28771,6 +29543,7 @@ EOFSP
 
 }
 
+# Heimdall
 function installHeimdall()
 {
   is_integrate_hshq=$1
@@ -28897,7 +29670,7 @@ version: '3.5'
 
 services:
   heimdall:
-    image: $IMG_HEIMDALL
+    image: $(getScriptImageByContainerName heimdall)
     container_name: heimdall
     hostname: heimdall
     restart: unless-stopped
@@ -28943,7 +29716,7 @@ version: '3.5'
 
 services:
   heimdall:
-    image: $IMG_HEIMDALL
+    image: $(getScriptImageByContainerName heimdall)
     container_name: heimdall
     hostname: heimdall
     restart: unless-stopped
@@ -29392,6 +30165,7 @@ function bulkImportHomeServerLinksHeimdall()
   docker container start heimdall >/dev/null
 }
 
+# Caddy
 function initCaddyCommon()
 {
   mkdir $HSHQ_STACKS_DIR/caddy-common
@@ -30063,6 +30837,7 @@ function restartAllCaddyContainers()
   docker container restart ofelia
 }
 
+# ClientDNS
 function installClientDNS()
 {
   cdns_stack_name=$1
@@ -30199,6 +30974,7 @@ EOFCF
 
 }
 
+# Ofelia
 function installOfelia()
 {
   outputConfigOfelia
@@ -30212,7 +30988,7 @@ version: '3.5'
 
 services:
   ofelia:
-    image: $IMG_OFELIA
+    image: $(getScriptImageByContainerName ofelia)
     container_name: ofelia
     hostname: ofelia
     restart: unless-stopped
@@ -30244,6 +31020,7 @@ EOFRM
 
 }
 
+# UptimeKuma
 function installUptimeKuma()
 {
   is_integrate_hshq=$1
@@ -30297,7 +31074,7 @@ version: '3.5'
 
 services:
   uptimekuma:
-    image: $IMG_UPTIMEKUMA
+    image: $(getScriptImageByContainerName uptimekuma)
     container_name: uptimekuma
     hostname: uptimekuma
     restart: unless-stopped
