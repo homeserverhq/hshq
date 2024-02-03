@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=6
+HSHQ_WRAPPER_SCRIPT_VERSION=5
 IS_DISABLE_UPDATE_CHECKS=false
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
@@ -31,7 +31,7 @@ function main()
   USERNAME=$(id -u -n)
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
   HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
-  HSHQ_WRAP_URL=https://homeserverhq.com/hshqlib.sh
+  HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
   HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
