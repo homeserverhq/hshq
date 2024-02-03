@@ -236,8 +236,8 @@ EOF
       hshq_wrap_latest_version=$(curl --silent $HSHQ_WRAP_VER_URL)
       if [ $? -eq 0 ] && ! [ -z $hshq_wrap_latest_version ]; then
         hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
-        is_download_wrap=true
         if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
+          is_download_wrap=true
           wget -q -O $HSHQ_WRAP_TMP $HSHQ_WRAP_URL
           if [ $? -ne 0 ]; then
             rm -f $HSHQ_WRAP_TMP
