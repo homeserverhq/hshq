@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=28
+HSHQ_SCRIPT_VERSION=29
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -67,16 +67,28 @@ function init()
   SUDO_NORMAL_TIMEOUT=15
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
+  STACK_VERSION_PREFIX=#HSHQManaged
   initServiceDefaults
   loadPinnedDockerImages
   UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
+  hshqlogo=$(cat << EOF
+
+       #=================================================================#
+       #░▒█░▒█░░▄▄░░▄▄░▄▄░▄▄▄░▒█▀▀▀█░▄▄▄░▄▄▄░░▄░░░▄░▄▄▄░▄▄▄░░▒█░▒█░▒█▀▀█ #
+       #░▒█▀▀█░█░░█░█░█░█░▄▄▄░░▀▀▀▄▄░▄▄▄░▄▄▄▀░▀▄░▄▀░▄▄▄░▄▄▄▀░▒█▀▀█░▒█░▒█ #
+       #░▒█░▒█░▀▄▄▀░█░░▒█░▄▄▄░▒█▄▄▄█░▄▄▄░▄▄▄▄░░▀█▀░░▄▄▄░▄▄▄▄░▒█░▒█░░▀▀█▄ #
+       #=================================================================#
+
+EOF
+  )
 }
 
 function main()
 {
   init
+  checkWrapperVersion
   case "$1" in
     "install")
       CONNECTING_IP=$2
@@ -92,17 +104,6 @@ function main()
     *)
       ;;
   esac
-
-  logo=$(cat << EOF
-
-       #=================================================================#
-       #░▒█░▒█░░▄▄░░▄▄░▄▄░▄▄▄░▒█▀▀▀█░▄▄▄░▄▄▄░░▄░░░▄░▄▄▄░▄▄▄░░▒█░▒█░▒█▀▀█ #
-       #░▒█▀▀█░█░░█░█░█░█░▄▄▄░░▀▀▀▄▄░▄▄▄░▄▄▄▀░▀▄░▄▀░▄▄▄░▄▄▄▀░▒█▀▀█░▒█░▒█ #
-       #░▒█░▒█░▀▄▄▀░█░░▒█░▄▄▄░▒█▄▄▄█░▄▄▄░▄▄▄▄░░▀█▀░░▄▄▄░▄▄▄▄░▒█░▒█░░▀▀█▄ #
-       #=================================================================#
-
-EOF
-  )
 
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
@@ -160,13 +161,25 @@ EOF
   performExitFunctions
 }
 
+function checkWrapperVersion()
+{
+  set +e
+  curWrapV=$(sed -n 2p $HOME/hshq.sh | cut -d"=" -f2)
+  if ! [ -z "$curWrapV" ]; then
+    if [ $curWrapV -lt 5 ]; then
+      showMessageBox "Update Wrapper" "It appears you are using a deprecated version of the wrapper script. Please run the command: 'wget -q -N https://homeserverhq.com/hshq.sh' to obtain the latest version as soon as possible."
+    fi
+  fi
+  set -e
+}
+
 function showNotInstalledMenu()
 {
   set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update
   notinstalledmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -236,7 +249,7 @@ function showInstalledMenu()
   fi
   installedmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -289,7 +302,7 @@ function showHSHQUtilsMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -297,9 +310,10 @@ EOF
   "1" "Edit Configuration File" \
   "2" "Generate Signed Certificate" \
   "3" "Reset Caddy Data" \
-  "4" "Email Vaultwarden Credentials" \
-  "5" "Email Root CA" \
-  "6" "Exit" 3>&1 1>&2 2>&3)
+  "4" "Restart All Stacks" \
+  "5" "Email Vaultwarden Credentials" \
+  "6" "Email Root CA" \
+  "7" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -334,11 +348,14 @@ EOF
       return 1 ;;
     4)
       checkLoadConfig
-      emailVaultwardenCredentials false ;;
+      restartAllStacks ;;
     5)
       checkLoadConfig
-      sendRootCAEmail ;;
+      emailVaultwardenCredentials false ;;
     6)
+      checkLoadConfig
+      sendRootCAEmail ;;
+    7)
 	  return 0 ;;
   esac
 }
@@ -348,17 +365,16 @@ function showSysUtilsMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Update Linux OS and Reboot" \
   "2" "Download All Docker Images" \
-  "3" "Restart All Stacks" \
-  "4" "Change Host Static IP" \
-  "5" "Uninstall and Remove Everything" \
-  "6" "Exit" 3>&1 1>&2 2>&3)
+  "3" "Change Host Static IP" \
+  "4" "Uninstall and Remove Everything" \
+  "5" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -378,17 +394,12 @@ EOF
       return 1 ;;
     3)
       checkLoadConfig
-      restartAllStacks
-      set +e
-      return 1 ;;
-    4)
-      checkLoadConfig
       changeHostStaticIP
       set +e
       return 1 ;;
-    5)
+    4)
       nukeHSHQ ;;
-    6)
+    5)
 	  return 0 ;;
   esac
 }
@@ -398,7 +409,7 @@ function showResetCaddyMenu()
   set +e
   caddymenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the Caddy instances that you wish to reset:
 EOF
@@ -1069,7 +1080,7 @@ function initConfig()
     set +e
     guimenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Do you want to install a desktop GUI environment for this machine? This is generally not recommended, as this machine should be used as a dedicated server. However, it can be used this way if necessary. Ensure you have plenty of RAM (32GB) for this option. This can easily be added or removed later.
 EOF
@@ -1082,7 +1093,7 @@ EOF
     else
       desktopmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -1363,7 +1374,7 @@ function showStacksMenu()
   fi
   svcsmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -1422,7 +1433,7 @@ function listStacksToUpdate()
   fi
   selsvcsmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the services that you wish to update:
 EOF
@@ -1467,7 +1478,7 @@ function installStacksFromList()
   fi
   selsvcsmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the services that you wish to install:
 EOF
@@ -1594,7 +1605,7 @@ function deleteStacks()
   fi
   selsvcsmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the services that you wish to remove:
 EOF
@@ -1640,7 +1651,7 @@ function setupVPNConnection()
     initWireguardDB
     vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -1682,7 +1693,7 @@ function setupJoinPrimaryVPN()
 {
   vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -2607,52 +2618,6 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_WEBPROXY_BRIDGE_NAME --driver=bridge --subnet $NET_WEBPROXY_SUBNET --internal dock-proxy
 }
 
-function pullImage()
-{
-  img_and_version=\$1
-  echo "Pulling Image: \$img_and_version"
-  is_success=1
-  num_tries=1
-  set +e
-  while [ \$is_success -ne 0 ] && [ \$num_tries -lt $MAX_DOCKER_PULL_TRIES ]
-  do
-    # Refresh the sudo timestamp
-    sudo -v
-    docker pull \$img_and_version > /dev/null 2>&1
-    img_name=\$(echo \$img_and_version | cut -d":" -f1)
-    docker image ls | grep "\$img_name"
-    is_success=\$?
-    ((num_tries++))
-  done
-  set -e
-  if [ \$is_success -ne 0 ]; then
-    echo "Error pulling docker image: $img_and_version"
-    exit 5
-  fi
-  set -e
-}
-
-function pullDockerImages()
-{
-  pullImage $IMG_ADGUARD
-  pullImage $IMG_CADDY
-  pullImage $IMG_DNSMASQ
-  pullImage $IMG_MAIL_RELAY_UNBOUND
-  pullImage $IMG_FILEBROWSER
-  pullImage $IMG_OFELIA
-  pullImage $IMG_PORTAINER
-  pullImage $IMG_SYNCTHING
-  pullImage $IMG_REDIS
-  pullImage $IMG_WGPORTAL
-  pullImage $IMG_WIREGUARD
-  mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
-  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-  git clone https://github.com/homeserverhq/mail-relay.git \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-  docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix
-  docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd
-  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-}
-
 main "\$@"
 
 EOFRS
@@ -2687,6 +2652,7 @@ function main()
   sudo mv \$HOME/backup \$RELAYSERVER_HSHQ_DATA_DIR
   restoreNonBackupDir
   restoreSSL
+  pullDockerImages
   restoreScripts
   restorePortainer
   restoreAdguard
@@ -2791,6 +2757,52 @@ function restoreSSL()
   sudo update-ca-certificates
 }
 
+function pullImage()
+{
+  img_and_version=\$1
+  echo "Pulling Image: \$img_and_version"
+  is_success=1
+  num_tries=1
+  set +e
+  while [ \$is_success -ne 0 ] && [ \$num_tries -lt $MAX_DOCKER_PULL_TRIES ]
+  do
+    # Refresh the sudo timestamp
+    sudo -v
+    docker pull \$img_and_version > /dev/null 2>&1
+    img_name=\$(echo \$img_and_version | cut -d":" -f1)
+    docker image ls | grep "\$img_name"
+    is_success=\$?
+    ((num_tries++))
+  done
+  set -e
+  if [ \$is_success -ne 0 ]; then
+    echo "Error pulling docker image: $img_and_version"
+    return 5
+  fi
+  set -e
+}
+
+function pullDockerImages()
+{
+  OIFS=\$IFS
+  IFS=\$(echo -en "\n\b")
+  img_arr=(\$(sudo grep -r "image: " \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose))
+  for cur_item in "\${img_arr[@]}"
+  do
+    cur_img=\$(echo \$cur_item | xargs | cut -d" " -f3)
+    if [[ "\$cur_img" =~ ^hshq ]]; then continue; fi
+    pullImage \$cur_img
+  done
+  IFS=\$OIFS
+
+  mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
+  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
+  git clone https://github.com/homeserverhq/mail-relay.git \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
+  docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix
+  docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd
+  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
+}
+
 function restoreScripts()
 {
   sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
@@ -2886,7 +2898,7 @@ EOFR
   curl -s -H "Authorization: Basic \$basic_auth" -H 'Content-Type: application/json' -d "\$dom_json" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/delete
 
   add_domain="*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-  add_ip_addr="$RELAYSERVER_SERVER_IP"
+  add_ip_addr="\$RELAYSERVER_SERVER_IP"
   dom_json=\$(jq -n --arg add_domain \$add_domain --arg add_ip_addr \$add_ip_addr '{domain: \$add_domain, answer: \$add_ip_addr}')
   curl -s -H "Authorization: Basic \$basic_auth" -H 'Content-Type: application/json' -d "\$dom_json" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/add
 }
@@ -3055,6 +3067,7 @@ function install()
   mkdir -p \$RELAYSERVER_HSHQ_STACKS_DIR
 
   outputCerts
+  pullDockerImages
   outputScripts
   installLogNotify "Installing Stacks"
   installPortainer
@@ -3210,6 +3223,52 @@ EOFCR
   rm -f \$HOME/\$CERT_NAME.csr
   chmod 0444 \$RELAYSERVER_HSHQ_SSL_DIR/\$CERT_NAME.key
   chmod 0444 \$RELAYSERVER_HSHQ_SSL_DIR/\$CERT_NAME.crt
+}
+
+function pullImage()
+{
+  img_and_version=\$1
+  echo "Pulling Image: \$img_and_version"
+  is_success=1
+  num_tries=1
+  set +e
+  while [ \$is_success -ne 0 ] && [ \$num_tries -lt $MAX_DOCKER_PULL_TRIES ]
+  do
+    # Refresh the sudo timestamp
+    sudo -v
+    docker pull \$img_and_version > /dev/null 2>&1
+    img_name=\$(echo \$img_and_version | cut -d":" -f1)
+    docker image ls | grep "\$img_name"
+    is_success=\$?
+    ((num_tries++))
+  done
+  set -e
+  if [ \$is_success -ne 0 ]; then
+    echo "Error pulling docker image: $img_and_version"
+    exit 5
+  fi
+  set -e
+}
+
+function pullDockerImages()
+{
+  pullImage $IMG_ADGUARD
+  pullImage $IMG_CADDY
+  pullImage $IMG_DNSMASQ
+  pullImage $IMG_MAIL_RELAY_UNBOUND
+  pullImage $IMG_FILEBROWSER
+  pullImage $IMG_OFELIA
+  pullImage $IMG_PORTAINER
+  pullImage $IMG_SYNCTHING
+  pullImage $IMG_REDIS
+  pullImage $IMG_WGPORTAL
+  pullImage $IMG_WIREGUARD
+  mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
+  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
+  git clone https://github.com/homeserverhq/mail-relay.git \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
+  docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix
+  docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd
+  sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
 }
 
 function outputScripts()
@@ -3738,6 +3797,7 @@ function installPortainer()
 function outputConfigPortainer()
 {
   cat <<EOFPC > \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion portainer)
 version: '3.5'
 
 services:
@@ -3824,6 +3884,7 @@ function outputConfigAdGuard()
   RELAYSERVER_ADGUARD_ADMIN_PASSWORD_HASH=\$(htpasswd -B -n -b $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD | cut -d":" -f2-)
   
   cat <<EOFAC > \$HOME/adguard-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion adguard)
 version: '3.5'
 
 services:
@@ -4133,6 +4194,7 @@ function installMailRelay()
 function outputConfigMailRelay()
 {
   cat <<EOFPF > \$HOME/mail-relay-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion mail-relay)
 version: '3.5'
 
 services:
@@ -4707,6 +4769,7 @@ EOFWG
   sudo chmod 500 /etc/wireguard/$RELAYSERVER_WG_INTERFACE_NAME.conf
 
   cat <<EOFWP > \$HOME/wgportal-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion wgportal)
 version: '3.5'
 
 services:
@@ -4760,6 +4823,7 @@ wg:
 EOFWC
 
   cat <<EOFCD > \$HOME/clientdns-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion clientdns)
 version: '3.5'
 
 services:
@@ -4875,6 +4939,7 @@ function installFileBrowser()
 function outputConfigFileBrowser()
 {
   cat <<EOFFB > \$HOME/filebrowser-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion filebrowser)
 version: '3.5'
 
 services:
@@ -4937,6 +5002,7 @@ function installCaddy()
 function outputConfigCaddy()
 {
   cat <<EOFCC > \$HOME/caddy-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion caddy)
 version: '3.5'
 
 services:
@@ -5217,6 +5283,7 @@ function installOfelia()
 function outputConfigOfelia()
 {
   cat <<EOFOF > \$HOME/ofelia-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion ofelia)
 version: '3.5'
 
 services:
@@ -5359,6 +5426,7 @@ networks:
 EOFST
 
   cat <<EOFST > \$HOME/syncthing-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion syncthing)
 version: '3.5'
 
 services:
@@ -5545,7 +5613,7 @@ function uploadVPNInstallScripts()
       break
     else
       errmenu=$(cat << EOF
-$logo
+$hshqlogo
 
 There is a problem logging into the Relay Server host. Press Retry or Cancel.
 EOF
@@ -5692,7 +5760,7 @@ function connectVPN()
         errString="Unable to ping RelayServer over private network. Wait until the RelayServer installation process has completed and the system fully rebooted, then press Retry."
       fi
       errmenu=$(cat << EOF
-$logo
+$hshqlogo
 
 $errString
 EOF
@@ -5778,7 +5846,7 @@ function createOrJoinPrimaryVPN()
 
   vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -5863,7 +5931,7 @@ function showNetworkMenu()
 {
   networkmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -5896,7 +5964,7 @@ function showMyNetworkMenu()
 {
   networkmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -5924,7 +5992,7 @@ function showOtherNetworksMenu()
 {
   networkmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -5955,7 +6023,7 @@ function showRelayServerUtilsMenu()
 {
   netutilmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -5992,7 +6060,7 @@ function showMyNetworkInviteMenu()
 {
   vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -6020,7 +6088,7 @@ function showMyNetworkRemoveMenu()
 {
   vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -6048,7 +6116,7 @@ function showMyNetworkUtilsMenu()
 {
   netutilmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -6079,7 +6147,7 @@ function showOtherNetworkApplyMenu()
 {
   vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -6107,7 +6175,7 @@ function showOtherNetworkJoinMenu()
 {
   vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -6140,7 +6208,7 @@ function showOtherNetworkDisconnectMenu()
 {
   vpnmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -6165,7 +6233,7 @@ function showOtherNetworkUtilsMenu()
 {
   utilsmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 EOF
 )
@@ -6190,7 +6258,7 @@ function showMyNetworkRemoveVPNMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the network connections that you wish to remove:
 EOF
@@ -6223,7 +6291,7 @@ function showMyNetworkRemoveInternetMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the network connections that you wish to remove:
 EOF
@@ -6267,7 +6335,7 @@ function showMyNetworkRemoveUserMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the network connections that you wish to remove:
 EOF
@@ -6378,7 +6446,7 @@ function showMyNetworkRemoveClientDNSMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the network connections that you wish to remove:
 EOF
@@ -6417,7 +6485,7 @@ function showOtherNetworkDisconnectVPNMenu()
 {
   vpndisconnectmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the network connections that you wish to disconnect:
 EOF
@@ -6450,7 +6518,7 @@ function showOtherNetworkDisconnectInternetMenu()
 {
   vpndisconnectmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the network connections that you wish to disconnect:
 EOF
@@ -8188,7 +8256,6 @@ function restartAllStacks()
   sudo -v
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   startStopStack uptimekuma stop "$portainerToken"
-  set -e
   rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
   rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]} - 1))
@@ -8199,7 +8266,6 @@ function restartAllStacks()
     sleep 1
   done
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
-  set +e
   docker network rm dock-ext > /dev/null 2>&1
   docker network rm dock-proxy > /dev/null 2>&1
   docker network rm dock-privateip > /dev/null 2>&1
@@ -8209,11 +8275,9 @@ function restartAllStacks()
   docker network rm dock-mailu-ext > /dev/null 2>&1
   docker network rm dock-mailu-int > /dev/null 2>&1
   echo "Restarting Docker..."
-  set -e
   sudo systemctl restart docker
   createDockerNetworks
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
-  set +e
   total_tries=10
   num_tries=1
   sleep 5
@@ -8448,6 +8512,9 @@ function startStopStack()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   stackID=$(getStackID $stackname "$portainerToken")
+  if [ -z $stackID ]; then
+    return
+  fi
   startStopStackByID $stackID $startStop $portainerToken
 }
 
@@ -8471,6 +8538,9 @@ function restartStackIfRunning()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   stackID=$(getStackID $stackName "$portainerToken")
+  if [ -z $stackID ]; then
+    return
+  fi
   stackStatus=$(getStackStatusByID $stackID "$portainerToken")
   if [ "$stackStatus" = "1" ]; then
     startStopStackByID $stackID stop $portainerToken
@@ -8498,6 +8568,9 @@ function getStackStatusByName()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   stackID=$(getStackID $stackName "$portainerToken")
+  if [ -z $stackID ]; then
+    return
+  fi
   stackStatus=$(getStackStatusByID $stackID "$portainerToken")
   echo $stackStatus
 }
@@ -8510,6 +8583,9 @@ function deleteStack()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   stackID=$(getStackID $stackname "$portainerToken")
+  if [ -z $stackID ]; then
+    return
+  fi
   http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
 }
 
@@ -8517,7 +8593,7 @@ function showMessageBox()
 {
   msgmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 $2
 EOF
@@ -8529,7 +8605,7 @@ function showYesNoMessageBox()
 {
   msgmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 $2
 EOF
@@ -8541,7 +8617,7 @@ function promptUserInputMenu()
 {
   usermenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 $3
 EOF
@@ -8557,7 +8633,7 @@ function promptPasswordMenu()
 {
   usermenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 $2
 EOF
@@ -9051,7 +9127,7 @@ function addDomainsToRelayServer()
 
   deliveryhostmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the mail delivery host for this domain:
 EOF
@@ -9105,7 +9181,7 @@ function removeDomainsFromRelayServer()
   set +e
   rem_menu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the domains that you wish to remove:
 EOF
@@ -9183,7 +9259,7 @@ function addLECertPathToRelayServerMsgbox()
 
   seldomainmenu=$(cat << EOF
 
-$logo
+$hshqlogo
 
 Select the base domain to associate with these subdomains:
 EOF
@@ -9899,7 +9975,7 @@ function createInitialEnv()
   CONFIG_FILE=$HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
   cat <<EOFCF > $CONFIG_FILE
 # Configuration File
-$logo
+$hshqlogo
 
 # General Info BEGIN
 HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -10487,6 +10563,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=27
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 29 ]; then
+    echo "Updating to Version 29..."
+    version29Update
+    HSHQ_VERSION=29
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -10561,7 +10643,17 @@ function version22Update()
   docker network rm dock-mailu-ext > /dev/null 2>&1
   docker network rm dock-mailu-int > /dev/null 2>&1
   docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
+
+  set +e
+  grep DOCKER_METRICS_PORT $CONFIG_FILE >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    DOCKER_METRICS_PORT=8323
+    replace_block="DOCKER_METRICS_PORT=8323\n# Docker Installation Info END"
+    sed -i "s|# Docker Installation Info END|$replace_block|g" $CONFIG_FILE
+    outputDockerSettings
+  fi
   set -e
+
   echo "Restarting Docker..."
   sudo systemctl restart docker
   sleep 3
@@ -11072,6 +11164,552 @@ EOFRO
   docker container restart mailu-webmail
 }
 
+function version29Update()
+{
+  # This should have been addressed in the version 23 update,
+  # but the metrics port was not correctly added to the config.
+  # Add Docker metrics port to config
+  set +e
+  grep DOCKER_METRICS_PORT $CONFIG_FILE >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    DOCKER_METRICS_PORT=8323
+    replace_block="DOCKER_METRICS_PORT=8323\n# Docker Installation Info END"
+    sed -i "s|# Docker Installation Info END|$replace_block|g" $CONFIG_FILE
+    outputDockerSettings
+  fi
+  set -e
+  
+  outputBootScripts
+  setVersionOnStacks
+  echo "Check your email($EMAIL_ADMIN_EMAIL_ADDRESS) for results."
+  email_report=$strSetVersionReport
+  if [ -z "$email_report" ]; then
+    email_report="All stacks were correctly versioned."
+  fi
+  sendEmail -s "Stack Versioning Report" -b "$email_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+}
+
+function insertVersionNumber()
+{
+  versionNum="$1"
+  imageList=$2
+  composeFile="$3"
+  imageListArr=($(echo $imageList | tr "," "\n"))
+  for curImg in "${imageListArr[@]}"
+  do
+    if ! [ -z "$curImg" ]; then
+      sudo grep "$curImg" "$composeFile" > /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        echo "false"
+        return
+      fi
+    fi
+  done
+  if [[ "$(sudo sed -n 1p $composeFile)" =~ ^$STACK_VERSION_PREFIX.* ]]; then
+    sudo sed -i "1s|.*|$STACK_VERSION_PREFIX $versionNum|" $composeFile
+  else
+    sudo sed -i "1 i$STACK_VERSION_PREFIX $versionNum" $composeFile
+  fi
+  echo "true"
+}
+
+function setVersionOnStacks()
+{
+  # This function modifies the variable strSetVersionReport to report the results to the caller
+  # The caller is responsible for doing something with it.
+  set +e
+  sudo -v
+  if [ -z $STACK_VERSION_PREFIX ]; then
+    STACK_VERSION_PREFIX=#HSHQManaged
+  fi
+  strSetVersionReport=""
+  stackListArr=($(echo ${HSHQ_REQUIRED_STACKS}","${HSHQ_OPTIONAL_STACKS} | tr "," "\n"))
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  for curStack in "${stackListArr[@]}"
+  do
+    echo "Versioning ${curStack} stack..."
+    stackID=$(getStackID $curStack "$portainerToken")
+    if [ -z $stackID ]; then
+      continue
+    fi
+    curCompose=$HSHQ_STACKS_DIR/portainer/compose/$stackID/docker-compose.yml
+    case "$curStack" in
+      portainer)
+        curVersion=v1
+        curImageList=portainer/portainer-ce:2.19.3-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $HSHQ_STACKS_DIR/portainer/docker-compose.yml)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=portainer/portainer-ce:2.19.4-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $HSHQ_STACKS_DIR/portainer/docker-compose.yml)" = "true" ]; then continue;fi
+        strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $HSHQ_STACKS_DIR/portainer/docker-compose.yml)"
+        continue
+      ;;
+      adguard)
+        curVersion=v1
+        curImageList=adguard/adguardhome:v0.107.41
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=adguard/adguardhome:v0.107.43
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      sysutils)
+        curVersion=v1
+        curImageList=grafana/grafana-oss:9.5.8,prom/prometheus:v2.46.0,prom/node-exporter:v1.6.1,influxdb:2.7.1-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=grafana/grafana-oss:9.5.15,prom/prometheus:v2.48.1,prom/node-exporter:v1.7.0,influxdb:2.7.4-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=grafana/grafana-oss:10.3.1,prom/prometheus:v2.49.1,prom/node-exporter:v1.7.0,influxdb:2.7.5-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      openldap)
+        curVersion=v1
+        curImageList=osixia/openldap:1.5.0,osixia/phpldapadmin:stable,wheelybird/ldap-user-manager:v1.11
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      mailu)
+        curVersion=v1
+        curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0,ghcr.io/mailu/rspamd:2.0,ghcr.io/mailu/clamav:2.0,ghcr.io/mailu/fetchmail:2.0,ghcr.io/mailu/nginx:2.0,ghcr.io/mailu/dovecot:2.0,ghcr.io/mailu/oletools:2.0,ghcr.io/mailu/postfix:2.0,ghcr.io/mailu/unbound:2.0,ghcr.io/mailu/radicale:2.0,ghcr.io/mailu/webmail:2.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0.37,ghcr.io/mailu/rspamd:2.0.37,ghcr.io/mailu/clamav:2.0.37,ghcr.io/mailu/fetchmail:2.0.37,ghcr.io/mailu/nginx:2.0.37,ghcr.io/mailu/dovecot:2.0.37,ghcr.io/mailu/oletools:2.0.37,ghcr.io/mailu/postfix:2.0.37,ghcr.io/mailu/unbound:2.0.37,ghcr.io/mailu/radicale:2.0.37,ghcr.io/mailu/webmail:2.0.37
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      wazuh)
+        curVersion=v1
+        curImageList=wazuh/wazuh-manager:4.6.0,wazuh/wazuh-indexer:4.6.0,wazuh/wazuh-dashboard:4.6.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=wazuh/wazuh-manager:4.7.1,wazuh/wazuh-indexer:4.7.1,wazuh/wazuh-dashboard:4.7.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=wazuh/wazuh-manager:4.7.2,wazuh/wazuh-indexer:4.7.2,wazuh/wazuh-dashboard:4.7.2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      collabora)
+        curVersion=v1
+        curImageList=collabora/code:23.05.5.3.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=collabora/code:23.05.6.4.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=collabora/code:23.05.8.2.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      nextcloud)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.3-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.23.2-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.5-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.25.3-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.6-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.25.3-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      jitsi)
+        curVersion=v1
+        curImageList=jitsi/jicofo:stable-8719,jitsi/jvb:stable-8719,jitsi/prosody:stable-8719,jitsi/web:stable-8719
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=jitsi/jicofo:stable-9111,jitsi/jvb:stable-9111,jitsi/prosody:stable-9111,jitsi/web:stable-9111
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=jitsi/jicofo:stable-9220,jitsi/jvb:stable-9220,jitsi/prosody:stable-9220,jitsi/web:stable-9220
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      matrix)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.90.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.40
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.98.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.52
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.100.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.57
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      wikijs)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,requarks/wiki:2.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      duplicati)
+        curVersion=v1
+        curImageList=linuxserver/duplicati:2.0.7
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      mastodon)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.1.6,nginx:1.23.2-alpine,elasticsearch:8.8.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.3,nginx:1.25.3-alpine,elasticsearch:8.11.3
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.3,nginx:1.25.3-alpine,elasticsearch:8.12.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      dozzle)
+        curVersion=v1
+        curImageList=amir20/dozzle:v4.10.26
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=amir20/dozzle:v5.8.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=amir20/dozzle:v6.0.8
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v4
+        curImageList=amir20/dozzle:v6.1.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      searxng)
+        curVersion=v1
+        curImageList=searxng/searxng:2023.8.19-018b0a932
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=searxng/searxng:2023.12.29-27e26b3d6
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      jellyfin)
+        curVersion=v1
+        curImageList=jellyfin/jellyfin:10.8.10
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=jellyfin/jellyfin:10.8.13
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      filebrowser)
+        curVersion=v1
+        curImageList=filebrowser/filebrowser:v2.24.2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=filebrowser/filebrowser:v2.26.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=filebrowser/filebrowser:v2.27.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      photoprism)
+        curVersion=v1
+        curImageList=mariadb:10.7.3,photoprism/photoprism:220901-bullseye
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      guacamole)
+        curVersion=v1
+        curImageList=guacamole/guacd:1.5.3,guacamole/guacamole:1.5.3
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=guacamole/guacd:1.5.4,guacamole/guacamole:1.5.4
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      authelia)
+        curVersion=v1
+        curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      wordpress)
+        curVersion=v1
+        curImageList=mariadb:10.7.3,wordpress:php8.2-apache
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=mariadb:10.7.3,wordpress:php8.3-apache
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      ghost)
+        curVersion=v1
+        curImageList=mariadb:10.7.3,ghost:5.59.1-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=mariadb:10.7.3,ghost:5.75.2-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=mariadb:10.7.3,ghost:5.78.0-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      peertube)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v5.2.0-bullseye,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v6.0.2-bookworm,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      homeassistant)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2023.8,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.3,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.5,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v4
+        curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.6,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      gitlab)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.2.4-ce.0,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.7.0-ce.0,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.8.1-ce.0,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      vaultwarden)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,vaultwarden/server:1.29.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.2-alpine,thegeeklab/vaultwarden-ldap:0.6.2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      discourse)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,bitnami/discourse:3.0.6,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.3,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.4,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      syncthing)
+        curVersion=v1
+        curImageList=syncthing/syncthing:1.23.7
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=syncthing/syncthing:1.27.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=syncthing/syncthing:1.27.2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      codeserver)
+        curVersion=v1
+        curImageList=codercom/code-server:4.16.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=codercom/code-server:4.20.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=codercom/code-server:4.20.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      shlink)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.6.3,shlinkio/shlink-web-client:3.10.2,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.7.2,shlinkio/shlink-web-client:3.10.2,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.7.3,shlinkio/shlink-web-client:4.0.0,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      firefly)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.0.20,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.1.1,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.1.7,bitnami/redis:7.0.5
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      excalidraw)
+        curVersion=v1
+        curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      drawio)
+        curVersion=v1
+        curImageList=jgraph/drawio:21.0.2,jgraph/plantuml-server,jgraph/export-server
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=jgraph/drawio:23.1.0,jgraph/plantuml-server,jgraph/export-server
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      invidious)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,quay.io/invidious/invidious
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      ittools)
+        curVersion=v1
+        curImageList=ghcr.io/corentinth/it-tools:latest
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      gitea)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,gitea/gitea:1.20.3
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,gitea/gitea:1.21.3
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,gitea/gitea:1.21.4
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      mealie)
+        curVersion=v1
+        curImageList=hkotel/mealie:v0.5.6
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v1.0.0-RC2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v1.1.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      kasm)
+        curVersion=v1
+        curImageList=lscr.io/linuxserver/kasm:1.13.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=lscr.io/linuxserver/kasm:1.14.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      ntfy)
+        curVersion=v1
+        curImageList=binwiederhier/ntfy:v2.7.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=binwiederhier/ntfy:v2.8.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      remotely)
+        curVersion=v1
+        curImageList=immybot/remotely:69
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      calibre)
+        curVersion=v1
+        curImageList=linuxserver/calibre:7.3.0,linuxserver/calibre-web:0.6.21
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=linuxserver/calibre:7.4.0,linuxserver/calibre-web:0.6.21
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      netdata)
+        curVersion=v1
+        curImageList=netdata/netdata:v1.44.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      linkwarden)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.4.8
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      stirlingpdf)
+        curVersion=v1
+        curImageList=frooodle/s-pdf:0.19.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=frooodle/s-pdf:0.20.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      bar-assistant)
+        curVersion=v1
+        curImageList=barassistant/server:v3,getmeili/meilisearch:v1.4,bitnami/redis:7.0.5,barassistant/salt-rim:v2,nginx:1.25.3-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=barassistant/server:v3,getmeili/meilisearch:v1.6,bitnami/redis:7.0.5,barassistant/salt-rim:v2,nginx:1.25.3-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      freshrss)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,freshrss/freshrss:1.23.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      keila)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,pentacent/keila:0.13.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=postgres:15.0-bullseye,pentacent/keila:0.14.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      wallabag)
+        curVersion=v1
+        curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,wallabag/wallabag:2.6.8
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      heimdall)
+        curVersion=v1
+        curImageList=linuxserver/heimdall:2.4.13
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      ofelia)
+        curVersion=v1
+        curImageList=mcuadros/ofelia:v0.3.7
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=mcuadros/ofelia:v0.3.9
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      sqlpad)
+        curVersion=v1
+        curImageList=sqlpad/sqlpad:7.1.2
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=sqlpad/sqlpad:7.2.0
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v3
+        curImageList=sqlpad/sqlpad:7.3.1
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+      uptimekuma)
+        curVersion=v1
+        curImageList=louislam/uptime-kuma:1.23.0-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+        curVersion=v2
+        curImageList=louislam/uptime-kuma:1.23.11-alpine
+        if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+      ;;
+    esac
+    strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
+  done
+  # Special case for Caddy
+  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+  caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("caddy-")) | .Id'))
+  for curStackID in "${caddy_stack_ids[@]}"
+  do
+    echo "Versioning caddy stack..."
+    curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
+    curVersion=v1
+    curImageList=caddy:2.7.4
+    if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+    curVersion=v2
+    curImageList=caddy:2.7.6
+    if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+    strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
+  done
+  # Special case for ClientDNS
+  caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("clientdns-")) | .Id'))
+  for curStackID in "${caddy_stack_ids[@]}"
+  do
+    echo "Versioning clientdns stack..."
+    curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
+    curVersion=v1
+    curImageList=jpillora/dnsmasq:1.1,linuxserver/wireguard:1.0.20210914
+    if [ "$(insertVersionNumber $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+    strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
+  done
+}
+
 function checkAddServiceToConfig()
 {
   service_name="$1"
@@ -11279,10 +11917,10 @@ done
   iptables -C INPUT -p tcp -m tcp --dport 443 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport 443 -j ACCEPT
 
   # Special case for HomeAssistant since it is using host networking
-  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
 
   # Special case for Docker metrics
-  iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
 
   # Add UPNP
   iptables -C INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
@@ -12093,7 +12731,7 @@ function installDocker()
   IS_ROOTLESS_DOCKER=false
 #  if [[ "$(isProgramInstalled docker)" = "false" ]]; then
 #    dockermenu=$(cat << EOF
-#$logo
+#$hshqlogo
 #
 #Select your install method
 #EOF
@@ -12606,7 +13244,7 @@ function loadPinnedDockerImages()
   IMG_COLLABORA=collabora/code:23.05.8.2.1
   IMG_DISCOURSE=bitnami/discourse:3.1.4
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v6.1.2
+  IMG_DOZZLE=amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
   IMG_DRAWIO_WEB=jgraph/drawio:23.1.0
@@ -14206,6 +14844,126 @@ function initServiceDefaults()
   DS_MEM_32=gitlab,netdata,discourse
 }
 
+function getCurrentStackVersion()
+{
+  stack_name=$1
+  
+  case "$stack_name" in
+    portainer)
+      echo "v2" ;;
+    adguard)
+      echo "v2" ;;
+    sysutils)
+      echo "v2" ;;
+    openldap)
+      echo "v1" ;;
+    mailu)
+      echo "v2" ;;
+    wazuh)
+      echo "v2" ;;
+    collabora)
+      echo "v3" ;;
+    nextcloud)
+      echo "v3" ;;
+    jitsi)
+      echo "v3" ;;
+    matrix)
+      echo "v3" ;;
+    wikijs)
+      echo "v1" ;;
+    duplicati)
+      echo "v1" ;;
+    mastodon)
+      echo "v3" ;;
+    dozzle)
+      echo "v4" ;;
+    searxng)
+      echo "v2" ;;
+    jellyfin)
+      echo "v2" ;;
+    filebrowser)
+      echo "v3" ;;
+    photoprism)
+      echo "v1" ;;
+    guacamole)
+      echo "v2" ;;
+    authelia)
+      echo "v1" ;;
+    wordpress)
+      echo "v2" ;;
+    ghost)
+      echo "v3" ;;
+    peertube)
+      echo "v2" ;;
+    homeassistant)
+      echo "v4" ;;
+    gitlab)
+      echo "v3" ;;
+    vaultwarden)
+      echo "v3" ;;
+    discourse)
+      echo "v3" ;;
+    syncthing)
+      echo "v3" ;;
+    codeserver)
+      echo "v3" ;;
+    shlink)
+      echo "v3" ;;
+    firefly)
+      echo "v3" ;;
+    excalidraw)
+      echo "v1" ;;
+    drawio)
+      echo "v2" ;;
+    invidious)
+      echo "v1" ;;
+    ittools)
+      echo "v1" ;;
+    gitea)
+      echo "v3" ;;
+    mealie)
+      echo "v3" ;;
+    kasm)
+      echo "v2" ;;
+    ntfy)
+      echo "v2" ;;
+    remotely)
+      echo "v1" ;;
+    calibre)
+      echo "v2" ;;
+    netdata)
+      echo "v1" ;;
+    linkwarden)
+      echo "v1" ;;
+    stirlingpdf)
+      echo "v2" ;;
+    bar-assistant)
+      echo "v2" ;;
+    freshrss)
+      echo "v1" ;;
+    keila)
+      echo "v2" ;;
+    wallabag)
+      echo "v1" ;;
+    heimdall)
+      echo "v1" ;;
+    ofelia)
+      echo "v2" ;;
+    sqlpad)
+      echo "v3" ;;
+    caddy)
+      echo "v2" ;;
+    clientdns)
+      echo "v1" ;;
+    uptimekuma)
+      echo "v2" ;;
+    mail-relay)
+      echo "v2" ;;
+    wgportal)
+      echo "v2" ;;
+  esac
+}
+
 function getScriptImageByContainerName()
 {
   case "$1" in
@@ -14554,6 +15312,9 @@ function getScriptImageByContainerName()
     "calibre-web")
       container_image=$IMG_CALIBRE_WEB
       ;;
+    "netdata")
+      container_image=$IMG_NETDATA
+      ;;
     "linkwarden-db")
       container_image=$IMG_POSTGRES
       ;;
@@ -14720,6 +15481,7 @@ function outputConfigPortainer()
   fi
 
   cat <<EOFPC > $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion portainer)
 version: '3.5'
 
 services:
@@ -14838,6 +15600,7 @@ function outputConfigAdGuard()
 {
   ADGUARD_ADMIN_PASSWORD_HASH=$(htpasswd -B -n -b $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD | cut -d":" -f2-)
   cat <<EOFAC > $HOME/adguard-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion adguard)
 version: '3.5'
 
 services:
@@ -15404,6 +16167,7 @@ networks:
 EOFGF
 
   cat <<EOFGF > $HOME/sysutils-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion sysutils)
 version: '3.5'
 
 services:
@@ -17929,15 +18693,8 @@ function installOpenLDAP()
 
 function outputConfigOpenLDAP()
 {
-  cat <<EOFLD > $HSHQ_STACKS_DIR/openldap/ldapmanager/ldap.conf
-TLS_CERT /opt/ssl/ldapmanager.crt
-TLS_KEY /opt/ssl/ldapmanager.key
-TLS_CACERT /opt/ssl/${CERTS_ROOT_CA_NAME}.crt
-TLS_REQCERT demand
-TLS_REQSAN demand
-EOFLD
-
   cat <<EOFLC > $HOME/openldap-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion openldap)
 version: '3.5'
 
 services:
@@ -18112,6 +18869,14 @@ SMTP_USERNAME_FILE=/run/secrets/smtp_username
 SMTP_PASSWORD_FILE=/run/secrets/smtp_password
 NEW_ACCOUNT_EMAIL_BODY=<h1>New Account Created</h1><p>You've been set up with an account for {organisation}.  Your credentials are:</p><p></p><p>Login: {login}<br>Password: {password}</p><p></p><p>You should log into <a href={change_password_url}>{change_password_url}</a> and change the password as soon as possible.</p>
 
+EOFLD
+
+  cat <<EOFLD > $HSHQ_STACKS_DIR/openldap/ldapmanager/ldap.conf
+TLS_CERT /opt/ssl/ldapmanager.crt
+TLS_KEY /opt/ssl/ldapmanager.key
+TLS_CACERT /opt/ssl/${CERTS_ROOT_CA_NAME}.crt
+TLS_REQCERT demand
+TLS_REQSAN demand
 EOFLD
 
   cat <<EOFLI > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/initdbscript.sh
@@ -18306,6 +19071,7 @@ function outputConfigMailu()
     is_antivirus_env="none"
   fi
   cat <<EOFMC > $HOME/mailu-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion mailu)
 version: '3.5'
 
 services:
@@ -18834,6 +19600,7 @@ function installWazuh()
 function outputConfigWazuh()
 {
   cat <<EOFWZ > $HOME/wazuh-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion wazuh)
 version: '3.5'
 
 services:
@@ -19546,6 +20313,7 @@ function installCollabora()
 function outputConfigCollabora()
 {
   cat <<EOFCO > $HOME/collabora-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion collabora)
 version: '3.5'
 
 services:
@@ -20263,6 +21031,7 @@ networks:
 EOFNC
 
   cat <<EOFNC > $HOME/nextcloud-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion nextcloud)
 version: '3.5'
 
 services:
@@ -20545,6 +21314,7 @@ function installJitsi()
 function outputConfigJitsi()
 {
   cat <<EOFJT > $HOME/jitsi-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion jitsi)
 version: '3.5'
 
 services:
@@ -20762,6 +21532,7 @@ function installMatrix()
 function outputConfigMatrix()
 {
   cat <<EOFJT > $HOME/matrix-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion matrix)
 version: '3.5'
 
 services:
@@ -21196,7 +21967,7 @@ function installWikijs()
 
   outputConfigWikijs
   generateCert wikijs-web wikijs-web
-  installStack wikijs wikijs-web "HTTP Server on port" $HOME/wikijs.env
+  installStack wikijs wikijs-web "HTTP Server on port" $HOME/wikijs.env 5
   sudo mv $HSHQ_STACKS_DIR/wikijs/config.yml $HSHQ_STACKS_DIR/wikijs/web/config.yml
   docker container restart wikijs-web
   echo "Wikijs installed, sleeping 5 seconds..."
@@ -21226,6 +21997,7 @@ function installWikijs()
 function outputConfigWikijs()
 {
   cat <<EOFWJ > $HOME/wikijs-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion wikijs)
 version: '3.5'
 
 services:
@@ -21406,6 +22178,7 @@ function installDuplicati()
 function outputConfigDuplicati()
 {
   cat <<EOFDP > $HOME/duplicati-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion duplicati)
 version: '3.5'
 
 services:
@@ -21811,6 +22584,7 @@ networks:
 EOFMD
 
   cat <<EOFMD > $HOME/mastodon-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion mastodon)
 version: '3.5'
 
 services:
@@ -22306,6 +23080,7 @@ function installDozzle()
 function outputConfigDozzle()
 {
   cat <<EOFDZ > $HOME/dozzle-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion dozzle)
 version: '3.5'
 
 services:
@@ -22402,6 +23177,7 @@ function installSearxNG()
 function outputConfigSearxNG()
 {
   cat <<EOFSE > $HOME/searxng-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion searxng)
 version: '3.5'
 
 services:
@@ -22683,6 +23459,7 @@ function installJellyfin()
 function outputConfigJellyfin()
 {
   cat <<EOFJF > $HOME/jellyfin-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion jellyfin)
 version: '3.5'
 
 services:
@@ -22807,6 +23584,7 @@ function installFileBrowser()
 function outputConfigFileBrowser()
 {
   cat <<EOFJF > $HOME/filebrowser-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion filebrowser)
 version: '3.5'
 
 services:
@@ -22935,6 +23713,7 @@ function installPhotoPrism()
 function outputConfigPhotoPrism()
 {
   cat <<EOFPP > $HOME/photoprism-compose-tmp.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion photoprism)
 version: '3.5'
 
 services:
@@ -23249,6 +24028,7 @@ function installGuacamole()
 function outputConfigGuacamole()
 {
   cat <<EOFGC > $HOME/guacamole-compose-tmp.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion guacamole)
 version: '3.5'
 
 services:
@@ -23445,6 +24225,7 @@ function installAuthelia()
 function outputConfigAuthelia()
 {
   cat <<EOFAC > $HOME/authelia-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion authelia)
 version: '3.5'
 
 services:
@@ -23732,6 +24513,7 @@ function installWordPress()
 function outputConfigWordPress()
 {
   cat <<EOFWP > $HOME/wordpress-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion wordpress)
 version: '3.5'
 
 services:
@@ -23888,6 +24670,7 @@ function installGhost()
 function outputConfigGhost()
 {
   cat <<EOFGW > $HOME/ghost-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion ghost)
 version: '3.5'
 
 services:
@@ -24059,6 +24842,7 @@ function installPeerTube()
 function outputConfigPeerTube()
 {
   cat <<EOFPT > $HOME/peertube-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion peertube)
 version: '3.5'
 
 services:
@@ -24342,6 +25126,7 @@ function installHomeAssistant()
 function outputConfigHomeAssistant()
 {
   cat <<EOFHA > $HOME/homeassistant-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion homeassistant)
 version: '3.5'
 
 services:
@@ -24705,6 +25490,7 @@ function installGitlab()
 function outputConfigGitlab()
 {
   cat <<EOFGL > $HOME/gitlab-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion gitlab)
 version: '3.5'
 
 services:
@@ -24963,6 +25749,7 @@ function installVaultwarden()
 function outputConfigVaultwarden()
 {
   cat <<EOFVW > $HOME/vaultwarden-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion vaultwarden)
 version: '3.5'
 
 services:
@@ -25179,6 +25966,7 @@ function installDiscourse()
 function outputConfigDiscourse()
 {
   cat <<EOFDC > $HOME/discourse-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion discourse)
 version: '3.5'
 
 services:
@@ -25414,6 +26202,7 @@ function installSyncthing()
 function outputConfigSyncthing()
 {
   cat <<EOFST > $HOME/syncthing-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion syncthing)
 version: '3.5'
 
 services:
@@ -25546,6 +26335,7 @@ function installCodeServer()
 function outputConfigCodeServer()
 {
   cat <<EOFCS > $HOME/codeserver-compose-tmp.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion codeserver)
 version: '3.5'
 
 services:
@@ -25726,6 +26516,7 @@ function installShlink()
 function outputConfigShlink()
 {
   cat <<EOFST > $HOME/shlink-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion shlink)
 version: '3.5'
 
 services:
@@ -25930,6 +26721,7 @@ function installFirefly()
 function outputConfigFirefly()
 {
   cat <<EOFFF > $HOME/firefly-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion firefly)
 version: '3.5'
 
 services:
@@ -26155,6 +26947,7 @@ function installExcalidraw()
 function outputConfigExcalidraw()
 {
   cat <<EOFEX > $HOME/excalidraw-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion excalidraw)
 version: '3.5'
 
 services:
@@ -26321,6 +27114,7 @@ function installDrawIO()
 function outputConfigDrawIO()
 {
   cat <<EOFDI > $HOME/drawio-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion drawio)
 version: '3.5'
 
 services:
@@ -26452,6 +27246,7 @@ function installInvidious()
 function outputConfigInvidious()
 {
   cat <<EOFIV > $HOME/invidious-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion invidious)
 version: '3.5'
 
 services:
@@ -26822,6 +27617,7 @@ function installGitea()
 function outputConfigGitea()
 {
   cat <<EOFGL > $HOME/gitea-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion gitea)
 version: '3.5'
 
 services:
@@ -26993,6 +27789,7 @@ function installMealie()
 function outputConfigMealie()
 {
   cat <<EOFGL > $HOME/mealie-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion mealie)
 version: '3.5'
 
 services:
@@ -27199,6 +27996,7 @@ function installKasm()
 function outputConfigKasm()
 {
   cat <<EOFGL > $HOME/kasm-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion kasm)
 version: '3.5'
 
 services:
@@ -27278,6 +28076,7 @@ function installNTFY()
 function outputConfigNTFY()
 {
   cat <<EOFNT > $HOME/ntfy-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion ntfy)
 version: '3.5'
 
 services:
@@ -27725,6 +28524,7 @@ function installITTools()
 function outputConfigITTools()
 {
   cat <<EOFNT > $HOME/ittools-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion ittools)
 version: '3.5'
 
 services:
@@ -27827,6 +28627,7 @@ function installRemotely()
 function outputConfigRemotely()
 {
   cat <<EOFRM > $HOME/remotely-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion remotely)
 version: '3.5'
 
 services:
@@ -27959,6 +28760,7 @@ function installCalibre()
 function outputConfigCalibre()
 {
   cat <<EOFNT > $HOME/calibre-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion calibre)
 version: '3.5'
 
 services:
@@ -28090,6 +28892,7 @@ function installNetdata()
 function outputConfigNetData()
 {
   cat <<EOFDZ > $HOME/netdata-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion netdata)
 version: '3.5'
 
 services:
@@ -28215,6 +29018,7 @@ function installLinkwarden()
 function outputConfigLinkwarden()
 {
   cat <<EOFDZ > $HOME/linkwarden-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion linkwarden)
 version: '3.5'
 
 services:
@@ -28360,6 +29164,7 @@ function installStirlingPDF()
 function outputConfigStirlingPDF()
 {
   cat <<EOFDZ > $HOME/stirlingpdf-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion stirlingpdf)
 version: '3.5'
 
 services:
@@ -28455,6 +29260,7 @@ function installBarAssistant()
 function outputConfigBarAssistant()
 {
   cat <<EOFBA > $HOME/bar-assistant-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion bar-assistant)
 version: '3.5'
 
 services:
@@ -28733,6 +29539,7 @@ function installFreshRSS()
 function outputConfigFreshRSS()
 {
   cat <<EOFBA > $HOME/freshrss-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion freshrss)
 version: '3.5'
 
 services:
@@ -28932,6 +29739,7 @@ function installKeila()
 function outputConfigKeila()
 {
   cat <<EOFBA > $HOME/keila-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion keila)
 version: '3.5'
 
 services:
@@ -29089,7 +29897,7 @@ function installWallabag()
 
   pullImage $IMG_WALLABAG
   outputConfigWallabag
-  installStack wallabag wallabag-app "wallabag is ready" $HOME/wallabag.env
+  installStack wallabag wallabag-app "wallabag is ready" $HOME/wallabag.env 3
   sleep 5
 
   docker exec -t wallabag-app /var/www/wallabag/bin/console wallabag:install --env=prod --no-interaction > /dev/null 2>&1
@@ -29129,6 +29937,7 @@ function installWallabag()
 function outputConfigWallabag()
 {
   cat <<EOFBA > $HOME/wallabag-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion wallabag)
 version: '3.5'
 
 services:
@@ -29320,6 +30129,7 @@ function installSQLPad()
 function outputConfigSQLPad()
 {
   cat <<EOFSP > $HOME/sqlpad-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion sqlpad)
 version: '3.5'
 
 services:
@@ -29666,6 +30476,7 @@ function installHeimdall()
 function outputConfigHeimdall()
 {
   cat <<EOFHC > $HOME/heimdall-compose-tmp.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion heimdall)
 version: '3.5'
 
 services:
@@ -30361,6 +31172,7 @@ function outputConfigCaddy()
   case "$net_type" in
     home)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion caddy)
 version: '3.5'
 
 services:
@@ -30452,6 +31264,7 @@ EOFCF
     primary)
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion caddy)
 version: '3.5'
 
 services:
@@ -30546,6 +31359,7 @@ import /config/CaddyfileBody
 EOFCF
       elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion caddy)
 version: '3.5'
 
 services:
@@ -30629,6 +31443,7 @@ EOFCF
       ;;
     other)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion caddy)
 version: '3.5'
 
 services:
@@ -30886,6 +31701,7 @@ function installClientDNS()
 function outputConfigClientDNS()
 {
   cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion clientdns)
 version: '3.5'
 
 services:
@@ -30984,6 +31800,7 @@ function installOfelia()
 function outputConfigOfelia()
 {
   cat <<EOFOF > $HOME/ofelia-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion ofelia)
 version: '3.5'
 
 services:
@@ -31070,6 +31887,7 @@ function installUptimeKuma()
 function outputConfigUptimeKuma()
 {
   cat <<EOFUK > $HOME/uptimekuma-compose.yml
+$STACK_VERSION_PREFIX $(getCurrentStackVersion uptimekuma)
 version: '3.5'
 
 services:
