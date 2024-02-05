@@ -11181,12 +11181,18 @@ function version29Update()
   
   outputBootScripts
   setVersionOnStacks
-  echo "Check your email($EMAIL_ADMIN_EMAIL_ADDRESS) for results."
-  email_report=$strSetVersionReport
-  if [ -z "$email_report" ]; then
-    email_report="All stacks were correctly versioned."
+
+  echo -e "\n\n========================================"
+  echo -e "        Stack Versioning Results"
+  echo -e "========================================"
+  if [ -z "$strSetVersionReport" ]; then
+    echo -e "All stacks were correctly versioned."
+  else
+    echo -e "$strSetVersionReport"
+    echo -e "\n========================================"
+    echo -e "\nCheck your email($EMAIL_ADMIN_EMAIL_ADDRESS) for a copy of these results."
+    sendEmail -s "Stack Versioning Report" -b "$strSetVersionReport" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   fi
-  sendEmail -s "Stack Versioning Report" -b "$email_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function insertVersionNumber()
