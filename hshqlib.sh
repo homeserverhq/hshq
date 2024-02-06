@@ -702,6 +702,7 @@ function checkLoadConfig()
     set +e
     showYesNoMessageBox "Encrypted Config Found" "Encrypted configuration file found. Do you wish to decrypt it?"
     if [ $? -ne 0 ]; then
+      rm -f $HSHQ_SCRIPT_OPEN
       exit 1
     fi
     set -e
@@ -8459,6 +8460,7 @@ function decryptConfigFile()
       rm -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
       showYesNoMessageBox "Password Error" "You did not enter the correct password, try again?"
       if [ $? -ne 0 ]; then
+        rm -f $HSHQ_SCRIPT_OPEN
         exit 1
       fi
     fi
@@ -11733,27 +11735,33 @@ function setVersionOnStacks()
   # Special case for Caddy
   qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
   caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("caddy-")) | .Id'))
+  caddy_stack_names=($(echo $qry | jq -r '.[] | select (.Name | startswith("caddy-")) | .Name'))
+  i=-1
   for curStackID in "${caddy_stack_ids[@]}"
   do
-    echo "Versioning caddy stack..."
+    ((i++))
+    echo "Versioning ${caddy_stack_names[i]} stack..."
     curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
     curVersion=v1
     curImageList=caddy:2.7.4
-    if [ "$(insertVersionNumber caddy $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+    if [ "$(insertVersionNumber ${caddy_stack_names[i]} $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
     curVersion=v2
     curImageList=caddy:2.7.6
-    if [ "$(insertVersionNumber caddy $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+    if [ "$(insertVersionNumber ${caddy_stack_names[i]} $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
     strSetVersionReport="${strSetVersionReport}\n caddy stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
   done
   # Special case for ClientDNS
   clientdns_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("clientdns-")) | .Id'))
+  clientdns_stack_names=($(echo $qry | jq -r '.[] | select (.Name | startswith("clientdns-")) | .Name'))
+  i=-1
   for curStackID in "${clientdns_stack_ids[@]}"
   do
-    echo "Versioning clientdns stack..."
+    ((i++))
+    echo "Versioning ${clientdns_stack_names[i]} stack..."
     curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
     curVersion=v1
     curImageList=jpillora/dnsmasq:1.1,linuxserver/wireguard:1.0.20210914
-    if [ "$(insertVersionNumber clientdns $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
+    if [ "$(insertVersionNumber ${clientdns_stack_names[i]} $curVersion $curImageList $curCompose)" = "true" ]; then continue;fi
     strSetVersionReport="${strSetVersionReport}\n clientdns stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
   done
 }
@@ -13332,6 +13340,8 @@ function upgradeStack()
   cur_img_list=$4
   upgrade_compose_file=$5
   portainerToken="$6"
+  stackModFunction=$7
+  isReinstallStack=$8
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
@@ -13361,9 +13371,20 @@ function upgradeStack()
     fi
   done
   sudo sed -i "1s|.*|$STACK_VERSION_PREFIX $comp_stack_name $new_ver|" $upgrade_compose_file
-  restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+  $stackModFunction
+  if [ "$isReinstallStack" = "true" ]; then
+    # Need to fix this
+    restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+  else
+    restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+  fi
   removeImageCSVList "$rm_image_list"
   stack_upgrade_report="$comp_stack_name: Successfully updated from $old_ver to $new_ver"
+}
+
+function doNothing()
+{
+  return
 }
 
 # Services Functions
@@ -14652,6 +14673,10 @@ function performUpdateStackByName()
       performUpdateSQLPad "$portainerToken" ;;
     uptimekuma)
       performUpdateUptimeKuma "$portainerToken" ;;
+    caddy-*)
+      performUpdateCaddy "$portainerToken" "$stack_name" ;;
+    clientdns-*)
+      performUpdateClientDNS "$portainerToken" "$stack_name" ;;
   esac
 }
 
@@ -15911,7 +15936,7 @@ function performUpdateAdGuard()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   # Stack status: 1=running, 2=stopped
-  stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
   unset image_update_map
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
@@ -15927,12 +15952,12 @@ function performUpdateAdGuard()
       image_update_map[0]="adguard/adguardhome:v0.107.43,adguard/adguardhome:v0.107.43"
     ;;
     *)
-      perform_update_report="ERROR: Unknown version (v$perform_stack_ver)"
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken"
-  perform_update_report="${perform_update_report}\n$stack_upgrade_report"
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # SysUtils
@@ -18660,19 +18685,18 @@ function performUpdateSysUtils()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   # Stack status: 1=running, 2=stopped
-  stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
   unset image_update_map
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=grafana/grafana-oss:9.5.8,prom/prometheus:v2.46.0,prom/node-exporter:v1.6.1,influxdb:2.7.1-alpine
-      image_update_map[0]="grafana/grafana-oss:9.5.8,grafana/grafana-oss:9.5.15"
-      image_update_map[1]="prom/prometheus:v2.46.0,prom/prometheus:v2.48.1"
+      image_update_map[0]="grafana/grafana-oss:9.5.8,grafana/grafana-oss:10.3.1"
+      image_update_map[1]="prom/prometheus:v2.46.0,prom/prometheus:v2.49.1"
       image_update_map[2]="prom/node-exporter:v1.6.1,prom/node-exporter:v1.7.0"
-      image_update_map[3]="influxdb:2.7.1-alpine,influxdb:2.7.4-alpine"
-      perform_update_report="${perform_stack_name}: This is an intermediate upgrade. Please ensure the services on this stack are running correctly and re-run the update process.\n"
+      image_update_map[3]="influxdb:2.7.1-alpine,influxdb:2.7.5-alpine"
     ;;
     2)
       newVer=v3
@@ -18691,11 +18715,11 @@ function performUpdateSysUtils()
       image_update_map[3]="influxdb:2.7.5-alpine,influxdb:2.7.5-alpine"
     ;;
     *)
-      perform_update_report="ERROR: Unknown version (v$perform_stack_ver)"
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken"
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -19097,6 +19121,40 @@ uniqueMember: uid=${LDAP_PRIMARY_USER_USERNAME},ou=people,${LDAP_BASE_DN}
 gidNumber: 2004
 EOFLB
 
+}
+
+function performUpdateOpenLDAP()
+{
+  perform_stack_name=openldap
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=osixia/openldap:1.5.0,osixia/phpldapadmin:stable,wheelybird/ldap-user-manager:v1.11
+      image_update_map[0]="osixia/openldap:1.5.0,osixia/openldap:1.5.0"
+      image_update_map[1]="osixia/phpldapadmin:stable,osixia/phpldapadmin:stable"
+      image_update_map[2]="wheelybird/ldap-user-manager:v1.11,wheelybird/ldap-user-manager:v1.11"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Mailu
@@ -19558,6 +19616,65 @@ DOMAIN_BLACKLIST {
 }
 
 EOFRS
+}
+
+function performUpdateMailu()
+{
+  perform_stack_name=mailu
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0,ghcr.io/mailu/rspamd:2.0,ghcr.io/mailu/clamav:2.0,ghcr.io/mailu/fetchmail:2.0,ghcr.io/mailu/nginx:2.0,ghcr.io/mailu/dovecot:2.0,ghcr.io/mailu/oletools:2.0,ghcr.io/mailu/postfix:2.0,ghcr.io/mailu/unbound:2.0,ghcr.io/mailu/radicale:2.0,ghcr.io/mailu/webmail:2.0
+      image_update_map[0]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[1]="ghcr.io/mailu/admin:2.0,ghcr.io/mailu/admin:2.0.37"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2.0,ghcr.io/mailu/rspamd:2.0.37"
+      image_update_map[3]="ghcr.io/mailu/clamav:2.0,ghcr.io/mailu/clamav:2.0.37"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2.0,ghcr.io/mailu/fetchmail:2.0.37"
+      image_update_map[5]="ghcr.io/mailu/nginx:2.0,ghcr.io/mailu/nginx:2.0.37"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2.0,ghcr.io/mailu/dovecot:2.0.37"
+      image_update_map[7]="ghcr.io/mailu/oletools:2.0,ghcr.io/mailu/oletools:2.0.37"
+      image_update_map[8]="ghcr.io/mailu/postfix:2.0,ghcr.io/mailu/postfix:2.0.37"
+      image_update_map[9]="ghcr.io/mailu/unbound:2.0,ghcr.io/mailu/unbound:2.0.37"
+      image_update_map[10]="ghcr.io/mailu/radicale:2.0,ghcr.io/mailu/radicale:2.0.37"
+      image_update_map[11]="ghcr.io/mailu/webmail:2.0,ghcr.io/mailu/webmail:2.0.37"
+    ;;
+    2)
+      newVer=v2
+      curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0.37,ghcr.io/mailu/rspamd:2.0.37,ghcr.io/mailu/clamav:2.0.37,ghcr.io/mailu/fetchmail:2.0.37,ghcr.io/mailu/nginx:2.0.37,ghcr.io/mailu/dovecot:2.0.37,ghcr.io/mailu/oletools:2.0.37,ghcr.io/mailu/postfix:2.0.37,ghcr.io/mailu/unbound:2.0.37,ghcr.io/mailu/radicale:2.0.37,ghcr.io/mailu/webmail:2.0
+      image_update_map[0]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[1]="ghcr.io/mailu/admin:2.0.37,ghcr.io/mailu/admin:2.0.37"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2.0.37,ghcr.io/mailu/rspamd:2.0.37"
+      image_update_map[3]="ghcr.io/mailu/clamav:2.0.37,ghcr.io/mailu/clamav:2.0.37"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2.0.37,ghcr.io/mailu/fetchmail:2.0.37"
+      image_update_map[5]="ghcr.io/mailu/nginx:2.0.37,ghcr.io/mailu/nginx:2.0.37"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2.0.37,ghcr.io/mailu/dovecot:2.0.37"
+      image_update_map[7]="ghcr.io/mailu/oletools:2.0.37,ghcr.io/mailu/oletools:2.0.37"
+      image_update_map[8]="ghcr.io/mailu/postfix:2.0.37,ghcr.io/mailu/postfix:2.0.37"
+      image_update_map[9]="ghcr.io/mailu/unbound:2.0.37,ghcr.io/mailu/unbound:2.0.37"
+      image_update_map[10]="ghcr.io/mailu/radicale:2.0.37,ghcr.io/mailu/radicale:2.0.37"
+      image_update_map[11]="ghcr.io/mailu/webmail:2.0.37,ghcr.io/mailu/webmail:2.0.37"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 function addUserMailu()
@@ -20381,6 +20498,54 @@ hosts:
 EOFWZ
 }
 
+function performUpdateWazuh()
+{
+  perform_stack_name=wazuh
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=wazuh/wazuh-manager:4.6.0,wazuh/wazuh-indexer:4.6.0,wazuh/wazuh-dashboard:4.6.0
+      image_update_map[0]="wazuh/wazuh-manager:4.6.0,wazuh/wazuh-manager:4.7.2"
+      image_update_map[1]="wazuh/wazuh-indexer:4.6.0,wazuh/wazuh-indexer:4.7.2"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.6.0,wazuh/wazuh-dashboard:4.7.2"
+    ;;
+    2)
+      newVer=v3
+      curImageList=wazuh/wazuh-manager:4.7.1,wazuh/wazuh-indexer:4.7.1,wazuh/wazuh-dashboard:4.7.1
+      image_update_map[0]="wazuh/wazuh-manager:4.7.1,wazuh/wazuh-manager:4.7.2"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.1,wazuh/wazuh-indexer:4.7.2"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.1,wazuh/wazuh-dashboard:4.7.2"
+    ;;
+    3)
+      newVer=v3
+      curImageList=wazuh/wazuh-manager:4.7.2,wazuh/wazuh-indexer:4.7.2,wazuh/wazuh-dashboard:4.7.2
+      image_update_map[0]="wazuh/wazuh-manager:4.7.2,wazuh/wazuh-manager:4.7.2"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.2,wazuh/wazuh-indexer:4.7.2"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.2,wazuh/wazuh-dashboard:4.7.2"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Collabora
 function installCollabora()
 {
@@ -20462,6 +20627,48 @@ password=$COLLABORA_ADMIN_PASSWORD
 aliasgroup1=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN:443
 extra_params=--o:ssl.enable=false --o:ssl.termination=true --o:net.frame_ancestors=*
 EOFCO
+}
+
+function performUpdateCollabora()
+{
+  perform_stack_name=collabora
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=collabora/code:23.05.5.3.1
+      image_update_map[0]="collabora/code:23.05.5.3.1,collabora/code:23.05.8.2.1"
+    ;;
+    2)
+      newVer=v3
+      curImageList=collabora/code:23.05.6.4.1
+      image_update_map[0]="collabora/code:23.05.6.4.1,collabora/code:23.05.8.2.1"
+    ;;
+    3)
+      newVer=v3
+      curImageList=collabora/code:23.05.8.2.1
+      image_update_map[0]="collabora/code:23.05.8.2.1,collabora/code:23.05.8.2.1"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Nextcloud
@@ -21378,6 +21585,60 @@ REDIS_TLS_ENABLED=no
 EOFNC
 }
 
+function performUpdateNextcloud()
+{
+  perform_stack_name=nextcloud
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.3-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.23.2-alpine
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="nextcloud:27.1.3-fpm-alpine,nextcloud:27.1.6-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
+      image_update_map[4]="nginx:1.23.2-alpine,nginx:1.25.3-alpine"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.5-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.25.3-alpine
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="nextcloud:27.1.5-fpm-alpine,nextcloud:27.1.6-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
+      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.6-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.25.3-alpine
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="nextcloud:27.1.6-fpm-alpine,nextcloud:27.1.6-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
+      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Jitsi
 function installJitsi()
 {
@@ -21537,6 +21798,57 @@ JVB_STUN_SERVERS=none
 JVB_DISABLE_STUN=true
 EOFJT
 
+}
+
+function performUpdateJitsi()
+{
+  perform_stack_name=jitsi
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=jitsi/jicofo:stable-8719,jitsi/jvb:stable-8719,jitsi/prosody:stable-8719,jitsi/web:stable-8719
+      image_update_map[0]="jitsi/jicofo:stable-8719,jitsi/jicofo:stable-9220"
+      image_update_map[1]="jitsi/jvb:stable-8719,jitsi/jvb:stable-9220"
+      image_update_map[2]="jitsi/prosody:stable-8719,jitsi/prosody:stable-9220"
+      image_update_map[3]="jitsi/web:stable-8719,jitsi/web:stable-9220"
+    ;;
+    2)
+      newVer=v3
+      curImageList=jitsi/jicofo:stable-9111,jitsi/jvb:stable-9111,jitsi/prosody:stable-9111,jitsi/web:stable-9111
+      image_update_map[0]="jitsi/jicofo:stable-9111,jitsi/jicofo:stable-9220"
+      image_update_map[1]="jitsi/jvb:stable-9111,jitsi/jvb:stable-9220"
+      image_update_map[2]="jitsi/prosody:stable-9111,jitsi/prosody:stable-9220"
+      image_update_map[3]="jitsi/web:stable-9111,jitsi/web:stable-9220"
+    ;;
+    3)
+      newVer=v3
+      curImageList=jitsi/jicofo:stable-9220,jitsi/jvb:stable-9220,jitsi/prosody:stable-9220,jitsi/web:stable-9220
+      image_update_map[0]="jitsi/jicofo:stable-9220,jitsi/jicofo:stable-9220"
+      image_update_map[1]="jitsi/jvb:stable-9220,jitsi/jvb:stable-9220"
+      image_update_map[2]="jitsi/prosody:stable-9220,jitsi/prosody:stable-9220"
+      image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-9220"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Matrix
@@ -21961,6 +22273,57 @@ EOFJT
   outputMatrixElementJSONConfig "meet.element.io" $HSHQ_STACKS_DIR/matrix/element/element-public-config.json
 }
 
+function performUpdateMatrix()
+{
+  perform_stack_name=matrix
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.90.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.40
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="matrixdotorg/synapse:v1.90.0,matrixdotorg/synapse:v1.100.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[3]="vectorim/element-web:v1.11.40,vectorim/element-web:v1.11.57"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.98.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.52
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="matrixdotorg/synapse:v1.98.0,matrixdotorg/synapse:v1.100.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[3]="vectorim/element-web:v1.11.52,vectorim/element-web:v1.11.57"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.100.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.57
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="matrixdotorg/synapse:v1.100.0,matrixdotorg/synapse:v1.100.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[3]="vectorim/element-web:v1.11.57,vectorim/element-web:v1.11.57"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 function outputMatrixElementJSONConfig()
 {
   jitsi_url=$1
@@ -22237,6 +22600,39 @@ EOFWJ
 
 }
 
+function performUpdateWikijs()
+{
+  perform_stack_name=wikijs
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,requarks/wiki:2.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="requarks/wiki:2.5,requarks/wiki:2.5"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Duplicati
 function installDuplicati()
 {
@@ -22330,6 +22726,38 @@ EOFDP
 PUID=0
 PGID=0
 EOFDP
+}
+
+function performUpdateDuplicati()
+{
+  perform_stack_name=duplicati
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=linuxserver/duplicati:2.0.7
+      image_update_map[0]="linuxserver/duplicati:2.0.7,linuxserver/duplicati:2.0.7"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Mastodon
@@ -23149,6 +23577,60 @@ http {
 EOFMD
 }
 
+function performUpdateMastodon()
+{
+  perform_stack_name=mastodon
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.1.6,nginx:1.23.2-alpine,elasticsearch:8.8.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="tootsuite/mastodon:v4.1.6,tootsuite/mastodon:v4.2.3"
+      image_update_map[3]="nginx:1.23.2-alpine,nginx:1.25.3-alpine"
+      image_update_map[4]="elasticsearch:8.8.1,elasticsearch:8.12.0"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.3,nginx:1.25.3-alpine,elasticsearch:8.11.3
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="tootsuite/mastodon:v4.2.3,tootsuite/mastodon:v4.2.3"
+      image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+      image_update_map[4]="elasticsearch:8.11.3,elasticsearch:8.12.0"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.3,nginx:1.25.3-alpine,elasticsearch:8.12.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="tootsuite/mastodon:v4.2.3,tootsuite/mastodon:v4.2.3"
+      image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+      image_update_map[4]="elasticsearch:8.12.0,elasticsearch:8.12.0"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Dozzle
 function installDozzle()
 {
@@ -23246,7 +23728,7 @@ function performUpdateDozzle()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   # Stack status: 1=running, 2=stopped
-  stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
   unset image_update_map
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
@@ -23276,8 +23758,8 @@ function performUpdateDozzle()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken"
-  perform_update_report="${perform_update_report}\n$stack_upgrade_report"
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # SearxNG
@@ -23568,6 +24050,43 @@ EOFSE
 
 }
 
+function performUpdateSearxNG()
+{
+  perform_stack_name=searxng
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=searxng/searxng:2023.8.19-018b0a932
+      image_update_map[0]="searxng/searxng:2023.8.19-018b0a932,searxng/searxng:2023.12.29-27e26b3d6"
+    ;;
+    2)
+      newVer=v2
+      curImageList=searxng/searxng:2023.12.29-27e26b3d6
+      image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2023.12.29-27e26b3d6"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Jellyfin
 function installJellyfin()
 {
@@ -23697,6 +24216,43 @@ EOFLD
   chmod 644 $HOME/jellyfin-ldap.xml
 }
 
+function performUpdateJellyfin()
+{
+  perform_stack_name=jellyfin
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=jellyfin/jellyfin:10.8.10
+      image_update_map[0]="jellyfin/jellyfin:10.8.10,jellyfin/jellyfin:10.8.13"
+    ;;
+    2)
+      newVer=v2
+      curImageList=jellyfin/jellyfin:10.8.13
+      image_update_map[0]="jellyfin/jellyfin:10.8.13,jellyfin/jellyfin:10.8.13"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # FileBrowser
 function installFileBrowser()
 {
@@ -23791,6 +24347,48 @@ EOFJF
 }
 EOFJF
 
+}
+
+function performUpdateFileBrowser()
+{
+  perform_stack_name=filebrowser
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=filebrowser/filebrowser:v2.24.2
+      image_update_map[0]="filebrowser/filebrowser:v2.24.2,filebrowser/filebrowser:v2.27.0"
+    ;;
+    2)
+      newVer=v3
+      curImageList=filebrowser/filebrowser:v2.26.0
+      image_update_map[0]="filebrowser/filebrowser:v2.26.0,filebrowser/filebrowser:v2.27.0"
+    ;;
+    3)
+      newVer=v3
+      curImageList=filebrowser/filebrowser:v2.27.0
+      image_update_map[0]="filebrowser/filebrowser:v2.27.0,filebrowser/filebrowser:v2.27.0"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # PhotoPrism
@@ -24100,6 +24698,39 @@ EOFPP
 
 }
 
+function performUpdatePhotoPrism()
+{
+  perform_stack_name=photoprism
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=mariadb:10.7.3,photoprism/photoprism:220901-bullseye
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="photoprism/photoprism:220901-bullseye,photoprism/photoprism:220901-bullseye"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Guacamole
 function installGuacamole()
 {
@@ -24322,6 +24953,45 @@ MYSQL_USER=$GUACAMOLE_DATABASE_USER
 MYSQL_PASSWORD=$GUACAMOLE_DATABASE_USER_PASSWORD
 EOFGC
 
+}
+
+function performUpdateGuacamole()
+{
+  perform_stack_name=guacamole
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=guacamole/guacd:1.5.3,guacamole/guacamole:1.5.3
+      image_update_map[0]="guacamole/guacd:1.5.3,guacamole/guacd:1.5.4"
+      image_update_map[1]="guacamole/guacamole:1.5.3,guacamole/guacamole:1.5.4"
+    ;;
+    2)
+      newVer=v2
+      curImageList=guacamole/guacd:1.5.4,guacamole/guacamole:1.5.4
+      image_update_map[0]="guacamole/guacd:1.5.4,guacamole/guacd:1.5.4"
+      image_update_map[1]="guacamole/guacamole:1.5.4,guacamole/guacamole:1.5.4"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Authelia
@@ -24615,6 +25285,39 @@ EOFAC
   set -e
 }
 
+function performUpdateAuthelia()
+{
+  perform_stack_name=authelia
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
+      image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.37.5"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # WordPress
 function installWordPress()
 {
@@ -24773,6 +25476,45 @@ WORDPRESS_DB_NAME=$WORDPRESS_DATABASE_NAME
 WORDPRESS_DB_USER=$WORDPRESS_DATABASE_USER
 WORDPRESS_DB_PASSWORD=$WORDPRESS_DATABASE_USER_PASSWORD
 EOFWP
+}
+
+function performUpdateWordPress()
+{
+  perform_stack_name=wordpress
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=mariadb:10.7.3,wordpress:php8.2-apache
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="wordpress:php8.2-apache,wordpress:php8.3-apache"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mariadb:10.7.3,wordpress:php8.3-apache
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="wordpress:php8.3-apache,wordpress:php8.3-apache"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Ghost
@@ -24935,6 +25677,51 @@ database__connection__password=$GHOST_DATABASE_USER_PASSWORD
 url=https://$SUB_GHOST.$HOMESERVER_DOMAIN
 NODE_ENV=development
 EOFGW
+}
+
+function performUpdateGhost()
+{
+  perform_stack_name=ghost
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=mariadb:10.7.3,ghost:5.59.1-alpine
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="ghost:5.59.1-alpine,ghost:5.78.0-alpine"
+    ;;
+    2)
+      newVer=v3
+      curImageList=mariadb:10.7.3,ghost:5.75.2-alpine
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="ghost:5.75.2-alpine,ghost:5.78.0-alpine"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mariadb:10.7.3,ghost:5.78.0-alpine
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="ghost:5.78.0-alpine,ghost:5.78.0-alpine"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # PeerTube
@@ -25166,6 +25953,47 @@ echo "\$sqlcmd" | psql -U $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_NAME
 EOFPT
 
   chmod +x $HSHQ_STACKS_DIR/peertube/dbexport/setupLDAP.sh
+}
+
+function performUpdatePeerTube()
+{
+  perform_stack_name=peertube
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v5.2.0-bullseye,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="chocobozzz/peertube:v5.2.0-bullseye,chocobozzz/peertube:v6.0.2-bookworm"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    2)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v6.0.2-bookworm,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="chocobozzz/peertube:v6.0.2-bookworm,chocobozzz/peertube:v6.0.2-bookworm"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # HomeAssistant
@@ -25564,6 +26392,84 @@ influxdb:
 EOFHC
 }
 
+function performUpdateHomeAssistant()
+{
+  perform_stack_name=homeassistant
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2023.8,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="homeassistant/home-assistant:2023.8,homeassistant/home-assistant:2024.1.6"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" addCertsMountHASS false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.3,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="homeassistant/home-assistant:2024.1.3,homeassistant/home-assistant:2024.1.6"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" addCertsMountHASS false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.5,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="homeassistant/home-assistant:2024.1.5,homeassistant/home-assistant:2024.1.6"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.6,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="homeassistant/home-assistant:2024.1.6,homeassistant/home-assistant:2024.1.6"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function addCertsMountHASS()
+{
+  sudo grep "/etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro" $upgrade_compose_file > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    # Only do the first occurrence, which *should* be the home-assistant container.
+    sudo awk -i inplace '{print} /- \/usr\/local\/share\/ca-certificates:\/usr\/local\/share\/ca-certificates:ro/ && !n {print "      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro"; n++}' $upgrade_compose_file
+  fi
+}
+
 # Gitlab
 function installGitlab()
 {
@@ -25851,6 +26757,54 @@ echo "Gitlab Postconfigure Scirpt Completed"
 EOFGL
 }
 
+function performUpdateGitlab()
+{
+  perform_stack_name=gitlab
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.2.4-ce.0,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitlab/gitlab-ce:16.2.4-ce.0,gitlab/gitlab-ce:16.8.1-ce.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.7.0-ce.0,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitlab/gitlab-ce:16.7.0-ce.0,gitlab/gitlab-ce:16.8.1-ce.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.8.1-ce.0,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitlab/gitlab-ce:16.8.1-ce.0,gitlab/gitlab-ce:16.8.1-ce.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Vaultwarden
 function installVaultwarden()
 {
@@ -26044,6 +26998,54 @@ VAULTWARDEN_LDAP_SYNC_INTERVAL_SECONDS=300
 VAULTWARDEN_LDAP_SEARCH_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
 EOFVW
 
+}
+
+function performUpdateVaultwarden()
+{
+  perform_stack_name=vaultwarden
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,vaultwarden/server:1.29.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.29.1-alpine,vaultwarden/server:1.30.2-alpine"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.30.1-alpine,vaultwarden/server:1.30.2-alpine"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.2-alpine,thegeeklab/vaultwarden-ldap:0.6.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.30.2-alpine,vaultwarden/server:1.30.2-alpine"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Discourse
@@ -26299,6 +27301,54 @@ EOFDC
 
 }
 
+function performUpdateDiscourse()
+{
+  perform_stack_name=discourse
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/discourse:3.0.6,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/discourse:3.0.6,bitnami/discourse:3.1.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.3,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/discourse:3.1.3,bitnami/discourse:3.1.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.4,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/discourse:3.1.4,bitnami/discourse:3.1.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Syncthing
 function installSyncthing()
 {
@@ -26414,6 +27464,48 @@ STDATADIR=/var/syncthing/data
 STHOMEDIR=
 EOFST
 
+}
+
+function performUpdateSyncthing()
+{
+  perform_stack_name=syncthing
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=syncthing/syncthing:1.23.7
+      image_update_map[0]="syncthing/syncthing:1.23.7,syncthing/syncthing:1.27.2"
+    ;;
+    2)
+      newVer=v3
+      curImageList=syncthing/syncthing:1.27.1
+      image_update_map[0]="syncthing/syncthing:1.27.1,syncthing/syncthing:1.27.2"
+    ;;
+    3)
+      newVer=v3
+      curImageList=syncthing/syncthing:1.27.2
+      image_update_map[0]="syncthing/syncthing:1.27.2,syncthing/syncthing:1.27.2"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # CodeServer
@@ -26602,6 +27694,48 @@ EOFCS
 }
 EOFCS
 
+}
+
+function performUpdateCodeServer()
+{
+  perform_stack_name=codeserver
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=codercom/code-server:4.16.1
+      image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.20.1"
+    ;;
+    2)
+      newVer=v3
+      curImageList=codercom/code-server:4.20.0
+      image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.20.1"
+    ;;
+    3)
+      newVer=v3
+      curImageList=codercom/code-server:4.20.1
+      image_update_map[0]="codercom/code-server:4.20.1,codercom/code-server:4.20.1"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Shlink
@@ -26822,6 +27956,81 @@ EOFST
 EOFST
 }
 
+function performUpdateShlink()
+{
+  perform_stack_name=shlink
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.6.3,shlinkio/shlink-web-client:3.10.2,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:3.6.3,shlinkio/shlink:3.7.3"
+      image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.0"
+      image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" updateShlinkInternalWebUIPort false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.7.2,shlinkio/shlink-web-client:3.10.2,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:3.7.2,shlinkio/shlink:3.7.3"
+      image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.0"
+      image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" updateShlinkInternalWebUIPort false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.7.3,shlinkio/shlink-web-client:4.0.0,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:3.7.3,shlinkio/shlink:3.7.3"
+      image_update_map[2]="shlinkio/shlink-web-client:4.0.0,shlinkio/shlink-web-client:4.0.0"
+      image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function updateShlinkInternalWebUIPort()
+{
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://shlink-web:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SHLINK_WEB $MANAGETLS_SHLINK_WEB true $NETDEFAULT_SHLINK_WEB "$inner_block"
+}
+
 # Firefly
 function installFirefly()
 {
@@ -27027,6 +28236,54 @@ EOFFF
 
 }
 
+function performUpdateFirefly()
+{
+  perform_stack_name=firefly
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.0.20,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="fireflyiii/core:version-6.0.20,fireflyiii/core:version-6.1.7"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.1.1,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="fireflyiii/core:version-6.1.1,fireflyiii/core:version-6.1.7"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.1.7,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="fireflyiii/core:version-6.1.7,fireflyiii/core:version-6.1.7"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Excalidraw
 function installExcalidraw()
 {
@@ -27218,6 +28475,40 @@ SOCKET_SERVER_URL=https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN
 EOFEX
 }
 
+function performUpdateExcalidraw()
+{
+  perform_stack_name=excalidraw
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw
+      image_update_map[0]="excalidraw/excalidraw-room,excalidraw/excalidraw-room"
+      image_update_map[1]="kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw-storage-backend"
+      image_update_map[2]="kiliandeca/excalidraw,kiliandeca/excalidraw"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # DrawIO
 function installDrawIO()
 {
@@ -27353,6 +28644,47 @@ PLANTUML_URL=http://drawio-plantuml:8080/
 EXPORT_URL=http://drawio-export:8000/
 DRAWIO_BASE_URL=https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN
 EOFDI
+}
+
+function performUpdateDrawIO()
+{
+  perform_stack_name=drawio
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=jgraph/drawio:21.0.2,jgraph/plantuml-server,jgraph/export-server
+      image_update_map[0]="jgraph/drawio:21.0.2,jgraph/drawio:23.1.0"
+      image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
+      image_update_map[2]="jgraph/export-server,jgraph/export-server"
+    ;;
+    2)
+      newVer=v2
+      curImageList=jgraph/drawio:23.1.0,jgraph/plantuml-server,jgraph/export-server
+      image_update_map[0]="jgraph/drawio:23.1.0,jgraph/drawio:23.1.0"
+      image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
+      image_update_map[2]="jgraph/export-server,jgraph/export-server"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Invidious
@@ -27723,6 +29055,39 @@ GRANT ALL ON TABLE public.playlist_videos TO current_user;
 EOFIV
 }
 
+function performUpdateInvidious()
+{
+  perform_stack_name=invidious
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,quay.io/invidious/invidious
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="quay.io/invidious/invidious,quay.io/invidious/invidious"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Gitea
 function installGitea()
 {
@@ -27892,6 +29257,51 @@ GITEA__service__DISABLE_REGISTRATION=true
 GITEA__security__INSTALL_LOCK=true
 EOFGL
 
+}
+
+function performUpdateGitea()
+{
+  perform_stack_name=gitea
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,gitea/gitea:1.20.3
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitea/gitea:1.20.3,gitea/gitea:1.21.4"
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,gitea/gitea:1.21.3
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitea/gitea:1.21.3,gitea/gitea:1.21.4"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,gitea/gitea:1.21.4
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitea/gitea:1.21.4,gitea/gitea:1.21.4"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Mealie
@@ -28087,6 +29497,52 @@ EOFGL
 
 }
 
+function performUpdateMealie()
+{
+  perform_stack_name=mealie
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=hkotel/mealie:v0.5.6
+      image_update_map[0]="hkotel/mealie:v0.5.6,hkotel/mealie:v0.5.6"
+      perform_update_report="ERROR ($perform_stack_name): This version of Mealie cannot be upgraded to the next version. You must export your data/recipes from this instance, uninstall and reinstall mealie, then import your data/recipes into the new instance. See https://nightly.mealie.io/documentation/getting-started/migrating-to-mealie-v1/ for migration instructions."
+      return
+    ;;
+    2)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v1.0.0-RC2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.0.0-RC2,ghcr.io/mealie-recipes/mealie:v1.1.0"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v1.1.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.1.0,ghcr.io/mealie-recipes/mealie:v1.1.0"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Kasm
 function installKasm()
 {
@@ -28193,6 +29649,43 @@ EOFGL
 KASM_PORT=443
 EOFGL
 
+}
+
+function performUpdateKasm()
+{
+  perform_stack_name=kasm
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=lscr.io/linuxserver/kasm:1.13.0
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.13.0,lscr.io/linuxserver/kasm:1.14.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=lscr.io/linuxserver/kasm:1.14.0
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.14.0,lscr.io/linuxserver/kasm:1.14.0"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # NTFY
@@ -28646,6 +30139,43 @@ EOFNT
 
 }
 
+function performUpdateNTFY()
+{
+  perform_stack_name=ntfy
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=binwiederhier/ntfy:v2.7.0
+      image_update_map[0]="binwiederhier/ntfy:v2.7.0,binwiederhier/ntfy:v2.8.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=binwiederhier/ntfy:v2.8.0
+      image_update_map[0]="binwiederhier/ntfy:v2.8.0,binwiederhier/ntfy:v2.8.0"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ITTools
 function installITTools()
 {
@@ -28714,6 +30244,38 @@ UID=$USERID
 GID=$GROUPID
 EOFNT
 
+}
+
+function performUpdateITTools()
+{
+  perform_stack_name=ittools
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/corentinth/it-tools:latest
+      image_update_map[0]="ghcr.io/corentinth/it-tools:latest,ghcr.io/corentinth/it-tools:latest"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Remotely
@@ -28827,6 +30389,38 @@ EOFRM
 TZ=\${TZ}
 EOFRM
 
+}
+
+function performUpdateRemotely()
+{
+  perform_stack_name=remotely
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=immybot/remotely:69
+      image_update_map[0]="immybot/remotely:69,immybot/remotely:69"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Calibre
@@ -29006,6 +30600,45 @@ EOFPY
 
 }
 
+function performUpdateCalibre()
+{
+  perform_stack_name=calibre
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=linuxserver/calibre:7.3.0,linuxserver/calibre-web:0.6.21
+      image_update_map[0]="linuxserver/calibre:7.3.0,linuxserver/calibre:7.4.0"
+      image_update_map[1]="linuxserver/calibre-web:0.6.21,linuxserver/calibre-web:0.6.21"
+    ;;
+    2)
+      newVer=v2
+      curImageList=linuxserver/calibre:7.4.0,linuxserver/calibre-web:0.6.21
+      image_update_map[0]="linuxserver/calibre:7.4.0,linuxserver/calibre:7.4.0"
+      image_update_map[1]="linuxserver/calibre-web:0.6.21,linuxserver/calibre-web:0.6.21"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Netdata
 function installNetdata()
 {
@@ -29123,6 +30756,38 @@ UID=$USERID
 GID=$GROUPID
 EOFDZ
 
+}
+
+function performUpdateNetData()
+{
+  perform_stack_name=netdata
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=netdata/netdata:v1.44.1
+      image_update_map[0]="netdata/netdata:v1.44.1,netdata/netdata:v1.44.1"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Linkwarden
@@ -29278,6 +30943,39 @@ EOFDZ
 
 }
 
+function performUpdateLinkwarden()
+{
+  perform_stack_name=linkwarden
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.4.8
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.8,ghcr.io/linkwarden/linkwarden:v2.4.8"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # StirlingPDF
 function installStirlingPDF()
 {
@@ -29358,6 +31056,43 @@ UID=$USERID
 GID=$GROUPID
 EOFDZ
 
+}
+
+function performUpdateStirlingPDF()
+{
+  perform_stack_name=stirlingpdf
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=frooodle/s-pdf:0.19.0
+      image_update_map[0]="frooodle/s-pdf:0.19.0,frooodle/s-pdf:0.20.1"
+    ;;
+    2)
+      newVer=v2
+      curImageList=frooodle/s-pdf:0.20.1
+      image_update_map[0]="frooodle/s-pdf:0.20.1,frooodle/s-pdf:0.20.1"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # BarAssistant
@@ -29637,6 +31372,51 @@ EOFBA
 
 }
 
+function performUpdateBarAssistant()
+{
+  perform_stack_name=bar-assistant
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=barassistant/server:v3,getmeili/meilisearch:v1.4,bitnami/redis:7.0.5,barassistant/salt-rim:v2,nginx:1.25.3-alpine
+      image_update_map[0]="barassistant/server:v3,barassistant/server:v3"
+      image_update_map[1]="getmeili/meilisearch:v1.4,getmeili/meilisearch:v1.6"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[3]="barassistant/salt-rim:v2,barassistant/salt-rim:v2"
+      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+    ;;
+    2)
+      newVer=v2
+      curImageList=barassistant/server:v3,getmeili/meilisearch:v1.6,bitnami/redis:7.0.5,barassistant/salt-rim:v2,nginx:1.25.3-alpine
+      image_update_map[0]="barassistant/server:v3,barassistant/server:v3"
+      image_update_map[1]="getmeili/meilisearch:v1.6,getmeili/meilisearch:v1.6"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[3]="barassistant/salt-rim:v2,barassistant/salt-rim:v2"
+      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # FreshRSS
 function installFreshRSS()
 {
@@ -29837,6 +31617,39 @@ EOFBA
 
 }
 
+function performUpdateFreshRSS()
+{
+  perform_stack_name=freshrss
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,freshrss/freshrss:1.23.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="freshrss/freshrss:1.23.1,freshrss/freshrss:1.23.1"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Keila
 function installKeila()
 {
@@ -30015,6 +31828,45 @@ DISABLE_REGISTRATION=true
 USER_CONTENT_DIR=/uploads
 EOFBA
 
+}
+
+function performUpdateKeila()
+{
+  perform_stack_name=keila
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,pentacent/keila:0.13.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="pentacent/keila:0.13.1,pentacent/keila:0.14.0"
+    ;;
+    2)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,pentacent/keila:0.14.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="pentacent/keila:0.14.0,pentacent/keila:0.14.0"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Wallabag
@@ -30243,6 +32095,40 @@ echo "\$sqlcmd" | psql -U $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_NAME
 EOFPT
 
   chmod +x $HSHQ_STACKS_DIR/wallabag/dbexport/setupRedis.sh
+}
+
+function performUpdateWallabag()
+{
+  perform_stack_name=wallabag
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,wallabag/wallabag:2.6.8
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="wallabag/wallabag:2.6.8,wallabag/wallabag:2.6.8"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # SQLPad
@@ -30511,6 +32397,48 @@ SQLPAD_CONNECTIONS__wordpress__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__wordpress__idleTimeoutSeconds=900
 EOFSP
 
+}
+
+function performUpdateSQLPad()
+{
+  perform_stack_name=sqlpad
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v3
+      curImageList=sqlpad/sqlpad:7.1.2
+      image_update_map[0]="sqlpad/sqlpad:7.1.2,sqlpad/sqlpad:7.3.1"
+    ;;
+    2)
+      newVer=v3
+      curImageList=sqlpad/sqlpad:7.2.0
+      image_update_map[0]="sqlpad/sqlpad:7.2.0,sqlpad/sqlpad:7.3.1"
+    ;;
+    3)
+      newVer=v3
+      curImageList=sqlpad/sqlpad:7.3.1
+      image_update_map[0]="sqlpad/sqlpad:7.3.1,sqlpad/sqlpad:7.3.1"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # Heimdall
@@ -30981,6 +32909,38 @@ EOFHL
 
 }
 
+function performUpdateHeimdall()
+{
+  perform_stack_name=heimdall
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=linuxserver/heimdall:2.4.13
+      image_update_map[0]="linuxserver/heimdall:2.4.13,linuxserver/heimdall:2.4.13"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 function insertEnableSvcAll()
 {
   insertEnableSvcHeimdall "$1" "$2" "$3" "$4" "$5" true
@@ -31332,7 +33292,7 @@ function outputConfigCaddy()
   case "$net_type" in
     home)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX caddy $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
 version: '3.5'
 
 services:
@@ -31424,7 +33384,7 @@ EOFCF
     primary)
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX caddy $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
 version: '3.5'
 
 services:
@@ -31519,7 +33479,7 @@ import /config/CaddyfileBody
 EOFCF
       elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX caddy $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
 version: '3.5'
 
 services:
@@ -31603,7 +33563,7 @@ EOFCF
       ;;
     other)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX caddy $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
 version: '3.5'
 
 services:
@@ -31688,6 +33648,43 @@ CADDY_HSHQ_PRIVATE_IPS=\${HOMESERVER_HOST_RANGE} $(getPrivateIPRangesCaddy)
 CADDY_HSHQ_CA_URL=$ca_url
 EOFCE
 
+}
+
+function performUpdateCaddy()
+{
+  perform_stack_name=$2
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=caddy:2.7.4
+      image_update_map[0]="caddy:2.7.4,caddy:2.7.6"
+    ;;
+    2)
+      newVer=v2
+      curImageList=caddy:2.7.6
+      image_update_map[0]="caddy:2.7.6,caddy:2.7.6"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 function updateCaddyBlocks()
@@ -31950,6 +33947,39 @@ EOFCF
 
 }
 
+function performUpdateClientDNS()
+{
+  perform_stack_name=$2
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=jpillora/dnsmasq:1.1,linuxserver/wireguard:1.0.20210914
+      image_update_map[0]="jpillora/dnsmasq:1.1,jpillora/dnsmasq:1.1"
+      image_update_map[1]="linuxserver/wireguard:1.0.20210914,linuxserver/wireguard:1.0.20210914"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Ofelia
 function installOfelia()
 {
@@ -31995,6 +34025,43 @@ EOFOF
 TZ=\${TZ}
 EOFRM
 
+}
+
+function performUpdateOfelia()
+{
+  perform_stack_name=ofelia
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=mcuadros/ofelia:v0.3.7
+      image_update_map[0]="mcuadros/ofelia:v0.3.7,mcuadros/ofelia:v0.3.9"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mcuadros/ofelia:v0.3.9
+      image_update_map[0]="mcuadros/ofelia:v0.3.9,mcuadros/ofelia:v0.3.9"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # UptimeKuma
@@ -32088,6 +34155,43 @@ NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 PUID=$USERID
 PGID=$GROUPID
 EOFUK
+}
+
+function performUpdateUptimeKuma()
+{
+  perform_stack_name=uptimekuma
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=louislam/uptime-kuma:1.23.0-alpine
+      image_update_map[0]="louislam/uptime-kuma:1.23.0-alpine,louislam/uptime-kuma:1.23.11-alpine"
+    ;;
+    2)
+      newVer=v2
+      curImageList=louislam/uptime-kuma:1.23.11-alpine
+      image_update_map[0]="louislam/uptime-kuma:1.23.11-alpine,louislam/uptime-kuma:1.23.11-alpine"
+    ;;
+    *)
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 function insertServiceUptimeKuma()
