@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=29
+HSHQ_SCRIPT_VERSION=30
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -159,18 +159,6 @@ function main()
     mainMenuResult=$?
   done
   performExitFunctions
-}
-
-function checkWrapperVersion()
-{
-  set +e
-  curWrapV=$(sed -n 2p $HOME/hshq.sh | cut -d"=" -f2)
-  if ! [ -z "$curWrapV" ]; then
-    if [ $curWrapV -lt 5 ]; then
-      showMessageBox "Update Wrapper" "It appears you are using a deprecated version of the wrapper script. Please run the command: 'wget -q -N https://homeserverhq.com/hshq.sh' to obtain the latest version as soon as possible."
-    fi
-  fi
-  set -e
 }
 
 function showNotInstalledMenu()
@@ -439,6 +427,18 @@ EOF
       sudo $HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh $curcaddy
     fi
   done
+}
+
+function checkWrapperVersion()
+{
+  set +e
+  curWrapV=$(sed -n 2p $HOME/hshq.sh | cut -d"=" -f2)
+  if ! [ -z "$curWrapV" ]; then
+    if [ $curWrapV -lt 5 ]; then
+      showMessageBox "Update Wrapper" "It appears you are using a deprecated version of the wrapper script. Please run the command: 'wget -q -N https://homeserverhq.com/hshq.sh' to obtain the latest version as soon as possible."
+    fi
+  fi
+  set -e
 }
 
 function updateSysctl()
@@ -871,7 +871,7 @@ function initConfig()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       INT_DOMAIN_PREFIX="internal"
     else
-      INT_DOMAIN_PREFIX=$(promptUserInputMenu "internal" "Internal Domain Prefix" "Enter the prefix for your relay server to be reached internally (if applicable):")
+      INT_DOMAIN_PREFIX=$(promptUserInputMenu "internal" "Internal Domain Prefix" "Enter the prefix for your RelayServer to be reached internally (if applicable):")
     fi
 	if [ -z "$INT_DOMAIN_PREFIX" ]; then
 	  showMessageBox "Prefix Empty" "The Prefix cannot be empty"
@@ -1382,9 +1382,9 @@ EOF
   menures=$(whiptail --title "Select an option" --menu "$svcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Install Service(s) From List" \
   "2" "Install All Available Services" \
-  "3" "Update Service(s) From List (Not implemented)" \
-  "4" "Update All Available Services (Not implemented)" \
-  "5" "Remove Service" \
+  "3" "Update Service(s) From List" \
+  "4" "Update All Available Services" \
+  "5" "Remove Service(s) From List" \
   "6" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
@@ -1401,96 +1401,20 @@ EOF
       set +e
       return 1 ;;
     3)
-      #listStacksToUpdate
+      performStackUpdatesFromList
       set +e
       return 1 ;;
     4)
+      performAllAvailableStackUpdates
       set +e
       return 1 ;;
     5)
-      deleteStacks
+      deleteStacksFromList
       set +e
       return 1 ;;
     6)
 	  return 0 ;;
   esac
-}
-
-function listStacksToUpdate()
-{
-  set +e
-  menu_items=""
-  # Special case for portainer compose
-  check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/docker-compose.yml)
-  if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
-    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
-    if [ $? -eq 0 ]; then
-      check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
-      if [ $? -eq 0 ]; then
-        hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
-        if [ $? -eq 0 ]; then
-          if [ $check_stack_version -lt $hshq_stack_ver ]; then
-            menu_items=${menu_items}"$check_stack_name | OFF "
-          fi
-        fi
-      fi
-    fi
-  fi
-  dirList=($(sudo ls $HSHQ_STACKS_DIR/portainer/compose/))
-  for curDir in "${dirList[@]}"
-  do
-    check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/compose/$curDir/docker-compose.yml)
-    if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
-      continue
-    fi
-    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
-    if [ $? -ne 0 ]; then continue; fi
-    check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
-    if [ $? -ne 0 ]; then continue; fi
-    hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
-    if [ $? -ne 0 ]; then continue; fi
-    if [ $check_stack_version -lt $hshq_stack_ver ]; then
-      menu_items=${menu_items}"$check_stack_name | OFF "
-    fi
-    if [ $? -ne 0 ]; then continue; fi
-  done
-  if [ -z "$menu_items" ]; then
-    showMessageBox "No Available Updates" "All services are updated."
-    return
-  fi
-  selsvcsmenu=$(cat << EOF
-
-$hshqlogo
-
-Select the services that you wish to update:
-EOF
-  )
-  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
-  if [ -z $sel_svcs ]; then
-    showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
-    return 0
-  fi
-
-  showYesNoMessageBox "Confirm Updates" "This selected service(s) will be updated, Continue?"
-  if [ $? -ne 0 ]; then
-    return
-  fi
-  setSudoTimeoutInstall
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  full_update_report=""
-  full_update_report="${full_update_report}========================================\n"
-  full_update_report="${full_update_report}           Stack Update Report          \n"
-  full_update_report="${full_update_report}========================================\n"
-  set +e
-  for cur_svc in "${sel_svcs[@]}"
-  do
-    cur_update_stack_name=${cur_svc//\"}
-    echo "Updating ${cur_update_stack_name}..."
-    performUpdateStackByName ${cur_update_stack_name} "$portainerToken"
-    full_update_report="${full_update_report}\n$perform_update_report"
-  done
-  removeSudoTimeoutInstall
-  sendEmail -s "Stack Update Report" -b "$full_update_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function installStacksFromList()
@@ -1621,7 +1545,184 @@ function installAllAvailableStacks()
   removeSudoTimeoutInstall
 }
 
-function deleteStacks()
+function performStackUpdatesFromList()
+{
+  set +e
+  menu_items=""
+  # Special case for portainer compose
+  check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/docker-compose.yml)
+  if [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
+    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
+    if [ $? -eq 0 ]; then
+      check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
+      if [ $? -eq 0 ]; then
+        hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
+        if [ $? -eq 0 ]; then
+          if [ $check_stack_version -lt $hshq_stack_ver ]; then
+            menu_items=${menu_items}"$check_stack_name | OFF "
+          fi
+        fi
+      fi
+    fi
+  fi
+  dirList=($(sudo ls $HSHQ_STACKS_DIR/portainer/compose/))
+  for curDir in "${dirList[@]}"
+  do
+    check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/compose/$curDir/docker-compose.yml)
+    if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
+      continue
+    fi
+    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
+    if [ $? -ne 0 ]; then continue; fi
+    check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
+    if [ $? -ne 0 ]; then continue; fi
+    hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
+    if [ $? -ne 0 ]; then continue; fi
+    if [ $check_stack_version -lt $hshq_stack_ver ]; then
+      menu_items=${menu_items}"$check_stack_name | OFF "
+    fi
+    if [ $? -ne 0 ]; then continue; fi
+  done
+  if [ -z "$menu_items" ]; then
+    showMessageBox "No Available Updates" "All services are updated."
+    return
+  fi
+  selsvcsmenu=$(cat << EOF
+
+$hshqlogo
+
+Select the services that you wish to update:
+EOF
+  )
+  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  if [ -z $sel_svcs ]; then
+    showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
+    return 0
+  fi
+
+  showYesNoMessageBox "Confirm Updates" "This selected service(s) will be updated, Continue?"
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  setSudoTimeoutInstall
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  report_start_time=$(date)
+  full_update_report=""
+  full_update_report="${full_update_report}               Successful               \n"
+  full_update_report="${full_update_report}----------------------------------------"
+  upgrade_error_report="\n\n"
+  upgrade_error_report="${upgrade_error_report}                 Errors                 \n"
+  upgrade_error_report="${upgrade_error_report}----------------------------------------"
+  set +e
+  for cur_svc in "${sel_svcs[@]}"
+  do
+    unset is_upgrade_error
+    cur_update_stack_name=${cur_svc//\"}
+    echo "Updating ${cur_update_stack_name}..."
+    performUpdateStackByName ${cur_update_stack_name} "$portainerToken"
+    if [ "$is_upgrade_error" = "true" ]; then
+      upgrade_error_report="${upgrade_error_report}\n${cur_update_stack_name}: \n  - $perform_update_report\n"
+    else
+      full_update_report="${full_update_report}\n$perform_update_report"
+    fi
+  done
+  full_update_report="${full_update_report}\n${upgrade_error_report}"
+  removeSudoTimeoutInstall
+  report_end_time=$(date)
+  full_update_report_header=""
+  full_update_report_header="${full_update_report_header}========================================\n"
+  full_update_report_header="${full_update_report_header}        Services Upgrade Report         \n"
+  full_update_report_header="${full_update_report_header}========================================\n"
+  full_update_report_header="${full_update_report_header}Start Time: $report_start_time\n"
+  full_update_report_header="${full_update_report_header}  End Time: $report_end_time\n\n"
+  sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+}
+
+function performAllAvailableStackUpdates()
+{
+  set +e
+  stacksToUpdate=""
+  # Special case for portainer compose
+  check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/docker-compose.yml)
+  if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
+    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
+    if [ $? -eq 0 ]; then
+      check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
+      if [ $? -eq 0 ]; then
+        hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
+        if [ $? -eq 0 ]; then
+          if [ $check_stack_version -lt $hshq_stack_ver ]; then
+            stacksToUpdate=${stacksToUpdate}"${check_stack_name},"
+          fi
+        fi
+      fi
+    fi
+  fi
+  dirList=($(sudo ls $HSHQ_STACKS_DIR/portainer/compose/))
+  for curDir in "${dirList[@]}"
+  do
+    check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/compose/$curDir/docker-compose.yml)
+    if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
+      continue
+    fi
+    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
+    if [ $? -ne 0 ]; then continue; fi
+    check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
+    if [ $? -ne 0 ]; then continue; fi
+    hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
+    if [ $? -ne 0 ]; then continue; fi
+    if [ $check_stack_version -lt $hshq_stack_ver ]; then
+      stacksToUpdate=${stacksToUpdate}"${check_stack_name},"
+    fi
+    if [ $? -ne 0 ]; then continue; fi
+  done
+  if [ -z "$stacksToUpdate" ]; then
+    showMessageBox "No Available Updates" "All services are updated."
+    return
+  fi
+  showYesNoMessageBox "Confirm Updates" "All available stacks will be updated, Continue?"
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  setSudoTimeoutInstall
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  report_start_time=$(date)
+  full_update_report=""
+  full_update_report="${full_update_report}               Successful               \n"
+  full_update_report="${full_update_report}----------------------------------------"
+  upgrade_error_report="\n\n"
+  upgrade_error_report="${upgrade_error_report}                 Errors                 \n"
+  upgrade_error_report="${upgrade_error_report}----------------------------------------"
+  set +e
+  unset stackListArr
+  stackListArr=($(echo $stacksToUpdate | tr "," "\n"))
+  for cur_update_stack_name in "${stackListArr[@]}"
+  do
+    if [ -z "$cur_update_stack_name" ]; then
+      continue
+    fi
+    unset is_upgrade_error
+    echo "Updating ${cur_update_stack_name}..."
+    performUpdateStackByName ${cur_update_stack_name} "$portainerToken"
+    if [ "$is_upgrade_error" = "true" ]; then
+      upgrade_error_report="${upgrade_error_report}\n${cur_update_stack_name^}: \n  - $perform_update_report\n"
+    else
+      full_update_report="${full_update_report}\n$perform_update_report"
+    fi
+  done
+  full_update_report="${full_update_report}\n$upgrade_error_report"
+  removeSudoTimeoutInstall
+  report_end_time=$(date)
+  full_update_report_header=""
+  full_update_report_header="${full_update_report_header}========================================\n"
+  full_update_report_header="${full_update_report_header}        Services Upgrade Report         \n"
+  full_update_report_header="${full_update_report_header}========================================\n"
+  full_update_report_header="${full_update_report_header}Start Time: $report_start_time\n"
+  full_update_report_header="${full_update_report_header}  End Time: $report_end_time\n\n"
+  sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+}
+
+function deleteStacksFromList()
 {
   stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
   menu_items=""
@@ -2150,16 +2251,16 @@ EOFCF
 function transferHostedVPN()
 {
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "Invalid Selection" "You are not hosting a relay server, returning..."
+    showMessageBox "Invalid Selection" "You are not hosting a RelayServer, returning..."
     return
   fi
   set +e
-  is_transfer=$(promptUserInputMenu "" "Transfer Relay Server" "If you wish to transfer your relay server, enter the word 'transfer' below:")
+  is_transfer=$(promptUserInputMenu "" "Transfer Relay Server" "If you wish to transfer your RelayServer, enter the word 'transfer' below:")
   if ! [ $is_transfer = "transfer" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return 0
   fi
-  # Pause syncthing relay server
+  # Pause syncthing RelayServer
   jsonbody="{\"paused\": true}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   uploadVPNInstallScripts true
@@ -2168,7 +2269,7 @@ function transferHostedVPN()
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/rsbackup.tar.gz $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   unloadSSHKey
   sudo rm -f $HOME/rsbackup.tar.gz
-  showMessageBox "Upload Success" "The scripts and data have been uploaded to the relay server host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. Press okay to begin monitoring for a successful connection transfer."
+  showMessageBox "Upload Success" "The scripts and data have been uploaded to the RelayServer host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. Press okay to begin monitoring for a successful connection transfer."
   set +e
   totalTries=720
   numTries=1
@@ -2200,7 +2301,7 @@ function transferHostedVPN()
   if [ "$isMatchWG" = "true" ] && [ "$isMatchRS" = "true" ]; then
     echo "External IP updated successfully!"
   else
-    echo "The relay server IP does not match."
+    echo "The RelayServer IP does not match."
   fi
   echo "Updating endpoint IP addresses..."
   sudo $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
@@ -2214,21 +2315,21 @@ function transferHostedVPN()
       isMatch=true
       break
     fi
-    echo "($numTries/$totalTries)Could not ping relay server. Trying again in $sleepSeconds seconds..."
+    echo "($numTries/$totalTries)Could not ping RelayServer. Trying again in $sleepSeconds seconds..."
     sleep $sleepSeconds
     ((numTries++))
   done
   if [ "$isMatch" = "true" ]; then
     echo "Successfully connected to Relay Server!"
   else
-    echo "Unable to ping relay server."
+    echo "Unable to ping RelayServer."
   fi
-  # Resume syncthing relay server
+  # Resume syncthing RelayServer
   jsonbody="{\"paused\": false}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   docker container restart syncthing
   loadSSHKey
-  echo "Test login to new relay server: $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
+  echo "Test login to new RelayServer: $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
   ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successful! IP Address is: $(curl --silent https://api.ipify.org)'
   unloadSSHKey
   notifyMyNetworkTransferRelayServer "$RELAYSERVER_SERVER_IP"
@@ -5561,7 +5662,7 @@ function uploadVPNInstallScripts()
       done
       RELAYSERVER_REMOTE_USERNAME=$nonroot_username
     elif [ "$isTransfer" = "true" ] && ! [ "$RELAYSERVER_REMOTE_USERNAME" = "$trUsername" ]; then
-      showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the relay server."
+      showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the RelayServer."
       continue
     fi
     tmp_pw1=1
@@ -5868,7 +5969,7 @@ function resetRelayServerData()
 function createOrJoinPrimaryVPN()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    is_remove=$(promptUserInputMenu "" "Existing Relay Server" "There is already a relay server set up. If you wish to remove all connections/data, enter the word 'remove' below:")
+    is_remove=$(promptUserInputMenu "" "Existing Relay Server" "There is already a RelayServer set up. If you wish to remove all connections/data, enter the word 'remove' below:")
     if ! [ "$is_remove" = "remove" ]; then
       showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
       return 0
@@ -5898,7 +5999,7 @@ EOF
         RELAYSERVER_IS_INIT=true
         updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
         rs_wg_user_conf=$(sudo cat $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf)
-        email_msg="Your new relay server has been configured, please update your settings in the mailu stack environment variables: \n\nRELAYHOST=$SMTP_RELAY_HOST\nRELAYUSER=$SMTP_RELAY_USERNAME\nRELAYPASSWORD=$SMTP_RELAY_PASSWORD\n\nUser Connection Info:\n\n================ WireGuard Configuration ================\n${rs_wg_user_conf}\n=======================================================\n"
+        email_msg="Your new RelayServer has been configured, please update your settings in the mailu stack environment variables: \n\nRELAYHOST=$SMTP_RELAY_HOST\nRELAYUSER=$SMTP_RELAY_USERNAME\nRELAYPASSWORD=$SMTP_RELAY_PASSWORD\n\nUser Connection Info:\n\n================ WireGuard Configuration ================\n${rs_wg_user_conf}\n=======================================================\n"
         sendEmail -s "New Relay Server" -b "$email_msg" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
         clear
         echo -e "\n\n============= User WireGuard Configuration ============\n"
@@ -5934,9 +6035,9 @@ EOF
         RELAYSERVER_IS_INIT=true
         updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
         connectPrimaryVPN
-        email_msg="Your joined relay server has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\nAlso, please update your settings in the mailu stack environment variables: \n\nRELAYHOST=$SMTP_RELAY_HOST\nRELAYUSER=$SMTP_RELAY_USERNAME\nRELAYPASSWORD=$SMTP_RELAY_PASSWORD\n\n"
+        email_msg="Your joined RelayServer has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\nAlso, please update your settings in the mailu stack environment variables: \n\nRELAYHOST=$SMTP_RELAY_HOST\nRELAYUSER=$SMTP_RELAY_USERNAME\nRELAYPASSWORD=$SMTP_RELAY_PASSWORD\n\n"
         sendEmail -s "New Relay Server" -b "$email_msg" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
-        showMessageBox "Joined Relay Server" "The relay server has been joined. Check your email ($EMAIL_ADMIN_EMAIL_ADDRESS) for further details."
+        showMessageBox "Joined Relay Server" "The RelayServer has been joined. Check your email ($EMAIL_ADMIN_EMAIL_ADDRESS) for further details."
         ;;
       3)
         return ;;
@@ -5955,7 +6056,7 @@ function showRemovePrimaryVPN()
     set +e
     removeMyNetworkPrimaryVPN
   else
-    showMessageBox "Invalid Selection" "You are not currently connected to a relay server, returning..."
+    showMessageBox "Invalid Selection" "You are not currently connected to a RelayServer, returning..."
   fi
 }
 
@@ -5979,7 +6080,7 @@ EOF
   case $menures in
     1)
       if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-        showMessageBox "No Relay Server" "You are not hosting a relay server, returning..."
+        showMessageBox "No Relay Server" "You are not hosting a RelayServer, returning..."
         return
       fi
       showMyNetworkMenu ;;
@@ -6669,7 +6770,7 @@ function createOtherNetworkApplyHomeServerVPNConfig()
     echo -e "\n########################################\n"
     echo -e "$msg_body"
     echo -e "########################################\n"
-    echo -e "Copy the above section and submit it to your relay server administrator."
+    echo -e "Copy the above section and submit it to your RelayServer administrator."
   else
     msg_header="Forward this email to the manager of the network to which you are applying.\n\n"
     msg_header=${msg_header}"For the receiving manager: \n"
@@ -8568,6 +8669,13 @@ function restartStackIfRunning()
   stackName=$1
   waitTime=$2
   portainerToken=$3
+  if [ "$stackName" = "portainer" ]; then
+    # Special case for portainer
+    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
+    sleep $waitTime
+    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+    return
+  fi
   if [ -z "$portainerToken" ]; then
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
@@ -9108,7 +9216,7 @@ function getAdguardCredentialsRS()
 function resetCaddyDataRelayServer()
 {
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "No Relay Server" "You do not have a relay server setup, exiting..."
+    showMessageBox "No Relay Server" "You do not have a RelayServer setup, exiting..."
     return
   fi
   loadSSHKey
@@ -9131,7 +9239,7 @@ function getVPNIPFromHostname()
 function addDomainsToRelayServer()
 {
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "No Relay Server" "You do not have a relay server setup, exiting..."
+    showMessageBox "No Relay Server" "You do not have a RelayServer setup, exiting..."
     return
   fi
   set +e
@@ -9209,7 +9317,7 @@ EOF
 function removeDomainsFromRelayServer()
 {
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "No Relay Server" "You do not have a relay server setup, exiting..."
+    showMessageBox "No Relay Server" "You do not have a RelayServer setup, exiting..."
     return
   fi
   set +e
@@ -9231,7 +9339,7 @@ EOF
     menu_items=${menu_items}"$(echo $(echo $curdom | sed 's/|/(/1')")") | OFF "
   done
   sel_doms=($(whiptail --title "Select Domains" --checklist "$rem_menu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains ($domains_to_remove) from the relay server. To confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains ($domains_to_remove) from the RelayServer. To confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -9320,8 +9428,12 @@ function addLECertPathToRelayServer()
 {
   subdoms_le=$1
   base_domain=$2
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
+    sendEmail -s "Add LetsEncrypt Domain" -b "If you have not done so already, you need to contact your RelayServer administrator and ask them to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    return
+  fi
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    sendEmail -s "Add LetsEncrypt Domain" -b "If you have not done so already, you need to contact your relay server administrator and ask them to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     return
   fi
   loadSSHKey
@@ -9337,7 +9449,7 @@ function addLECertPathToRelayServer()
 function showEmailMyNetworkHomeServerDNSListMenu()
 {
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "No Relay Server" "You are not hosting a relay server, returning..."
+    showMessageBox "No Relay Server" "You are not hosting a RelayServer, returning..."
     return
   fi
   hs_email_subj="(MGR COPY)HomeServer DNS Update from $HOMESERVER_NAME"
@@ -9349,7 +9461,7 @@ function showEmailMyNetworkHomeServerDNSListMenu()
 function showEmailMyNetworkHomeServerDNSListClientDNSMenu()
 {
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    showMessageBox "No Relay Server" "You are not hosting a relay server, returning..."
+    showMessageBox "No Relay Server" "You are not hosting a RelayServer, returning..."
     return
   fi
   users_email_subj="(MGR COPY)HomeServer Client DNS Update from $HOMESERVER_NAME"
@@ -13335,13 +13447,14 @@ function upgradeStack()
   # arrays as arguments in bash is a headache.
 
   comp_stack_name=$1
-  old_ver=$2
-  new_ver=$3
-  cur_img_list=$4
-  upgrade_compose_file=$5
-  portainerToken="$6"
-  stackModFunction=$7
-  isReinstallStack=$8
+  comp_stack_id=$2
+  old_ver=$3
+  new_ver=$4
+  cur_img_list=$5
+  upgrade_compose_file=$6
+  portainerToken="$7"
+  stackModFunction=$8
+  isReinstallStack=$9
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
@@ -13372,14 +13485,24 @@ function upgradeStack()
   done
   sudo sed -i "1s|.*|$STACK_VERSION_PREFIX $comp_stack_name $new_ver|" $upgrade_compose_file
   $stackModFunction
-  if [ "$isReinstallStack" = "true" ]; then
-    # Need to fix this
-    restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+  if [ "$isStartStackFromStopped" = "true" ]; then
+    unset isStartStackFromStopped
+    startStopStack $comp_stack_name start "$portainerToken"
   else
-    restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+    if [ "$isReinstallStack" = "true" ]; then
+      # This is still untested. It is not used by anything yet, but when it does, ensure to test.
+      sudo cp $upgrade_compose_file $HOME/${comp_stack_name}-compose.yml
+      sudo cp $HSHQ_STACKS_DIR/portainer/compose/$comp_stack_id/stack.env $HOME/${comp_stack_name}.env
+      sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}-compose.yml
+      sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}.env
+      updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env "$portainerToken"
+      rm -f $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env
+    else
+      restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+    fi
   fi
   removeImageCSVList "$rm_image_list"
-  stack_upgrade_report="$comp_stack_name: Successfully updated from $old_ver to $new_ver"
+  stack_upgrade_report="$comp_stack_name: Successfully upgraded from $old_ver to $new_ver"
 }
 
 function doNothing()
@@ -13401,7 +13524,7 @@ function loadPinnedDockerImages()
   IMG_COLLABORA=collabora/code:23.05.8.2.1
   IMG_DISCOURSE=bitnami/discourse:3.1.4
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v6.0.8
+  IMG_DOZZLE=amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
   IMG_DRAWIO_WEB=jgraph/drawio:23.1.0
@@ -13526,7 +13649,7 @@ function getScriptStackVersion()
     mastodon)
       echo "v3" ;;
     dozzle)
-      echo "v3" ;;
+      echo "v4" ;;
     searxng)
       echo "v2" ;;
     jellyfin)
@@ -13601,9 +13724,9 @@ function getScriptStackVersion()
       echo "v2" ;;
     sqlpad)
       echo "v3" ;;
-    caddy)
+    caddy-*)
       echo "v2" ;;
-    clientdns)
+    clientdns-*)
       echo "v1" ;;
     uptimekuma)
       echo "v2" ;;
@@ -15594,6 +15717,46 @@ EOFPC
   chmod 600 $HSHQ_STACKS_DIR/portainer/portainer.env
 }
 
+function performUpdatePortainer()
+{
+  # This is a special case and has not been tested. Ensure to test on next image release.
+
+  perform_stack_name=portainer
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v2
+      curImageList=portainer/portainer-ce:2.19.3-alpine
+      image_update_map[0]="portainer/portainer-ce:2.19.3-alpine,portainer/portainer-ce:2.19.4-alpine"
+    ;;
+    2)
+      newVer=v2
+      curImageList=portainer/portainer-ce:2.19.4-alpine
+      image_update_map[0]="portainer/portainer-ce:2.19.4-alpine,portainer/portainer-ce:2.19.4-alpine"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Adguard
 function installAdGuard()
 {
@@ -15952,11 +16115,12 @@ function performUpdateAdGuard()
       image_update_map[0]="adguard/adguardhome:v0.107.43,adguard/adguardhome:v0.107.43"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -18697,6 +18861,9 @@ function performUpdateSysUtils()
       image_update_map[1]="prom/prometheus:v2.46.0,prom/prometheus:v2.49.1"
       image_update_map[2]="prom/node-exporter:v1.6.1,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.1-alpine,influxdb:2.7.5-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     2)
       newVer=v3
@@ -18705,6 +18872,9 @@ function performUpdateSysUtils()
       image_update_map[1]="prom/prometheus:v2.48.1,prom/prometheus:v2.49.1"
       image_update_map[2]="prom/node-exporter:v1.7.0,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.4-alpine,influxdb:2.7.5-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     3)
       newVer=v3
@@ -18715,12 +18885,172 @@ function performUpdateSysUtils()
       image_update_map[3]="influxdb:2.7.5-alpine,influxdb:2.7.5-alpine"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfAddPrometheusWeb()
+{
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://prometheus:9090 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PROMETHEUS $MANAGETLS_PROMETHEUS true $NETDEFAULT_PROMETHEUS "$inner_block"
+  insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png"
+  restartAllCaddyContainers
+  grep "job_name: docker" $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    tee -a $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml >/dev/null <<EOFPR
+  - job_name: docker
+    static_configs:
+      - targets: ["host.docker.internal:$DOCKER_METRICS_PORT"]
+EOFPR
+  fi
+
+  cat <<EOFGF > $HOME/sysutils-compose.yml
+$STACK_VERSION_PREFIX sysutils $(getScriptStackVersion sysutils)
+version: '3.5'
+
+services:
+  grafana:
+    image: $(getScriptImageByContainerName grafana)
+    container_name: grafana
+    hostname: grafana
+    user: \${UID}
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-sysutils-grafana:/var/lib/grafana
+
+  prometheus:
+    image: $(getScriptImageByContainerName prometheus)
+    container_name: prometheus
+    hostname: prometheus
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - int-sysutils-net
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
+      - v-sysutils-prometheus:/prometheus
+      
+  node-exporter:
+    image: $(getScriptImageByContainerName node-exporter)
+    container_name: node-exporter
+    hostname: node-exporter
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    user: "0:0"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|var/lib/docker/(containers|devicemapper|volumes)/.+)(\$\$|/)'
+    networks:
+      - int-sysutils-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  influxdb:
+    image: $(getScriptImageByContainerName influxdb)
+    container_name: influxdb
+    hostname: influxdb
+    user: "\${UID}"
+    restart: unless-stopped
+    env_file: stack.env
+    command:
+      - '--reporting-disabled'
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_SSL_DIR}/influxdb.crt:/certs/influxdb.crt
+      - \${HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
+      - \${HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
+      - \${HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
+
+volumes:
+  v-sysutils-grafana:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/sysutils/grafana
+  v-sysutils-prometheus:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+  int-sysutils-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFGF
+
+  # Too many edits to the compose file, just replace the whole darn thing...
+  chmod 600 $HOME/sysutils-compose.yml
+  sudo chown root:root $HOME/sysutils-compose.yml
+  sudo mv $HOME/sysutils-compose.yml $upgrade_compose_file
 }
 
 # OpenLDAP
@@ -19149,11 +19479,12 @@ function performUpdateOpenLDAP()
       image_update_map[2]="wheelybird/ldap-user-manager:v1.11,wheelybird/ldap-user-manager:v1.11"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -19669,11 +20000,12 @@ function performUpdateMailu()
       image_update_map[11]="ghcr.io/mailu/webmail:2.0.37,ghcr.io/mailu/webmail:2.0.37"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -20538,11 +20870,12 @@ function performUpdateWazuh()
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.2,wazuh/wazuh-dashboard:4.7.2"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -20663,11 +20996,12 @@ function performUpdateCollabora()
       image_update_map[0]="collabora/code:23.05.8.2.1,collabora/code:23.05.8.2.1"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -21631,11 +21965,12 @@ function performUpdateNextcloud()
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -21843,11 +22178,12 @@ function performUpdateJitsi()
       image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-9220"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -22316,11 +22652,12 @@ function performUpdateMatrix()
       image_update_map[3]="vectorim/element-web:v1.11.57,vectorim/element-web:v1.11.57"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -22625,11 +22962,12 @@ function performUpdateWikijs()
       image_update_map[1]="requarks/wiki:2.5,requarks/wiki:2.5"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -22752,11 +23090,12 @@ function performUpdateDuplicati()
       image_update_map[0]="linuxserver/duplicati:2.0.7,linuxserver/duplicati:2.0.7"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -23590,7 +23929,7 @@ function performUpdateMastodon()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
   unset image_update_map
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
@@ -23623,12 +23962,25 @@ function performUpdateMastodon()
       image_update_map[4]="elasticsearch:8.12.0,elasticsearch:8.12.0"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfClearStaticAssetsMastodon()
+{
+  if [ "$stackStatus" = "1" ];then
+    # Stack is running, stop it, remove the assets
+    startStopStack mastodon stop "$portainerToken"
+    isStartStackFromStopped=true
+    sleep 3
+  fi
+  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
+  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
 }
 
 # Dozzle
@@ -23750,15 +24102,16 @@ function performUpdateDozzle()
     ;;
     4)
       newVer=v4
-      curImageList=amir20/dozzle:v5.8.1
+      curImageList=amir20/dozzle:v6.1.1
       image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.1.1"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -24079,11 +24432,12 @@ function performUpdateSearxNG()
       image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2023.12.29-27e26b3d6"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -24245,11 +24599,12 @@ function performUpdateJellyfin()
       image_update_map[0]="jellyfin/jellyfin:10.8.13,jellyfin/jellyfin:10.8.13"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -24383,11 +24738,12 @@ function performUpdateFileBrowser()
       image_update_map[0]="filebrowser/filebrowser:v2.27.0,filebrowser/filebrowser:v2.27.0"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -24723,11 +25079,12 @@ function performUpdatePhotoPrism()
       image_update_map[1]="photoprism/photoprism:220901-bullseye,photoprism/photoprism:220901-bullseye"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -24986,11 +25343,12 @@ function performUpdateGuacamole()
       image_update_map[1]="guacamole/guacamole:1.5.4,guacamole/guacamole:1.5.4"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -25310,11 +25668,12 @@ function performUpdateAuthelia()
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -25509,11 +25868,12 @@ function performUpdateWordPress()
       image_update_map[1]="wordpress:php8.3-apache,wordpress:php8.3-apache"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -25716,11 +26076,12 @@ function performUpdateGhost()
       image_update_map[1]="ghost:5.78.0-alpine,ghost:5.78.0-alpine"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -25988,11 +26349,12 @@ function performUpdatePeerTube()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -26390,6 +26752,7 @@ influxdb:
   bucket: "$INFLUXDB_HA_BUCKET"
 
 EOFHC
+
 }
 
 function performUpdateHomeAssistant()
@@ -26418,7 +26781,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
-      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" addCertsMountHASS false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -26430,7 +26793,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
-      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" addCertsMountHASS false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -26453,21 +26816,254 @@ function performUpdateHomeAssistant()
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function addCertsMountHASS()
+function mfV4UpdateHASS()
 {
-  sudo grep "/etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro" $upgrade_compose_file > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    # Only do the first occurrence, which *should* be the home-assistant container.
-    sudo awk -i inplace '{print} /- \/usr\/local\/share\/ca-certificates:\/usr\/local\/share\/ca-certificates:ro/ && !n {print "      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro"; n++}' $upgrade_compose_file
-  fi
+  # Replace the config and compose files...
+  # Typically, we would be more surgical with the changes,
+  # but in this case, the amount of users affected is minimal.
+  cat <<EOFHC > $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml
+
+default_config:
+
+homeassistant:
+  time_zone: $TZ
+  external_url: "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN"
+  internal_url: "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN"
+  country: US
+
+frontend:
+  themes: !include_dir_merge_named themes
+
+tts:
+  - platform: picotts
+    language: 'en-US'
+
+notify:
+  - name: "LOCAL_SMTP"
+    platform: smtp
+    server: "$SUB_POSTFIX.$HOMESERVER_DOMAIN"
+    port: 25
+    timeout: 15
+    sender: "$EMAIL_SMTP_EMAIL_ADDRESS"
+    encryption: starttls
+    verify_ssl: false
+    recipient:
+      - "$EMAIL_ADMIN_EMAIL_ADDRESS"
+    sender_name: "HomeAssistant HSHQ Admin"
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+  ip_ban_enabled: true
+  login_attempts_threshold: 5
+  server_host: 0.0.0.0
+  server_port: $HOMEASSISTANT_LOCALHOST_PORT
+  ssl_certificate: /certs/homeassistant-app.crt
+  ssl_key: /certs/homeassistant-app.key
+
+panel_iframe:
+  nodered:
+    title: "Node Red"
+    url: "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN"
+    icon: mdi:file-tree
+  configurator:
+    title: "Configurator"
+    icon: mdi:wrench
+    url: "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN"
+    require_admin: true
+  tasmoadmin:
+    title: "TasmoAdmin"
+    url: "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
+    icon: mdi:home-automation
+
+recorder:
+  db_url: postgresql://$HOMEASSISTANT_DATABASE_USER:$HOMEASSISTANT_DATABASE_USER_PASSWORD@localhost:$HOMEASSISTANT_DB_LOCALHOST_PORT/$HOMEASSISTANT_DATABASE_NAME
+
+influxdb:
+  api_version: 2
+  ssl: true
+  host: $SUB_INFLUXDB.$HOMESERVER_DOMAIN
+  port: 443
+  verify_ssl: true
+  ssl_ca_cert: /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+  token: "$INFLUXDB_TOKEN"
+  organization: "$INFLUXDB_ORG"
+  bucket: "$INFLUXDB_HA_BUCKET"
+
+EOFHC
+
+  cat <<EOFHA > $HOME/homeassistant-compose.yml
+$STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
+version: '3.5'
+
+services:
+  homeassistant-db:
+    image: $(getScriptImageByContainerName homeassistant-db)
+    container_name: homeassistant-db
+    hostname: homeassistant-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - dock-privateip-net
+      - dock-dbs-net
+    ports:
+      - $HOMEASSISTANT_DB_LOCALHOST_PORT:5432
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/homeassistant/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/homeassistant/dbexport:/dbexport
+    environment:
+      - POSTGRES_DB=$HOMEASSISTANT_DATABASE_NAME
+      - POSTGRES_USER=$HOMEASSISTANT_DATABASE_USER
+      - POSTGRES_PASSWORD=$HOMEASSISTANT_DATABASE_USER_PASSWORD
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.homeassistant-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.homeassistant-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.homeassistant-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.homeassistant-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.homeassistant-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.homeassistant-hourly-db.email-from=Home Assistant Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.homeassistant-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.homeassistant-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.homeassistant-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.homeassistant-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.homeassistant-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.homeassistant-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.homeassistant-monthly-db.email-from=Home Assistant Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.homeassistant-monthly-db.mail-only-on-error=false"
+
+  homeassistant-app:
+    image: $(getScriptImageByContainerName homeassistant-app)
+    container_name: homeassistant-app
+    hostname: homeassistant-app
+    restart: unless-stopped
+    env_file: stack.env
+    privileged: true
+    depends_on:
+      - homeassistant-db
+    network_mode: host
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro
+      - \${HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
+      - \${HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
+      - \${HSHQ_STACKS_DIR}/homeassistant/config:/config
+      - \${HSHQ_STACKS_DIR}/homeassistant/media:/media
+
+  homeassistant-nodered:
+    image: $(getScriptImageByContainerName homeassistant-nodered)
+    container_name: homeassistant-nodered
+    hostname: homeassistant-nodered
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - homeassistant-app
+    networks:
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/homeassistant/nodered:/data
+      - \${HSHQ_SSL_DIR}/homeassistant-nodered.crt:/data/homeassistant-nodered.crt
+      - \${HSHQ_SSL_DIR}/homeassistant-nodered.key:/data/homeassistant-nodered.key
+
+  homeassistant-configurator:
+    image: $(getScriptImageByContainerName homeassistant-configurator)
+    container_name: homeassistant-configurator
+    hostname: homeassistant-configurator
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - homeassistant-app
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_SSL_DIR}/homeassistant-configurator.crt:/certs/homeassistant-configurator.crt
+      - \${HSHQ_SSL_DIR}/homeassistant-configurator.key:/certs/homeassistant-configurator.key
+      - \${HSHQ_STACKS_DIR}/homeassistant/configurator:/config
+      - \${HSHQ_STACKS_DIR}/homeassistant/config:/hass-config
+
+  homeassistant-tasmoadmin:
+    image: $(getScriptImageByContainerName homeassistant-tasmoadmin)
+    container_name: homeassistant-tasmoadmin
+    hostname: homeassistant-tasmoadmin
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - homeassistant-app
+    networks:
+      - dock-proxy-net
+      - dock-privateip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/homeassistant/tasmoadmin:/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+
+EOFHA
+
+  chmod 600 $HOME/homeassistant-compose.yml
+  sudo chown root:root $HOME/homeassistant-compose.yml
+  sudo mv $HOME/homeassistant-compose.yml $upgrade_compose_file
+  insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
 }
 
 # Gitlab
@@ -26797,11 +27393,12 @@ function performUpdateGitlab()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -27040,11 +27637,12 @@ function performUpdateVaultwarden()
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -27341,11 +27939,12 @@ function performUpdateDiscourse()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -27500,11 +28099,12 @@ function performUpdateSyncthing()
       image_update_map[0]="syncthing/syncthing:1.27.2,syncthing/syncthing:1.27.2"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -27718,11 +28318,17 @@ function performUpdateCodeServer()
       newVer=v3
       curImageList=codercom/code-server:4.16.1
       image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.20.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     2)
       newVer=v3
       curImageList=codercom/code-server:4.20.0
       image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.20.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     3)
       newVer=v3
@@ -27730,12 +28336,22 @@ function performUpdateCodeServer()
       image_update_map[0]="codercom/code-server:4.20.1,codercom/code-server:4.20.1"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfAddConfigsMountCodeServer()
+{
+  sudo grep "authelia/config/configuration.yml" $upgrade_compose_file > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    # Mount some config files into the code server container for easy access to edit
+    sudo sed -i "s|/codeserver:/home/coder|/codeserver:/home/coder\n      - \${HSHQ_STACKS_DIR}/authelia/config/configuration.yml:/home/coder/HSHQ/authelia/configuration.yml\n      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles:/home/coder/HSHQ/caddy/caddyfiles\n      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/home/coder/HSHQ/caddy/snippets|" $upgrade_compose_file
+  fi
 }
 
 # Shlink
@@ -27981,7 +28597,7 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:3.6.3,shlinkio/shlink:3.7.3"
       image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.0"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" updateShlinkInternalWebUIPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -27992,7 +28608,7 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:3.7.2,shlinkio/shlink:3.7.3"
       image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.0"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" updateShlinkInternalWebUIPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -28005,15 +28621,16 @@ function performUpdateShlink()
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function updateShlinkInternalWebUIPort()
+function mfUpdateShlinkInternalWebUIPort()
 {
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN {\n"
@@ -28029,6 +28646,7 @@ function updateShlinkInternalWebUIPort()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SHLINK_WEB $MANAGETLS_SHLINK_WEB true $NETDEFAULT_SHLINK_WEB "$inner_block"
+  restartAllCaddyContainers
 }
 
 # Firefly
@@ -28276,11 +28894,12 @@ function performUpdateFirefly()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -28501,11 +29120,12 @@ function performUpdateExcalidraw()
       image_update_map[2]="kiliandeca/excalidraw,kiliandeca/excalidraw"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -28679,11 +29299,12 @@ function performUpdateDrawIO()
       image_update_map[2]="jgraph/export-server,jgraph/export-server"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -29080,11 +29701,12 @@ function performUpdateInvidious()
       image_update_map[1]="quay.io/invidious/invidious,quay.io/invidious/invidious"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -29296,11 +29918,12 @@ function performUpdateGitea()
       image_update_map[1]="gitea/gitea:1.21.4,gitea/gitea:1.21.4"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -29519,6 +30142,7 @@ function performUpdateMealie()
       newVer=v1
       curImageList=hkotel/mealie:v0.5.6
       image_update_map[0]="hkotel/mealie:v0.5.6,hkotel/mealie:v0.5.6"
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): This version of Mealie cannot be upgraded to the next version. You must export your data/recipes from this instance, uninstall and reinstall mealie, then import your data/recipes into the new instance. See https://nightly.mealie.io/documentation/getting-started/migrating-to-mealie-v1/ for migration instructions."
       return
     ;;
@@ -29535,11 +30159,12 @@ function performUpdateMealie()
       image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.1.0,ghcr.io/mealie-recipes/mealie:v1.1.0"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -29680,11 +30305,12 @@ function performUpdateKasm()
       image_update_map[0]="lscr.io/linuxserver/kasm:1.14.0,lscr.io/linuxserver/kasm:1.14.0"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -30168,11 +30794,12 @@ function performUpdateNTFY()
       image_update_map[0]="binwiederhier/ntfy:v2.8.0,binwiederhier/ntfy:v2.8.0"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -30270,11 +30897,12 @@ function performUpdateITTools()
       image_update_map[0]="ghcr.io/corentinth/it-tools:latest,ghcr.io/corentinth/it-tools:latest"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -30415,11 +31043,12 @@ function performUpdateRemotely()
       image_update_map[0]="immybot/remotely:69,immybot/remotely:69"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -30631,11 +31260,12 @@ function performUpdateCalibre()
       image_update_map[1]="linuxserver/calibre-web:0.6.21,linuxserver/calibre-web:0.6.21"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -30782,11 +31412,12 @@ function performUpdateNetData()
       image_update_map[0]="netdata/netdata:v1.44.1,netdata/netdata:v1.44.1"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -30968,11 +31599,12 @@ function performUpdateLinkwarden()
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.8,ghcr.io/linkwarden/linkwarden:v2.4.8"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -31087,11 +31719,12 @@ function performUpdateStirlingPDF()
       image_update_map[0]="frooodle/s-pdf:0.20.1,frooodle/s-pdf:0.20.1"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -31409,11 +32042,12 @@ function performUpdateBarAssistant()
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -31642,11 +32276,12 @@ function performUpdateFreshRSS()
       image_update_map[1]="freshrss/freshrss:1.23.1,freshrss/freshrss:1.23.1"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -31861,11 +32496,12 @@ function performUpdateKeila()
       image_update_map[1]="pentacent/keila:0.14.0,pentacent/keila:0.14.0"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -32123,11 +32759,12 @@ function performUpdateWallabag()
       image_update_map[2]="wallabag/wallabag:2.6.8,wallabag/wallabag:2.6.8"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -32433,11 +33070,12 @@ function performUpdateSQLPad()
       image_update_map[0]="sqlpad/sqlpad:7.3.1,sqlpad/sqlpad:7.3.1"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -32933,11 +33571,12 @@ function performUpdateHeimdall()
       image_update_map[0]="linuxserver/heimdall:2.4.13,linuxserver/heimdall:2.4.13"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -33679,11 +34318,12 @@ function performUpdateCaddy()
       image_update_map[0]="caddy:2.7.6,caddy:2.7.6"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -33972,11 +34612,12 @@ function performUpdateClientDNS()
       image_update_map[1]="linuxserver/wireguard:1.0.20210914,linuxserver/wireguard:1.0.20210914"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -34056,11 +34697,12 @@ function performUpdateOfelia()
       image_update_map[0]="mcuadros/ofelia:v0.3.9,mcuadros/ofelia:v0.3.9"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -34186,11 +34828,12 @@ function performUpdateUptimeKuma()
       image_update_map[0]="louislam/uptime-kuma:1.23.11-alpine,louislam/uptime-kuma:1.23.11-alpine"
     ;;
     *)
+      is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
