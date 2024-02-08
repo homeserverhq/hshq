@@ -10715,6 +10715,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=29
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 30 ]; then
+    echo "Updating to Version 30..."
+    version30Update
+    HSHQ_VERSION=30
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -11339,6 +11345,13 @@ function version29Update()
     echo -e "\nCheck your email($EMAIL_ADMIN_EMAIL_ADDRESS) for a copy of these results."
     sendEmail -s "Stack Versioning Report" -b "$strSetVersionReport" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   fi
+}
+
+function version30Update()
+{
+  # Sidekiq should be mounted on same volume. Bitnami configured it incorrectly. (https://github.com/bitnami/containers/blob/main/bitnami/discourse/docker-compose.yml)
+  discourseStackID=$(getStackID discourse)
+  sudo sed -i "s|v-discourse-sidekiq:\/bitnami\/discourse|v-discourse-data:\/bitnami\/discourse|" $HSHQ_STACKS_DIR/portainer/compose/$discourseStackID/docker-compose.yml
 }
 
 function checkImageList()
@@ -27527,7 +27540,6 @@ function installDiscourse()
   mkdir $HSHQ_STACKS_DIR/discourse/db
   mkdir $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_STACKS_DIR/discourse/app
-  mkdir $HSHQ_STACKS_DIR/discourse/sidekiq
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/discourse
   mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
@@ -27558,7 +27570,6 @@ function installDiscourse()
   mkdir $HSHQ_STACKS_DIR/discourse/db
   mkdir $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_STACKS_DIR/discourse/app
-  mkdir $HSHQ_STACKS_DIR/discourse/sidekiq
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/discourse
   mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
@@ -27672,7 +27683,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-discourse-sidekiq:/bitnami/discourse
+      - v-discourse-data:/bitnami/discourse
 
   discourse-redis:
     image: $(getScriptImageByContainerName discourse-redis)
@@ -27703,12 +27714,6 @@ volumes:
       type: none
       o: bind
       device: \${HSHQ_STACKS_DIR}/discourse/app
-  v-discourse-sidekiq:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${HSHQ_STACKS_DIR}/discourse/sidekiq
 
 networks:
   dock-proxy-net:
@@ -27759,6 +27764,7 @@ POSTGRES_USER=$DISCOURSE_DATABASE_USER
 POSTGRES_PASSWORD=$DISCOURSE_DATABASE_USER_PASSWORD
 DISCOURSE_SMTP_HOST=$SMTP_HOSTNAME
 DISCOURSE_SMTP_PORT=$SMTP_HOSTPORT
+DISCOURSE_SMTP_PROTOCOL=tls
 EOFDC
 
 }
@@ -27782,11 +27788,14 @@ function performUpdateDiscourse()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v1
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.0.6,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/discourse:3.0.6,bitnami/discourse:3.1.4"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Discourse cannot be upgraded to the next version. You must export your data from this instance, uninstall and reinstall Discourse, then import your data into the new instance."
+      return
     ;;
     2)
       newVer=v3
