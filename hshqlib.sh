@@ -23150,11 +23150,9 @@ function installMastodon()
   generateCert mastodon-app mastodon-app
   generateCert mastodon-web mastodon-web
   generateCert mastodon-elasticsearch mastodon-elasticsearch
-  echo -e "\n\n\nPerforming database migration...this could take a few minutes\n\n"
-  docker-compose -f $HOME/mastodon-compose-tmp.yml run --rm web rails db:migrate > /dev/null
-  docker-compose -f $HOME/mastodon-compose-tmp.yml down -v
-  echo -e "\n\n\nFinished migration, sleeping 3 seconds"
-  sleep 3
+  outputMastdonMigrate $(getScriptImageByContainerName mastodon-db) $(getScriptImageByContainerName mastodon-redis) $(getScriptImageByContainerName mastodon-app)
+  cp $HOME/mastodon.env $HSHQ_STACKS_DIR/mastodon/stack.env
+  migrateMastodon
   installStack mastodon mastodon-app "Listening on http" $HOME/mastodon.env 5
   echo "Mastodon installed, sleeping 3 seconds..."
   sleep 3
@@ -23194,275 +23192,6 @@ function installMastodon()
 
 function outputConfigMastodon()
 {
-  cat <<EOFMD > $HOME/mastodon-compose-tmp.yml
-version: '3.5'
-
-services:
-  mastodon-db:
-    image: $(getScriptImageByContainerName mastodon-db)
-    container_name: mastodon-db
-    hostname: mastodon-db
-    user: "$UID"
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    shm_size: 256mb
-    networks:
-      - int-mastodon-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - $HSHQ_STACKS_DIR/mastodon/db:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=mastodondb
-      - POSTGRES_USER=mastodon-user
-      - POSTGRES_PASSWORD=$MASTODON_DATABASE_USER_PASSWORD
-      - POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
-
-  mastodon-redis:
-    image: $(getScriptImageByContainerName mastodon-redis)
-    container_name: mastodon-redis
-    hostname: mastodon-redis
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-mastodon-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-
-  mastodon-redis-cache:
-    image: $(getScriptImageByContainerName mastodon-redis-cache)
-    container_name: mastodon-redis-cache
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-mastodon-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-
-  web:
-    image: $IMG_MASTODON_APP
-    container_name: web
-    hostname: mastodon-app
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    command: bash -c "rm -f /mastodon/tmp/pids/server.pid; bundle exec rails s -p 3000"
-    depends_on:
-      - mastodon-db
-      - mastodon-redis
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:3000/health || exit 1']
-    networks:
-      - int-mastodon-net
-      - dock-ext-net
-      - dock-internalmail-net
-      - dock-ldap-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - $HSHQ_STACKS_DIR/mastodon/system:/mastodon/public/system
-      - v-mastodon-static:/mastodon/public
-    environment:
-      - TZ=$TZ
-      - LOCAL_DOMAIN=$HOMESERVER_DOMAIN
-      - WEB_DOMAIN=$SUB_MASTODON.$HOMESERVER_DOMAIN
-      - SINGLE_USER_MODE=false
-      - SECRET_KEY_BASE=$MASTODON_SECRET_KEY_BASE
-      - OTP_SECRET=$MASTODON_OTP_SECRET
-      - VAPID_PRIVATE_KEY=$MASTODON_VAPID_PRIVATE_KEY
-      - VAPID_PUBLIC_KEY=$MASTODON_VAPID_PUBLIC_KEY
-      - DB_HOST=mastodon-db
-      - DB_PORT=5432
-      - DB_NAME=mastodondb
-      - DB_USER=mastodon-user
-      - DB_PASS=$MASTODON_DATABASE_USER_PASSWORD
-      - REDIS_HOST=mastodon-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-      - CACHE_REDIS_HOST=mastodon-redis
-      - CACHE_REDIS_PORT=6379
-      - CACHE_REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-      - S3_ENABLED=false
-      - IP_RETENTION_PERIOD=31556952
-      - SESSION_RETENTION_PERIOD=31556952
-      - SMTP_SERVER=$SMTP_HOSTNAME
-      - SMTP_PORT=$SMTP_HOSTPORT
-      - SMTP_FROM_ADDRESS=Mastodon HSHQ Admin <$EMAIL_ADMIN_EMAIL_ADDRESS>
-      - ES_ENABLED=false
-
-  mastodon-streaming:
-    image: $(getScriptImageByContainerName mastodon-streaming)
-    container_name: mastodon-streaming
-    hostname: mastodon-streaming
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    command: node ./streaming
-    depends_on:
-      - mastodon-db
-      - mastodon-redis
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:4000/api/v1/streaming/health || exit 1']
-    networks:
-      - int-mastodon-net
-      - dock-ext-net
-      - dock-internalmail-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    environment:
-      - TZ=$TZ
-      - LOCAL_DOMAIN=$HOMESERVER_DOMAIN
-      - WEB_DOMAIN=$SUB_MASTODON.$HOMESERVER_DOMAIN
-      - SINGLE_USER_MODE=false
-      - SECRET_KEY_BASE=$MASTODON_SECRET_KEY_BASE
-      - OTP_SECRET=$MASTODON_OTP_SECRET
-      - VAPID_PRIVATE_KEY=$MASTODON_VAPID_PRIVATE_KEY
-      - VAPID_PUBLIC_KEY=$MASTODON_VAPID_PUBLIC_KEY
-      - DB_HOST=mastodon-db
-      - DB_PORT=5432
-      - DB_NAME=mastodondb
-      - DB_USER=mastodon-user
-      - DB_PASS=$MASTODON_DATABASE_USER_PASSWORD
-      - REDIS_HOST=mastodon-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-      - CACHE_REDIS_HOST=mastodon-redis
-      - CACHE_REDIS_PORT=6379
-      - CACHE_REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-      - S3_ENABLED=false
-      - IP_RETENTION_PERIOD=31556952
-      - SESSION_RETENTION_PERIOD=31556952
-      - SMTP_SERVER=$SMTP_HOSTNAME
-      - SMTP_PORT=$SMTP_HOSTPORT
-      - SMTP_FROM_ADDRESS=Mastodon HSHQ Admin <$EMAIL_ADMIN_EMAIL_ADDRESS>
-      - ES_ENABLED=false
-
-  mastodon-sidekiq:
-    image: $(getScriptImageByContainerName mastodon-sidekiq)
-    container_name: mastodon-sidekiq
-    hostname: mastodon-sidekiq
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    command: bundle exec sidekiq
-    depends_on:
-      - mastodon-db
-      - mastodon-redis
-    healthcheck:
-      test: ['CMD-SHELL', "ps aux | grep '[s]idekiq\ 6' || false"]
-    networks:
-      - int-mastodon-net
-      - dock-ext-net
-      - dock-internalmail-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - $HSHQ_STACKS_DIR/mastodon/system:/mastodon/public/system
-    environment:
-      - TZ=$TZ
-      - LOCAL_DOMAIN=$HOMESERVER_DOMAIN
-      - WEB_DOMAIN=$SUB_MASTODON.$HOMESERVER_DOMAIN
-      - SINGLE_USER_MODE=false
-      - SECRET_KEY_BASE=$MASTODON_SECRET_KEY_BASE
-      - OTP_SECRET=$MASTODON_OTP_SECRET
-      - VAPID_PRIVATE_KEY=$MASTODON_VAPID_PRIVATE_KEY
-      - VAPID_PUBLIC_KEY=$MASTODON_VAPID_PUBLIC_KEY
-      - DB_HOST=mastodon-db
-      - DB_PORT=5432
-      - DB_NAME=mastodondb
-      - DB_USER=mastodon-user
-      - DB_PASS=$MASTODON_DATABASE_USER_PASSWORD
-      - REDIS_HOST=mastodon-redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-      - CACHE_REDIS_HOST=mastodon-redis
-      - CACHE_REDIS_PORT=6379
-      - CACHE_REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-      - S3_ENABLED=false
-      - IP_RETENTION_PERIOD=31556952
-      - SESSION_RETENTION_PERIOD=31556952
-      - SMTP_SERVER=$SMTP_HOSTNAME
-      - SMTP_PORT=$SMTP_HOSTPORT
-      - SMTP_FROM_ADDRESS=Mastodon HSHQ Admin <$EMAIL_ADMIN_EMAIL_ADDRESS>
-      - ES_ENABLED=false
-
-  mastodon-web:
-    image: $(getScriptImageByContainerName mastodon-web)
-    container_name: mastodon-web
-    hostname: mastodon-web
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-mastodon-net
-      - dock-proxy-net
-    depends_on:
-      - web
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - $HSHQ_SSL_DIR/mastodon-web.crt:/etc/nginx/certs/cert.crt
-      - $HSHQ_SSL_DIR/mastodon-web.key:/etc/nginx/certs/cert.key
-      - $HSHQ_STACKS_DIR/mastodon/web/nginx.conf:/etc/nginx/nginx.conf
-      - v-mastodon-static:/var/www/html:ro
-
-volumes:
-  v-mastodon-static:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: $HSHQ_NONBACKUP_DIR/mastodon/static
-  v-mastodon-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: $HSHQ_NONBACKUP_DIR/mastodon/redis
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-ldap-net:
-    name: dock-ldap
-    external: true
-  dock-internalmail-net:
-    name: dock-internalmail
-    external: true
-  dock-ext-net:
-    name: dock-ext
-    external: true
-  int-mastodon-net:
-    driver: bridge
-    internal: true
-    ipam:
-      driver: default
-EOFMD
-
   cat <<EOFMD > $HOME/mastodon-compose.yml
 $STACK_VERSION_PREFIX mastodon $(getScriptStackVersion mastodon)
 version: '3.5'
@@ -23942,6 +23671,13 @@ function performUpdateMastodon()
       image_update_map[2]="tootsuite/mastodon:v4.1.6,tootsuite/mastodon:v4.2.3"
       image_update_map[3]="nginx:1.23.2-alpine,nginx:1.25.3-alpine"
       image_update_map[4]="elasticsearch:8.8.1,elasticsearch:8.12.0"
+      # This upgrade requires a migration
+      outputMastdonMigrate postgres:15.0-bullseye bitnami/redis:7.0.5 tootsuite/mastodon:v4.2.3
+      sudo cp $HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/stack.env $HSHQ_STACKS_DIR/mastodon/stack.env
+      sudo chown $USERID:$USERID $HSHQ_STACKS_DIR/mastodon/stack.env
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfMigrateMastodon false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     2)
       newVer=v3
@@ -23967,20 +23703,148 @@ function performUpdateMastodon()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function mfClearStaticAssetsMastodon()
+function outputMastdonMigrate()
+{
+  mastodon_db_image=$1
+  mastodon_redis_image=$2
+  mastodon_app_image=$3
+  cat <<EOFMD > $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
+version: '3.5'
+
+services:
+  mastodon-db:
+    image: $mastodon_db_image
+    container_name: mastodon-db
+    hostname: mastodon-db
+    user: "${USERID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-mastodon-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ${HSHQ_STACKS_DIR}/mastodon/db:/var/lib/postgresql/data
+
+  mastodon-redis:
+    image: $mastodon_redis_image
+    container_name: mastodon-redis
+    hostname: mastodon-redis
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-mastodon-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-mastodon-redis:/bitnami/redis/data
+
+  mastodon-redis-cache:
+    image: $mastodon_redis_image
+    container_name: mastodon-redis-cache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-mastodon-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  mastodon-app:
+    image: $mastodon_app_image
+    container_name: mastodon-app
+    hostname: mastodon-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: bash -c "rm -f /mastodon/tmp/pids/server.pid; bundle exec rails s -p 3000"
+    depends_on:
+      - mastodon-db
+      - mastodon-redis
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:3000/health || exit 1']
+    networks:
+      - int-mastodon-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
+      - v-mastodon-static:/mastodon/public
+
+volumes:
+  v-mastodon-static:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HSHQ_NONBACKUP_DIR}/mastodon/static
+  v-mastodon-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HSHQ_NONBACKUP_DIR}/mastodon/redis
+
+networks:
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  int-mastodon-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMD
+
+}
+
+function migrateMastodon()
+{
+  # This function assumes the Mastodon stack/containers are NOT running.
+  echo -e "\nPerforming mastodon database migration...this could take a few minutes\n"
+  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
+  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
+  docker-compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null
+  docker-compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
+  rm -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
+  rm -f $HSHQ_STACKS_DIR/mastodon/stack.env
+  echo -e "\nFinished mastodon database migration, sleeping 3 seconds"
+  sleep 3
+}
+
+function mfMigrateMastodon()
 {
   if [ "$stackStatus" = "1" ];then
-    # Stack is running, stop it, remove the assets
+    # Stack is running, stop it, then migrate
     startStopStack mastodon stop "$portainerToken"
     isStartStackFromStopped=true
     sleep 3
   fi
-  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
-  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
+  migrateMastodon
 }
 
 # Dozzle
