@@ -11351,7 +11351,7 @@ function version30Update()
 {
   # Sidekiq should be mounted on same volume. Bitnami configured it incorrectly. (https://github.com/bitnami/containers/blob/main/bitnami/discourse/docker-compose.yml)
   discourseStackID=$(getStackID discourse)
-  sudo sed -i "s|v-discourse-sidekiq:\/bitnami\/discourse|v-discourse-data:\/bitnami\/discourse|" $HSHQ_STACKS_DIR/portainer/compose/$discourseStackID/docker-compose.yml
+  sudo sed -i "s|v-sidekiq-data:\/bitnami\/discourse|v-discourse-data:\/bitnami\/discourse|" $HSHQ_STACKS_DIR/portainer/compose/$discourseStackID/docker-compose.yml
 }
 
 function checkImageList()
@@ -13535,7 +13535,7 @@ function loadPinnedDockerImages()
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.21
   IMG_CODESERVER=codercom/code-server:4.20.1
   IMG_COLLABORA=collabora/code:23.05.8.2.1
-  IMG_DISCOURSE=bitnami/discourse:3.1.4
+  IMG_DISCOURSE=bitnami/discourse:3.1.3
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
   IMG_DOZZLE=amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
@@ -13688,7 +13688,7 @@ function getScriptStackVersion()
     vaultwarden)
       echo "v3" ;;
     discourse)
-      echo "v3" ;;
+      echo "v2" ;;
     syncthing)
       echo "v3" ;;
     codeserver)
@@ -27671,7 +27671,8 @@ services:
     env_file: stack.env
     command: /opt/bitnami/scripts/discourse-sidekiq/run.sh
     depends_on:
-      - discourse-app
+      - discourse-db
+      - discourse-redis
     networks:
       - int-discourse-net
       - dock-proxy-net
@@ -27798,13 +27799,14 @@ function performUpdateDiscourse()
       return
     ;;
     2)
-      newVer=v3
+      newVer=v2
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.3,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/discourse:3.1.3,bitnami/discourse:3.1.4"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
+      # This is unstable as a fresh installation. It strangely works when upgrading...
       newVer=v3
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.4,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
