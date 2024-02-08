@@ -11369,7 +11369,9 @@ function version30Update()
 {
   # Sidekiq should be mounted on same volume. Bitnami configured it incorrectly. (https://github.com/bitnami/containers/blob/main/bitnami/discourse/docker-compose.yml)
   discourseStackID=$(getStackID discourse)
-  sudo sed -i "s|v-sidekiq-data:\/bitnami\/discourse|v-discourse-data:\/bitnami\/discourse|" $HSHQ_STACKS_DIR/portainer/compose/$discourseStackID/docker-compose.yml
+  if ! [ -z "$discourseStackID" ]; then
+    sudo sed -i "s|v-sidekiq-data:\/bitnami\/discourse|v-discourse-data:\/bitnami\/discourse|" $HSHQ_STACKS_DIR/portainer/compose/$discourseStackID/docker-compose.yml
+  fi
 }
 
 function version31Update()
