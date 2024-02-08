@@ -13591,7 +13591,7 @@ function loadPinnedDockerImages()
   IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.57
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.100.0
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v1.1.0
-  IMG_MEILISEARCH=getmeili/meilisearch:v1.6
+  IMG_MEILISEARCH=getmeili/meilisearch:v1.4
   IMG_MYSQL=mariadb:10.7.3
   IMG_NETDATA=netdata/netdata:v1.44.1
   IMG_NEXTCLOUD_APP=nextcloud:27.1.6-fpm-alpine
@@ -13724,7 +13724,7 @@ function getScriptStackVersion()
     stirlingpdf)
       echo "v2" ;;
     bar-assistant)
-      echo "v2" ;;
+      echo "v1" ;;
     freshrss)
       echo "v1" ;;
     keila)
@@ -31897,21 +31897,15 @@ function performUpdateBarAssistant()
   unset image_update_map
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
+  # Meilisearch has a more recent version, v1.6. However, moving between versions requires manual migration.
+  # So, we'll use v1.4 until the migration process has been mapped out.
+  # See https://www.meilisearch.com/docs/learn/cookbooks/docker#generating-dumps-and-updating-meilisearch 
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v1
       curImageList=barassistant/server:v3,getmeili/meilisearch:v1.4,bitnami/redis:7.0.5,barassistant/salt-rim:v2,nginx:1.25.3-alpine
       image_update_map[0]="barassistant/server:v3,barassistant/server:v3"
       image_update_map[1]="getmeili/meilisearch:v1.4,getmeili/meilisearch:v1.6"
-      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[3]="barassistant/salt-rim:v2,barassistant/salt-rim:v2"
-      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-    ;;
-    2)
-      newVer=v2
-      curImageList=barassistant/server:v3,getmeili/meilisearch:v1.6,bitnami/redis:7.0.5,barassistant/salt-rim:v2,nginx:1.25.3-alpine
-      image_update_map[0]="barassistant/server:v3,barassistant/server:v3"
-      image_update_map[1]="getmeili/meilisearch:v1.6,getmeili/meilisearch:v1.6"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       image_update_map[3]="barassistant/salt-rim:v2,barassistant/salt-rim:v2"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
