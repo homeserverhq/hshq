@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=30
+HSHQ_SCRIPT_VERSION=31
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -1517,7 +1517,7 @@ function installAllAvailableStacks()
   is_list_emtpy=true
   for curStack in "${stackListArr[@]}"
   do
-    if ! [ -d $HSHQ_STACKS_DIR/$curStack ]; then
+    if ! [ -d $HSHQ_STACKS_DIR/$curStack ] && ! [ "$(isServiceDisabled $curStack)" = "true" ]; then
       sel_svcs+=($curStack)
       is_list_emtpy=false
     fi
@@ -9002,21 +9002,28 @@ function removeAdvertiseIP()
 
 function isServiceDisabled()
 {
-  if grep -q "$1" <<< "$HSHQ_REQUIRED_STACKS"; then
+  check_svc_disabled="$1"
+  set +e
+  if grep -q "$check_svc_disabled" <<< "$HSHQ_REQUIRED_STACKS"; then
     echo "false"
+    set -e
     return
   fi
   if [ "$DISABLED_SERVICES" = "minimal" ]; then
     echo "true"
+    set -e
     return
   fi
-  set +e
-  if grep -q "$1" <<< "$DISABLED_SERVICES"; then
-    echo "true"
-  else
-    echo "false"
-  fi
   set -e
+  disabledListArr=($(echo $DISABLED_SERVICES | tr "," "\n"))
+  for curSvc in "${disabledListArr[@]}"
+  do
+    if [ "$check_svc_disabled" = "$curSvc" ]; then
+      echo "true"
+      return
+    fi
+  done
+  echo "false"
 }
 
 function checkDisableStack()
@@ -10639,6 +10646,11 @@ WALLABAG_ENV_SECRET=
 WALLABAG_REDIS_PASSWORD=
 # Wallabag (Service Details) END
 
+# Jupyter (Service Details) BEGIN
+JUPYTER_INIT_ENV=true
+JUPYTER_ADMIN_PASSWORD=
+# Jupyter (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -10719,6 +10731,12 @@ function checkUpdateVersion()
     echo "Updating to Version 30..."
     version30Update
     HSHQ_VERSION=30
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 31 ]; then
+    echo "Updating to Version 31..."
+    version31Update
+    HSHQ_VERSION=31
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -11352,6 +11370,12 @@ function version30Update()
   # Sidekiq should be mounted on same volume. Bitnami configured it incorrectly. (https://github.com/bitnami/containers/blob/main/bitnami/discourse/docker-compose.yml)
   discourseStackID=$(getStackID discourse)
   sudo sed -i "s|v-sidekiq-data:\/bitnami\/discourse|v-discourse-data:\/bitnami\/discourse|" $HSHQ_STACKS_DIR/portainer/compose/$discourseStackID/docker-compose.yml
+}
+
+function version31Update()
+{
+  checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD="
+  addToDisabledServices jupyter
 }
 
 function checkImageList()
@@ -13567,6 +13591,7 @@ function loadPinnedDockerImages()
   IMG_JITSI_PROSODY=jitsi/prosody:stable-9220
   IMG_JITSI_JICOFO=jitsi/jicofo:stable-9220
   IMG_JITSI_JVB=jitsi/jvb:stable-9220
+  IMG_JUPYTER=continuumio/anaconda3:2023.09-0
   IMG_KASM=lscr.io/linuxserver/kasm:1.14.0
   IMG_KEILA=pentacent/keila:0.14.0
   IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.4.8
@@ -13653,6 +13678,8 @@ function getScriptStackVersion()
       echo "v3" ;;
     jitsi)
       echo "v3" ;;
+    jupyter)
+      echo "v1" ;;
     matrix)
       echo "v3" ;;
     wikijs)
@@ -13843,6 +13870,7 @@ function pullDockerImages()
   pullImage $IMG_FRESHRSS
   pullImage $IMG_KEILA
   pullImage $IMG_WALLABAG
+  pullImage $IMG_JUPYTER
 }
 
 function pullBaseServicesDockerImages()
@@ -14492,6 +14520,10 @@ function initServicesCredentials()
     WALLABAG_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar WALLABAG_DATABASE_USER_PASSWORD $WALLABAG_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$JUPYTER_ADMIN_PASSWORD" ]; then
+    JUPYTER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar JUPYTER_ADMIN_PASSWORD $JUPYTER_ADMIN_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -14550,6 +14582,7 @@ function initServiceVars()
   checkAddSvc "SVCD_ITTOOLS=ittools,ittools,primary,admin,IT Tools,ittools,hshq"
   checkAddSvc "SVCD_JELLYFIN=jellyfin,jellyfin,primary,user,Jellyfin,jellyfin,hshq"
   checkAddSvc "SVCD_JITSI=jitsi,jitsi,other,user,Jitsi,jitsi,le"
+  checkAddSvc "SVCD_JUPYTER=jupyter,jupyter,primary,admin,Jupyter,jupyter,hshq"
   checkAddSvc "SVCD_LINKWARDEN=linkwarden,linkwarden,primary,user,Linkwarden,linkwarden,hshq"
   checkAddSvc "SVCD_KASM=kasm,kasm,primary,user,Kasm,kasm,hshq"
   checkAddSvc "SVCD_KASM_WIZARD=kasm,kasm-wizard,home,admin,Kasm Wizard,kasm-wizard,hshq"
@@ -14689,6 +14722,8 @@ function installStackByName()
       installKeila $is_integrate ;;
     wallabag)
       installWallabag $is_integrate ;;
+    jupyter)
+      installJupyter $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -14801,6 +14836,8 @@ function performUpdateStackByName()
       performUpdateKeila "$portainerToken" ;;
     wallabag)
       performUpdateWallabag "$portainerToken" ;;
+    jupyter)
+      performUpdateJupyter "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -14876,6 +14913,7 @@ function getAutheliaBlock()
   retval="${retval}        - \"group:$LDAP_PRIMARY_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_JUPYTER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - ${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CODESERVER.$HOMESERVER_DOMAIN\n"
@@ -14960,6 +14998,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FRESHRSS}-Admin" https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KEILA}-Admin" https://$SUB_KEILA.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WALLABAG}-Admin" https://$SUB_WALLABAG.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JUPYTER}-Admin" https://$SUB_JUPYTER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $JUPYTER_ADMIN_PASSWORD)"\n"
   fi
   # Relay Server
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -15011,6 +15050,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0 "remotely.png"
   insertIntoHeimdallDB "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0 "calibre-server.png"
   insertIntoHeimdallDB "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0 "netdata.png"
+  insertIntoHeimdallDB "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0 "jupyter.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # Users Tab
   insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png"
@@ -15122,6 +15162,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -15140,13 +15181,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
-  DS_MEM_16=gitlab,discourse,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
-  DS_MEM_24=gitlab,discourse,drawio,guacamole,kasm,netdata,linkwarden,stirlingpdf
-  DS_MEM_32=gitlab,netdata,discourse
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_24=gitlab,discourse,netdata,jupyter,drawio,guacamole,kasm,linkwarden,stirlingpdf
+  DS_MEM_32=gitlab,discourse,netdata,jupyter
 }
 
 function getScriptImageByContainerName()
@@ -15259,6 +15300,9 @@ function getScriptImageByContainerName()
       ;;
     "jitsi-jvb")
       container_image=$IMG_JITSI_JVB
+      ;;
+    "jupyter")
+      container_image=$IMG_JUPYTER
       ;;
     "matrix-db")
       container_image=$IMG_POSTGRES
@@ -16233,7 +16277,6 @@ function installSysUtils()
 
   rm -f $HOME/sysutils-compose-tmp.yml
   rm -f $HOME/gfdashboard.json
-  checkDisableStack sysutils
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GRAFANA.$HOMESERVER_DOMAIN {\n"
@@ -20142,7 +20185,6 @@ function installWazuh()
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install wazuh-agent
   sudo systemctl daemon-reload
-  checkDisableStack wazuh
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
   if [ $? -ne 0 ]; then
@@ -21217,7 +21259,6 @@ function installNextcloud()
     echo "Nextcloud did not start up correctly, exiting..."
     exit 1
   fi
-  checkDisableStack nextcloud
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN {\n"
@@ -22011,7 +22052,6 @@ function installJitsi()
   installStack jitsi jitsi-web "starting services" $HOME/jitsi.env
   echo "Jitsi installed, sleeping 5 seconds..."
   sleep 5
-  checkDisableStack jitsi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_JITSI.$HOMESERVER_DOMAIN {\n"
@@ -22245,7 +22285,6 @@ function installMatrix()
   installStack matrix matrix-synapse "Starting synapse with args" $HOME/matrix.env
   echo "Matrix installed, sleeping 5 seconds..."
   sleep 5
-  checkDisableStack matrix
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN {\n"
@@ -22798,7 +22837,6 @@ function installWikijs()
   docker container restart wikijs-web
   echo "Wikijs installed, sleeping 5 seconds..."
   sleep 5
-  checkDisableStack wikijs
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WIKIJS.$HOMESERVER_DOMAIN {\n"
@@ -23181,7 +23219,6 @@ function installMastodon()
 
   docker exec mastodon-app tootctl settings registrations close
   rm -f $HOME/mastodon-compose-tmp.yml
-  checkDisableStack mastodon
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MASTODON.$HOMESERVER_DOMAIN {\n"
@@ -23879,7 +23916,6 @@ function installDozzle()
   installStack dozzle dozzle "Accepting connections on" $HOME/dozzle.env
   echo "Dozzle installed, sleeping 3 seconds..."
   sleep 3
-  checkDisableStack dozzle
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DOZZLE.$HOMESERVER_DOMAIN {\n"
@@ -24023,7 +24059,6 @@ function installSearxNG()
   generateCert searxng-caddy searxng-caddy
   outputConfigSearxNG
   installStack searxng searxng-app "Listen on 0.0.0.0" $HOME/searxng.env
-  checkDisableStack searxng
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SEARXNG.$HOMESERVER_DOMAIN {\n"
@@ -24344,7 +24379,6 @@ function installJellyfin()
   sed -i 's/^.*EncodingThreadCount.*$/  <EncodingThreadCount>1<\/EncodingThreadCount>/' $HSHQ_STACKS_DIR/jellyfin/config/config/encoding.xml
   mv $HOME/jellyfin-ldap.xml $HSHQ_STACKS_DIR/jellyfin/config/plugins/configurations/LDAP-Auth.xml
   docker container restart jellyfin
-  checkDisableStack jellyfin
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN {\n"
@@ -24507,7 +24541,6 @@ function installFileBrowser()
 
   outputConfigFileBrowser
   installStack filebrowser filebrowser "Listening on" $HOME/filebrowser.env
-  checkDisableStack filebrowser
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN {\n"
@@ -24679,7 +24712,6 @@ function installPhotoPrism()
   docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
   installStack photoprism photoprism-app "listening at 0.0.0.0" $HOME/photoprism.env
   rm -f $HOME/photoprism-compose-tmp.yml
-  checkDisableStack photoprism
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN {\n"
@@ -25024,8 +25056,6 @@ function installGuacamole()
   docker-compose -f $HOME/guacamole-compose-tmp.yml down -v
   installStack guacamole guacamole-web "Server startup in" $HOME/guacamole.env 5
   rm -f $HOME/guacamole-compose-tmp.yml
-
-  checkDisableStack guacamole
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN {\n"
@@ -25582,7 +25612,6 @@ function installWordPress()
 
   outputConfigWordPress
   installStack wordpress wordpress-web "WordPress" $HOME/wordpress.env
-  checkDisableStack wordpress
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN {\n"
@@ -25780,7 +25809,6 @@ function installGhost()
   pullImage $IMG_GHOST
   outputConfigGhost
   installStack ghost ghost-web "Ghost booted in" $HOME/ghost.env 5
-  checkDisableStack ghost
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GHOST.$HOMESERVER_DOMAIN {\n"
@@ -26002,7 +26030,6 @@ function installPeerTube()
   docker exec peertube-db /dbexport/setupLDAP.sh
   rm -f $HSHQ_STACKS_DIR/peertube/dbexport/setupLDAP.sh
   docker container restart peertube-app
-  checkDisableStack peertube
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN {\n"
@@ -26279,7 +26306,6 @@ function installHomeAssistant()
   docker container stop homeassistant-app
   sudo mv $HSHQ_STACKS_DIR/homeassistant/configuration.yaml $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml
   docker container start homeassistant-app
-  checkDisableStack homeassistant
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN {\n"
@@ -27000,11 +27026,7 @@ function installGitlab()
   mv $HOME/gitlab.rb $HSHQ_STACKS_DIR/gitlab/app/config/gitlab.rb
   mv $HOME/gitlab-postconfigure.sh $HSHQ_STACKS_DIR/gitlab/app/config/gitlab-postconfigure.sh
   chmod +x $HSHQ_STACKS_DIR/gitlab/app/config/gitlab-postconfigure.sh
-  echo "Gitlab staged"
-  if ! [ "$(isServiceDisabled gitlab)" = "true" ]; then
-    echo "Starting Gitlab..."
-    startStopStack gitlab start
-  fi
+  startStopStack gitlab start
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITLAB.$HOMESERVER_DOMAIN {\n"
@@ -27305,7 +27327,6 @@ function installVaultwarden()
   outputConfigVaultwarden
   generateCert vaultwarden-app vaultwarden-app
   installStack vaultwarden vaultwarden-app " " $HOME/vaultwarden.env
-  checkDisableStack vaultwarden
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN {\n"
@@ -27561,23 +27582,7 @@ function installDiscourse()
   #generateCert discourse-app discourse-app
   outputConfigDiscourse
   installStack discourse discourse-app "" $HOME/discourse.env
-  sleep 1
-  startStopStack discourse stop
-  sudo rm -fr $HSHQ_STACKS_DIR/discourse
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/discourse
 
-  mkdir $HSHQ_STACKS_DIR/discourse
-  mkdir $HSHQ_STACKS_DIR/discourse/db
-  mkdir $HSHQ_STACKS_DIR/discourse/dbexport
-  mkdir $HSHQ_STACKS_DIR/discourse/app
-  chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/discourse
-  mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
-
-  if ! [ "$(isServiceDisabled discourse)" = "true" ]; then
-    echo "Starting Discourse..."
-    startStopStack discourse start
-  fi
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -27799,14 +27804,14 @@ function performUpdateDiscourse()
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.3,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/discourse:3.1.3,bitnami/discourse:3.1.4"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
-      # This is unstable as a fresh installation. It strangely works when upgrading...
+      # This is unstable as a fresh installation. It strangely works when upgrading from 3.1.3...
       newVer=v3
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.4,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
@@ -28037,7 +28042,6 @@ function installCodeServer()
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   mv $HOME/settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   installStack codeserver codeserver "HTTPS server listening on https" $HOME/codeserver.env
-  checkDisableStack codeserver
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CODESERVER.$HOMESERVER_DOMAIN {\n"
@@ -28262,7 +28266,6 @@ function installShlink()
 
   outputConfigShlink
   installStack shlink shlink "shlink" $HOME/shlink.env
-  checkDisableStack shlink
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN {\n"
@@ -28558,7 +28561,6 @@ function installFirefly()
   installStack firefly firefly " " $HOME/firefly.env
   echo "Firefly installed, sleeping 10 seconds..."
   sleep 10
-  checkDisableStack firefly
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FIREFLY.$HOMESERVER_DOMAIN {\n"
@@ -28803,7 +28805,6 @@ function installExcalidraw()
   installStack excalidraw excalidraw-web " " $HOME/excalidraw.env
   echo "Excalidraw installed, sleeping 10 seconds..."
   sleep 10
-  checkDisableStack excalidraw
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN {\n"
@@ -29026,16 +29027,13 @@ function installDrawIO()
   installStack drawio drawio-web " " $HOME/drawio.env
   echo "Draw.io installed, sleeping 10 seconds..."
   sleep 10
-  checkDisableStack drawio
 
-  if ! [ "$(isServiceDisabled drawio)" = "true" ]; then
-    set +e
-    docker container ps | grep nextcloud-app > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      docker exec -u www-data nextcloud-app php occ --no-warnings config:app:set drawio DrawioUrl --value="https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN"
-    fi
-    set -e
+  set +e
+  docker container ps | grep nextcloud-app > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker exec -u www-data nextcloud-app php occ --no-warnings config:app:set drawio DrawioUrl --value="https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN"
   fi
+  set -e
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN {\n"
@@ -29209,7 +29207,6 @@ function installInvidious()
   installStack invidious invidious-web "Invidious is ready to lead at" $HOME/invidious.env
   echo "Invidious installed, sleeping 10 seconds..."
   sleep 10
-  checkDisableStack invidious
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN {\n"
@@ -30062,7 +30059,6 @@ function installKasm()
   pullImage $IMG_KASM
   outputConfigKasm
   installStack kasm kasm "" $HOME/kasm.env
-  checkDisableStack kasm
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KASM.$HOMESERVER_DOMAIN {\n"
@@ -30823,11 +30819,7 @@ function installRemotely()
   sudo mv $HSHQ_STACKS_DIR/remotely/newsettings.json $HSHQ_STACKS_DIR/remotely/appsettings.json
   sudo chown root:root $HSHQ_STACKS_DIR/remotely/appsettings.json
   sudo chmod 644 $HSHQ_STACKS_DIR/remotely/appsettings.json
-
-  if ! [ "$(isServiceDisabled remotely)" = "true" ]; then
-    echo "Starting Remotely..."
-    startStopStack remotely start
-  fi
+  startStopStack remotely start
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_REMOTELY.$HOMESERVER_DOMAIN {\n"
@@ -30972,11 +30964,7 @@ function installCalibre()
   rm $HSHQ_STACKS_DIR/calibre/web/getencpw.py
   sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE user set name='$CALIBRE_WEB_ADMIN_USERNAME', email='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS', kindle_mail='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS' where id=1;"
   sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='$SMTP_HOSTNAME', mail_port=25, mail_use_ssl=1, mail_from='Calibre-Web HSHQ Admin <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
-
-  if ! [ "$(isServiceDisabled calibre)" = "true" ]; then
-    echo "Starting Calibre..."
-    startStopStack calibre start
-  fi
+  startStopStack calibre start
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN {\n"
@@ -31164,7 +31152,6 @@ function installNetdata()
   outputConfigNetData
   installStack netdata netdata "" $HOME/netdata.env
   sleep 3
-  checkDisableStack netdata
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NETDATA.$HOMESERVER_DOMAIN {\n"
@@ -31322,7 +31309,6 @@ function installLinkwarden()
   outputConfigLinkwarden
   installStack linkwarden linkwarden "" $HOME/linkwarden.env
   sleep 3
-  checkDisableStack linkwarden
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN {\n"
@@ -31503,7 +31489,6 @@ function installStirlingPDF()
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
   sleep 3
-  checkDisableStack stirlingpdf
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN {\n"
@@ -31637,7 +31622,6 @@ function installBarAssistant()
   outputConfigBarAssistant
   installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 5
   sleep 3
-  checkDisableStack bar-assistant
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN {\n"
@@ -31955,8 +31939,6 @@ function installFreshRSS()
   installStack freshrss freshrss-app "apache2 -D FOREGROUND" $HOME/freshrss.env
   sleep 5
 
-  checkDisableStack freshrss
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -32188,8 +32170,6 @@ function installKeila()
   outputConfigKeila
   installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env
   sleep 5
-
-  checkDisableStack keila
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KEILA.$HOMESERVER_DOMAIN {\n"
@@ -32637,6 +32617,128 @@ function performUpdateWallabag()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Jupyter
+function installJupyter()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory jupyter "Jupyter"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/jupyter
+  mkdir $HSHQ_STACKS_DIR/jupyter/notebooks
+
+  initServicesCredentials
+  pullImage $IMG_JUPYTER
+  outputConfigJupyter
+  installStack jupyter jupyter "Jupyter Notebook .* is running at" $HOME/jupyter.env 5
+
+  if ! [ "$JUPYTER_INIT_ENV" = "true" ]; then
+    sendEmail -s "Jupyter Admin Login Info" -b "Jupyter Admin Password: $JUPYTER_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    JUPYTER_INIT_ENV=true
+    updateConfigVar JUPYTER_INIT_ENV $JUPYTER_INIT_ENV
+  fi
+
+  sleep 3
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_JUPYTER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://jupyter:8888 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_JUPYTER $MANAGETLS_JUPYTER "$is_integrate_hshq" $NETDEFAULT_JUPYTER "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll jupyter "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" "jupyter.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigJupyter()
+{
+  cat <<EOFDZ > $HOME/jupyter-compose.yml
+$STACK_VERSION_PREFIX jupyter $(getScriptStackVersion jupyter)
+version: '3.5'
+
+services:
+  jupyter:
+    image: $(getScriptImageByContainerName jupyter)
+    container_name: jupyter
+    hostname: jupyter
+    restart: unless-stopped
+    env_file: stack.env
+    command: '/bin/bash -c "conda install jupyter -y --quiet && mkdir -p /opt/notebooks && jupyter notebook --notebook-dir=/opt/notebooks --ip="*" --port=8888 --no-browser --allow-root --NotebookApp.token=$JUPYTER_ADMIN_PASSWORD"'
+    security_opt:
+      - no-new-privileges:true
+    tty: true
+    stdin_open: true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/jupyter/notebooks:/opt/notebooks
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFDZ
+
+  cat <<EOFDZ > $HOME/jupyter.env
+TZ=\${TZ}
+EOFDZ
+
+}
+
+function performUpdateJupyter()
+{
+  perform_stack_name=jupyter
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=continuumio/anaconda3:2023.09-0
+      image_update_map[0]="continuumio/anaconda3:2023.09-0,continuumio/anaconda3:2023.09-0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # SQLPad
 function installSQLPad()
 {
@@ -32656,7 +32758,6 @@ function installSQLPad()
   generateCert sqlpad sqlpad
   outputConfigSQLPad
   installStack sqlpad sqlpad "Welcome to SQLPad" $HOME/sqlpad.env 5
-  checkDisableStack sqlpad
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SQLPAD.$HOMESERVER_DOMAIN {\n"
@@ -33499,7 +33600,7 @@ function insertEnableSvcHeimdall()
   svc_img=$5
   is_restart=$6
 
-  svc_is_active=$(if [ "$(isServiceDisabled $svc_stack_name)" = "true" ]; then echo 0; else echo 1; fi)
+  svc_is_active=1
   user_id=$(getHeimdallUserIDFromType $user_type)
   docker container stop heimdall >/dev/null
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
@@ -33800,7 +33901,7 @@ function outputConfigCaddy()
   case "$net_type" in
     home)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
 version: '3.5'
 
 services:
@@ -33892,7 +33993,7 @@ EOFCF
     primary)
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
 version: '3.5'
 
 services:
@@ -33987,7 +34088,7 @@ import /config/CaddyfileBody
 EOFCF
       elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
 version: '3.5'
 
 services:
@@ -34071,7 +34172,7 @@ EOFCF
       ;;
     other)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
-$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
 version: '3.5'
 
 services:
@@ -34738,7 +34839,7 @@ function insertEnableSvcUptimeKuma()
   user_type=$3
   svc_url=$4
 
-  svc_is_active=$(if [ "$(isServiceDisabled $svc_stack_name)" = "true" ]; then echo 0; else echo 1; fi)
+  svc_is_active=1
   set +e
   docker container stop uptimekuma > /dev/null 2>&1
   set -e
