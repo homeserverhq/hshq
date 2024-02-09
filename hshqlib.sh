@@ -16270,7 +16270,10 @@ function installSysUtils()
     return
   fi
   set -e
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/sysutils
+  pullImage $IMG_GRAFANA
+  pullImage $IMG_PROMETHEUS
+  pullImage $IMG_NODE_EXPORTER
+  pullImage $IMG_INFLUXDB
 
   mkdir $HSHQ_STACKS_DIR/sysutils
   mkdir $HSHQ_STACKS_DIR/sysutils/grafana
@@ -16282,14 +16285,7 @@ function installSysUtils()
   mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
 
   initServicesCredentials
-
-  pullImage $IMG_GRAFANA
-  pullImage $IMG_PROMETHEUS
-  pullImage $IMG_NODE_EXPORTER
-  pullImage $IMG_INFLUXDB
-
   generateCert influxdb influxdb
-
   gf_dataset_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
   outputConfigSysUtils
@@ -20186,7 +20182,9 @@ function installWazuh()
     return
   fi
   set -e
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/wazuh
+  pullImage $IMG_WAZUH_DASHBOARD
+  pullImage $IMG_WAZUH_INDEXER
+  pullImage $IMG_WAZUH_MANAGER
 
   mkdir $HSHQ_STACKS_DIR/wazuh
   mkdir $HSHQ_STACKS_DIR/wazuh/wazuh-cluster
@@ -20242,13 +20240,7 @@ function installWazuh()
     WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD $WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD
   fi
-
-  pullImage $IMG_WAZUH_DASHBOARD
-  pullImage $IMG_WAZUH_INDEXER
-  pullImage $IMG_WAZUH_MANAGER
-
   outputConfigWazuh
-
   generateCert wazuh.manager "wazuh.manager"
   generateCert wazuh.indexer "wazuh.indexer"
   generateCert wazuh.admin "wazuh.admin"
@@ -21024,10 +21016,9 @@ function installCollabora()
   fi
   mkdir $HSHQ_STACKS_DIR/collabora
   set -e
+  pullImage $IMG_COLLABORA
 
   initServicesCredentials
-
-  pullImage $IMG_COLLABORA
   outputConfigCollabora
   installStack collabora collabora " " $HOME/collabora.env
   
@@ -21149,16 +21140,15 @@ function installNextcloud()
     return
   fi
   set -e
+  pullImage $IMG_NEXTCLOUD_APP
+  pullImage $IMG_NEXTCLOUD_WEB
+  pullImage $IMG_NEXTCLOUD_IMAGINARY
 
   initServicesCredentials
   if [ -z "$NEXTCLOUD_REDIS_PASSWORD" ]; then
     NEXTCLOUD_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar NEXTCLOUD_REDIS_PASSWORD $NEXTCLOUD_REDIS_PASSWORD
   fi
-
-  pullImage $IMG_NEXTCLOUD_APP
-  pullImage $IMG_NEXTCLOUD_WEB
-  pullImage $IMG_NEXTCLOUD_IMAGINARY
 
   set +e
   docker exec mailu-admin flask mailu alias-delete $NEXTCLOUD_ADMIN_EMAIL_ADDRESS
@@ -22117,14 +22107,12 @@ function installJitsi()
     return
   fi
   set -e
-
-  mkdir $HSHQ_STACKS_DIR/jitsi
-
   pullImage $IMG_JITSI_JICOFO
   pullImage $IMG_JITSI_JVB
   pullImage $IMG_JITSI_PROSODY
   pullImage $IMG_JITSI_WEB
 
+  mkdir $HSHQ_STACKS_DIR/jitsi
   outputConfigJitsi
   generateCert jitsi-web jitsi-web
   installStack jitsi jitsi-web "starting services" $HOME/jitsi.env
@@ -22329,6 +22317,8 @@ function installMatrix()
     return
   fi
   set -e
+  pullImage $IMG_MATRIX_ELEMENT
+  pullImage $IMG_MATRIX_SYNAPSE
 
   mkdir $HSHQ_STACKS_DIR/matrix
   mkdir $HSHQ_STACKS_DIR/matrix/db
@@ -22354,9 +22344,6 @@ function installMatrix()
     MATRIX_SYNAPSE_FORM_SECRET=$(pwgen -c -n 64 1)
     updateConfigVar MATRIX_SYNAPSE_FORM_SECRET $MATRIX_SYNAPSE_FORM_SECRET
   fi
-
-  pullImage $IMG_MATRIX_ELEMENT
-  pullImage $IMG_MATRIX_SYNAPSE
 
   outputConfigMatrix
   generateCert matrix-synapse matrix-synapse
@@ -22897,17 +22884,14 @@ function installWikijs()
     return
   fi
   set -e
+  pullImage $IMG_WIKIJS
 
   mkdir $HSHQ_STACKS_DIR/wikijs
   mkdir $HSHQ_STACKS_DIR/wikijs/db
   mkdir $HSHQ_STACKS_DIR/wikijs/dbexport
   mkdir $HSHQ_STACKS_DIR/wikijs/web
   chmod 777 $HSHQ_STACKS_DIR/wikijs/dbexport
-
   initServicesCredentials
-
-  pullImage $IMG_WIKIJS
-
   outputConfigWikijs
   generateCert wikijs-web wikijs-web
   installStack wikijs wikijs-web "HTTP Server on port" $HOME/wikijs.env 5
@@ -23111,17 +23095,15 @@ function installDuplicati()
     return
   fi
   set -e
+  pullImage $IMG_DUPLICATI
 
   domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
   mkdir $HSHQ_STACKS_DIR/duplicati
   mkdir $HSHQ_STACKS_DIR/duplicati/config
   mkdir $HSHQ_NONBACKUP_DIR/duplicati
   mkdir $HSHQ_NONBACKUP_DIR/duplicati/restore
-
   initServicesCredentials
   echo "Installing Duplicati..."
-  pullImage $IMG_DUPLICATI
-
   outputConfigDuplicati
   generateCert duplicati duplicati
   installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env
@@ -23239,7 +23221,8 @@ function installMastodon()
     return
   fi
   set -e
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/mastodon
+  pullImage $IMG_MASTODON_APP
+  pullImage $IMG_MASTODON_WEB
 
   mkdir $HSHQ_STACKS_DIR/mastodon
   mkdir $HSHQ_STACKS_DIR/mastodon/db
@@ -23271,9 +23254,6 @@ function installMastodon()
     MASTODON_ELASTICSEARCH_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MASTODON_ELASTICSEARCH_PASSWORD $MASTODON_ELASTICSEARCH_PASSWORD
   fi
-
-  pullImage $IMG_MASTODON_APP
-  pullImage $IMG_MASTODON_WEB
 
   outputConfigMastodon
   generateCert mastodon-app mastodon-app
@@ -23986,10 +23966,10 @@ function installDozzle()
     return
   fi
   set -e
-  mkdir $HSHQ_STACKS_DIR/dozzle
-
-  initServicesCredentials
   pullImage $IMG_DOZZLE
+
+  mkdir $HSHQ_STACKS_DIR/dozzle
+  initServicesCredentials
   outputConfigDozzle
   installStack dozzle dozzle "Accepting connections on" $HOME/dozzle.env
   echo "Dozzle installed, sleeping 3 seconds..."
@@ -24117,7 +24097,7 @@ function installSearxNG()
     return
   fi
   set -e
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/searxng
+  pullImage $IMG_SEARXNG
 
   mkdir $HSHQ_STACKS_DIR/searxng
   mkdir $HSHQ_STACKS_DIR/searxng/caddy
@@ -24133,7 +24113,7 @@ function installSearxNG()
     SEARXNG_SECRET_KEY=$(openssl rand -hex 32)
     updateConfigVar SEARXNG_SECRET_KEY $SEARXNG_SECRET_KEY
   fi
-  pullImage $IMG_SEARXNG
+
   generateCert searxng-caddy searxng-caddy
   outputConfigSearxNG
   installStack searxng searxng-app "Listen on 0.0.0.0" $HOME/searxng.env
@@ -24442,6 +24422,7 @@ function installJellyfin()
     return
   fi
   set -e
+  pullImage $IMG_JELLYFIN
 
   mkdir $HSHQ_STACKS_DIR/jellyfin
   mkdir $HSHQ_STACKS_DIR/jellyfin/config
@@ -24450,7 +24431,6 @@ function installJellyfin()
 
   initServicesCredentials
 
-  pullImage $IMG_JELLYFIN
   outputConfigJellyfin
   installStack jellyfin jellyfin "Startup complete" $HOME/jellyfin.env
 
@@ -24608,12 +24588,11 @@ function installFileBrowser()
     return
   fi
   set -e
+  pullImage $IMG_FILEBROWSER
 
   mkdir $HSHQ_STACKS_DIR/filebrowser
   mkdir $HSHQ_STACKS_DIR/filebrowser/db
   mkdir $HSHQ_STACKS_DIR/filebrowser/srv
-  pullImage $IMG_FILEBROWSER
-
   initServicesCredentials
   FILEBROWSER_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $FILEBROWSER_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
 
@@ -24746,6 +24725,7 @@ function installPhotoPrism()
     return
   fi
   set -e
+  pullImage $IMG_PHOTOPRISM_APP
 
   mkdir $HSHQ_STACKS_DIR/photoprism
   mkdir $HSHQ_STACKS_DIR/photoprism/db
@@ -24761,7 +24741,7 @@ function installPhotoPrism()
     PHOTOPRISM_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PHOTOPRISM_DATABASE_ROOT_PASSWORD $PHOTOPRISM_DATABASE_ROOT_PASSWORD
   fi
-  pullImage $IMG_PHOTOPRISM_APP
+
   outputConfigPhotoPrism
   echo "Starting PhotoPrism. Please be patient, this process takes a few minutes..."
   docker-compose -f $HOME/photoprism-compose-tmp.yml up -d
@@ -25086,21 +25066,19 @@ function installGuacamole()
     return
   fi
   set -e
+  pullImage $IMG_GUACAMOLE_GUACD
+  pullImage $IMG_GUACAMOLE_WEB
 
   mkdir $HSHQ_STACKS_DIR/guacamole
   mkdir $HSHQ_STACKS_DIR/guacamole/db
   mkdir $HSHQ_STACKS_DIR/guacamole/dbexport
   mkdir $HSHQ_STACKS_DIR/guacamole/init
   chmod 777 $HSHQ_STACKS_DIR/guacamole/dbexport
-
   initServicesCredentials
   if [ -z "$GUACAMOLE_DATABASE_ROOT_PASSWORD" ]; then
     GUACAMOLE_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GUACAMOLE_DATABASE_ROOT_PASSWORD $GUACAMOLE_DATABASE_ROOT_PASSWORD
   fi
-
-  pullImage $IMG_GUACAMOLE_GUACD
-  pullImage $IMG_GUACAMOLE_WEB
 
   outputConfigGuacamole
   docker run --rm $IMG_GUACAMOLE_WEB /opt/guacamole/bin/initdb.sh --mysql > $HSHQ_STACKS_DIR/guacamole/init/initdb.sql
@@ -25673,6 +25651,7 @@ function installWordPress()
     return
   fi
   set -e
+  pullImage $IMG_WORDPRESS
 
   mkdir $HSHQ_STACKS_DIR/wordpress
   mkdir $HSHQ_STACKS_DIR/wordpress/db
@@ -25685,9 +25664,6 @@ function installWordPress()
     WORDPRESS_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar WORDPRESS_DATABASE_ROOT_PASSWORD $WORDPRESS_DATABASE_ROOT_PASSWORD
   fi
-
-  pullImage $IMG_WORDPRESS
-
   outputConfigWordPress
   installStack wordpress wordpress-web "WordPress" $HOME/wordpress.env
 
@@ -25872,19 +25848,19 @@ function installGhost()
     return
   fi
   set -e
+  pullImage $IMG_GHOST
 
   mkdir $HSHQ_STACKS_DIR/ghost
   mkdir $HSHQ_STACKS_DIR/ghost/db
   mkdir $HSHQ_STACKS_DIR/ghost/dbexport
   mkdir $HSHQ_STACKS_DIR/ghost/web
   chmod 777 $HSHQ_STACKS_DIR/ghost/dbexport
-
   initServicesCredentials
   if [ -z "$GHOST_DATABASE_ROOT_PASSWORD" ]; then
     GHOST_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GHOST_DATABASE_ROOT_PASSWORD $GHOST_DATABASE_ROOT_PASSWORD
   fi
-  pullImage $IMG_GHOST
+
   outputConfigGhost
   installStack ghost ghost-web "Ghost booted in" $HOME/ghost.env 5
 
@@ -26079,7 +26055,7 @@ function installPeerTube()
     return
   fi
   set -e
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/peertube
+  pullImage $IMG_PEERTUBE_APP
 
   mkdir $HSHQ_STACKS_DIR/peertube
   mkdir $HSHQ_STACKS_DIR/peertube/config
@@ -26094,7 +26070,6 @@ function installPeerTube()
   initServicesCredentials
 
   pt_secret=$(openssl rand -hex 32)
-  pullImage $IMG_PEERTUBE_APP
   set +e
   docker exec mailu-admin flask mailu alias-delete $PEERTUBE_ADMIN_EMAIL_ADDRESS
   sleep 5
@@ -26351,6 +26326,10 @@ function installHomeAssistant()
     return
   fi
   set -e
+  pullImage $IMG_HOMEASSISTANT_APP
+  pullImage $IMG_HOMEASSISTANT_CONFIGURATOR
+  pullImage $IMG_HOMEASSISTANT_NODERED
+  pullImage $IMG_HOMEASSISTANT_TASMOADMIN
 
   mkdir $HSHQ_STACKS_DIR/homeassistant
   mkdir $HSHQ_STACKS_DIR/homeassistant/config
@@ -26366,12 +26345,6 @@ function installHomeAssistant()
   chmod 777 $HSHQ_STACKS_DIR/homeassistant/dbexport
 
   initServicesCredentials
-
-  pullImage $IMG_HOMEASSISTANT_APP
-  pullImage $IMG_HOMEASSISTANT_CONFIGURATOR
-  pullImage $IMG_HOMEASSISTANT_NODERED
-  pullImage $IMG_HOMEASSISTANT_TASMOADMIN
-
   generateCert homeassistant-app "homeassistant-app,host.docker.internal"
   generateCert homeassistant-configurator homeassistant-configurator
   generateCert homeassistant-nodered homeassistant-nodered
@@ -27058,7 +27031,7 @@ function installGitlab()
     return
   fi
   set -e
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/gitlab
+  pullImage $IMG_GITLAB_APP
 
   mkdir $HSHQ_STACKS_DIR/gitlab
   mkdir $HSHQ_STACKS_DIR/gitlab/app
@@ -27080,8 +27053,6 @@ function installGitlab()
     GITLAB_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GITLAB_REDIS_PASSWORD $GITLAB_REDIS_PASSWORD
   fi
-  pullImage $IMG_GITLAB_APP
-
   outputConfigGitlab
   generateCert gitlab-app gitlab-app
   installStack gitlab gitlab-app " " $HOME/gitlab.env
@@ -27390,6 +27361,8 @@ function installVaultwarden()
     return
   fi
   set -e
+  pullImage $IMG_VAULTWARDEN_APP
+  pullImage $IMG_VAULTWARDEN_LDAP
 
   mkdir $HSHQ_STACKS_DIR/vaultwarden
   mkdir $HSHQ_STACKS_DIR/vaultwarden/app
@@ -27399,9 +27372,6 @@ function installVaultwarden()
 
   initServicesCredentials
   VAULTWARDEN_ADMIN_TOKEN_HASH=$(echo -n "$VAULTWARDEN_ADMIN_TOKEN" | argon2 $(pwgen -c -n 32 1) -id -e -m 16 | sed 's/\$/\$\$/g')
-  pullImage $IMG_VAULTWARDEN_APP
-  pullImage $IMG_VAULTWARDEN_LDAP
-
   outputConfigVaultwarden
   generateCert vaultwarden-app vaultwarden-app
   installStack vaultwarden vaultwarden-app " " $HOME/vaultwarden.env
@@ -27633,7 +27603,7 @@ function installDiscourse()
     return
   fi
   set -e
-  sudo rm -fr $HSHQ_NONBACKUP_DIR/discourse
+  pullImage $IMG_DISCOURSE
 
   mkdir $HSHQ_STACKS_DIR/discourse
   mkdir $HSHQ_STACKS_DIR/discourse/db
@@ -27652,7 +27622,6 @@ function installDiscourse()
     DISCOURSE_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar DISCOURSE_REDIS_PASSWORD $DISCOURSE_REDIS_PASSWORD
   fi
-  pullImage $IMG_DISCOURSE
   set +e
   docker exec mailu-admin flask mailu alias-delete $DISCOURSE_ADMIN_EMAIL_ADDRESS
   sleep 5
@@ -28077,15 +28046,13 @@ function installCodeServer()
     return
   fi
   set -e
+  pullImage $IMG_CODESERVER
 
   mkdir $HSHQ_STACKS_DIR/codeserver
   mkdir $HSHQ_STACKS_DIR/codeserver/.config
   mkdir $HSHQ_STACKS_DIR/codeserver/.config/code-server
-
   initServicesCredentials
   CODESERVER_ADMIN_PASSWORD_HASH=$(echo -n "$CODESERVER_ADMIN_PASSWORD" | argon2 $(pwgen -c -n 32 1) -e)
-  pullImage $IMG_CODESERVER
-
   generateCert codeserver codeserver
   outputConfigCodeServer
   mv $HOME/codeserver.yaml $HSHQ_STACKS_DIR/codeserver/.config/code-server/config.yaml
@@ -28321,6 +28288,8 @@ function installShlink()
     return
   fi
   set -e
+  pullImage $IMG_SHLINK_APP
+  pullImage $IMG_SHLINK_WEB
 
   mkdir $HSHQ_STACKS_DIR/shlink
   mkdir $HSHQ_STACKS_DIR/shlink/db
@@ -28339,8 +28308,6 @@ function installShlink()
     SHLINK_INITIAL_API_KEY=$(pwgen -c -n -A 8 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 12 1)
     updateConfigVar SHLINK_INITIAL_API_KEY $SHLINK_INITIAL_API_KEY
   fi
-  pullImage $IMG_SHLINK_APP
-  pullImage $IMG_SHLINK_WEB
 
   outputConfigShlink
   installStack shlink shlink "shlink" $HOME/shlink.env
@@ -28615,6 +28582,7 @@ function installFirefly()
     return
   fi
   set -e
+  pullImage $IMG_FIREFLY
 
   mkdir $HSHQ_STACKS_DIR/firefly
   mkdir $HSHQ_STACKS_DIR/firefly/db
@@ -28633,7 +28601,6 @@ function installFirefly()
     FIREFLY_INITIAL_API_KEY=$(pwgen -c -n 32 1)
     updateConfigVar FIREFLY_INITIAL_API_KEY $FIREFLY_INITIAL_API_KEY
   fi
-  pullImage $IMG_FIREFLY
 
   outputConfigFirefly
   installStack firefly firefly " " $HOME/firefly.env
@@ -28868,6 +28835,9 @@ function installExcalidraw()
     return
   fi
   set -e
+  pullImage $IMG_EXCALIDRAW_SERVER
+  pullImage $IMG_EXCALIDRAW_STORAGE
+  pullImage $IMG_EXCALIDRAW_WEB
 
   mkdir $HSHQ_STACKS_DIR/excalidraw
   mkdir $HSHQ_STACKS_DIR/excalidraw/redis
@@ -28875,9 +28845,6 @@ function installExcalidraw()
     EXCALIDRAW_REDIS_PASSWORD=$(pwgen -c -n 64 1)
     updateConfigVar EXCALIDRAW_REDIS_PASSWORD $EXCALIDRAW_REDIS_PASSWORD
   fi
-  pullImage $IMG_EXCALIDRAW_SERVER
-  pullImage $IMG_EXCALIDRAW_STORAGE
-  pullImage $IMG_EXCALIDRAW_WEB
 
   outputConfigExcalidraw
   installStack excalidraw excalidraw-web " " $HOME/excalidraw.env
@@ -29093,14 +29060,12 @@ function installDrawIO()
     return
   fi
   set -e
-
-  mkdir $HSHQ_STACKS_DIR/drawio
-  mkdir $HSHQ_STACKS_DIR/drawio/fonts
-
   pullImage $IMG_DRAWIO_PLANTUML
   pullImage $IMG_DRAWIO_EXPORT
   pullImage $IMG_DRAWIO_WEB
 
+  mkdir $HSHQ_STACKS_DIR/drawio
+  mkdir $HSHQ_STACKS_DIR/drawio/fonts
   outputConfigDrawIO
   installStack drawio drawio-web " " $HOME/drawio.env
   echo "Draw.io installed, sleeping 10 seconds..."
@@ -29269,6 +29234,7 @@ function installInvidious()
     return
   fi
   set -e
+  pullImage $IMG_INVIDIOUS
 
   mkdir $HSHQ_STACKS_DIR/invidious
   mkdir $HSHQ_STACKS_DIR/invidious/db
@@ -29278,8 +29244,6 @@ function installInvidious()
 
   initServicesCredentials
   INVIDIOUS_HMAC_KEY=$(pwgen -c -n 32 1)
-
-  pullImage $IMG_INVIDIOUS
 
   outputConfigInvidious
   installStack invidious invidious-web "Invidious is ready to lead at" $HOME/invidious.env
@@ -29670,6 +29634,7 @@ function installGitea()
     return
   fi
   set -e
+  pullImage $IMG_GITEA_APP
 
   mkdir $HSHQ_STACKS_DIR/gitea
   mkdir $HSHQ_STACKS_DIR/gitea/app
@@ -29678,8 +29643,6 @@ function installGitea()
   chmod 777 $HSHQ_STACKS_DIR/gitea/dbexport
 
   initServicesCredentials
-
-  pullImage $IMG_GITEA_APP
   outputConfigGitea
   installStack gitea gitea-app "Starting new Web server:" $HOME/gitea.env
   echo "Gitea installed, sleeping 10 seconds..."
@@ -29887,6 +29850,8 @@ function installMealie()
     return
   fi
   set -e
+  pullImage $IMG_MEALIE
+
   mkdir $HSHQ_STACKS_DIR/mealie
   mkdir $HSHQ_STACKS_DIR/mealie/app
   mkdir $HSHQ_STACKS_DIR/mealie/db
@@ -29899,7 +29864,6 @@ function installMealie()
   docker exec mailu-admin flask mailu alias-delete $MEALIE_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $MEALIE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  pullImage $IMG_MEALIE
   outputConfigMealie
   installStack mealie mealie-app "Application startup complete" $HOME/mealie.env 5
 
@@ -30128,13 +30092,13 @@ function installKasm()
     return
   fi
   set -e
+  pullImage $IMG_KASM
 
   mkdir $HSHQ_STACKS_DIR/kasm
   mkdir $HSHQ_STACKS_DIR/kasm/profiles
   mkdir $HSHQ_NONBACKUP_DIR/kasm
   mkdir $HSHQ_NONBACKUP_DIR/kasm/data
 
-  pullImage $IMG_KASM
   outputConfigKasm
   installStack kasm kasm "" $HOME/kasm.env
 
@@ -30273,11 +30237,11 @@ function installNTFY()
     return
   fi
   set -e
+  pullImage $IMG_NTFY
+
   mkdir $HSHQ_STACKS_DIR/ntfy
   mkdir $HSHQ_STACKS_DIR/ntfy/cache
   mkdir $HSHQ_STACKS_DIR/ntfy/etc
-
-  pullImage $IMG_NTFY
   outputConfigNTFY
   installStack ntfy ntfy "" $HOME/ntfy.env
   sleep 3
@@ -30762,8 +30726,9 @@ function installITTools()
     return
   fi
   set -e
-  mkdir $HSHQ_STACKS_DIR/ittools
   pullImage $IMG_ITTOOLS
+
+  mkdir $HSHQ_STACKS_DIR/ittools
   outputConfigITTools
   installStack ittools ittools " " $HOME/ittools.env
   sleep 3
@@ -30865,14 +30830,14 @@ function installRemotely()
     return
   fi
   set -e
-  mkdir $HSHQ_STACKS_DIR/remotely
+  pullImage $IMG_REMOTELY
 
+  mkdir $HSHQ_STACKS_DIR/remotely
   initServicesCredentials
   docker exec mailu-admin flask mailu alias-delete $REMOTELY_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $REMOTELY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
-  pullImage $IMG_REMOTELY
   if ! [ "$REMOTELY_INIT_ENV" = "true" ]; then
     sendEmail -s "Remotely Admin Login Info" -b "Remotely Admin Username: $REMOTELY_ADMIN_EMAIL_ADDRESS\nRemotely Admin Password: $REMOTELY_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     REMOTELY_INIT_ENV=true
@@ -31007,6 +30972,9 @@ function installCalibre()
     return
   fi
   set -e
+  pullImage $IMG_CALIBRE_SERVER
+  pullImage $IMG_CALIBRE_WEB
+
   mkdir $HSHQ_STACKS_DIR/calibre
   mkdir $HSHQ_STACKS_DIR/calibre/server
   mkdir $HSHQ_STACKS_DIR/calibre/library
@@ -31019,8 +30987,6 @@ function installCalibre()
   sleep 5
   addUserMailu alias $CALIBRE_WEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
-  pullImage $IMG_CALIBRE_SERVER
-  pullImage $IMG_CALIBRE_WEB
   if ! [ "$CALIBRE_WEB_INIT_ENV" = "true" ]; then
     sendEmail -s "Calibre-Web Admin Login Info" -b "Calibre-Web Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nCalibre-Web Admin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     CALIBRE_WEB_INIT_ENV=true
@@ -31221,13 +31187,14 @@ function installNetdata()
     return
   fi
   set -e
+  pullImage $IMG_NETDATA
+
   mkdir $HSHQ_STACKS_DIR/netdata
   mkdir $HSHQ_STACKS_DIR/netdata/config
   mkdir $HSHQ_STACKS_DIR/netdata/lib
   mkdir $HSHQ_NONBACKUP_DIR/netdata
   mkdir $HSHQ_NONBACKUP_DIR/netdata/cache
 
-  pullImage $IMG_NETDATA
   outputConfigNetData
   installStack netdata netdata "" $HOME/netdata.env
   sleep 3
@@ -31372,6 +31339,8 @@ function installLinkwarden()
     return
   fi
   set -e
+  pullImage $IMG_LINKWARDEN
+
   mkdir $HSHQ_STACKS_DIR/linkwarden
   mkdir $HSHQ_STACKS_DIR/linkwarden/db
   mkdir $HSHQ_STACKS_DIR/linkwarden/dbexport
@@ -31384,7 +31353,6 @@ function installLinkwarden()
     updateConfigVar LINKWARDEN_NEXTAUTH_SECRET $LINKWARDEN_NEXTAUTH_SECRET
   fi
 
-  pullImage $IMG_LINKWARDEN
   outputConfigLinkwarden
   installStack linkwarden linkwarden "" $HOME/linkwarden.env
   sleep 3
@@ -31558,13 +31526,14 @@ function installStirlingPDF()
     return
   fi
   set -e
+  pullImage $IMG_STIRLINGPDF
+
   mkdir $HSHQ_STACKS_DIR/stirlingpdf
   mkdir $HSHQ_STACKS_DIR/stirlingpdf/configs
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
   mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
 
-  pullImage $IMG_STIRLINGPDF
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
   sleep 3
@@ -31677,6 +31646,11 @@ function installBarAssistant()
     return
   fi
   set -e
+  pullImage $IMG_BARASSISTANT_APP
+  pullImage $IMG_BARASSISTANT_WEB
+  pullImage $IMG_MEILISEARCH
+  pullImage $IMG_SALTRIM
+
   mkdir $HSHQ_STACKS_DIR/bar-assistant
   mkdir $HSHQ_STACKS_DIR/bar-assistant/app
   mkdir $HSHQ_STACKS_DIR/bar-assistant/meilisearch
@@ -31692,11 +31666,6 @@ function installBarAssistant()
     BARASSISTANT_MEILISEARCH_KEY=$(pwgen -c -n 64 1)
     updateConfigVar BARASSISTANT_MEILISEARCH_KEY $BARASSISTANT_MEILISEARCH_KEY
   fi
-
-  pullImage $IMG_BARASSISTANT_APP
-  pullImage $IMG_BARASSISTANT_WEB
-  pullImage $IMG_MEILISEARCH
-  pullImage $IMG_SALTRIM
 
   outputConfigBarAssistant
   installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 5
@@ -31993,6 +31962,8 @@ function installFreshRSS()
     return
   fi
   set -e
+  pullImage $IMG_FRESHRSS
+
   mkdir $HSHQ_STACKS_DIR/freshrss
   mkdir $HSHQ_STACKS_DIR/freshrss/db
   mkdir $HSHQ_STACKS_DIR/freshrss/dbexport
@@ -32007,7 +31978,6 @@ function installFreshRSS()
   sleep 5
   addUserMailu alias $FRESHRSS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
-  pullImage $IMG_FRESHRSS
   if ! [ "$FRESHRSS_INIT_ENV" = "true" ]; then
     sendEmail -s "FreshRSS Admin Login Info" -b "FreshRSS Admin Username: $FRESHRSS_ADMIN_USERNAME\nFreshRSS Admin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     FRESHRSS_INIT_ENV=true
@@ -32225,6 +32195,8 @@ function installKeila()
     return
   fi
   set -e
+  pullImage $IMG_KEILA
+
   mkdir $HSHQ_STACKS_DIR/keila
   mkdir $HSHQ_STACKS_DIR/keila/db
   mkdir $HSHQ_STACKS_DIR/keila/dbexport
@@ -32239,7 +32211,6 @@ function installKeila()
   sleep 5
   addUserMailu alias $KEILA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
-  pullImage $IMG_KEILA
   if ! [ "$KEILA_INIT_ENV" = "true" ]; then
     sendEmail -s "Keila Admin Login Info" -b "Keila Admin Username: $KEILA_ADMIN_EMAIL_ADDRESS\nKeila Admin Password: $KEILA_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     KEILA_INIT_ENV=true
@@ -32443,6 +32414,8 @@ function installWallabag()
     return
   fi
   set -e
+  pullImage $IMG_WALLABAG
+
   mkdir $HSHQ_STACKS_DIR/wallabag
   mkdir $HSHQ_STACKS_DIR/wallabag/db
   mkdir $HSHQ_STACKS_DIR/wallabag/dbexport
@@ -32465,7 +32438,6 @@ function installWallabag()
   sleep 5
   addUserMailu alias $WALLABAG_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
-  pullImage $IMG_WALLABAG
   if ! [ "$WALLABAG_INIT_ENV" = "true" ]; then
     sendEmail -s "Wallabag Admin Login Info" -b "Wallabag Admin Username: $WALLABAG_ADMIN_USERNAME\nWallabag Admin Password: $WALLABAG_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     WALLABAG_INIT_ENV=true
@@ -32706,11 +32678,11 @@ function installJupyter()
     return
   fi
   set -e
+  pullImage $IMG_JUPYTER
+
   mkdir $HSHQ_STACKS_DIR/jupyter
   mkdir $HSHQ_STACKS_DIR/jupyter/notebooks
-
   initServicesCredentials
-  pullImage $IMG_JUPYTER
   outputConfigJupyter
   installStack jupyter jupyter "Jupyter Notebook .* is running at" $HOME/jupyter.env 5
 
@@ -32828,6 +32800,9 @@ function installPaperless()
     return
   fi
   set -e
+  pullImage $IMG_PAPERLESS_GOTENBERG
+  pullImage $IMG_PAPERLESS_TIKA
+  pullImage $IMG_PAPERLESS_APP
 
   mkdir $HSHQ_STACKS_DIR/paperless
   mkdir $HSHQ_STACKS_DIR/paperless/db
@@ -32852,9 +32827,6 @@ function installPaperless()
   docker exec mailu-admin flask mailu alias-delete $PAPERLESS_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $PAPERLESS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  pullImage $IMG_PAPERLESS_GOTENBERG
-  pullImage $IMG_PAPERLESS_TIKA
-  pullImage $IMG_PAPERLESS_APP
 
   if ! [ "$PAPERLESS_INIT_ENV" = "true" ]; then
     sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
@@ -33113,12 +33085,11 @@ function installSQLPad()
     return
   fi
   set -e
+  pullImage $IMG_SQLPAD
 
   mkdir $HSHQ_STACKS_DIR/sqlpad
-
   initServicesCredentials
   SQLPAD_PASSPHRASE=$(pwgen -c -n 64 1)
-  pullImage $IMG_SQLPAD
   generateCert sqlpad sqlpad
   outputConfigSQLPad
   installStack sqlpad sqlpad "Welcome to SQLPad" $HOME/sqlpad.env 5
@@ -34833,6 +34804,9 @@ function installClientDNS()
     return
   fi
   set -e
+  pullImage $IMG_WIREGUARD
+  pullImage $IMG_DNSMASQ
+
   mkdir -p $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}
   cdns_stack_name_upper=$(echo $cdns_stack_name | tr '[:lower:]' '[:upper:]')
   checkAddServiceToConfig "clientdns-${cdns_stack_name}" "CLIENTDNS_${cdns_stack_name_upper}_ADMIN_USERNAME=$CUR_CLIENTDNS_ADMIN_USERNAME,CLIENTDNS_${cdns_stack_name_upper}_ADMIN_PASSWORD=$CUR_CLIENTDNS_ADMIN_PASSWORD"
@@ -34841,8 +34815,6 @@ function installClientDNS()
   clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
   docker network rm tmpnet >/dev/null
   docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null
-  pullImage $IMG_WIREGUARD
-  pullImage $IMG_DNSMASQ
   outputConfigClientDNS $cdns_stack_name
   sudo mv $HSHQ_WIREGUARD_DIR/users/clientdns-${cdns_stack_name}.conf $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf
   installStack clientdns-${cdns_stack_name} clientdns-${cdns_stack_name}-wireguard "\[ls.io-init\] done" $HOME/clientdns-${cdns_stack_name}.env
