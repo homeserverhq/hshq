@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=31
+HSHQ_SCRIPT_VERSION=32
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -1242,8 +1242,6 @@ function initInstallation()
     fi
   done
   set -e
-  RELAYSERVER_IS_INIT=true
-  updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
   sudo -v
   screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME -S hshqInstall bash $0 install $CONNECTING_IP
   exit 0
@@ -2129,16 +2127,20 @@ function setupHostedVPN()
     sleep 5
     generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
     startStopStack mailu start
-    insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png"
-    insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-    insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png"
-    insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png"
-    insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-    insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png"
-    insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-    insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png"
-    insertEnableSvcHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wireguard.png"
-    insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
+    docker container stop heimdall > /dev/null 2>&1
+    docker container stop uptimekuma > /dev/null 2>&1
+    insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false
+    insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false
+    insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false
+    insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
+    insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
+    insertEnableSvcHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wireguard.png" false
+    insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    docker container start heimdall > /dev/null 2>&1
+    docker container start uptimekuma > /dev/null 2>&1
     emailVaultwardenCredentials true
   fi
 
@@ -2246,6 +2248,8 @@ EOFCF
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
   uploadVPNInstallScripts false
+  RELAYSERVER_IS_INIT=true
+  updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
 }
 
 function transferHostedVPN()
@@ -5910,7 +5914,7 @@ EOF
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || ! [ $is_primary = 1 ]; then
     addDomainAndWildcardAdguardNoReplaceHS "$domain_name" "$ca_ip"
     addDomainAdguardHS "*.$ext_prefix.$domain_name" "A"
-    insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://home.$domain_name"
+    insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://home.$domain_name" true
   fi
   echo "Adding Relay Server IP - VPN Type: $PRIMARY_VPN_SETUP_TYPE, Is Primary: $is_primary, RS Domain: rs.$int_prefix.$domain_name, Server IP: $rs_vpn_ip"
   addDomainAdguardHS "*.$int_prefix.$domain_name" "$rs_vpn_ip"
@@ -5999,7 +6003,10 @@ EOF
         RELAYSERVER_IS_INIT=true
         updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
         rs_wg_user_conf=$(sudo cat $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf)
-        email_msg="Your new RelayServer has been configured, please update your settings in the mailu stack environment variables: \n\nRELAYHOST=$SMTP_RELAY_HOST\nRELAYUSER=$SMTP_RELAY_USERNAME\nRELAYPASSWORD=$SMTP_RELAY_PASSWORD\n\nUser Connection Info:\n\n================ WireGuard Configuration ================\n${rs_wg_user_conf}\n=======================================================\n"
+        # Set env vars in mailu stack
+        set +e
+        updateStackEnv mailu modFunUpdateMailuRelaySettings
+        email_msg="Your new RelayServer has been configured. Below is your first WireGuard User Connection Info:\n\n================ WireGuard Configuration ================\n${rs_wg_user_conf}\n=======================================================\n"
         sendEmail -s "New Relay Server" -b "$email_msg" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
         clear
         echo -e "\n\n============= User WireGuard Configuration ============\n"
@@ -6035,7 +6042,10 @@ EOF
         RELAYSERVER_IS_INIT=true
         updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
         connectPrimaryVPN
-        email_msg="Your joined RelayServer has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\nAlso, please update your settings in the mailu stack environment variables: \n\nRELAYHOST=$SMTP_RELAY_HOST\nRELAYUSER=$SMTP_RELAY_USERNAME\nRELAYPASSWORD=$SMTP_RELAY_PASSWORD\n\n"
+        email_msg="Your joined RelayServer has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\n"
+        # Set env vars in mailu stack
+        set +e
+        updateStackEnv mailu modFunUpdateMailuRelaySettings
         sendEmail -s "New Relay Server" -b "$email_msg" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
         showMessageBox "Joined Relay Server" "The RelayServer has been joined. Check your email ($EMAIL_ADMIN_EMAIL_ADDRESS) for further details."
         ;;
@@ -7027,7 +7037,7 @@ function createMyNetworkInviteHomeServerVPNConfig()
   fi
   # Send ourself a copy
   sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body"
-  insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://home.$domain_name"
+  insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://home.$domain_name" true
   insertEnableSvcHeimdall heimdall "$hs_name" homeservers "https://home.$domain_name" "hs2.png" true
 
   # Send update email to other HomeServers on our network
@@ -8496,6 +8506,29 @@ function updateStackByID()
   echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
   http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
   rm -f $update_compose_file $update_env_file $HOME/${update_stack_name}-json.tmp
+}
+
+function updateStackEnv()
+{
+  updateStackName=$1
+  updateModFunction=$2
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  updateStackID=$(getStackID $updateStackName "$portainerToken")
+  extractStackToHome $updateStackName $updateStackID
+  $updateModFunction
+  if [ $? -ne 0 ]; then
+    rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
+    return 2
+  fi
+  updateStackByID $updateStackName $updateStackID $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env "$portainerToken"
+  rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
+}
+
+function modFunUpdateMailuRelaySettings
+{
+  sed -i "s|RELAYHOST=.*|RELAYHOST=$SMTP_RELAY_HOST|" $HOME/${updateStackName}.env
+  sed -i "s|RELAYUSER=.*|RELAYUSER=$SMTP_RELAY_USERNAME|" $HOME/${updateStackName}.env
+  sed -i "s|RELAYPASSWORD=.*|RELAYPASSWORD=$SMTP_RELAY_PASSWORD|" $HOME/${updateStackName}.env
 }
 
 function getPasswordWithSymbol()
@@ -10651,6 +10684,18 @@ JUPYTER_INIT_ENV=true
 JUPYTER_ADMIN_PASSWORD=
 # Jupyter (Service Details) END
 
+# Paperless (Service Details) BEGIN
+PAPERLESS_INIT_ENV=true
+PAPERLESS_SECRET_KEY=
+PAPERLESS_REDIS_PASSWORD=
+PAPERLESS_ADMIN_USERNAME=
+PAPERLESS_ADMIN_EMAIL_ADDRESS=
+PAPERLESS_ADMIN_PASSWORD=
+PAPERLESS_DATABASE_NAME=
+PAPERLESS_DATABASE_USER=
+PAPERLESS_DATABASE_USER_PASSWORD=
+# Paperless (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -10737,6 +10782,12 @@ function checkUpdateVersion()
     echo "Updating to Version 31..."
     version31Update
     HSHQ_VERSION=31
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 32 ]; then
+    echo "Updating to Version 32..."
+    version32Update
+    HSHQ_VERSION=32
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -11378,6 +11429,12 @@ function version31Update()
 {
   checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD="
   addToDisabledServices jupyter
+}
+
+function version32Update()
+{
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
+  addToDisabledServices paperless
 }
 
 function checkImageList()
@@ -13374,7 +13431,7 @@ function pullImage()
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
     # Need to run docker pull with sudo in case current user added to docker group hasn't reflected yet.
-    sudo docker pull $img_and_version > /dev/null 2>&1
+    sudo docker pull $img_and_version
     img_name=$(echo $img_and_version | cut -d":" -f1)
     sudo docker image ls | grep "$img_name"
     is_success=$?
@@ -13398,43 +13455,6 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null 2>/dev/null
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null 2>/dev/null
-}
-
-function checkAddDBSqlPad()
-{
-  sdb_name=$1
-  sdb_formal=$2
-  sdb_driver=$3
-  sdb_host=$4
-  sdb_database=$5
-  sdb_username=$6
-  sdb_password=$7
-  stackID=$(getStackID sqlpad)
-  if [ -z $stackID ]; then
-    return
-  fi
-  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$stackID/stack.env $HOME/$stackID.env
-  sudo cp $HSHQ_STACKS_DIR/portainer/compose/$stackID/docker-compose.yml $HOME/$stackID.yml
-  sudo chown $USERNAME:$USERNAME $HOME/$stackID.env
-  sudo chown $USERNAME:$USERNAME $HOME/$stackID.yml
-  set +e
-  grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/$stackID.env > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    rm -f $HOME/$stackID.env $HOME/$stackID.yml
-    return
-  fi
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__name=$sdb_formal" >> $HOME/$stackID.env
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__driver=$sdb_driver" >> $HOME/$stackID.env
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__host=$sdb_host" >> $HOME/$stackID.env
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__database=$sdb_database" >> $HOME/$stackID.env
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__username=$sdb_username" >> $HOME/$stackID.env
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__password=$sdb_password" >> $HOME/$stackID.env
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__multiStatementTransactionEnabled='false'" >> $HOME/$stackID.env
-  echo "SQLPAD_CONNECTIONS__${sdb_name}__idleTimeoutSeconds=900" >> $HOME/$stackID.env
-
-  echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/$stackID.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/$stackID.env)}" > $HOME/${stackID}-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${stackID}-json.tmp > /dev/null 2>&1
-  rm -f $HOME/$stackID.env $HOME/$stackID.yml $HOME/${stackID}-json.tmp
 }
 
 function checkStackHSHQManaged()
@@ -13630,6 +13650,9 @@ function loadPinnedDockerImages()
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
+  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.4.3
+  IMG_PAPERLESS_GOTENBERG=gotenberg/gotenberg:7.10
+  IMG_PAPERLESS_TIKA=ghcr.io/paperless-ngx/tika:2.9.1-minimal
   IMG_PEERTUBE_APP=chocobozzz/peertube:v6.0.2-bookworm
   IMG_PHOTOPRISM_APP=photoprism/photoprism:220901-bullseye
   IMG_PORTAINER=portainer/portainer-ce:2.19.4-alpine
@@ -13760,6 +13783,8 @@ function getScriptStackVersion()
       echo "v2" ;;
     wallabag)
       echo "v1" ;;
+    paperless)
+      echo "v1" ;;
     heimdall)
       echo "v1" ;;
     ofelia)
@@ -13873,6 +13898,9 @@ function pullDockerImages()
   pullImage $IMG_KEILA
   pullImage $IMG_WALLABAG
   pullImage $IMG_JUPYTER
+  pullImage $IMG_PAPERLESS_APP
+  pullImage $IMG_PAPERLESS_GOTENBERG
+  pullImage $IMG_PAPERLESS_TIKA
 }
 
 function pullBaseServicesDockerImages()
@@ -14526,6 +14554,30 @@ function initServicesCredentials()
     JUPYTER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar JUPYTER_ADMIN_PASSWORD $JUPYTER_ADMIN_PASSWORD
   fi
+  if [ -z "$PAPERLESS_ADMIN_USERNAME" ]; then
+    PAPERLESS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_paperless"
+    updateConfigVar PAPERLESS_ADMIN_USERNAME $PAPERLESS_ADMIN_USERNAME
+  fi
+  if [ -z "$PAPERLESS_ADMIN_EMAIL_ADDRESS" ]; then
+    PAPERLESS_ADMIN_EMAIL_ADDRESS=$PAPERLESS_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar PAPERLESS_ADMIN_EMAIL_ADDRESS $PAPERLESS_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$PAPERLESS_ADMIN_PASSWORD" ]; then
+    PAPERLESS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PAPERLESS_ADMIN_PASSWORD $PAPERLESS_ADMIN_PASSWORD
+  fi
+  if [ -z "$PAPERLESS_DATABASE_NAME" ]; then
+    PAPERLESS_DATABASE_NAME=paperlessdb
+    updateConfigVar PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_NAME
+  fi
+  if [ -z "$PAPERLESS_DATABASE_USER" ]; then
+    PAPERLESS_DATABASE_USER=paperless-user
+    updateConfigVar PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER
+  fi
+  if [ -z "$PAPERLESS_DATABASE_USER_PASSWORD" ]; then
+    PAPERLESS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PAPERLESS_DATABASE_USER_PASSWORD $PAPERLESS_DATABASE_USER_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -14600,6 +14652,7 @@ function initServiceVars()
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
+  checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless,paperless,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
   checkAddSvc "SVCD_PHOTOPRISM=photoprism,photoprism,other,user,PhotoPrism,photoprism,hshq"
   checkAddSvc "SVCD_PORTAINER=portainer,portainer,primary,admin,Portainer,portainer,hshq"
@@ -14726,6 +14779,8 @@ function installStackByName()
       installWallabag $is_integrate ;;
     jupyter)
       installJupyter $is_integrate ;;
+    paperless)
+      installPaperless $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -14840,6 +14895,8 @@ function performUpdateStackByName()
       performUpdateWallabag "$portainerToken" ;;
     jupyter)
       performUpdateJupyter "$portainerToken" ;;
+    paperless)
+      performUpdatePaperless "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -14892,6 +14949,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
@@ -14955,7 +15013,6 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}-IP" https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
@@ -15001,9 +15058,11 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KEILA}-Admin" https://$SUB_KEILA.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WALLABAG}-Admin" https://$SUB_WALLABAG.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JUPYTER}-Admin" https://$SUB_JUPYTER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $JUPYTER_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PAPERLESS}-Admin" https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN/accounts/login/ $HOMESERVER_ABBREV $PAPERLESS_ADMIN_USER $PAPERLESS_ADMIN_PASSWORD)"\n"
   fi
   # Relay Server
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-RelayServer" https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}-RelayServer" https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"\n"
@@ -15053,6 +15112,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0 "calibre-server.png"
   insertIntoHeimdallDB "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0 "netdata.png"
   insertIntoHeimdallDB "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0 "jupyter.png"
+  insertIntoHeimdallDB "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0 "paperless.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # Users Tab
   insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png"
@@ -15165,6 +15225,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -15183,13 +15244,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
-  DS_MEM_24=gitlab,discourse,netdata,jupyter,drawio,guacamole,kasm,linkwarden,stirlingpdf
-  DS_MEM_32=gitlab,discourse,netdata,jupyter
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,drawio,guacamole,kasm,linkwarden,stirlingpdf
+  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless
 }
 
 function getScriptImageByContainerName()
@@ -15302,9 +15363,6 @@ function getScriptImageByContainerName()
       ;;
     "jitsi-jvb")
       container_image=$IMG_JITSI_JVB
-      ;;
-    "jupyter")
-      container_image=$IMG_JUPYTER
       ;;
     "matrix-db")
       container_image=$IMG_POSTGRES
@@ -15590,6 +15648,24 @@ function getScriptImageByContainerName()
       ;;
     "wallabag-app")
       container_image=$IMG_WALLABAG
+      ;;
+    "jupyter")
+      container_image=$IMG_JUPYTER
+      ;;
+    "paperless-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "paperless-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "paperless-app")
+      container_image=$IMG_PAPERLESS_APP
+      ;;
+    "paperless-gotenberg")
+      container_image=$IMG_PAPERLESS_GOTENBERG
+      ;;
+    "paperless-tika")
+      container_image=$IMG_PAPERLESS_TIKA
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -20972,7 +21048,7 @@ function installCollabora()
   updateCaddyBlocks $SUB_COLLABORA $MANAGETLS_COLLABORA "$is_integrate_hshq" $NETDEFAULT_COLLABORA "$inner_block"
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcUptimeKuma collabora "$FMLNAME_COLLABORA" $USERTYPE_COLLABORA "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN"
+    insertEnableSvcUptimeKuma collabora "$FMLNAME_COLLABORA" $USERTYPE_COLLABORA "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN" true
     insertEnableSvcHeimdall collabora "$FMLNAME_COLLABORA Admin" admin "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/browser/dist/admin/admin.html" "collabora.png" true
     restartAllCaddyContainers
   fi
@@ -26371,9 +26447,9 @@ function installHomeAssistant()
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll homeassistant "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" "homeassistant.png"
-    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" $USERTYPE_HOMEASSISTANT_CONFIGURATOR "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN"
-    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_NODERED" $USERTYPE_HOMEASSISTANT_NODERED "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN"
-    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
+    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" $USERTYPE_HOMEASSISTANT_CONFIGURATOR "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN" true
+    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_NODERED" $USERTYPE_HOMEASSISTANT_NODERED "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN" true
+    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
   fi
 }
@@ -26968,7 +27044,7 @@ EOFHA
   chmod 600 $HOME/homeassistant-compose.yml
   sudo chown root:root $HOME/homeassistant-compose.yml
   sudo mv $HOME/homeassistant-compose.yml $upgrade_compose_file
-  insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
+  insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN" true
 }
 
 # Gitlab
@@ -28853,7 +28929,7 @@ function installExcalidraw()
   updateCaddyBlocks $SUB_EXCALIDRAW_STORAGE $MANAGETLS_EXCALIDRAW_STORAGE "$is_integrate_hshq" $NETDEFAULT_EXCALIDRAW_STORAGE "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll excalidraw "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" "excalidraw.png"
-    insertEnableSvcUptimeKuma excalidraw "$FMLNAME_EXCALIDRAW_WEB Server" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN"
+    insertEnableSvcUptimeKuma excalidraw "$FMLNAME_EXCALIDRAW_WEB Server" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
   fi
 }
@@ -30796,12 +30872,12 @@ function installRemotely()
   sleep 5
   addUserMailu alias $REMOTELY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
+  pullImage $IMG_REMOTELY
   if ! [ "$REMOTELY_INIT_ENV" = "true" ]; then
     sendEmail -s "Remotely Admin Login Info" -b "Remotely Admin Username: $REMOTELY_ADMIN_EMAIL_ADDRESS\nRemotely Admin Password: $REMOTELY_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     REMOTELY_INIT_ENV=true
     updateConfigVar REMOTELY_INIT_ENV $REMOTELY_INIT_ENV
   fi
-  pullImage $IMG_REMOTELY
   outputConfigRemotely
   installStack remotely remotely "Starting Remotely server" $HOME/remotely.env
   echo "Sleeping 10 seconds..."
@@ -30943,13 +31019,14 @@ function installCalibre()
   sleep 5
   addUserMailu alias $CALIBRE_WEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
+  pullImage $IMG_CALIBRE_SERVER
+  pullImage $IMG_CALIBRE_WEB
   if ! [ "$CALIBRE_WEB_INIT_ENV" = "true" ]; then
     sendEmail -s "Calibre-Web Admin Login Info" -b "Calibre-Web Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nCalibre-Web Admin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     CALIBRE_WEB_INIT_ENV=true
     updateConfigVar CALIBRE_WEB_INIT_ENV $CALIBRE_WEB_INIT_ENV
   fi
-  pullImage $IMG_CALIBRE_SERVER
-  pullImage $IMG_CALIBRE_WEB
+
   outputConfigCalibre
   generateCert calibre-web calibre-web
   installStack calibre calibre-web "done." $HOME/calibre.env
@@ -31930,13 +32007,13 @@ function installFreshRSS()
   sleep 5
   addUserMailu alias $FRESHRSS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
+  pullImage $IMG_FRESHRSS
   if ! [ "$FRESHRSS_INIT_ENV" = "true" ]; then
     sendEmail -s "FreshRSS Admin Login Info" -b "FreshRSS Admin Username: $FRESHRSS_ADMIN_USERNAME\nFreshRSS Admin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     FRESHRSS_INIT_ENV=true
     updateConfigVar FRESHRSS_INIT_ENV $FRESHRSS_INIT_ENV
   fi
 
-  pullImage $IMG_FRESHRSS
   outputConfigFreshRSS
   installStack freshrss freshrss-app "apache2 -D FOREGROUND" $HOME/freshrss.env
   sleep 5
@@ -32162,13 +32239,13 @@ function installKeila()
   sleep 5
   addUserMailu alias $KEILA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
+  pullImage $IMG_KEILA
   if ! [ "$KEILA_INIT_ENV" = "true" ]; then
     sendEmail -s "Keila Admin Login Info" -b "Keila Admin Username: $KEILA_ADMIN_EMAIL_ADDRESS\nKeila Admin Password: $KEILA_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     KEILA_INIT_ENV=true
     updateConfigVar KEILA_INIT_ENV $KEILA_INIT_ENV
   fi
 
-  pullImage $IMG_KEILA
   outputConfigKeila
   installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env
   sleep 5
@@ -32388,13 +32465,13 @@ function installWallabag()
   sleep 5
   addUserMailu alias $WALLABAG_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
+  pullImage $IMG_WALLABAG
   if ! [ "$WALLABAG_INIT_ENV" = "true" ]; then
     sendEmail -s "Wallabag Admin Login Info" -b "Wallabag Admin Username: $WALLABAG_ADMIN_USERNAME\nWallabag Admin Password: $WALLABAG_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
     WALLABAG_INIT_ENV=true
     updateConfigVar WALLABAG_INIT_ENV $WALLABAG_INIT_ENV
   fi
 
-  pullImage $IMG_WALLABAG
   outputConfigWallabag
   installStack wallabag wallabag-app "wallabag is ready" $HOME/wallabag.env 3
   sleep 5
@@ -32741,6 +32818,291 @@ function performUpdateJupyter()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Paperless
+function installPaperless()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory paperless "Paperless"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/paperless
+  mkdir $HSHQ_STACKS_DIR/paperless/db
+  mkdir $HSHQ_STACKS_DIR/paperless/dbexport
+  mkdir $HSHQ_STACKS_DIR/paperless/redis
+  mkdir $HSHQ_STACKS_DIR/paperless/data
+  mkdir $HSHQ_STACKS_DIR/paperless/media
+  mkdir $HSHQ_STACKS_DIR/paperless/export
+  mkdir $HSHQ_STACKS_DIR/paperless/consume
+  chmod 777 $HSHQ_STACKS_DIR/paperless/dbexport
+
+  initServicesCredentials
+  if [ -z "$PAPERLESS_SECRET_KEY" ]; then
+    PAPERLESS_SECRET_KEY=$(pwgen -c -n 64 1)
+    updateConfigVar PAPERLESS_SECRET_KEY $PAPERLESS_SECRET_KEY
+  fi
+  if [ -z "$PAPERLESS_REDIS_PASSWORD" ]; then
+    PAPERLESS_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PAPERLESS_REDIS_PASSWORD $PAPERLESS_REDIS_PASSWORD
+  fi
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $PAPERLESS_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $PAPERLESS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  pullImage $IMG_PAPERLESS_GOTENBERG
+  pullImage $IMG_PAPERLESS_TIKA
+  pullImage $IMG_PAPERLESS_APP
+
+  if ! [ "$PAPERLESS_INIT_ENV" = "true" ]; then
+    sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    PAPERLESS_INIT_ENV=true
+    updateConfigVar PAPERLESS_INIT_ENV $PAPERLESS_INIT_ENV
+  fi
+  outputConfigPaperless
+  installStack paperless paperless-app "celery@paperless-app ready" $HOME/paperless.env 5
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://paperless-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PAPERLESS $MANAGETLS_PAPERLESS "$is_integrate_hshq" $NETDEFAULT_PAPERLESS "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad paperless $FMLNAME_PAPERLESS postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigPaperless()
+{
+  cat <<EOFJT > $HOME/paperless-compose.yml
+$STACK_VERSION_PREFIX paperless $(getScriptStackVersion paperless)
+
+services:
+  paperless-db:
+    image: $(getScriptImageByContainerName paperless-db)
+    container_name: paperless-db
+    hostname: paperless-db
+    user: \${UID}
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-paperless-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/paperless/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/paperless/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.paperless-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.paperless-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.paperless-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.paperless-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.paperless-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.paperless-hourly-db.email-from=Paperless Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.paperless-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.paperless-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.paperless-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.paperless-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.paperless-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.paperless-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.paperless-monthly-db.email-from=Paperless Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.paperless-monthly-db.mail-only-on-error=false"
+
+  paperless-gotenberg:
+    image: $(getScriptImageByContainerName paperless-gotenberg)
+    container_name: paperless-gotenberg
+    hostname: paperless-gotenberg
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "gotenberg"
+      - "--chromium-disable-javascript=true"
+      - "--chromium-allow-list=file:///tmp/.*"
+    networks:
+      - int-paperless-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  paperless-tika:
+    image: $(getScriptImageByContainerName paperless-tika)
+    container_name: paperless-tika
+    hostname: paperless-tika
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-paperless-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  paperless-app:
+    image: $(getScriptImageByContainerName paperless-app)
+    container_name: paperless-app
+    hostname: paperless-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - paperless-db
+      - paperless-redis
+      - paperless-gotenberg
+      - paperless-tika
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-paperless-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-paperless-data:/usr/src/paperless/data
+      - v-paperless-media:/usr/src/paperless/media
+      - \${HSHQ_STACKS_DIR}/paperless/export:/usr/src/paperless/export
+      - \${HSHQ_STACKS_DIR}/paperless/consume:/usr/src/paperless/consume
+
+  paperless-redis:
+    image: $(getScriptImageByContainerName paperless-redis)
+    container_name: paperless-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-paperless-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-paperless-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$PAPERLESS_REDIS_PASSWORD
+
+volumes:
+  v-paperless-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/paperless/data
+  v-paperless-media:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/paperless/media
+  v-paperless-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/paperless/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-paperless-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFJT
+
+  cat <<EOFJT > $HOME/paperless.env
+POSTGRES_DB=$PAPERLESS_DATABASE_NAME
+POSTGRES_USER=$PAPERLESS_DATABASE_USER
+POSTGRES_PASSWORD=$PAPERLESS_DATABASE_USER_PASSWORD
+PAPERLESS_REDIS=redis://:$PAPERLESS_REDIS_PASSWORD@paperless-redis:6379
+PAPERLESS_DBHOST=paperless-db
+PAPERLESS_DBNAME=$PAPERLESS_DATABASE_NAME
+PAPERLESS_DBUSER=$PAPERLESS_DATABASE_USER
+PAPERLESS_DBPASS=$PAPERLESS_DATABASE_USER_PASSWORD
+PAPERLESS_SECRET_KEY=$PAPERLESS_SECRET_KEY
+PAPERLESS_URL=https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN
+PAPERLESS_ADMIN_USER=$PAPERLESS_ADMIN_USERNAME
+PAPERLESS_ADMIN_MAIL=$PAPERLESS_ADMIN_EMAIL_ADDRESS
+PAPERLESS_ADMIN_PASSWORD=$PAPERLESS_ADMIN_PASSWORD
+PAPERLESS_TIKA_ENABLED=true
+PAPERLESS_TIKA_ENDPOINT=http://paperless-tika:9998
+PAPERLESS_TIKA_GOTENBERG_ENDPOINT=http://paperless-gotenberg:3000
+PAPERLESS_EMAIL_HOST=$SMTP_HOSTNAME
+PAPERLESS_EMAIL_PORT=$SMTP_HOSTPORT
+PAPERLESS_EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
+PAPERLESS_EMAIL_USE_TLS=true
+EOFJT
+
+}
+
+function performUpdatePaperless()
+{
+  perform_stack_name=paperless
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,gotenberg/gotenberg:7.10,ghcr.io/paperless-ngx/tika:2.9.1-minimal,ghcr.io/paperless-ngx/paperless-ngx:2.4.3,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gotenberg/gotenberg:7.10,gotenberg/gotenberg:7.10"
+      image_update_map[2]="ghcr.io/paperless-ngx/tika:2.9.1-minimal,ghcr.io/paperless-ngx/tika:2.9.1-minimal"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.4.3,ghcr.io/paperless-ngx/paperless-ngx:2.4.3"
+      image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # SQLPad
 function installSQLPad()
 {
@@ -32948,6 +33310,14 @@ SQLPAD_CONNECTIONS__nextcloud__username=$NEXTCLOUD_DATABASE_USER
 SQLPAD_CONNECTIONS__nextcloud__password=$NEXTCLOUD_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__nextcloud__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__nextcloud__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__paperless__name=Paperless
+SQLPAD_CONNECTIONS__paperless__driver=postgres
+SQLPAD_CONNECTIONS__paperless__host=paperless-db
+SQLPAD_CONNECTIONS__paperless__database=$PAPERLESS_DATABASE_NAME
+SQLPAD_CONNECTIONS__paperless__username=$PAPERLESS_DATABASE_USER
+SQLPAD_CONNECTIONS__paperless__password=$PAPERLESS_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__paperless__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__paperless__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__peertube__name=PeerTube
 SQLPAD_CONNECTIONS__peertube__driver=postgres
 SQLPAD_CONNECTIONS__peertube__host=peertube-db
@@ -33049,6 +33419,35 @@ function performUpdateSQLPad()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function modFunUpdateSQLPad
+{
+  grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    return 2
+  fi
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__name=$sdb_formal" >> $HOME/${updateStackName}.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__driver=$sdb_driver" >> $HOME/${updateStackName}.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__host=$sdb_host" >> $HOME/${updateStackName}.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__database=$sdb_database" >> $HOME/${updateStackName}.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__username=$sdb_username" >> $HOME/${updateStackName}.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__password=$sdb_password" >> $HOME/${updateStackName}.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__multiStatementTransactionEnabled='false'" >> $HOME/${updateStackName}.env
+  echo "SQLPAD_CONNECTIONS__${sdb_name}__idleTimeoutSeconds=900" >> $HOME/${updateStackName}.env
+}
+
+function checkAddDBSqlPad()
+{
+  sdb_name=$1
+  sdb_formal=$2
+  sdb_driver=$3
+  sdb_host=$4
+  sdb_database=$5
+  sdb_username=$6
+  sdb_password=$7
+  set +e
+  updateStackEnv sqlpad modFunUpdateSQLPad
 }
 
 # Heimdall
@@ -33555,7 +33954,7 @@ function performUpdateHeimdall()
 function insertEnableSvcAll()
 {
   insertEnableSvcHeimdall "$1" "$2" "$3" "$4" "$5" true
-  insertEnableSvcUptimeKuma "$1" "$2" "$3" "$4"
+  insertEnableSvcUptimeKuma "$1" "$2" "$3" "$4" true
 }
 
 function disableSvcAll()
@@ -33604,7 +34003,7 @@ function insertEnableSvcHeimdall()
 
   svc_is_active=1
   user_id=$(getHeimdallUserIDFromType $user_type)
-  docker container stop heimdall >/dev/null
+  docker container stop heimdall > /dev/null 2>&1
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
   if [ -z $insert_id ]; then
     insertIntoHeimdallDB "$svc_proper_name" "$user_type" "$svc_url" "$svc_is_active" "$svc_img"
@@ -33613,7 +34012,7 @@ function insertEnableSvcHeimdall()
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set deleted_at=NULL where user_id='$user_id' and url='$svc_url';"
   fi
   if [ "$is_restart" = "true" ]; then
-    docker container start heimdall >/dev/null
+    docker container start heimdall > /dev/null 2>&1
   fi
 }
 
@@ -34840,6 +35239,7 @@ function insertEnableSvcUptimeKuma()
   svc_proper_name=$2
   user_type=$3
   svc_url=$4
+  is_restart=$5
 
   svc_is_active=1
   set +e
@@ -34852,7 +35252,9 @@ function insertEnableSvcUptimeKuma()
     sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set active=$svc_is_active where url='$svc_url';"
   fi
   set +e
-  docker container start uptimekuma > /dev/null 2>&1
+  if [ "$is_restart" = "true" ]; then
+    docker container start uptimekuma > /dev/null 2>&1
+  fi
   set -e
 }
 
