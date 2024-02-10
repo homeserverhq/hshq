@@ -13616,7 +13616,7 @@ function loadPinnedDockerImages()
   IMG_JUPYTER=continuumio/anaconda3:2023.09-0
   IMG_KASM=lscr.io/linuxserver/kasm:1.14.0
   IMG_KEILA=pentacent/keila:0.14.0
-  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.4.8
+  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.4.9
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
@@ -13772,7 +13772,7 @@ function getScriptStackVersion()
     netdata)
       echo "v1" ;;
     linkwarden)
-      echo "v1" ;;
+      echo "v2" ;;
     stirlingpdf)
       echo "v2" ;;
     bar-assistant)
@@ -14652,7 +14652,7 @@ function initServiceVars()
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
-  checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless,paperless,hshq"
+  checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
   checkAddSvc "SVCD_PHOTOPRISM=photoprism,photoprism,other,user,PhotoPrism,photoprism,hshq"
   checkAddSvc "SVCD_PORTAINER=portainer,portainer,primary,admin,Portainer,portainer,hshq"
@@ -14949,7 +14949,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
@@ -14966,6 +14965,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}      policy: one_factor\n"
@@ -31501,10 +31501,16 @@ function performUpdateLinkwarden()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.4.8
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.8,ghcr.io/linkwarden/linkwarden:v2.4.8"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.8,ghcr.io/linkwarden/linkwarden:v2.4.9"
+    ;;
+    2)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.4.9
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.9,ghcr.io/linkwarden/linkwarden:v2.4.9"
     ;;
     *)
       is_upgrade_error=true
