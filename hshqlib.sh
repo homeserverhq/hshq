@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=32
+HSHQ_SCRIPT_VERSION=33
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -411,7 +411,7 @@ EOF
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     menu_items=${menu_items}"RelayServer | OFF "
   fi
-  sel_caddy=($(whiptail --title "Select Instances" --checklist "$caddymenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_caddy=($(whiptail --title "Select Instances" --checklist "$caddymenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   showYesNoMessageBox "Confirm Reset" "Perform this action on the selected Caddy server(s), Continue?"
   if [ $? -ne 0 ]; then
     set -e
@@ -1437,7 +1437,7 @@ $hshqlogo
 Select the services that you wish to install:
 EOF
   )
-  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   if [ -z $sel_svcs ]; then
     showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
     return 0
@@ -1592,7 +1592,7 @@ $hshqlogo
 Select the services that you wish to update:
 EOF
   )
-  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   if [ -z $sel_svcs ]; then
     showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
     return 0
@@ -1606,11 +1606,11 @@ EOF
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   report_start_time=$(date)
   full_update_report=""
-  full_update_report="${full_update_report}               Successful               \n"
-  full_update_report="${full_update_report}----------------------------------------"
+  full_update_report="${full_update_report}                    Successful                    \n"
+  full_update_report="${full_update_report}--------------------------------------------------"
   upgrade_error_report="\n\n"
-  upgrade_error_report="${upgrade_error_report}                 Errors                 \n"
-  upgrade_error_report="${upgrade_error_report}----------------------------------------"
+  upgrade_error_report="${upgrade_error_report}                      Errors                      \n"
+  upgrade_error_report="${upgrade_error_report}--------------------------------------------------"
   set +e
   for cur_svc in "${sel_svcs[@]}"
   do
@@ -1628,9 +1628,9 @@ EOF
   removeSudoTimeoutInstall
   report_end_time=$(date)
   full_update_report_header=""
-  full_update_report_header="${full_update_report_header}========================================\n"
-  full_update_report_header="${full_update_report_header}        Services Upgrade Report         \n"
-  full_update_report_header="${full_update_report_header}========================================\n"
+  full_update_report_header="${full_update_report_header}==================================================\n"
+  full_update_report_header="${full_update_report_header}             Services Upgrade Report              \n"
+  full_update_report_header="${full_update_report_header}==================================================\n"
   full_update_report_header="${full_update_report_header}Start Time: $report_start_time\n"
   full_update_report_header="${full_update_report_header}  End Time: $report_end_time\n\n"
   sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -1686,11 +1686,11 @@ function performAllAvailableStackUpdates()
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   report_start_time=$(date)
   full_update_report=""
-  full_update_report="${full_update_report}               Successful               \n"
-  full_update_report="${full_update_report}----------------------------------------"
+  full_update_report="${full_update_report}                    Successful                    \n"
+  full_update_report="${full_update_report}--------------------------------------------------"
   upgrade_error_report="\n\n"
-  upgrade_error_report="${upgrade_error_report}                 Errors                 \n"
-  upgrade_error_report="${upgrade_error_report}----------------------------------------"
+  upgrade_error_report="${upgrade_error_report}                      Errors                      \n"
+  upgrade_error_report="${upgrade_error_report}--------------------------------------------------"
   set +e
   unset stackListArr
   stackListArr=($(echo $stacksToUpdate | tr "," "\n"))
@@ -1712,9 +1712,9 @@ function performAllAvailableStackUpdates()
   removeSudoTimeoutInstall
   report_end_time=$(date)
   full_update_report_header=""
-  full_update_report_header="${full_update_report_header}========================================\n"
-  full_update_report_header="${full_update_report_header}        Services Upgrade Report         \n"
-  full_update_report_header="${full_update_report_header}========================================\n"
+  full_update_report_header="${full_update_report_header}==================================================\n"
+  full_update_report_header="${full_update_report_header}             Services Upgrade Report              \n"
+  full_update_report_header="${full_update_report_header}==================================================\n"
   full_update_report_header="${full_update_report_header}Start Time: $report_start_time\n"
   full_update_report_header="${full_update_report_header}  End Time: $report_end_time\n\n"
   sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -1741,7 +1741,7 @@ $hshqlogo
 Select the services that you wish to remove:
 EOF
   )
-  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   if [ -z $sel_svcs ]; then
     showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
     return 0
@@ -6417,7 +6417,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
-  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -6450,7 +6450,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
-  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -6494,7 +6494,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
-  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -6605,7 +6605,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
-  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -6644,7 +6644,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
-  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -6677,7 +6677,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
-  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -9320,7 +9320,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo "("$(echo $curdh | sed 's/|/)/1')) | OFF "
   done
-  sel_host=$(whiptail --title "Select Delivery Host" --radiolist "$deliveryhostmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3)
+  sel_host=$(whiptail --title "Select Delivery Host" --radiolist "$deliveryhostmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ] || [ -z $sel_host ]; then
     showMessageBox "Selection Empty" "Delivery host selection is empty, returning..."
     return 1
@@ -9378,7 +9378,7 @@ EOF
   do
     menu_items=${menu_items}"$(echo $(echo $curdom | sed 's/|/(/1')")") | OFF "
   done
-  sel_doms=($(whiptail --title "Select Domains" --checklist "$rem_menu" 20 78 4 $menu_items 3>&1 1>&2 2>&3))
+  sel_doms=($(whiptail --title "Select Domains" --checklist "$rem_menu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains ($domains_to_remove) from the RelayServer. To confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -9452,7 +9452,7 @@ EOF
   do
     menu_items=${menu_items}"$curdom | OFF "
   done
-  sel_domain=$(whiptail --title "Select Base Domain" --radiolist "$seldomainmenu" 20 78 4 $menu_items 3>&1 1>&2 2>&3)
+  sel_domain=$(whiptail --title "Select Base Domain" --radiolist "$seldomainmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ] || [ -z $sel_domain ]; then
     showMessageBox "Selection Empty" "Base domain selection is empty, returning..."
     return 1
@@ -34847,7 +34847,7 @@ function installClientDNS()
 function outputConfigClientDNS()
 {
   cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
-$STACK_VERSION_PREFIX clientdns $(getScriptStackVersion clientdns)
+$STACK_VERSION_PREFIX clientdns-${cdns_stack_name} $(getScriptStackVersion clientdns-${cdns_stack_name})
 version: '3.5'
 
 services:

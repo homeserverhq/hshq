@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=5
+HSHQ_WRAPPER_SCRIPT_VERSION=6
 IS_DISABLE_UPDATE_CHECKS=false
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
@@ -21,13 +21,23 @@ set -e
 
 function main()
 {
-  # Version 5 Notes:
-  # Added wrapper script update process, which complicates the logic and adds duplicate code.
-  # Need to simplify/refactor this script at some point.
-  # But at least now it is automated with a chain of trust between wrapper script updates.
   MENU_WIDTH=85
   MENU_HEIGHT=25
   MENU_INT_HEIGHT=10
+  export NEWT_COLORS='
+  root=,black
+  window=white,blue
+  title=white,blue
+  border=white,blue
+  textbox=white,blue
+  button=black,yellow
+  actbutton=black,yellow
+  compactbutton=white,blue
+  listbox=white,blue
+  sellistbox=black,yellow
+  actlistbox=black,yellow
+  actsellistbox=black,yellow
+  '
   USERNAME=$(id -u -n)
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
   HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
