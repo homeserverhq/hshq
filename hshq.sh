@@ -30,13 +30,16 @@ function main()
   title=white,blue
   border=white,blue
   textbox=white,blue
-  button=black,yellow
-  actbutton=black,yellow
-  compactbutton=white,blue
+  acttextbox=black,yellow
   listbox=white,blue
   sellistbox=black,yellow
   actlistbox=black,yellow
   actsellistbox=black,yellow
+  button=black,yellow
+  actbutton=black,yellow
+  compactbutton=white,blue
+  checkbox=white,blue
+  actcheckbox=black,yellow
   '
   USERNAME=$(id -u -n)
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
