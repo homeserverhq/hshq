@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=33
+HSHQ_SCRIPT_VERSION=34
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -67,6 +67,7 @@ function init()
   SUDO_NORMAL_TIMEOUT=15
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
+  SUDO_MAX_RETRIES=20
   STACK_VERSION_PREFIX=#HSHQManaged
   initServiceDefaults
   loadPinnedDockerImages
@@ -8396,6 +8397,10 @@ function getStackID()
 function restartAllStacks()
 {
   set +e
+  showYesNoMessageBox "Confirm Restart Stacks" "This action will shut down all running stacks, restart the docker daemon, then restart the stacks that were stopped. Depending on the number of stacks, it could take up to 10-15 minutes to complete. Continue?"
+  if [ $? -ne 0 ]; then
+    return 0
+  fi
   sudo -k
   sudo -v
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -10154,6 +10159,8 @@ function createInitialEnv()
   echo "$USERNAME ALL=(ALL) NOPASSWD: $HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/timestamp_timeout/d' /etc/sudoers >/dev/null
   echo "Defaults timestamp_timeout=$SUDO_NORMAL_TIMEOUT" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/passwd_tries/d' /etc/sudoers >/dev/null
+  echo "Defaults passwd_tries=$SUDO_MAX_RETRIES" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
   mkdir -p $HOME/.ssh
@@ -10696,6 +10703,26 @@ PAPERLESS_DATABASE_USER=
 PAPERLESS_DATABASE_USER_PASSWORD=
 # Paperless (Service Details) END
 
+# SpeedtestTrackerLocal (Service Details) BEGIN
+SPEEDTEST_TRACKER_LOCAL_INIT_ENV=true
+SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=
+SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=
+SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=
+SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=
+SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=
+SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=
+# SpeedtestTrackerLocal (Service Details) END
+
+# SpeedtestTrackerVPN (Service Details) BEGIN
+SPEEDTEST_TRACKER_VPN_INIT_ENV=true
+SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=
+SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=
+SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=
+SPEEDTEST_TRACKER_VPN_DATABASE_NAME=
+SPEEDTEST_TRACKER_VPN_DATABASE_USER=
+SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=
+# SpeedtestTrackerVPN (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -10788,6 +10815,12 @@ function checkUpdateVersion()
     echo "Updating to Version 32..."
     version32Update
     HSHQ_VERSION=32
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 34 ]; then
+    echo "Updating to Version 34..."
+    version34Update
+    HSHQ_VERSION=34
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -11435,6 +11468,15 @@ function version32Update()
 {
   checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
   addToDisabledServices paperless
+}
+
+function version34Update()
+{
+  sudo sed -i "/timestamp_timeout/a Defaults passwd_tries=$SUDO_MAX_RETRIES" /etc/sudoers
+  checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD="
+  addToDisabledServices speedtest-tracker-local
+  checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD="
+  addToDisabledServices speedtest-tracker-vpn
 }
 
 function checkImageList()
@@ -13664,6 +13706,7 @@ function loadPinnedDockerImages()
   IMG_SEARXNG=searxng/searxng:2023.12.29-27e26b3d6
   IMG_SHLINK_APP=shlinkio/shlink:3.7.3
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.0.0
+  IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:0.15.2
   IMG_SQLPAD=sqlpad/sqlpad:7.3.1
   IMG_STIRLINGPDF=frooodle/s-pdf:0.20.1
   IMG_SYNCTHING=syncthing/syncthing:1.27.2
@@ -13785,6 +13828,10 @@ function getScriptStackVersion()
       echo "v1" ;;
     paperless)
       echo "v1" ;;
+    speedtest-tracker-local)
+      echo "v1" ;;
+    speedtest-tracker-vpn)
+      echo "v1" ;;
     heimdall)
       echo "v1" ;;
     ofelia)
@@ -13901,6 +13948,7 @@ function pullDockerImages()
   pullImage $IMG_PAPERLESS_APP
   pullImage $IMG_PAPERLESS_GOTENBERG
   pullImage $IMG_PAPERLESS_TIKA
+  pullImage $IMG_SPEEDTEST_TRACKER_APP
 }
 
 function pullBaseServicesDockerImages()
@@ -14578,6 +14626,54 @@ function initServicesCredentials()
     PAPERLESS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PAPERLESS_DATABASE_USER_PASSWORD $PAPERLESS_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME" ]; then
+    SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_speedtest_tracker_local"
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME $SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS" ]; then
+    SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=$SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD" ]; then
+    SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME" ]; then
+    SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=speedtesttrackerlocaldb
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER" ]; then
+    SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=speedtest-tracker-local-user
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD" ]; then
+    SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME" ]; then
+    SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_speedtest_tracker_vpn"
+    updateConfigVar SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME $SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS" ]; then
+    SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=$SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD" ]; then
+    SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_DATABASE_NAME" ]; then
+    SPEEDTEST_TRACKER_VPN_DATABASE_NAME=speedtesttrackervpndb
+    updateConfigVar SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_DATABASE_USER" ]; then
+    SPEEDTEST_TRACKER_VPN_DATABASE_USER=speedtest-tracker-vpn-user
+    updateConfigVar SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER
+  fi
+  if [ -z "$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD" ]; then
+    SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -14663,6 +14759,8 @@ function initServiceVars()
   checkAddSvc "SVCD_SEARXNG=searxng,searxng,primary,user,SearxNG,searxng,hshq"
   checkAddSvc "SVCD_SHLINK_APP=shlink,shlink-app,other,user,Shlink App,links,hshq"
   checkAddSvc "SVCD_SHLINK_WEB=shlink,shlink-web,primary,admin,Shlink,shlink,hshq"
+  checkAddSvc "SVCD_SPEEDTEST_TRACKER_LOCAL=speedtest-tracker-local,speedtest-tracker-local,primary,admin,Speedtest Tracker Local,speedtest-tracker-local,hshq"
+  checkAddSvc "SVCD_SPEEDTEST_TRACKER_VPN=speedtest-tracker-vpn,speedtest-tracker-vpn,primary,admin,Speedtest Tracker VPN,speedtest-tracker-vpn,hshq"
   checkAddSvc "SVCD_SQLPAD=sqlpad,sqlpad,primary,admin,SQLPad,sqlpad,hshq"
   checkAddSvc "SVCD_STIRLINGPDF=stirlingpdf,stirlingpdf,primary,user,Stirling PDF,stirlingpdf,hshq"
   checkAddSvc "SVCD_SYNCTHING=syncthing,syncthing,primary,admin,Syncthing,syncthing,hshq"
@@ -14781,6 +14879,10 @@ function installStackByName()
       installJupyter $is_integrate ;;
     paperless)
       installPaperless $is_integrate ;;
+    speedtest-tracker-local)
+      installSpeedtestTrackerLocal $is_integrate ;;
+    speedtest-tracker-vpn)
+      installSpeedtestTrackerVPN $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -14897,6 +14999,10 @@ function performUpdateStackByName()
       performUpdateJupyter "$portainerToken" ;;
     paperless)
       performUpdatePaperless "$portainerToken" ;;
+    speedtest-tracker-local)
+      performUpdateSpeedtestTrackerLocal "$portainerToken" ;;
+    speedtest-tracker-vpn)
+      performUpdateSpeedtestTrackerVPN "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -14973,7 +15079,6 @@ function getAutheliaBlock()
   retval="${retval}        - \"group:$LDAP_PRIMARY_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_JUPYTER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - ${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CODESERVER.$HOMESERVER_DOMAIN\n"
@@ -14986,12 +15091,15 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_INFLUXDB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ITTOOLS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_JUPYTER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM_WIZARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NETDATA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PORTAINER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PROMETHEUS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_WEB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SQLPAD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SYNCTHING.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN\n"
@@ -15059,6 +15167,8 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WALLABAG}-Admin" https://$SUB_WALLABAG.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JUPYTER}-Admin" https://$SUB_JUPYTER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $JUPYTER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PAPERLESS}-Admin" https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN/accounts/login/ $HOMESERVER_ABBREV $PAPERLESS_ADMIN_USER $PAPERLESS_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_LOCAL}-Admin" https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_VPN}-Admin" https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD)"\n"
   fi
   # Relay Server
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -15112,7 +15222,8 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0 "calibre-server.png"
   insertIntoHeimdallDB "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0 "netdata.png"
   insertIntoHeimdallDB "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0 "jupyter.png"
-  insertIntoHeimdallDB "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0 "paperless.png"
+  insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
+  insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # Users Tab
   insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png"
@@ -15147,6 +15258,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0 "freshrss.png"
   insertIntoHeimdallDB "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0 "keila.png"
   insertIntoHeimdallDB "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0 "wallabag.png"
+  insertIntoHeimdallDB "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0 "paperless.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -15226,6 +15338,8 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -15244,13 +15358,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
-  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,drawio,guacamole,kasm,linkwarden,stirlingpdf
-  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag
+  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,drawio,guacamole,kasm,linkwarden,stirlingpdf
+  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn
 }
 
 function getScriptImageByContainerName()
@@ -15666,6 +15780,18 @@ function getScriptImageByContainerName()
       ;;
     "paperless-tika")
       container_image=$IMG_PAPERLESS_TIKA
+      ;;
+    "speedtest-tracker-local-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "speedtest-tracker-local-app")
+      container_image=$IMG_SPEEDTEST_TRACKER_APP
+      ;;
+    "speedtest-tracker-vpn-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "speedtest-tracker-vpn-app")
+      container_image=$IMG_SPEEDTEST_TRACKER_APP
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -31375,7 +31501,7 @@ function installLinkwarden()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad linkwarden $FMLNAME_LINKWARDEN postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
+    checkAddDBSqlPad linkwarden "$FMLNAME_LINKWARDEN" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -32012,7 +32138,7 @@ function installFreshRSS()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad freshrss $FMLNAME_FRESHRSS postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
+    checkAddDBSqlPad freshrss "$FMLNAME_FRESHRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -32245,7 +32371,7 @@ function installKeila()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad keila $FMLNAME_KEILA postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
+    checkAddDBSqlPad keila "$FMLNAME_KEILA" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -32462,9 +32588,8 @@ function installWallabag()
   rm -f $HSHQ_STACKS_DIR/wallabag/dbexport/setupRedis.sh
 
   startStopStack wallabag stop
-  if ! [ "$(isServiceDisabled $1)" = "true" ]; then
-    startStopStack wallabag start
-  fi
+  sleep 3
+  startStopStack wallabag start
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WALLABAG.$HOMESERVER_DOMAIN {\n"
@@ -32484,7 +32609,7 @@ function installWallabag()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad wallabag $FMLNAME_WALLABAG postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
+    checkAddDBSqlPad wallabag "$FMLNAME_WALLABAG" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -32860,7 +32985,7 @@ function installPaperless()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad paperless $FMLNAME_PAPERLESS postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
+    checkAddDBSqlPad paperless "$FMLNAME_PAPERLESS" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -33070,6 +33195,463 @@ function performUpdatePaperless()
       image_update_map[2]="ghcr.io/paperless-ngx/tika:2.9.1-minimal,ghcr.io/paperless-ngx/tika:2.9.1-minimal"
       image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.4.3,ghcr.io/paperless-ngx/paperless-ngx:2.4.3"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Speedtest Tracker Local
+function installSpeedtestTrackerLocal()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory speedtest-tracker-local "SpeedtestTrackerLocal"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  pullImage $IMG_SPEEDTEST_TRACKER_APP
+
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local/db
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local/config
+  chmod 777 $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport
+
+  initServicesCredentials
+  set +e
+
+  docker exec mailu-admin flask mailu alias-delete $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  if ! [ "$SPEEDTEST_TRACKER_LOCAL_INIT_ENV" = "true" ]; then
+    sendEmail -s "SpeedtestTrackerLocal Admin Login Info" -b "SpeedtestTrackerLocal Admin Username: $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerLocal Admin Password: $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    SPEEDTEST_TRACKER_LOCAL_INIT_ENV=true
+    updateConfigVar SPEEDTEST_TRACKER_LOCAL_INIT_ENV $SPEEDTEST_TRACKER_LOCAL_INIT_ENV
+  fi
+
+  outputConfigSpeedtestTrackerLocal
+  installStack speedtest-tracker-local speedtest-tracker-local-app "\[ls.io-init\] done" $HOME/speedtest-tracker-local.env 3
+  sleep 5
+
+  docker exec speedtest-tracker-local-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport/setupDBSettings.sh
+
+  startStopStack speedtest-tracker-local stop
+  sleep 3
+  startStopStack speedtest-tracker-local start
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://speedtest-tracker-local-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_LOCAL $MANAGETLS_SPEEDTEST_TRACKER_LOCAL "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_LOCAL "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigSpeedtestTrackerLocal()
+{
+  cat <<EOFBA > $HOME/speedtest-tracker-local-compose.yml
+$STACK_VERSION_PREFIX speedtest-tracker-local $(getScriptStackVersion speedtest-tracker-local)
+version: '3.5'
+
+services:
+  speedtest-tracker-local-db:
+    image: $(getScriptImageByContainerName speedtest-tracker-local-db)
+    container_name: speedtest-tracker-local-db
+    hostname: speedtest-tracker-local-db
+    user: \${UID}
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-speedtest-tracker-local-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/speedtest-tracker-local/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/speedtest-tracker-local/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.email-from=SpeedtestTrackerLocal Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.email-from=SpeedtestTrackerLocal Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.mail-only-on-error=false"
+
+  speedtest-tracker-local-app:
+    image: $(getScriptImageByContainerName speedtest-tracker-local-app)
+    container_name: speedtest-tracker-local-app
+    hostname: speedtest-tracker-local-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - speedtest-tracker-local-db
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - int-speedtest-tracker-local-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/speedtest-tracker-local/config:/config
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-speedtest-tracker-local-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFBA
+
+  cat <<EOFBA > $HOME/speedtest-tracker-local.env
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
+APP_URL=https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN
+POSTGRES_DB=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+POSTGRES_USER=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+POSTGRES_PASSWORD=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
+DB_CONNECTION=pgsql
+DB_HOST=speedtest-tracker-local-db
+DB_PORT=5432
+DB_DATABASE=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+DB_USERNAME=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+DB_PASSWORD=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+MAIL_MAILER=smtp
+MAIL_HOST=$SMTP_HOSTNAME
+MAIL_PORT=$SMTP_HOSTPORT
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAIL_FROM_NAME=SpeedtestTrackerLocal HSHQ Admin
+
+EOFBA
+
+  pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+echo "update settings set payload=to_json('Speedtest Tracker Local'::text) where name='site_name';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+echo "update settings set payload=to_json('$TZ'::text) where name='timezone';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+echo "update settings set payload=to_json(false) where name='public_dashboard_enabled';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+echo "update settings set payload=to_json(true) where name='db_has_timezone';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+
+echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerLocal Admin', email='$SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+
+EOFDS
+
+  chmod +x $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport/setupDBSettings.sh
+}
+
+function performUpdateSpeedtestTrackerLocal()
+{
+  perform_stack_name=speedtest-tracker-local
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.15.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:0.15.2,linuxserver/speedtest-tracker:0.15.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Speedtest Tracker VPN
+function installSpeedtestTrackerVPN()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    return
+  fi
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory speedtest-tracker-vpn "SpeedtestTrackerVPN"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  pullImage $IMG_SPEEDTEST_TRACKER_APP
+
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn/db
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport
+  mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn/config
+  chmod 777 $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport
+
+  initServicesCredentials
+  set +e
+
+  docker exec mailu-admin flask mailu alias-delete $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  if ! [ "$SPEEDTEST_TRACKER_VPN_INIT_ENV" = "true" ]; then
+    sendEmail -s "SpeedtestTrackerVPN Admin Login Info" -b "SpeedtestTrackerVPN Admin Username: $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerVPN Admin Password: $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD\n" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    SPEEDTEST_TRACKER_VPN_INIT_ENV=true
+    updateConfigVar SPEEDTEST_TRACKER_VPN_INIT_ENV $SPEEDTEST_TRACKER_VPN_INIT_ENV
+  fi
+
+  outputConfigSpeedtestTrackerVPN
+  installStack speedtest-tracker-vpn speedtest-tracker-vpn-app "\[ls.io-init\] done" $HOME/speedtest-tracker-vpn.env 3
+  sleep 5
+
+  docker exec speedtest-tracker-vpn-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
+
+  startStopStack speedtest-tracker-vpn stop
+  sleep 3
+  startStopStack speedtest-tracker-vpn start
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://speedtest-tracker-vpn-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_VPN $MANAGETLS_SPEEDTEST_TRACKER_VPN "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_VPN "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigSpeedtestTrackerVPN()
+{
+  cat <<EOFBA > $HOME/speedtest-tracker-vpn-compose.yml
+$STACK_VERSION_PREFIX speedtest-tracker-vpn $(getScriptStackVersion speedtest-tracker-vpn)
+version: '3.5'
+
+services:
+  speedtest-tracker-vpn-db:
+    image: $(getScriptImageByContainerName speedtest-tracker-vpn-db)
+    container_name: speedtest-tracker-vpn-db
+    hostname: speedtest-tracker-vpn-db
+    user: \${UID}
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-speedtest-tracker-vpn-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/speedtest-tracker-vpn/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/speedtest-tracker-vpn/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.email-from=SpeedtestTrackerVPN Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.email-from=SpeedtestTrackerVPN Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.mail-only-on-error=false"
+
+  speedtest-tracker-vpn-app:
+    image: $(getScriptImageByContainerName speedtest-tracker-vpn-app)
+    container_name: speedtest-tracker-vpn-app
+    hostname: speedtest-tracker-vpn-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - speedtest-tracker-vpn-db
+    networks:
+      - dock-proxy-net
+      - dwg-${RELAYSERVER_WG_INTERNET_NETNAME}-net
+      - dock-internalmail-net
+      - int-speedtest-tracker-vpn-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/speedtest-tracker-vpn/config:/config
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dwg-${RELAYSERVER_WG_INTERNET_NETNAME}-net:
+    name: dwg-${RELAYSERVER_WG_INTERNET_NETNAME}
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-speedtest-tracker-vpn-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFBA
+
+  cat <<EOFBA > $HOME/speedtest-tracker-vpn.env
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
+APP_URL=https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN
+POSTGRES_DB=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+POSTGRES_USER=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
+POSTGRES_PASSWORD=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
+DB_CONNECTION=pgsql
+DB_HOST=speedtest-tracker-vpn-db
+DB_PORT=5432
+DB_DATABASE=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+DB_USERNAME=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
+DB_PASSWORD=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+MAIL_MAILER=smtp
+MAIL_HOST=$SMTP_HOSTNAME
+MAIL_PORT=$SMTP_HOSTPORT
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAIL_FROM_NAME=SpeedtestTrackerVPN HSHQ Admin
+
+EOFBA
+
+  pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+echo "update settings set payload=to_json('Speedtest Tracker VPN'::text) where name='site_name';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+echo "update settings set payload=to_json('$TZ'::text) where name='timezone';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+echo "update settings set payload=to_json(false) where name='public_dashboard_enabled';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+echo "update settings set payload=to_json(true) where name='db_has_timezone';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+
+echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerVPN Admin', email='$SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+
+EOFDS
+
+  chmod +x $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
+}
+
+function performUpdateSpeedtestTrackerVPN()
+{
+  perform_stack_name=speedtest-tracker-vpn
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.15.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:0.15.2,linuxserver/speedtest-tracker:0.15.2"
     ;;
     *)
       is_upgrade_error=true
