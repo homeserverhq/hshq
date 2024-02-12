@@ -33621,6 +33621,7 @@ echo "update settings set payload=to_json('$TZ'::text) where name='timezone';" |
 echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 echo "update settings set payload=to_json(false) where name='public_dashboard_enabled';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 echo "update settings set payload=to_json(true) where name='db_has_timezone';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+echo "update settings set payload=to_json('30 * * * *'::text) where name='speedtest_schedule';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 
 echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerVPN Admin', email='$SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 
