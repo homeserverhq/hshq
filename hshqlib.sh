@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=34
+HSHQ_SCRIPT_VERSION=35
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -76,11 +76,11 @@ function init()
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
   hshqlogo=$(cat << EOF
 
-       #=================================================================#
-       #░▒█░▒█░░▄▄░░▄▄░▄▄░▄▄▄░▒█▀▀▀█░▄▄▄░▄▄▄░░▄░░░▄░▄▄▄░▄▄▄░░▒█░▒█░▒█▀▀█ #
-       #░▒█▀▀█░█░░█░█░█░█░▄▄▄░░▀▀▀▄▄░▄▄▄░▄▄▄▀░▀▄░▄▀░▄▄▄░▄▄▄▀░▒█▀▀█░▒█░▒█ #
-       #░▒█░▒█░▀▄▄▀░█░░▒█░▄▄▄░▒█▄▄▄█░▄▄▄░▄▄▄▄░░▀█▀░░▄▄▄░▄▄▄▄░▒█░▒█░░▀▀█▄ #
-       #=================================================================#
+        #===============================================================#
+        # ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
+        #  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
+        #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
+        #===============================================================#
 
 EOF
   )
@@ -540,11 +540,11 @@ function updateMOTD()
 #!/bin/bash
 
 echo
-echo "#=================================================================#"
-echo "#░▒█░▒█░░▄▄░░▄▄░▄▄░▄▄▄░▒█▀▀▀█░▄▄▄░▄▄▄░░▄░░░▄░▄▄▄░▄▄▄░░▒█░▒█░▒█▀▀█ #"
-echo "#░▒█▀▀█░█░░█░█░█░█░▄▄▄░░▀▀▀▄▄░▄▄▄░▄▄▄▀░▀▄░▄▀░▄▄▄░▄▄▄▀░▒█▀▀█░▒█░▒█ #"
-echo "#░▒█░▒█░▀▄▄▀░█░░▒█░▄▄▄░▒█▄▄▄█░▄▄▄░▄▄▄▄░░▀█▀░░▄▄▄░▄▄▄▄░▒█░▒█░░▀▀█▄ #"
-echo "#=================================================================#"
+echo "#===============================================================#"
+echo "# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #"
+echo "#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #"
+echo "#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #"
+echo "#===============================================================#"
 echo
 
 echo "    Linux OS:  \$(lsb_release -d | cut -d":" -f2 | xargs)"
@@ -556,9 +556,9 @@ printf "  Swap Usage:  %.1f%% of \$(free -h | awk  '/Swap:/{print \$2}')\n" \$((
 
 echo
 echo "Disks: "
-echo "-------------------------------------------------------------------"
+echo "-----------------------------------------------------------------"
 echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
-echo "-------------------------------------------------------------------"
+echo "-----------------------------------------------------------------"
 df -h | grep "^/dev"
 echo
 echo
@@ -2484,11 +2484,11 @@ function updateMOTD()
 #!/bin/bash
 
 echo
-echo "#=================================================================#"
-echo "#░▒█░▒█░░▄▄░░▄▄░▄▄░▄▄▄░▒█▀▀▀█░▄▄▄░▄▄▄░░▄░░░▄░▄▄▄░▄▄▄░░▒█░▒█░▒█▀▀█ #"
-echo "#░▒█▀▀█░█░░█░█░█░█░▄▄▄░░▀▀▀▄▄░▄▄▄░▄▄▄▀░▀▄░▄▀░▄▄▄░▄▄▄▀░▒█▀▀█░▒█░▒█ #"
-echo "#░▒█░▒█░▀▄▄▀░█░░▒█░▄▄▄░▒█▄▄▄█░▄▄▄░▄▄▄▄░░▀█▀░░▄▄▄░▄▄▄▄░▒█░▒█░░▀▀█▄ #"
-echo "#=================================================================#"
+echo "#===============================================================#"
+echo "# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #"
+echo "#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #"
+echo "#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #"
+echo "#===============================================================#"
 echo
 
 echo "    Linux OS:  \\\$(lsb_release -d | cut -d":" -f2 | xargs)"
@@ -2500,9 +2500,9 @@ printf "  Swap Usage:  %.1f%% of \\\$(free -h | awk  '/Swap:/{print \\\$2}')\n" 
 
 echo
 echo "Disks: "
-echo "-------------------------------------------------------------------"
+echo "-----------------------------------------------------------------"
 echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
-echo "-------------------------------------------------------------------"
+echo "-----------------------------------------------------------------"
 df -h | grep "^/dev"
 echo
 echo
@@ -10823,6 +10823,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=34
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 35 ]; then
+    echo "Updating to Version 35..."
+    version35Update
+    HSHQ_VERSION=35
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -11477,6 +11483,11 @@ function version34Update()
   addToDisabledServices speedtest-tracker-local
   checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD="
   addToDisabledServices speedtest-tracker-vpn
+}
+
+function version35Update()
+{
+  updateMOTD
 }
 
 function checkImageList()
