@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=35
+HSHQ_SCRIPT_VERSION=36
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -8519,11 +8519,15 @@ function updateStackEnv()
   updateModFunction=$2
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   updateStackID=$(getStackID $updateStackName "$portainerToken")
+  if [ -z "$updateStackID" ]; then
+    echo "ERROR: Could not find stack ID for $updateStackName"
+    return 2
+  fi
   extractStackToHome $updateStackName $updateStackID
   $updateModFunction
   if [ $? -ne 0 ]; then
     rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
-    return 2
+    return 3
   fi
   updateStackByID $updateStackName $updateStackID $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env "$portainerToken"
   rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
@@ -12302,12 +12306,17 @@ done
 EOFBS
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
     # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
+    # Need to add both Connecting IP and RelayServer IP
+    add_ips=${CONNECTING_IP}/32
+    if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+      add_ips="${add_ips},${RELAYSERVER_SERVER_IP}/32"
+    fi
     sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFPO
 # Special case when HomeServer is on non-private network
 for cur_port in "\${portsArr[@]}"
 do
-  iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -I DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+  iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  iptables -I DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
 done
 
 EOFPO
@@ -12315,7 +12324,7 @@ EOFPO
   # Special case when HomeServer is on non-private network
 for cur_port in "\${portsArr[@]}"
 do
-  iptables -D DOCKER-USER -s ${CONNECTING_IP}/32 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
 done
 EOFPT
   fi
