@@ -5875,26 +5875,32 @@ function connectVPN()
 
   ip_address_for_status=$rs_vpn_ip
   total_attempts=1
-  max_attempts=2
+  max_attempts=10
   timeout_length=5
-  ping_success=false
+  connect_success=false
   is_skip_connect=false
+  if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
+  fi
   set +e
-  while [ "$is_skip_connect" = "false" ] && [ "$ping_success" = "false" ]
+  while [ "$is_skip_connect" = "false" ] && [ "$connect_success" = "false" ]
   do
     while [ $total_attempts -lt $max_attempts ]
     do
-      echo "Attempting to ping remote host over VPN ($total_attempts of $max_attempts)..."
+      echo "Attempting to connect to remote host over VPN ($total_attempts of $max_attempts)..."
       timeout $timeout_length ping -c 1 $ip_address_for_status > /dev/null
       if [ $? -eq 0 ]; then
-        ping_success=true
-        echo "Successfully connected to Relay Server!"
-        break
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo RelayServer-Connected!"
+        if [ $? -eq 0 ]; then
+          connect_success=true
+          echo "Successfully connected to Relay Server!"
+          break
+        fi
       fi
       sleep $timeout_length
       ((total_attempts++))
     done
-    if ! [ "$ping_success" = "true" ]; then
+    if ! [ "$connect_success" = "true" ]; then
       errString="Unable to ping host over private network. Press Retry or Skip."
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ $is_primary = 1 ]; then
         errString="Unable to ping RelayServer over private network. Wait until the RelayServer installation process has completed and the system fully rebooted, then press Retry."
@@ -5931,7 +5937,6 @@ EOF
   installCaddy $ifaceName $primary_string $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
   # If hosting VPN, setup Syncthing and add ClientDNS stack
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    loadSSHKey
     set +e
     # Setup syncthing link
     echo "Setting up Syncthing..."
