@@ -1288,6 +1288,7 @@ function performBaseInstallation()
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
       installLogNotify "Configure Docker WireGuard Network"
       connectPrimaryInternet
+	  outputBootScripts
     elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
       dns_file=$HOME/dns.tmp
       if [ -f $dns_file ]; then
