@@ -1323,7 +1323,8 @@ function postInstallation()
   #mail_msg=${mail_msg}"""$(tail -n +10 $HSHQ_CONFIG_DIR/${CONFIG_FILE_DEFAULT_FILENAME})"""
   #sendEmail -s "Configuration File" -b "$mail_msg" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
-  sendRootCAEmail
+  # Use root privs, since group modifications within a script are problematic...
+  sudo sendRootCAEmail
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     #echo "Emailing DNS Info..."
     #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
