@@ -1323,8 +1323,7 @@ function postInstallation()
   #mail_msg=${mail_msg}"""$(tail -n +10 $HSHQ_CONFIG_DIR/${CONFIG_FILE_DEFAULT_FILENAME})"""
   #sendEmail -s "Configuration File" -b "$mail_msg" -f "HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
-  # Use root privs, since group modifications within a script are problematic...
-  sudo sendRootCAEmail
+  sendRootCAEmail true
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     #echo "Emailing DNS Info..."
     #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
@@ -9100,6 +9099,7 @@ function getSvcCredentialsVW()
 
 function sendRootCAEmail()
 {
+  is_sudo=$1
   mail_msg=""
   mail_msg=${mail_msg}"Below is the public root certificate for your network. "
   mail_msg=${mail_msg}"If you are connected to the internal network, then it can also be downloaded via: \n"
@@ -9112,7 +9112,13 @@ function sendRootCAEmail()
   mail_msg=${mail_msg}"\n#################### Root CA Start ####################\n\n"
   mail_msg=${mail_msg}"""$(cat $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt)"""
   mail_msg=${mail_msg}"\n\n#################### Root CA End ####################\n"
-  sendEmail -s "Public Root Certificate" -b "$mail_msg" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der
+  if [ "$is_sudo" = "true" ]; then
+    # This special case is only need during the initial installation due
+    # to issues with adding members to groups (mailsenders) within a script.
+    echo -e "$mail_msg" | sudo mailx -s "Public Root Certificate" -a "From: HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  else
+    sendEmail -s "Public Root Certificate" -b "$mail_msg" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der
+  fi
 }
 
 function getDNSRecordsInfo()
