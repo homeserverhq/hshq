@@ -9115,7 +9115,7 @@ function sendRootCAEmail()
   if [ "$is_sudo" = "true" ]; then
     # This special case is only need during the initial installation due
     # to issues with adding members to groups (mailsenders) within a script.
-    echo -e "$mail_msg" | sudo mailx -s "Public Root Certificate" -a "From: HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
+    echo -e "$mail_msg" | sudo mailx -s "Public Root Certificate" -a "From: HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
   else
     sendEmail -s "Public Root Certificate" -b "$mail_msg" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der
   fi
