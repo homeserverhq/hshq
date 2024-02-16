@@ -2364,8 +2364,19 @@ function main()
   fi
   sudo hostnamectl set-hostname \$new_hostname
   rm -f \$HOME/dead.letter
-  set -e
 
+  # Ensure we can login during the installation process,
+  # since the firewall will block the connection if we
+  # haven't logged in before the firewall goes up.
+  cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config)
+  if [ \$? -ne 0 ]; then
+    cur_ssh_port=22
+  else
+    cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
+  fi
+  sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
+
+  set -e
   # Change SSH port on host
   sudo sed -i "s|^#*Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
   sudo sed -i "s|^Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
@@ -3208,7 +3219,6 @@ function install()
 
   outputCerts
   pullDockerImages
-  allowCurrentSSHPort
   outputScripts
   installLogNotify "Installing Stacks"
   installPortainer
@@ -3410,23 +3420,6 @@ function pullDockerImages()
   docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix
   docker image build --network host -t $IMG_MAIL_RELAY_RSPAMD -f \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd/Dockerfile \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/rspamd
   sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
-}
-
-function allowCurrentSSHPort()
-{
-  # Ensure we can login during the installation process,
-  # since the firewall will block the connection if we
-  # haven't logged in before the firewall goes up.
-
-  set +e
-  cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config)
-  if [ \$? -ne 0 ]; then
-    cur_ssh_port=22
-  else
-    cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
-  fi
-  sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
-  set -e
 }
 
 function outputScripts()
