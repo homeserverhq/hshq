@@ -404,18 +404,18 @@ function verifyFile()
   sig_file=$2
   gpg --verify $sig_file $src_file >/dev/null 2>/tmp/verify
   ver_res=$?
-  if [ $? -ne 0 ]; then
+  if [ $ver_res -ne 0 ]; then
     rm -f /tmp/verify
     return $ver_res
   fi
   grep $HSHQ_GPG_FINGERPRINT /tmp/verify > /dev/null 2>&1
   ver_res=$?
-  if [ $? -ne 0 ]; then
+  if [ $ver_res -ne 0 ]; then
     rm -f /tmp/verify
     return $ver_res
   fi
   grep "Good signature" /tmp/verify > /dev/null 2>&1
-  ver_res=$?
+  ver_res=$ver_res
   if [ $? -ne 0 ]; then
     rm -f /tmp/verify
     return $ver_res
