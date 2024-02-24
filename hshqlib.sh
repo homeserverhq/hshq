@@ -6833,7 +6833,7 @@ function createOtherNetworkApplyUserConfig()
     pub_key=$(echo $priv_key | wg pubkey)
     sendEmail -s "Private Key ($request_id)" -b "DO NOT SEND THIS TO ANYONE!!!\n\nKeep it secret, keep it safe.\n\nRequestID: $request_id\nPrivate Key: $priv_key\n" -f "User Apply <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   else
-    if [ "$(checkValidIPAddress $ip_addr)" = "false" ] || ! [ $(echo $ip_addr | cut -d "." -f1) = "10"]; then
+    if [ "$(checkValidIPAddress $ip_addr)" = "false" ] || ! [ $(echo $ip_addr | cut -d "." -f1) = "10" ]; then
       showMessageBox "Invalid IP" "Invalid IP address, returning..."
       return
     fi
@@ -8473,9 +8473,15 @@ function restartAllStacks()
 function updateGlobalVarsEnvFile()
 {
   curEnv=$1
+  sed -i '/^HSHQ_BASE_DIR=/d' $curEnv
+  sed -i '/^HSHQ_DATA_DIR=/d' $curEnv
   sed -i '/^HSHQ_BACKUP_DIR=/d' $curEnv
   sed -i '/^HSHQ_NONBACKUP_DIR=/d' $curEnv
   sed -i '/^HSHQ_ASSETS_DIR=/d' $curEnv
+  sed -i '/^HSHQ_BUILD_DIR=/d' $curEnv
+  sed -i '/^HSHQ_CONFIG_DIR=/d' $curEnv
+  sed -i '/^HSHQ_LIB_DIR=/d' $curEnv
+  sed -i '/^HSHQ_RELAYSERVER_DIR=/d' $curEnv
   sed -i '/^HSHQ_SCRIPTS_DIR=/d' $curEnv
   sed -i '/^HSHQ_SECRETS_DIR=/d' $curEnv
   sed -i '/^HSHQ_SSL_DIR=/d' $curEnv
@@ -9266,12 +9272,16 @@ function checkAddSvc()
 
 function loadDirectoryStructure()
 {
+  if [ -z "$HSHQ_BASE_DIR" ]; then
+    HSHQ_BASE_DIR=$HOME/hshq
+  fi
   HSHQ_DATA_DIR=$HSHQ_BASE_DIR/data
   HSHQ_BACKUP_DIR=$HSHQ_BASE_DIR/backup
   HSHQ_NONBACKUP_DIR=$HSHQ_BASE_DIR/nonbackup
   HSHQ_ASSETS_DIR=$HSHQ_DATA_DIR/assets
   HSHQ_BUILD_DIR=$HSHQ_NONBACKUP_DIR/build
   HSHQ_CONFIG_DIR=$HSHQ_DATA_DIR/config
+  HSHQ_LIB_DIR=$HSHQ_DATA_DIR/lib
   HSHQ_RELAYSERVER_DIR=$HSHQ_DATA_DIR/relayserver
   HSHQ_SCRIPTS_DIR=$HSHQ_DATA_DIR/scripts
   HSHQ_SECRETS_DIR=$HSHQ_DATA_DIR/secrets
@@ -16003,10 +16013,15 @@ EOFPC
 
   rm -f $HSHQ_STACKS_DIR/portainer/portainer.env
   cat <<EOFPC > $HSHQ_STACKS_DIR/portainer/portainer.env
+HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_DATA_DIR=$HSHQ_DATA_DIR
 HSHQ_BACKUP_DIR=$HSHQ_BACKUP_DIR
 HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
 HSHQ_ASSETS_DIR=$HSHQ_ASSETS_DIR
+HSHQ_BUILD_DIR=$HSHQ_BUILD_DIR
+HSHQ_CONFIG_DIR=$HSHQ_CONFIG_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
+HSHQ_RELAYSERVER_DIR=$HSHQ_RELAYSERVER_DIR
 HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
 HSHQ_SECRETS_DIR=$HSHQ_SECRETS_DIR
 HSHQ_SSL_DIR=$HSHQ_SSL_DIR
