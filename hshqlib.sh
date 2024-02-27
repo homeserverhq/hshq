@@ -784,7 +784,10 @@ function initConfig()
       exit 1
     fi
   fi
-
+  if [[ "$(isProgramInstalled grepcidr)" = "false" ]]; then
+    echo "Installing grepcidr, please wait..."
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr > /dev/null 2>&1
+  fi
   set -e
   if [ -z "$USERID" ]; then
     USERID=$(id -u)
@@ -792,7 +795,7 @@ function initConfig()
   fi
   if [ -z "$GROUPID" ]; then
     GROUPID=$(id -g)
-    # The group ID should always be 1000 on a fresh install, but for some reason occasionally comes up 1001.
+    # The group ID should always be 1000 on a fresh install.
     if [ $GROUPID -ne 1000 ]; then
       showMessageBox "Bad Group ID" "The group ID doesn't match ($GROUPID)"
       exit 1
@@ -1870,10 +1873,6 @@ function setupHostedVPN()
   if [[ "$(isProgramInstalled jq)" = "false" ]]; then
     echo "Installing jq, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt install -y jq > /dev/null 2>&1
-  fi
-  if [[ "$(isProgramInstalled grepcidr)" = "false" ]]; then
-    echo "Installing grepcidr, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr > /dev/null 2>&1
   fi
 
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
