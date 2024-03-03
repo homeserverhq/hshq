@@ -6965,7 +6965,7 @@ function sendOtherNetworkApplyUserConfig()
   if [ -z "$pub_key" ]; then
     priv_key=$(wg genkey)
     pub_key=$(echo $priv_key | wg pubkey)
-    sendEmail -s "Private Key ($request_id)" -b "DO NOT SEND THIS TO ANYONE!!!\n\nKeep it secret, keep it safe.\n\nRequestID: $request_id\nPrivate Key: $priv_key\n" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t $email_address
+    sendEmail -s "Private Key ($request_id)" -b "DO NOT SEND THIS TO ANYONE!!!\n\nKeep it secret, keep it safe.\n\nRequestID: $request_id\nDescription: $description\nPrivate Key: $priv_key\n" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t $email_address
   fi
   msg_body=""
   msg_body=$msg_body"$APPLICATION_FIRST_LINE\n"
