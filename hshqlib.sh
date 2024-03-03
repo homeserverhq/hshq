@@ -965,8 +965,7 @@ function initConfig()
         updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
         HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
         updateConfigVar HOMESERVER_HOST_ISPRIVATE $HOMESERVER_HOST_ISPRIVATE
-        HOMESERVER_HOST_RANGE=$(getHomeServerPrivateRange)
-        updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
+        setHomeServerPrivateRange
       fi
     fi
   done
@@ -8339,29 +8338,40 @@ function getPrivateIPRangesCaddy()
   fi
 }
 
+function setHomeServerPrivateRange()
+{
+  # getHomeServerPrivateRange has some issues, so wrapping the function call with and error handler.
+  hspr=""
+  num_tries=0
+  max_tries=5
+  if [ -z "$HOMESERVER_HOST_IP" ]; then
+    echo "HOMESERVER_HOST_IP is empty, exiting..."
+    exit 1
+  fi
+  while [ -z "$hspr" ] && [ $num_tries -lt $max_tries ]
+  do
+    hspr=$(getHomeServerPrivateRange)
+    if ! [ -z "$hspr" ]; then
+      break
+    fi
+    echo "Error getting network private range, retrying..."
+    sleep 3
+    ((num_tries++))
+  done
+  if [ -z "$hspr" ]; then
+    echo "ERROR: Problem getting network private range, IsPrivate: ${HOMESERVER_HOST_ISPRIVATE}"
+    exit 2
+  fi
+  HOMESERVER_HOST_RANGE="$hspr"
+  updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
+}
+
 function getHomeServerPrivateRange()
 {
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
-    hspr=""
-    num_tries=1
-    max_tries=5
-    while [ -z "$hspr" ] && [ $num_tries -lt max_tries ]
-    do
-      # This function call strangely and erroneously returns nothing sometimes...
-      hspr=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1)
-      sleep 3
-      ((num_tries++))
-    done
-    if [ -z "$hspr" ]; then
-      echo "ERROR: Problem getting network private range, exiting(1)..."
-      exit 1
-    fi
-    echo "$hspr"
+    # This function call strangely and erroneously returns nothing sometimes...
+    ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1
   else
-    if [ -z "$HOMESERVER_HOST_IP" ]; then
-      echo "ERROR: Problem getting network private range, exiting(2)..."
-      exit 2
-    fi
     echo "${HOMESERVER_HOST_IP}/32"
   fi
 }
