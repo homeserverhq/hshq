@@ -8460,14 +8460,12 @@ function setStaticIPToCurrent()
   cur_gate=$(echo $def_route | awk '{print $3}')
   setStaticIP $ip_cidr $cur_gate
   if [ $? -ne 0 ]; then
-    showMessageBox "Networking Error" "There was an error setting the static IP Address, exiting..."
+    echo "ERROR: There was an error setting the static IP Address, exiting..."
     exit 1
   fi
   HOMESERVER_HOST_IP=$cur_ip
   updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
-  HOMESERVER_HOST_RANGE=$(sipcalc $ip_cidr | grep "^Network range" | xargs | cut -d"-" -f2 | xargs)"/"$(echo $ip_cidr | cut -d"/" -f2)
-  updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
-
+  setHomeServerPrivateRange
 }
 
 function setStaticIP()
@@ -8513,7 +8511,6 @@ function changeHostStaticIP()
   gwGuess=$(sipcalc $newHostIPCIDR | grep "^Usable range" | xargs | cut -d"-" -f2 | xargs)
   newHostGateway=$(promptUserInputMenu "$gwGuess" "New Gateway" "Enter the gateway IP address. This is typically the IP address of your router, the first IP in the range:")
   newHSHostIP=$(echo $newHostIPCIDR | cut -d"/" -f1)
-  newHSHostRange=$(sipcalc $newHostIPCIDR | grep "^Network range" | xargs | cut -d"-" -f2 | xargs)"/"$(echo $newHostIPCIDR | cut -d"/" -f2)
   set +e
   echo "Setting new static IP on host..."
   setStaticIP $newHostIPCIDR $newHostGateway
@@ -8523,8 +8520,7 @@ function changeHostStaticIP()
   fi
   HOMESERVER_HOST_IP=$newHSHostIP
   updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
-  HOMESERVER_HOST_RANGE=$newHSHostRange
-  updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
+  setHomeServerPrivateRange
   echo "Restarting Portainer..."
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   outputConfigPortainer
