@@ -5953,6 +5953,7 @@ EOF
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || ! [ $is_primary = 1 ]; then
     addDomainAndWildcardAdguardNoReplaceHS "$domain_name" "$ca_ip"
     addDomainAdguardHS "*.$ext_prefix.$domain_name" "A"
+    addDomainAndWildcardIgnoreQuerylogAndStatsHS "$domain_name"
     insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://home.$domain_name" true
   fi
   echo "Adding RelayServer IP - VPN Type: $PRIMARY_VPN_SETUP_TYPE, Is Primary: $is_primary, RS Domain: rs.$int_prefix.$domain_name, Server IP: $rs_vpn_ip"
@@ -6937,7 +6938,11 @@ function createOtherNetworkApplyUserConfig()
   if [ $? -ne 0 ]; then
     return
   fi
-  sendOtherNetworkApplyUserConfig "$recipient_email" "$email_address" "$isInternetAccess" "$ip_address" "$pub_key"
+  description=$(promptUserInputMenu "" "Enter Description" "Enter a description of what this connection will be used for:")
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  sendOtherNetworkApplyUserConfig "$recipient_email" "$email_address" "$isInternetAccess" "$ip_address" "$pub_key" "$description"
 }
 
 function sendOtherNetworkApplyUserConfig()
@@ -6947,6 +6952,7 @@ function sendOtherNetworkApplyUserConfig()
   is_internet="$3"
   ip_address="$4"
   pub_key="$5"
+  description="$6"
 
   request_id=$(getRandomRequestID)
   if [ -z "$pub_key" ] && ! [ -z "$ip_address" ]; then
@@ -6970,7 +6976,9 @@ function sendOtherNetworkApplyUserConfig()
   msg_body=$msg_body"IsInternet = $is_internet\n"
   msg_body=$msg_body"IPAddress = $ip_address\n"
   msg_body=$msg_body"$APPLICATION_LAST_LINE\n"
-  msg_header="Copy everything BELOW the following line:\n\n"
+  msg_header=""
+  msg_header=$msg_header"Description: $description\n\n"
+  msg_header=$msg_header"Copy everything BELOW the following line:\n"
   msg_header=$msg_header"_______________________________________________________________________\n\n"
   msg_body=${msg_header}"$msg_body"
   sendEmail -s "User Application from $HOMESERVER_NAME ($request_id)" -b "$msg_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$recipient_email"
@@ -7234,6 +7242,7 @@ function performNetworkInvite()
       addDomainAndWildcardAdguardRS "$domain_name" "$new_ip"
       addDomainAdguardHS "*.$external_prefix.$domain_name" "A"
       addDomainAdguardRS "*.$external_prefix.$domain_name" "A"
+      addDomainAndWildcardIgnoreQuerylogAndStatsHS "$domain_name"
       sqlite3 $HSHQ_DB "update hsvpn_dns set IsActive=0 where PeerDomain='$domain_name';"
       sqlite3 $HSHQ_DB "insert into hsvpn_dns(HostDomain,PeerDomain,PeerDomainExtPrefix,IPAddress,DateAdded,IsActive) values('$HOMESERVER_DOMAIN','$domain_name','$external_prefix','$new_ip','$curdt',1);"
       if [ "$is_primary" = "true" ]; then
@@ -7347,7 +7356,8 @@ function performNetworkInvite()
         echo -e "\n\n\n\n########################################"
         echo -e "This is a primary VPN request."
         echo -e "No email will be sent to $email_address."
-        echo -e "You will have to forward your MGR copy to them."
+        echo -e "You will have to transfer your MGR copy"
+        echo -e "to them through alternative means."
         echo -e "########################################\n"
       else
         sendEmail -s "$mail_subj" -b "$mail_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
@@ -7720,7 +7730,7 @@ function performNetworkJoin()
         rm -f $join_base_config_file
         return 8
       fi
-      join_rootca_name=${domain_name}.crt
+      join_rootca_name="$(getCACertificateNameFromDomain $domain_name)"
       join_rootca_file=$HOME/$join_rootca_name
       echo -e "$root_ca_section" > $join_rootca_file
       openssl x509 -in $join_rootca_file -noout -text 1> /dev/null 2>&1
@@ -7973,8 +7983,8 @@ function removeMyNetworkPrimaryVPN()
     disableSvcHeimdall relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     disableSvcUptimeKuma "https://${RELAYSERVER_CADDYDNS_ADMIN_USERNAME}:${RELAYSERVER_CADDYDNS_ADMIN_PASSWORD}@$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
   elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    sudo rm -f $HSHQ_SSL_DIR/${ifaceName}.crt
-    sudo rm -f /usr/local/share/ca-certificates/${ifaceName}.crt
+    sudo rm -f $HSHQ_SSL_DIR/"$(getCACertificateNameFromDomain $domain_name)"
+    sudo rm -f /usr/local/share/ca-certificates/"$(getCACertificateNameFromDomain $domain_name)"
     sudo update-ca-certificates
     dns_arr=($(sqlite3 $HSHQ_DB "select PeerDomain,PeerDomainExtPrefix from hsvpn_dns where HostDomain='$domain_name';"))
     sqlite3 $HSHQ_DB "delete from hsvpn_dns where HostDomain='$domain_name';"
@@ -8111,8 +8121,8 @@ function disconnectOtherNetworkHomeServerVPNConnection()
     echo "ERROR: WireGuard config file not found: /etc/wireguard/${ifaceName}.conf"
   fi
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${ifaceName}.conf
-  sudo rm -f $HSHQ_SSL_DIR/${ifaceName}.crt
-  sudo rm -f /usr/local/share/ca-certificates/${ifaceName}.crt
+  sudo rm -f $HSHQ_SSL_DIR/"$(getCACertificateNameFromDomain $domain_name)"
+  sudo rm -f /usr/local/share/ca-certificates/"$(getCACertificateNameFromDomain $domain_name)"
   sudo update-ca-certificates
   removeAdvertiseIP $client_ip
   checkDeleteStackAndDirectory caddy-$ifaceName "Caddy" true true
@@ -8746,6 +8756,12 @@ function getNextAvailableWGDockerNetwork()
 function getWGPortalAuth()
 {
   echo "$(echo $(echo -n ${RELAYSERVER_WGPORTAL_ADMIN_EMAIL}:${RELAYSERVER_WGPORTAL_ADMIN_PASSWORD} | base64) | sed 's| ||g')"
+}
+
+function getCACertificateNameFromDomain()
+{
+  dom_name="$1"
+  echo ${dom_name}-ca.crt
 }
 
 function getPortainerToken()
@@ -9588,11 +9604,6 @@ function checkDisableStack()
   fi
 }
 
-function getAdguardCredentialsHS()
-{
-  echo -n $ADGUARD_ADMIN_USERNAME:$ADGUARD_ADMIN_PASSWORD | base64
-}
-
 function getSvcCredentialsVW()
 {
   svc_name=$1
@@ -9856,11 +9867,6 @@ function getRandomRequestID()
 }
 
 # RelayServer Utils
-function getAdguardCredentialsRS()
-{
-  echo -n $RELAYSERVER_ADGUARD_ADMIN_USERNAME:$RELAYSERVER_ADGUARD_ADMIN_PASSWORD | base64
-}
-
 function resetCaddyDataRelayServer()
 {
   is_prompt=$1
@@ -10497,6 +10503,7 @@ function removeRevertDNS()
     # No entries, delete current DNS entry
     deleteDomainAndWildcardAdguardHS "$curDomain"
     deleteDomainAdguardHS "*.$curExtPrefix.$curDomain"
+    removeDomainAndWildcardIgnoreQuerylogAndStatsHS "$curDomain"
     deleteSvcUptimeKuma "https://home.${curDomain}" true
   else
     # Found an alternate, replace it
@@ -10659,6 +10666,18 @@ function checkUpdateHomeServerDNSVars()
   echo "true"
 }
 
+# Adguard Utils
+
+function getAdguardCredentialsHS()
+{
+  echo -n $ADGUARD_ADMIN_USERNAME:$ADGUARD_ADMIN_PASSWORD | base64
+}
+
+function getAdguardCredentialsRS()
+{
+  echo -n $RELAYSERVER_ADGUARD_ADMIN_USERNAME:$RELAYSERVER_ADGUARD_ADMIN_PASSWORD | base64
+}
+
 function addDomainAndWildcardAdguardHS()
 {
   deleteDomainAndWildcardAdguardHS "$1"
@@ -10737,6 +10756,62 @@ function clearQueryLogAndStatsAdguardHS()
   basic_auth="$(getAdguardCredentialsHS)"
   http --verify=no POST https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/querylog_clear "Authorization: Basic $basic_auth" >/dev/null
   http --verify=no POST https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats_reset "Authorization: Basic $basic_auth" >/dev/null
+}
+
+function addDomainAndWildcardIgnoreQuerylogAndStatsHS()
+{
+  adawiqs_curE=${-//[^e]/}
+  set +e
+  add_domain="$1"
+  basic_auth="$(getAdguardCredentialsHS)"
+
+  # Query log
+  check_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/querylog/config "Authorization: Basic $basic_auth" | jq '.ignored')
+  echo "$check_conf" | grep "$add_domain" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    new_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/querylog/config "Authorization: Basic $basic_auth" | jq --arg add_domain "$add_domain" '.ignored += [$add_domain]' | jq --arg add_domain "*.$add_domain" '.ignored += [$add_domain]')
+    curl -s -X PUT -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$new_conf" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/querylog/config/update
+  fi
+
+  # Stats
+  check_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config "Authorization: Basic $basic_auth" | jq '.ignored')
+  echo "$check_conf" | grep "$add_domain" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    new_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config "Authorization: Basic $basic_auth" | jq --arg add_domain "$add_domain" '.ignored += [$add_domain]' | jq --arg add_domain "*.$add_domain" '.ignored += [$add_domain]')
+    curl -s -X PUT -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$new_conf" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config/update
+  fi
+
+  if ! [ -z $adawiqs_curE ]; then
+    set -e
+  fi
+}
+
+function removeDomainAndWildcardIgnoreQuerylogAndStatsHS()
+{
+  rdawiqs_curE=${-//[^e]/}
+  set +e
+  rem_domain="$1"
+  basic_auth="$(getAdguardCredentialsHS)"
+
+  # Query log
+  check_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/querylog/config "Authorization: Basic $basic_auth" | jq '.ignored')
+  echo "$check_conf" | grep "$rem_domain" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    new_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/querylog/config "Authorization: Basic $basic_auth" | jq --arg rem_domain "$rem_domain" '.ignored -= [$rem_domain]' | jq --arg rem_domain "*.$rem_domain" '.ignored -= [$rem_domain]')
+    curl -s -X PUT -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$new_conf" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/querylog/config/update
+  fi
+
+  # Stats
+  check_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config "Authorization: Basic $basic_auth" | jq '.ignored')
+  echo "$check_conf" | grep "$rem_domain" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    new_conf=$(http --verify=no GET https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config "Authorization: Basic $basic_auth" | jq --arg rem_domain "$rem_domain" '.ignored -= [$rem_domain]' | jq --arg rem_domain "*.$rem_domain" '.ignored -= [$rem_domain]')
+    curl -s -X PUT -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$new_conf" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config/update
+  fi
+
+  if ! [ -z $rdawiqs_curE ]; then
+    set -e
+  fi
 }
 
 function addDomainAndWildcardAdguardRS()
@@ -36693,6 +36768,98 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeConnectionEmail.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+selconnection=\$(getArgumentValue selconnection "\$@")
+newemail=\$(getArgumentValue newemail "\$@")
+
+set +e
+change_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
+is_changed=false
+if [ "\$(checkValidEmail \$newemail)" = "false" ]; then
+  echo "ERROR: Invalid email address."
+else
+  sqlite3 $HSHQ_DB "update connections set EmailAddress='\$newemail' where ID='\$change_id';"
+  echo "Email address successfully changed."
+  is_changed=true
+fi
+set -e
+performExitFunctions false
+
+if ! [ "\$is_change" = "true" ]; then
+  exit 1
+fi
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeConnectionEmail.json
+{
+  "name": "06 Change Connection Email",
+  "script_path": "conf/scripts/changeConnectionEmail.sh",
+  "description": "Change a connection email.<br/><br/>This utility will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
+  "group": "$group_id_systemutils",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter new email address",
+      "required": true,
+      "param": "-newemail=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select connection",
+      "required": true,
+      "param": "-selconnection=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,': ',EmailAddress from connections;\" | sed 's/|//g'",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
   # 05 Testing
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/sudoPasswordTest.sh
 #!/bin/bash
@@ -37612,13 +37779,14 @@ requestemailaddress=\$(getArgumentValue requestemailaddress "\$@")
 requestinternet=\$(getArgumentValue requestinternet "\$@")
 ipaddress=\$(getArgumentValue ipaddress "\$@")
 publickey=\$(getArgumentValue publickey "\$@")
+description=\$(getArgumentValue description "\$@")
 
 req_internet=false
 if [ "\$requestinternet" = "Yes" ]; then
   req_internet=true
 fi
 set +e
-sendOtherNetworkApplyUserConfig "\$applyemailaddress" "\$requestemailaddress" "\$req_internet" "\$ipaddress" "\$publickey"
+sendOtherNetworkApplyUserConfig "\$applyemailaddress" "\$requestemailaddress" "\$req_internet" "\$ipaddress" "\$publickey" "\$description"
 set -e
 performExitFunctions false
 
@@ -37628,7 +37796,7 @@ EOFSC
 {
   "name": "03 User Connection Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user application to the recipient email address.<br/><br/>A user application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If you request public internet access and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email.\n3. When the requestor receives the invitation to the network, they must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
+  "description": "Generates and sends a user application to the recipient email address.<br/><br/>A user application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If you request public internet access and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email.\n3. When the requestor receives the invitation to the network, they must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -37665,6 +37833,21 @@ EOFSC
       "name": "Enter the requesting email address",
       "required": true,
       "param": "-requestemailaddress=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a description",
+      "required": true,
+      "param": "-description=",
       "same_arg_param": true,
       "type": "text",
       "ui": {
