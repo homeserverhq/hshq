@@ -8342,8 +8342,26 @@ function getPrivateIPRangesCaddy()
 function getHomeServerPrivateRange()
 {
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
-    ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1
+    hspr=""
+    num_tries=1
+    max_tries=5
+    while [ -z "$hspr" ] && [ $num_tries -lt max_tries ]
+    do
+      # This function call strangely and erroneously returns nothing sometimes...
+      hspr=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1)
+      sleep 3
+      ((num_tries++))
+    done
+    if [ -z "$hspr" ]; then
+      echo "ERROR: Problem getting network private range, exiting(1)..."
+      exit 1
+    fi
+    echo "$hspr"
   else
+    if [ -z "$HOMESERVER_HOST_IP" ]; then
+      echo "ERROR: Problem getting network private range, exiting(2)..."
+      exit 2
+    fi
     echo "${HOMESERVER_HOST_IP}/32"
   fi
 }
