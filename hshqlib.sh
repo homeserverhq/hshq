@@ -1293,7 +1293,9 @@ function performBaseInstallation()
   set -e
   setSudoTimeoutInstall
   sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  echo "Setting static IP..."
   setStaticIPToCurrent
+  echo "Setting MOTD..."
   updateMOTD
   installLogNotify "Install Dependencies"
   installDependencies
@@ -8340,6 +8342,9 @@ function getPrivateIPRangesCaddy()
 
 function setHomeServerPrivateRange()
 {
+  echo "Setting HomeServer private range..."
+  shspr_curE=${-//[^e]/}
+  set +e
   # getHomeServerPrivateRange has some issues, so wrapping the function call with and error handler.
   hspr=""
   num_tries=0
@@ -8364,6 +8369,9 @@ function setHomeServerPrivateRange()
   fi
   HOMESERVER_HOST_RANGE="$hspr"
   updateConfigVar HOMESERVER_HOST_RANGE $HOMESERVER_HOST_RANGE
+  if ! [ -z $shspr_curE ]; then
+    set -e
+  fi
 }
 
 function getHomeServerPrivateRange()
@@ -8463,6 +8471,8 @@ function setStaticIPToCurrent()
     echo "ERROR: There was an error setting the static IP Address, exiting..."
     exit 1
   fi
+  # Put a sleep here to help mitigate the race condition
+  sleep 5
   HOMESERVER_HOST_IP=$cur_ip
   updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
   setHomeServerPrivateRange
@@ -8520,6 +8530,8 @@ function changeHostStaticIP()
   fi
   HOMESERVER_HOST_IP=$newHSHostIP
   updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
+  # Put a sleep here to help mitigate the race condition
+  sleep 5
   setHomeServerPrivateRange
   echo "Restarting Portainer..."
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
