@@ -5916,7 +5916,6 @@ function connectVPN()
   timeout_length=5
   connect_success=false
   is_skip_connect=false
-  loadSSHKey
   set +e
   while [ "$is_skip_connect" = "false" ] && [ "$connect_success" = "false" ]
   do
@@ -5925,11 +5924,9 @@ function connectVPN()
       echo "Attempting to connect to remote host over VPN ($total_attempts of $max_attempts)..."
       timeout $timeout_length ping -c 1 $ip_address_for_status > /dev/null
       if [ $? -eq 0 ]; then
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo Successfully connected to RelayServer!"
-        if [ $? -eq 0 ]; then
-          connect_success=true
-          break
-        fi
+        echo "Successfully connected to RelayServer!"
+        connect_success=true
+        break
       fi
       sleep $timeout_length
       ((total_attempts++))
@@ -5937,7 +5934,7 @@ function connectVPN()
     if ! [ "$connect_success" = "true" ]; then
       errString="Unable to ping host over private network. Press Retry or Skip."
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ $is_primary = 1 ]; then
-        errString="Unable to ping RelayServer over private network. Wait until the RelayServer installation process has completed and the system fully rebooted, then press Retry."
+        errString="Unable to ping RelayServer over private network. If you are hosting a VPN, wait until the RelayServer installation process has completed and the system fully rebooted, then press Retry."
       fi
       errmenu=$(cat << EOF
 $hshqlogo
@@ -5971,7 +5968,23 @@ EOF
   installCaddy $ifaceName $primary_string $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
   # If hosting VPN, setup Syncthing and add ClientDNS stack
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
     set +e
+    total_attempts=1
+    max_attempts=10
+    connect_success=false
+    while [ $total_attempts -lt $max_attempts ]
+    do
+      ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo Successfully logged in to RelayServer!"
+      if [ $? -eq 0 ]; then
+        connect_success=true
+        break
+      fi
+    done
+    if ! [ "$connect_success" = "true" ]; then
+      echo "ERROR: Could not log in to RelayServer, exiting..."
+      exit 1
+    fi
     # Setup syncthing link
     echo "Setting up Syncthing..."
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
@@ -5990,13 +6003,13 @@ EOF
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/folders
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
     set -e
+    unloadSSHKey
     echo "Installing ClientDNS..."
     installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP $ADMIN_USERNAME_BASE"_clientdns" $(pwgen -c -n 32 1)
   fi
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     updateMailuStackRelayHost
   fi
-  unloadSSHKey
   # Update Advertise IPs for Jitsi
   addAdvertiseIP $client_ip
 }
@@ -6850,7 +6863,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
       sendEmail -s "HomeServer VPN Application from $HOMESERVER_NAME ($request_id)" -b "$msg_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$recipient_email"
       echo "Application successfully sent!"
     else
-      echo "You do not have a primary network, you will only receive a manager (MGR) copy of the application. Ensure to forward this to the manager of the network to which you are applying."
+      echo "You do not have a primary network, you will only receive a manager (MGR) copy of the application. Ensure to transfer this to the manager of the network to which you are applying."
     fi
     sendEmail -s "(MGR COPY)HomeServer VPN Application from $HOMESERVER_NAME ($request_id)" -b "$msg_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
   fi
@@ -7331,11 +7344,11 @@ function performNetworkInvite()
       fi
       mail_body=$mail_body"\n$INVITATION_LAST_LINE\n\n"
       if [ "$is_primary" = "true" ]; then
-        echo -e "\n\n\n\n########################################\n"
-        echo -e "This is a primary VPN request.\n"
-        echo -e "No email will be sent to $email_address.\n"
-        echo -e "You will have to forward you MGR copy to them.\n"
-        echo -e "########################################\n\n"
+        echo -e "\n\n\n\n########################################"
+        echo -e "This is a primary VPN request."
+        echo -e "No email will be sent to $email_address."
+        echo -e "You will have to forward your MGR copy to them."
+        echo -e "########################################\n"
       else
         sendEmail -s "$mail_subj" -b "$mail_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
       fi
