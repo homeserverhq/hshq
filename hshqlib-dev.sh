@@ -12605,6 +12605,7 @@ function version37Update()
 
 function version38Update()
 {
+  sudo -v
   sqlite3 $HSHQ_DB "create table if not exists exposedomains(Domain text primary key,BaseDomain text not null);"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
@@ -12623,9 +12624,20 @@ EOFRS
   chmod 664 $HOME/mailu-groups.conf
   sudo chown 101:101 $HOME/mailu-groups.conf
   sudo mv $HOME/mailu-groups.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/groups.conf
+  # Also need to add host IP to Postfix and RSpamd (this should have been done in v27)
+  set +e
+  sudo grep "$HOMESERVER_HOST_IP" $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo sed -i '/^mynetworks/ s/$/ $HOMESERVER_HOST_IP\/32/' $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
+  fi
+  sudo grep "$HOMESERVER_HOST_IP" $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "${HOMESERVER_HOST_IP}/32" | sudo tee -a $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map > /dev/null 2>&1
+  fi
   sleep 3
   startStopStack mailu start
   sleep 5
+  set -e
   checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
   HUGINN_INIT_ENV=false
 }
