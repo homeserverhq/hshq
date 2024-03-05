@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=37
+HSHQ_SCRIPT_VERSION=38
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -3659,7 +3659,7 @@ EOFCD
 #!/bin/bash
 
 subdomlist=\\\$1
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/stacks
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
 
 function main()
 {
@@ -3667,7 +3667,8 @@ function main()
   leCertsArr=(\\\$(echo "\\\$subdomlist" | tr "," "\n"))
   for subdom in "\\\${leCertsArr[@]}"
   do
-    grep "http://\\\$subdom" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile >/dev/null
+    if [ -z "\\\$subdom" ]; then continue; fi
+    grep "# LE certs path \\\$subdom BEGIN" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile >/dev/null
     if [ \\\$? -ne 0 ]; then
       strBlock=""
       strBlock=\\\$strBlock"# LE certs path \\\$subdom BEGIN\n"
@@ -3688,6 +3689,84 @@ function main()
 main "\\\$@"
 EOFCD
   chmod 0500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh
+
+
+  cat <<EOFCD > \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh
+#!/bin/bash
+set +e
+
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+  subdomlist="\\\$1"
+  leCertsArr=(\\\$(echo "\\\$subdomlist" | tr "," "\n"))
+  for subdom in "\\\${leCertsArr[@]}"
+  do
+    if [ -z "\\\$subdom" ]; then continue; fi
+    sed -i "/# LE certs path \\\$subdom BEGIN/,/# LE certs path \\\$subdom END/d" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
+  done
+  docker container restart caddy
+}
+
+main "\\\$@"
+EOFCD
+  chmod 0500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh
+
+  cat <<EOFEX > \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh
+#!/bin/bash
+
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+  subdomlist="\\\$1"
+  exposeArr=(\\\$(echo "\\\$subdomlist" | tr "," "\n"))
+  for subdom in "\\\${exposeArr[@]}"
+  do
+    if [ -z "\\\$subdom" ]; then continue; fi
+    grep "# Expose domain \\\$subdom BEGIN" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile >/dev/null
+    if [ \\\$? -ne 0 ]; then
+      strBlock=""
+      strBlock=\\\$strBlock"# Expose domain \\\$subdom BEGIN\n"
+      strBlock=\\\$strBlock"https://\\\$subdom {\n"
+      strBlock=\\\$strBlock"  import safe-header\n"
+      strBlock=\\\$strBlock"  reverse_proxy https://\\\$subdom {\n"
+      strBlock=\\\$strBlock"    import sn-resolver\n"
+      strBlock=\\\$strBlock"  }\n"
+      strBlock=\\\$strBlock"}\n"
+      strBlock=\\\$strBlock"# Expose domain \\\$subdom END\n"
+      echo -e "\\\$strBlock" >> \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
+    fi
+  done
+  docker container restart caddy
+}
+main "\\\$@"
+EOFEX
+  chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh
+
+  cat <<EOFEX > \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh
+#!/bin/bash
+set +e
+
+RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+  subdomlist="\\\$1"
+  exposeArr=(\\\$(echo "\\\$subdomlist" | tr "," "\n"))
+  for subdom in "\\\${exposeArr[@]}"
+  do
+    if [ -z "\\\$subdom" ]; then continue; fi
+    sed -i "/# Expose domain \\\$subdom BEGIN/,/# Expose domain \\\$subdom END/d" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
+  done
+  docker container restart caddy
+}
+
+main "\\\$@"
+EOFEX
+  chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh
+
 }
 
 function outputRelayedDomainsScript()
@@ -6247,7 +6326,7 @@ EOF
     2)
       removeDomainsFromRelayServer ;;
     3)
-      addLECertPathToRelayServerMsgbox ;;
+      addLECertPathsToRelayServerMsgbox ;;
     4)
       createOrJoinPrimaryVPN ;;
     5)
@@ -6494,16 +6573,23 @@ EOF
     peer_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$curvpnID;")
     removeMyNetworkNonHomeServerConnection $curvpnID
     # Notify peer that you have removed them.
-    email_subj="HomeServer Removal Notice from $HOMESERVER_NAME"
-    email_body=""
-    email_body=${email_body}"HomeServer Removal Notice from $HOMESERVER_NAME\n"
-    email_body=${email_body}"================================================================\n\n"
-    email_body=${email_body}"Your HomeServer internet connection has been removed from the network.\n"
-    email_body=${email_body}"Ensure to disconnect accordingly.\n\n"
-    email_body=${email_body}"Host Domain: $HOMESERVER_DOMAIN\n"
-    email_body=${email_body}"Reason Provided: $removal_reason\n\n"
-    sendEmail -s "$email_subj" -b "$email_body" -t "$peer_email" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+    notifyHomeServerInternetNetworkRemoval "$peer_email" "$removal_reason"
   done
+}
+
+function notifyHomeServerInternetNetworkRemoval()
+{
+  peer_email="$1"
+  removal_reason="$2"
+  email_subj="HomeServer Removal Notice from $HOMESERVER_NAME"
+  email_body=""
+  email_body=${email_body}"HomeServer Removal Notice from $HOMESERVER_NAME\n"
+  email_body=${email_body}"================================================================\n\n"
+  email_body=${email_body}"Your HomeServer internet connection has been removed from the network.\n"
+  email_body=${email_body}"Ensure to disconnect accordingly.\n\n"
+  email_body=${email_body}"Host Domain: $HOMESERVER_DOMAIN\n"
+  email_body=${email_body}"Reason Provided: $removal_reason\n\n"
+  sendEmail -s "$email_subj" -b "$email_body" -t "$peer_email" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
 function showMyNetworkRemoveUserMenu()
@@ -6526,27 +6612,36 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
+  removal_reason=$(promptUserInputMenu "" "Removal Reason" "Enter a reason for removal: ")
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
+
   for curvpn in "${sel_vpn[@]}"
   do
     curvpnID=$(echo $curvpn | cut -d ")" -f1 | sed 's/(//' | sed 's/"//g')
     peer_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$curvpnID;")
     removeMyNetworkNonHomeServerConnection $curvpnID
     # Notify peer that you have removed them.
-    email_subj="HomeServer Removal Notice from $HOMESERVER_NAME"
-    email_body=""
-    email_body=${email_body}"HomeServer Removal Notice from $HOMESERVER_NAME\n"
-    email_body=${email_body}"================================================================\n\n"
-    email_body=${email_body}"Your client connection has been removed from the network.\n"
-    email_body=${email_body}"Ensure to disconnect accordingly.\n\n"
-    email_body=${email_body}"Host Domain: $HOMESERVER_DOMAIN\n"
-    email_body=${email_body}"Reason Provided: $removal_reason\n\n"
-    sendEmail -s "$email_subj" -b "$email_body" -t "$peer_email" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+    notifyUserNetworkRemoval "$peer_email" "$removal_reason"
   done
+}
+
+function notifyUserNetworkRemoval()
+{
+  peer_email="$1"
+  removal_reason="$2"
+  email_subj="HomeServer Removal Notice from $HOMESERVER_NAME"
+  email_body=""
+  email_body=${email_body}"HomeServer Removal Notice from $HOMESERVER_NAME\n"
+  email_body=${email_body}"================================================================\n\n"
+  email_body=${email_body}"Your client connection has been removed from the network.\n"
+  email_body=${email_body}"Ensure to disconnect accordingly.\n\n"
+  email_body=${email_body}"Host Domain: $HOMESERVER_DOMAIN\n"
+  email_body=${email_body}"Reason Provided: $removal_reason\n\n"
+  sendEmail -s "$email_subj" -b "$email_body" -t "$peer_email" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
 function showMyNetworkCreateClientDNSMenu()
@@ -6697,12 +6792,13 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
+  disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
   is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
-  disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
+  
   for curvpn in "${sel_vpn[@]}"
   do
     curvpnID=$(echo $curvpn | cut -d ")" -f1 | sed 's/(//' | sed 's/"//g')
@@ -6730,6 +6826,7 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
+  disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
   is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -6738,7 +6835,7 @@ EOF
   for curvpn in "${sel_vpn[@]}"
   do
     curvpnID=$(echo $curvpn | cut -d ")" -f1 | sed 's/(//' | sed 's/"//g')
-    disconnectOtherNetworkHomeServerInternetConnection $curvpnID
+    disconnectOtherNetworkHomeServerInternetConnection "$curvpnID" "$disconnect_reason"
   done
 }
 
@@ -7252,7 +7349,7 @@ function performNetworkInvite()
         ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $domain_name $mail_subdomain $new_ip"
         if ! [ "$le_domains" = "" ]; then
           echo "Primary Adding LECertDomains: $le_domains"
-          addLECertPathToRelayServer "$le_domains" "$domain_name"
+          addLECertPathsToRelayServer "$le_domains" "$domain_name"
         fi
       fi
     ;;
@@ -7963,7 +8060,6 @@ function removeMyNetworkPrimaryVPN()
         sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhostmap where MailHostID=$curMailHostID;"
         sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhosts where ID=$curMailHostID;"
       fi
-      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains where BaseDomain='$curDomain';"
       removeRevertDNS $curDomain $curDomainExtPrefix
     done
     curMailHostID=$(sqlite3 $HSHQ_DB "select MailHostID from hsvpn_connections join connections on connections.ID = hsvpn_connections.ID where ConnectionType = 'homeserver_vpn' and NetworkType='primary';")
@@ -7971,7 +8067,8 @@ function removeMyNetworkPrimaryVPN()
       sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhostmap where MailHostID=$curMailHostID;"
       sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhosts where ID=$curMailHostID;"
     fi
-    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains where BaseDomain='$HOMESERVER_DOMAIN';"
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from exposedomains;"
     disableSvcAll relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     disableSvcAll relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     disableSvcAll relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
@@ -8076,6 +8173,25 @@ function removeMyNetworkHomeServerVPNConnection()
   notifyMyNetworkUsersDNSUpdate remove "$hs_name" "$domain_name" "$domain_ext_prefix" "$ip_addr"
 }
 
+function removeMyNetworkHomeServerInternetConnection()
+{
+  db_id=$1
+  removal_reason="$2"
+  peer_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
+  removeMyNetworkNonHomeServerConnection $db_id
+  notifyHomeServerInternetNetworkRemoval "$peer_email" "$removal_reason"
+}
+
+function removeMyNetworkUserConnection()
+{
+  db_id=$1
+  removal_reason="$2"
+  peer_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
+  removeMyNetworkNonHomeServerConnection $db_id
+  echo "Sending email to $peer_email, reason: $removal_reason"
+  notifyUserNetworkRemoval "$peer_email" "$removal_reason"
+}
+
 function removeMyNetworkNonHomeServerConnection()
 {
   db_id=$1
@@ -8141,9 +8257,9 @@ function disconnectOtherNetworkHomeServerVPNConnection()
     fi
   done
   # Notify host that you have disconnected.
-  email_subj="HomeServer Disconnect Notice from $HOMESERVER_NAME"
+  email_subj="HomeServer VPN Disconnect Notice from $HOMESERVER_NAME"
   email_body=""
-  email_body=${email_body}"HomeServer Disconnect Notice from $HOMESERVER_NAME\n"
+  email_body=${email_body}"HomeServer VPN Disconnect Notice from $HOMESERVER_NAME\n"
   email_body=${email_body}"================================================================\n\n"
   email_body=${email_body}"Domain: $HOMESERVER_DOMAIN\n"
   email_body=${email_body}"Reason Provided: $disconnect_reason\n\n"
@@ -8153,12 +8269,23 @@ function disconnectOtherNetworkHomeServerVPNConnection()
 function disconnectOtherNetworkHomeServerInternetConnection()
 {
   db_id=$1
+  disconnect_reason="$2"
   wg_config=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  host_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf down
   del_network=$(sudo grep ^\#DOCKER_NETWORK_NAME= $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf | sed 's/^[^=]*=//')
   docker network rm $del_network > /dev/null 2>&1
   sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
+
+  # Notify host that you have disconnected.
+  email_subj="HomeServer Internet Disconnect Notice from $HOMESERVER_NAME"
+  email_body=""
+  email_body=${email_body}"HomeServer Internet Disconnect Notice from $HOMESERVER_NAME\n"
+  email_body=${email_body}"================================================================\n\n"
+  email_body=${email_body}"Domain: $HOMESERVER_DOMAIN\n"
+  email_body=${email_body}"Reason Provided: $disconnect_reason\n\n"
+  sendEmail -s "$email_subj" -b "$email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$host_email" 
 }
 
 # Util Functions
@@ -8591,6 +8718,7 @@ function initWireGuardDB()
   sqlite3 $HSHQ_DB "create unique index hpdns on hsvpn_dns(HostDomain,PeerDomain);"
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
   sqlite3 $HSHQ_DB "create table lecertdomains(Domain text primary key,BaseDomain text not null);"
+  sqlite3 $HSHQ_DB "create table exposedomains(Domain text primary key,BaseDomain text not null);"
 }
 
 function getWGNameFromIP()
@@ -9142,8 +9270,8 @@ function installStack()
   fi
   ret_val=$?
   if [ $ret_val -ne 0 ]; then
-    installLogNotify "Error innstalling Stack ($stack_name)"
-    echo -e "Error innstalling Stack ($stack_name): \n\n"
+    installLogNotify "Error installing Stack ($stack_name)"
+    echo -e "Error installing Stack ($stack_name): \n\n"
     #echo "$install_res"
     return $ret_val
   fi
@@ -10010,6 +10138,10 @@ EOF
     curdom=$(echo $dom | cut -d "(" -f1 | sed 's/"//g')
     domains_to_remove="${domains_to_remove}${curdom},"
   done
+  if -z [ "$domains_to_remove" ]; then
+    showMessageBox "No Selection" "Nothing was selected, returning..."
+    return
+  fi
   domains_to_remove=${domains_to_remove%?}
   loadSSHKey
   mbres=$?
@@ -10065,7 +10197,41 @@ function addSecondaryDomainToRelayServer()
 function removeSecondaryDomainFromRelayServer()
 {
   dom_to_remove="$1"
+
+  le_arr=($(sqlite3 $HSHQ_DB "select Domain from lecertdomains where BaseDomain='$dom_to_remove';"))
+  subdomlist=""
+  for cursub in "${le_arr[@]}"
+  do
+    subdomlist=${subdomlist}"${cursub},"
+  done
+  if ! [ -z "$subdomlist" ]; then
+    subdomlist=${subdomlist%?}
+    echo "Removing LE cert paths from RelayServer for $dom_to_remove..."
+    removeLECertPathsFromRelayServer "$subdomlist"
+    mbres=$?
+    if [ $mbres -ne 0 ]; then
+      return $mbres
+    fi
+  fi
+
+  exp_arr=($(sqlite3 $HSHQ_DB "select Domain from exposedomains where BaseDomain='$dom_to_remove';"))
+  subdomlist=""
+  for cursub in "${exp_arr[@]}"
+  do
+    subdomlist=${subdomlist}"${cursub},"
+  done
+  if ! [ -z "$subdomlist" ]; then
+    subdomlist=${subdomlist%?}
+    echo "Removing expose paths from RelayServer for $dom_to_remove..."
+    removeExposeDomainPathsFromRelayServer "$subdomlist"
+    mbres=$?
+    if [ $mbres -ne 0 ]; then
+      return $mbres
+    fi
+  fi
+
   loadSSHKey
+  echo "Removing $dom_to_remove from RelayServer..."
   ssh -p $RELAYSERVER_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh $dom_to_remove"
   mbres=$?
   unloadSSHKey
@@ -10076,7 +10242,7 @@ function removeSecondaryDomainFromRelayServer()
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhostmap where Domain='$dom_to_remove';"
 }
 
-function addLECertPathToRelayServerMsgbox()
+function addLECertPathsToRelayServerMsgbox()
 {
   set +e
   add_subdomains=$(promptUserInputMenu "" "Enter Subdomain" "Enter the subdomains for which you want LetsEncrypt to manage the certificates(separated by comma):")
@@ -10090,7 +10256,7 @@ $hshqlogo
 Select the base domain to associate with these subdomains:
 EOF
   )
-  dom_arr=($(sqlite3 $HSHQ_DB "select Domain from mailhostmap;"))
+  dom_arr=($(sqlite3 $HSHQ_DB "select Domain from mailhostmap order by MailHostID asc;"))
   menu_items=""
   for curdom in "${dom_arr[@]}"
   do
@@ -10104,43 +10270,44 @@ EOF
   sel_domain=$(echo $sel_domain | cut -d "|" -f1 | sed 's/"//g')
   showYesNoMessageBox "Confirm Selection" "Adding $add_subdomains - associated with $sel_domain. Continue?"
   if [ $? -eq 0 ]; then
-    addLECertPathToRelayServer "$add_subdomains" "$sel_domain"
+    addLECertPathsToRelayServer "$add_subdomains" "$sel_domain"
   fi
 }
 
-function addLECertPathToRelayServer()
+function addLECertPathsToRelayServer()
 {
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    echo "ERROR: You are not hosting a RelayServer."
-    return 1
-  fi
   subdoms_le="$1"
   base_domain="$2"
   if [ $(checkValidString "$subdoms_le" ",.-") = "false" ]; then
     echo "ERROR: A subdomain contains invalid character(s). The value must consist of a-z (lowercase), 0-9, -, and/or ."
-    return 6
+    return 1
   fi
+  newList=""
   add_subdomains_Arr=($(echo $subdoms_le | tr "," "\n"))
   for add_sub in "${add_subdomains_Arr[@]}"
   do
-    checkSub=$(sqlite3 $HSHQ_DB "select Domain from lecertdomains where Domain='$add_sub';")
-    if ! [ -z $checkSub ]; then
-      echo "ERROR: $checkSub has already been added."
-      return 6
-    fi
     if [ $(checkValidString "$add_sub" ".-") = "false" ]; then
       echo "ERROR: The subdomain contains invalid character(s). The value must consist of a-z (lowercase), 0-9, -, and/or ."
-      return 6
+      return 2
+    fi
+    checkSub=$(sqlite3 $HSHQ_DB "select Domain from lecertdomains where Domain='$add_sub';")
+    if ! [ -z $checkSub ]; then
+      echo "$checkSub LE path has already been added to RelayServer."
+    else
+      newList=$newList"${add_sub},"
     fi
   done
-
+  if [ -z "$newList" ]; then
+    return
+  fi
+  newList=${newList%?}
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     sendEmail -s "Add LetsEncrypt Domain" -b "If you have not done so already, you need to contact your RelayServer administrator and ask them to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
-    return 6
+    return
   fi
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
-    return 6
+    return
   fi
 
   loadSSHKey
@@ -10155,6 +10322,97 @@ function addLECertPathToRelayServer()
   for add_sub in "${add_subdomains_Arr[@]}"
   do
     sqlite3 $HSHQ_DB "insert or ignore into lecertdomains(Domain,BaseDomain) values('$add_sub','$base_domain');"
+  done
+}
+
+function removeLECertPathsFromRelayServer()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  subdoms_le="$1"
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $subdoms_le"
+  mbres=$?
+  unloadSSHKey
+  if [ $mbres -ne 0 ]; then
+    echo "ERROR: There was a problem connecting to the RelayServer."
+    return 1
+  fi
+  rem_subdomains_Arr=($(echo $subdoms_le | tr "," "\n"))
+  for rem_sub in "${rem_subdomains_Arr[@]}"
+  do
+    sqlite3 $HSHQ_DB "delete from lecertdomains where Domain='$rem_sub';"
+  done
+}
+
+function addExposeDomainPathsToRelayServer()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  subdoms_exp="$1"
+  base_domain="$2"
+
+  if [ $(checkValidString "$subdoms_exp" ",.-") = "false" ]; then
+    echo "ERROR: A subdomain contains invalid character(s). The value must consist of a-z (lowercase), 0-9, -, and/or ."
+    return 2
+  fi
+  add_subdomains_Arr=($(echo $subdoms_exp | tr "," "\n"))
+  newList=""
+  for add_sub in "${add_subdomains_Arr[@]}"
+  do
+    if [ $(checkValidString "$add_sub" ".-") = "false" ]; then
+      echo "ERROR: The subdomain contains invalid character(s). The value must consist of a-z (lowercase), 0-9, -, and/or ."
+      return 3
+    fi
+    checkSub=$(sqlite3 $HSHQ_DB "select Domain from exposedomains where Domain='$add_sub';")
+    if ! [ -z $checkSub ]; then
+      echo "$checkSub is already exposed on the RelayServer."
+    else
+      newList=$newList"${add_sub},"
+    fi
+  done
+  if [ -z "$newList" ]; then
+    return
+  fi
+  newList=${newList%?}
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $subdoms_exp"
+  mbres=$?
+  unloadSSHKey
+  if [ $mbres -ne 0 ]; then
+    echo "ERROR: There was a problem connecting to the RelayServer."
+    return 5
+  fi
+  add_subdomains_Arr=($(echo $subdoms_exp | tr "," "\n"))
+  for add_sub in "${add_subdomains_Arr[@]}"
+  do
+    sqlite3 $HSHQ_DB "insert or ignore into exposedomains(Domain,BaseDomain) values('$add_sub','$base_domain');"
+  done
+}
+
+function removeExposeDomainPathsFromRelayServer()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  subdoms_exp="$1"
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh $subdoms_exp"
+  mbres=$?
+  unloadSSHKey
+  if [ $mbres -ne 0 ]; then
+    echo "ERROR: There was a problem connecting to the RelayServer."
+    return 1
+  fi
+  rem_subdomains_Arr=($(echo $subdoms_exp | tr "," "\n"))
+  for rem_sub in "${rem_subdomains_Arr[@]}"
+  do
+    sqlite3 $HSHQ_DB "delete from exposedomains where Domain='$rem_sub';"
   done
 }
 
@@ -11503,6 +11761,17 @@ CHANGEDETECTION_INIT_ENV=true
 CHANGEDETECTION_ADMIN_PASSWORD=
 # Change Detection (Service Details) END
 
+# Huginn (Service Details) BEGIN
+HUGINN_INIT_ENV=true
+HUGINN_APP_SECRET_TOKEN=
+HUGINN_ADMIN_USERNAME=
+HUGINN_ADMIN_EMAIL_ADDRESS=
+HUGINN_ADMIN_PASSWORD=
+HUGINN_DATABASE_NAME=
+HUGINN_DATABASE_USER=
+HUGINN_DATABASE_USER_PASSWORD=
+# Huginn (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -11629,6 +11898,13 @@ function checkUpdateVersion()
     version37Update
     is_update_performed=true
     HSHQ_VERSION=37
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 38 ]; then
+    echo "Updating to Version 38..."
+    version38Update
+    is_update_performed=true
+    HSHQ_VERSION=38
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -12325,6 +12601,172 @@ function version37Update()
   fi
   mkdir -p $HSHQ_WIREGUARD_DIR/requestkeys
   checkFixPortainerEnv
+}
+
+function version38Update()
+{
+  sudo -v
+  sqlite3 $HSHQ_DB "create table if not exists exposedomains(Domain text primary key,BaseDomain text not null);"
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    sendRSExposeScripts
+  fi
+  outputAllHSHQManagerScripts
+
+  # Fixes internal mailing issue
+  startStopStack mailu stop
+  cat <<EOFRS > $HOME/mailu-groups.conf
+symbols {
+  "R_DKIM_ALLOW" {
+    weight = -22.0;
+  }
+}
+EOFRS
+  chmod 664 $HOME/mailu-groups.conf
+  sudo chown 101:101 $HOME/mailu-groups.conf
+  sudo mv $HOME/mailu-groups.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/groups.conf
+  # Also need to add host IP to Postfix and RSpamd (this should have been done in v27)
+  set +e
+  sudo grep "$HOMESERVER_HOST_IP" $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo sed -i "/^mynetworks/ s/$/ ${HOMESERVER_HOST_IP}\/32/" $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
+  fi
+  sudo grep "$HOMESERVER_HOST_IP" $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "${HOMESERVER_HOST_IP}/32" | sudo tee -a $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map > /dev/null 2>&1
+  fi
+  sleep 3
+  startStopStack mailu start
+  sleep 5
+  set -e
+  checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
+  HUGINN_INIT_ENV=false
+}
+
+function sendRSExposeScripts()
+{
+  cat <<EOFCD > $HOME/addLECertDomains.sh
+#!/bin/bash
+
+subdomlist=\$1
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+  set +e
+  leCertsArr=(\$(echo "\$subdomlist" | tr "," "\n"))
+  for subdom in "\${leCertsArr[@]}"
+  do
+    if [ -z "\$subdom" ]; then continue; fi
+    grep "# LE certs path \$subdom BEGIN" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile >/dev/null
+    if [ \$? -ne 0 ]; then
+      strBlock=""
+      strBlock=\$strBlock"# LE certs path \$subdom BEGIN\n"
+      strBlock=\$strBlock"http://\$subdom {\n"
+      strBlock=\$strBlock"  handle /.well-known/acme-challenge/* {\n"
+      strBlock=\$strBlock"    reverse_proxy \$subdom {\n"
+      strBlock=\$strBlock"      import sn-resolver\n"
+      strBlock=\$strBlock"    }\n"
+      strBlock=\$strBlock"  }\n"
+      strBlock=\$strBlock"}\n"
+      strBlock=\$strBlock"# LE certs path \$subdom END\n"
+      echo -e "\$strBlock" >> \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
+    fi
+  done
+  docker container restart caddy
+}
+
+main "\$@"
+EOFCD
+  chmod 0500 $HOME/addLECertDomains.sh
+  cat <<EOFEX > $HOME/removeLECertDomains.sh
+#!/bin/bash
+set +e
+
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+  subdomlist="\$1"
+  leCertsArr=(\$(echo "\$subdomlist" | tr "," "\n"))
+  for subdom in "\${leCertsArr[@]}"
+  do
+    if [ -z "\$subdom" ]; then continue; fi
+    sed -i "/# LE certs path \$subdom BEGIN/,/# LE certs path \$subdom END/d" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
+  done
+  docker container restart caddy
+}
+
+main "\$@"
+EOFEX
+  chmod 500 $HOME/removeLECertDomains.sh
+  cat <<EOFEX > $HOME/addExposeDomains.sh
+#!/bin/bash
+
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+  subdomlist="\$1"
+  exposeArr=(\$(echo "\$subdomlist" | tr "," "\n"))
+  for subdom in "\${exposeArr[@]}"
+  do
+    if [ -z "\$subdom" ]; then continue; fi
+    grep "# Expose domain \$subdom BEGIN" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile >/dev/null
+    if [ \$? -ne 0 ]; then
+      strBlock=""
+      strBlock=\$strBlock"# Expose domain \$subdom BEGIN\n"
+      strBlock=\$strBlock"https://\$subdom {\n"
+      strBlock=\$strBlock"  import safe-header\n"
+      strBlock=\$strBlock"  reverse_proxy https://\$subdom {\n"
+      strBlock=\$strBlock"    import sn-resolver\n"
+      strBlock=\$strBlock"  }\n"
+      strBlock=\$strBlock"}\n"
+      strBlock=\$strBlock"# Expose domain \$subdom END\n"
+      echo -e "\$strBlock" >> \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
+    fi
+  done
+  docker container restart caddy
+}
+main "\$@"
+EOFEX
+  chmod 500 $HOME/addExposeDomains.sh
+  cat <<EOFEX > $HOME/removeExposeDomains.sh
+#!/bin/bash
+set +e
+
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+
+  subdomlist="\$1"
+  exposeArr=(\$(echo "\$subdomlist" | tr "," "\n"))
+  for subdom in "\${exposeArr[@]}"
+  do
+    if [ -z "\$subdom" ]; then continue; fi
+    sed -i "/# Expose domain \$subdom BEGIN/,/# Expose domain \$subdom END/d" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
+  done
+  docker container restart caddy
+}
+
+main "\$@"
+EOFEX
+  chmod 500 $HOME/removeExposeDomains.sh
+
+  loadSSHKey
+  set +e
+  ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh"
+  scp -P $RELAYSERVER_SSH_PORT $HOME/addLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
+  scp -P $RELAYSERVER_SSH_PORT $HOME/removeLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
+  scp -P $RELAYSERVER_SSH_PORT $HOME/addExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
+  scp -P $RELAYSERVER_SSH_PORT $HOME/removeExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
+
+  set -e
+  unloadSSHKey
+  rm -f $HOME/addLECertDomains.sh
+  rm -f $HOME/removeLECertDomains.sh
+  rm -f $HOME/addExposeDomains.sh
+  rm -f $HOME/removeExposeDomains.sh
 }
 
 function checkFixPortainerEnv()
@@ -14556,6 +14998,7 @@ function loadPinnedDockerImages()
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
   IMG_HOMEASSISTANT_NODERED=nodered/node-red:3.0.2
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+  IMG_HUGINN_APP=ghcr.io/huginn/huginn:c2839b8a78335a1cb7052d6ee1c4fbdc11ee6bb5
   IMG_INFLUXDB=influxdb:2.7.5-alpine
   IMG_INVIDIOUS=quay.io/invidious/invidious
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
@@ -14745,6 +15188,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     changedetection)
       echo "v1" ;;
+    huginn)
+      echo "v1" ;;
     ofelia)
       echo "v2" ;;
     sqlpad)
@@ -14862,6 +15307,7 @@ function pullDockerImages()
   pullImage $IMG_SPEEDTEST_TRACKER_APP
   pullImage $IMG_CHANGEDETECTION_APP
   pullImage $IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME
+  pullImage $IMG_HUGINN_APP
 }
 
 function pullBaseServicesDockerImages()
@@ -15680,6 +16126,30 @@ function initServicesCredentials()
     CHANGEDETECTION_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar CHANGEDETECTION_ADMIN_PASSWORD $CHANGEDETECTION_ADMIN_PASSWORD
   fi
+  if [ -z "$HUGINN_ADMIN_USERNAME" ]; then
+    HUGINN_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_huginn"
+    updateConfigVar HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_USERNAME
+  fi
+  if [ -z "$HUGINN_ADMIN_EMAIL_ADDRESS" ]; then
+    HUGINN_ADMIN_EMAIL_ADDRESS=$HUGINN_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar HUGINN_ADMIN_EMAIL_ADDRESS $HUGINN_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$HUGINN_ADMIN_PASSWORD" ]; then
+    HUGINN_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar HUGINN_ADMIN_PASSWORD $HUGINN_ADMIN_PASSWORD
+  fi
+  if [ -z "$HUGINN_DATABASE_NAME" ]; then
+    HUGINN_DATABASE_NAME=huginndb
+    updateConfigVar HUGINN_DATABASE_NAME $HUGINN_DATABASE_NAME
+  fi
+  if [ -z "$HUGINN_DATABASE_USER" ]; then
+    HUGINN_DATABASE_USER=huginn-user
+    updateConfigVar HUGINN_DATABASE_USER $HUGINN_DATABASE_USER
+  fi
+  if [ -z "$HUGINN_DATABASE_USER_PASSWORD" ]; then
+    HUGINN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar HUGINN_DATABASE_USER_PASSWORD $HUGINN_DATABASE_USER_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -15735,6 +16205,7 @@ function initServiceVars()
   checkAddSvc "SVCD_HOMEASSISTANT_NODERED=homeassistant,hass-nodered,primary,admin,HomeAssistant-NodeRed,hass-nodered,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_TASMOADMIN=homeassistant,hass-tasmoadmin,primary,admin,HomeAssistant-Tasmoadmin,hass-tasmoadmin,hshq"
   checkAddSvc "SVCD_HSHQMANAGER=hshqmanager,hshqmanager,home,admin,HSHQ Manager,hshqmanager,hshq"
+  checkAddSvc "SVCD_HUGINN=huginn,huginn,primary,user,Huginn,huginn,hshq"
   checkAddSvc "SVCD_IMAGES=images,images,other,user,Images,images,hshq"
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
   checkAddSvc "SVCD_INVIDIOUS=invidious,invidious,primary,user,Invidious,invidious,hshq"
@@ -15894,6 +16365,8 @@ function installStackByName()
       installSpeedtestTrackerVPN $is_integrate ;;
     changedetection)
       installChangeDetection $is_integrate ;;
+    huginn)
+      installHuginn $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -16018,6 +16491,8 @@ function performUpdateStackByName()
       performUpdateSpeedtestTrackerVPN "$portainerToken" ;;
     changedetection)
       performUpdateChangeDetection "$portainerToken" ;;
+    huginn)
+      performUpdateHuginn "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -16087,6 +16562,7 @@ function getAutheliaBlock()
   retval="${retval}    - domain:\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
@@ -16190,6 +16666,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_LOCAL}-Admin" https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_VPN}-Admin" https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -16282,6 +16759,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0 "wallabag.png"
   insertIntoHeimdallDB "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0 "paperless.png"
   insertIntoHeimdallDB "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0 "changedetection.png"
+  insertIntoHeimdallDB "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0 "huginn.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -16365,6 +16843,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -16383,13 +16862,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
-  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,drawio,guacamole,kasm,stirlingpdf
-  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
+  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,guacamole,kasm,stirlingpdf
+  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn
 }
 
 function getScriptImageByContainerName()
@@ -16823,6 +17302,12 @@ function getScriptImageByContainerName()
       ;;
     "changedetection-playwright-chrome")
       container_image=$IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME
+      ;;
+    "huginn-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "huginn-app")
+      container_image=$IMG_HUGINN_APP
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -17729,7 +18214,7 @@ services:
     image: $(getScriptImageByContainerName grafana)
     container_name: grafana
     hostname: grafana
-    user: \${UID}
+    user: "\${UID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -20234,7 +20719,7 @@ services:
     image: $(getScriptImageByContainerName grafana)
     container_name: grafana
     hostname: grafana
-    user: \${UID}
+    user: "\${UID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -20848,7 +21333,11 @@ function installMailu()
   sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/domain_blacklist.map
   sudo chmod 644 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/domain_blacklist.map
   sudo mv $HSHQ_STACKS_DIR/mailu/multimap.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/multimap.conf
+  sudo mv $HSHQ_STACKS_DIR/mailu/groups.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/groups.conf
+  sudo chmod 664 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/groups.conf
+  sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/groups.conf
   sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/overrides/rspamd
+  sudo rm -fr $HSHQ_STACKS_DIR/mailu/filter/*
   sleep 5
   echo "Restarting mailu stack..."
   startStopStack mailu start
@@ -21251,6 +21740,15 @@ DOMAIN_BLACKLIST {
 }
 
 EOFRS
+
+  cat <<EOFRS > $HSHQ_STACKS_DIR/mailu/groups.conf
+symbols {
+  "R_DKIM_ALLOW" {
+    weight = -22.0;
+  }
+}
+EOFRS
+
 }
 
 function performUpdateMailu()
@@ -23010,7 +23508,7 @@ services:
     image: $(getScriptImageByContainerName nextcloud-db)
     container_name: nextcloud-db
     hostname: nextcloud-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -23631,7 +24129,7 @@ services:
     image: $(getScriptImageByContainerName matrix-db)
     container_name: matrix-db
     hostname: matrix-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -24147,7 +24645,7 @@ services:
     image: $(getScriptImageByContainerName wikijs-db)
     container_name: wikijs-db
     hostname: wikijs-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -24534,7 +25032,7 @@ services:
     image: $(getScriptImageByContainerName mastodon-db)
     container_name: mastodon-db
     hostname: mastodon-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -30593,7 +31091,7 @@ services:
     image: $(getScriptImageByContainerName invidious-db)
     container_name: invidious-db
     hostname: invidious-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -32179,15 +32677,14 @@ function installRemotely()
   sleep 10
   startStopStack remotely stop
 
-  cat $HSHQ_STACKS_DIR/remotely/appsettings.json | \
-    jq '.ApplicationOptions.ForceClientHttps |= true' | \
-    jq --arg email_name $HSHQ_ADMIN_NAME '.ApplicationOptions.SmtpDisplayName |= "Remotely $email_name"' | \
-    jq --arg email_addr $EMAIL_ADMIN_EMAIL_ADDRESS --arg smtp_host $SMTP_HOSTNAME \
-    '.ApplicationOptions.SmtpEmail |= $email_addr' | \
-    jq '.ApplicationOptions.SmtpHost |= $smtp_host' | \
+  cat $HSHQ_STACKS_DIR/remotely/appsettings.json | jq '.ApplicationOptions.ForceClientHttps |= true' | \
+    jq --arg email_name "Remotely $HSHQ_ADMIN_NAME" '.ApplicationOptions.SmtpDisplayName |= $email_name' | \
+    jq --arg email_addr "$EMAIL_ADMIN_EMAIL_ADDRESS" '.ApplicationOptions.SmtpEmail |= $email_addr' | \
+    jq --arg smtp_host "$SMTP_HOSTNAME" '.ApplicationOptions.SmtpHost |= $smtp_host' | \
     jq '.ApplicationOptions.SmtpPort |= 25' | \
     jq '.ApplicationOptions.SmtpCheckCertificateRevocation |= false' \
     > $HSHQ_STACKS_DIR/remotely/newsettings.json
+
   sudo rm $HSHQ_STACKS_DIR/remotely/appsettings.json
   sudo mv $HSHQ_STACKS_DIR/remotely/newsettings.json $HSHQ_STACKS_DIR/remotely/appsettings.json
   sudo chown root:root $HSHQ_STACKS_DIR/remotely/appsettings.json
@@ -32732,7 +33229,7 @@ services:
     image: $(getScriptImageByContainerName linkwarden-db)
     container_name: linkwarden-db
     hostname: linkwarden-db
-    user: "${UID}:${GID}"
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -33387,7 +33884,7 @@ services:
     image: $(getScriptImageByContainerName freshrss-db)
     container_name: freshrss-db
     hostname: freshrss-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -33864,7 +34361,7 @@ services:
     image: $(getScriptImageByContainerName wallabag-db)
     container_name: wallabag-db
     hostname: wallabag-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -33983,7 +34480,7 @@ SYMFONY__ENV__DATABASE_PORT=5432
 SYMFONY__ENV__DATABASE_NAME=$WALLABAG_DATABASE_NAME
 SYMFONY__ENV__DATABASE_USER=$WALLABAG_DATABASE_USER
 SYMFONY__ENV__DATABASE_PASSWORD=$WALLABAG_DATABASE_USER_PASSWORD
-SYMFONY__ENV__MAILER_DSN=smtp://$SMTP_HOSTNAME:25
+SYMFONY__ENV__MAILER_DSN=smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT
 SYMFONY__ENV__FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
 SYMFONY__ENV__DOMAIN_NAME=https://$SUB_WALLABAG.$HOMESERVER_DOMAIN
 SYMFONY__ENV__SERVER_NAME=$HOMESERVER_NAME
@@ -34251,7 +34748,7 @@ services:
     image: $(getScriptImageByContainerName paperless-db)
     container_name: paperless-db
     hostname: paperless-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -34536,7 +35033,7 @@ services:
     image: $(getScriptImageByContainerName speedtest-tracker-local-db)
     container_name: speedtest-tracker-local-db
     hostname: speedtest-tracker-local-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -34776,7 +35273,7 @@ services:
     image: $(getScriptImageByContainerName speedtest-tracker-vpn-db)
     container_name: speedtest-tracker-vpn-db
     hostname: speedtest-tracker-vpn-db
-    user: \${UID}
+    user: "\${UID}:\${GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -35144,6 +35641,237 @@ function performUpdateChangeDetection()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Huginn
+function installHuginn()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory huginn "$FMLNAME_HUGINN"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  pullImage $IMG_HUGINN_APP
+  if [ $? -ne 0 ]; then
+    return
+  fi
+
+  mkdir $HSHQ_STACKS_DIR/huginn
+  mkdir $HSHQ_STACKS_DIR/huginn/db
+  mkdir $HSHQ_STACKS_DIR/huginn/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/huginn/dbexport
+
+  initServicesCredentials
+  if [ -z "$HUGINN_APP_SECRET_TOKEN" ]; then
+    HUGINN_APP_SECRET_TOKEN=$(openssl rand -hex 64)
+    updateConfigVar HUGINN_APP_SECRET_TOKEN $HUGINN_APP_SECRET_TOKEN
+  fi
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $HUGINN_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $HUGINN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  if ! [ "$HUGINN_INIT_ENV" = "true" ]; then
+    sendEmail -s "Huginn Admin Login Info" -b "Huginn Admin Username: $HUGINN_ADMIN_USERNAME\nHuginn Admin Password: $HUGINN_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    HUGINN_INIT_ENV=true
+    updateConfigVar HUGINN_INIT_ENV $HUGINN_INIT_ENV
+  fi
+
+  outputConfigHuginn
+  installStack huginn huginn-app "" $HOME/huginn.env
+  sleep 3
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_HUGINN.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://huginn-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_HUGINN $MANAGETLS_HUGINN "$is_integrate_hshq" $NETDEFAULT_HUGINN "$inner_block"
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad huginn "$FMLNAME_HUGINN" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigHuginn()
+{
+  cat <<EOFDZ > $HOME/huginn-compose.yml
+$STACK_VERSION_PREFIX huginn $(getScriptStackVersion huginn)
+version: '3.5'
+
+services:
+  huginn-db:
+    image: $(getScriptImageByContainerName huginn-db)
+    container_name: huginn-db
+    hostname: huginn-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-huginn-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/huginn/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/huginn/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.huginn-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.huginn-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.huginn-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.huginn-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.huginn-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.huginn-hourly-db.email-from=Huginn Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.huginn-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.huginn-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.huginn-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.huginn-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.huginn-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.huginn-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.huginn-monthly-db.email-from=Huginn Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.huginn-monthly-db.mail-only-on-error=false"
+
+  huginn-app:
+    image: $(getScriptImageByContainerName huginn-app)
+    container_name: huginn-app
+    hostname: huginn-app
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - huginn-db
+    networks:
+      - int-huginn-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  int-huginn-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFDZ
+
+  cat <<EOFDZ > $HOME/huginn.env
+UID=$USERID
+GID=$GROUPID
+TZ=${TZ}
+POSTGRES_DB=$HUGINN_DATABASE_NAME
+POSTGRES_USER=$HUGINN_DATABASE_USER
+POSTGRES_PASSWORD=$HUGINN_DATABASE_USER_PASSWORD
+APP_SECRET_TOKEN=$HUGINN_APP_SECRET_TOKEN
+DOMAIN=$SUB_HUGINN.$HOMESERVER_DOMAIN
+PORT=3000
+DATABASE_ADAPTER=postgresql
+DATABASE_ENCODING=utf8
+DATABASE_RECONNECT=true
+DATABASE_NAME=$HUGINN_DATABASE_NAME
+DATABASE_POOL=20
+DATABASE_USERNAME=$HUGINN_DATABASE_USER
+DATABASE_PASSWORD=$HUGINN_DATABASE_USER_PASSWORD
+DATABASE_HOST=huginn-db
+DATABASE_PORT=5432
+FORCE_SSL=false
+SKIP_INVITATION_CODE=true
+REQUIRE_CONFIRMED_EMAIL=true
+ALLOW_UNCONFIRMED_ACCESS_FOR=0
+MIN_PASSWORD_LENGTH=16
+USE_JQ=jq
+USE_GRAPHVIZ_DOT=dot
+SMTP_DOMAIN=$SMTP_HOSTNAME
+SMTP_SERVER=$SMTP_HOSTNAME
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_USER_NAME=none
+SMTP_ENABLE_STARTTLS_AUTO=true
+SMTP_SSL=false
+EMAIL_FROM_ADDRESS=Huginn $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>
+SEED_USERNAME=$HUGINN_ADMIN_USERNAME
+SEED_PASSWORD=$HUGINN_ADMIN_PASSWORD
+SEED_EMAIL=$HUGINN_ADMIN_EMAIL_ADDRESS
+TWITTER_OAUTH_KEY=
+TWITTER_OAUTH_SECRET=
+THIRTY_SEVEN_SIGNALS_OAUTH_KEY=
+THIRTY_SEVEN_SIGNALS_OAUTH_SECRET=
+GITHUB_OAUTH_KEY=
+GITHUB_OAUTH_SECRET=
+TUMBLR_OAUTH_KEY=
+TUMBLR_OAUTH_SECRET=
+EVERNOTE_OAUTH_KEY=
+EVERNOTE_OAUTH_SECRET=
+USE_EVERNOTE_SANDBOX=true
+EOFDZ
+
+}
+
+function performUpdateHuginn()
+{
+  perform_stack_name=huginn
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,ghcr.io/huginn/huginn:c2839b8a78335a1cb7052d6ee1c4fbdc11ee6bb5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/huginn/huginn:c2839b8a78335a1cb7052d6ee1c4fbdc11ee6bb5,ghcr.io/huginn/huginn:c2839b8a78335a1cb7052d6ee1c4fbdc11ee6bb5"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # HSHQ Manager
 function installHSHQManager()
 {
@@ -35495,7 +36223,7 @@ EOFSC
 {
   "name": "03 Restart All Caddy Containers",
   "script_path": "conf/scripts/restartAllCaddyContainers.sh",
-  "description": "Restarts all Caddy containers.",
+  "description": "Restarts all Caddy containers.<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -35749,7 +36477,7 @@ EOFSC
 {
   "name": "06 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks.<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.\n<br/>This function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web utility during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks.<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web utility during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36269,7 +36997,7 @@ EOFSC
 {
   "name": "01 Clear History",
   "script_path": "conf/scripts/clearHSHQManagerProcessLogs.sh",
-  "description": "Clears out all of the process logs (history) in this utility.",
+  "description": "Clears out all of the process logs (history) in this utility.<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -36692,6 +37420,45 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/poweroffHomeServer.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+
+echo "Powering down..."
+sudo poweroff
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/poweroffHomeServer.json
+{
+  "name": "04 Power off HomeServer",
+  "script_path": "conf/scripts/poweroffHomeServer.sh",
+  "description": "Shuts down the HomeServer.",
+  "group": "$group_id_systemutils",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/downloadAllDockerImages.sh
 #!/bin/bash
 
@@ -36706,9 +37473,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/downloadAllDockerImages.json
 {
-  "name": "04 Download All Docker Images",
+  "name": "05 Download All Docker Images",
   "script_path": "conf/scripts/downloadAllDockerImages.sh",
-  "description": "Downloads all docker images.",
+  "description": "Downloads all docker images.<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -36744,9 +37511,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/resetHSHQOpenStatus.json
 {
-  "name": "05 Reset HSHQ Open Status",
+  "name": "06 Reset HSHQ Open Status",
   "script_path": "conf/scripts/resetHSHQOpenStatus.sh",
-  "description": "Resets the HSHQ open status.<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles.",
+  "description": "Resets the HSHQ open status.<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles. Enter confirm in the box below.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -36794,14 +37561,14 @@ fi
 set -e
 performExitFunctions false
 
-if ! [ "\$is_change" = "true" ]; then
+if ! [ "\$is_changed" = "true" ]; then
   exit 1
 fi
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeConnectionEmail.json
 {
-  "name": "06 Change Connection Email",
+  "name": "07 Change Connection Email",
   "script_path": "conf/scripts/changeConnectionEmail.sh",
   "description": "Change a connection email.<br/><br/>This utility will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
   "group": "$group_id_systemutils",
@@ -36822,21 +37589,6 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter new email address",
-      "required": true,
-      "param": "-newemail=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": false,
-      "pass_as": "argument"
-    },
-    {
       "name": "Select connection",
       "required": true,
       "param": "-selconnection=",
@@ -36849,8 +37601,23 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,': ',EmailAddress from connections;\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,': ',EmailAddress from connections order by ID asc;\" | sed 's/|//g'",
         "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter new email address",
+      "required": true,
+      "param": "-newemail=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -37203,7 +37970,7 @@ EOFSC
 {
   "name": "03 Remove HS VPN Connection",
   "script_path": "conf/scripts/removeHSVPNConnection.sh",
-  "description": "Remove a HomeServer VPN connection.",
+  "description": "Remove a HomeServer VPN connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -37234,7 +38001,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
         "shell": true
       },
       "secure": false,
@@ -37269,6 +38036,7 @@ source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
+removeReason="\$3"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -37282,7 +38050,7 @@ EOFSC
 {
   "name": "04 Remove HS Int Connection",
   "script_path": "conf/scripts/removeHSInternetConnection.sh",
-  "description": "Remove a HomeServer Internet connection.",
+  "description": "Remove a HomeServer Internet connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -37313,8 +38081,21 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='mynetwork';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
         "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a reason for removal",
+      "required": true,
+      "type": "multiline_text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -37335,10 +38116,11 @@ source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
+removeReason="\$3"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-removeMyNetworkNonHomeServerConnection \$rem_id
+removeMyNetworkUserConnection "\$rem_id" "\$removeReason"
 set -e
 performExitFunctions false
 
@@ -37348,7 +38130,7 @@ EOFSC
 {
   "name": "05 Remove User Connection",
   "script_path": "conf/scripts/removeUserConnection.sh",
-  "description": "Remove a user connection.",
+  "description": "Remove a user connection.<br/><br/>The reason for removal will be emailed to the user being removed.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -37379,8 +38161,21 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='user' and NetworkType='mynetwork';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='user' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
         "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a reason for removal",
+      "required": true,
+      "type": "multiline_text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -37630,8 +38425,84 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='clientdns' and NetworkType='mynetwork';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='clientdns' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
         "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removePrimaryVPNConnection.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+disconnectReason="\$3"
+
+set +e
+removeMyNetworkPrimaryVPN "\$disconnectReason"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removePrimaryVPNConnection.json
+{
+  "name": "10 Remove Primary VPN",
+  "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
+  "description": "Complete removal of primary VPN. <br/>\nIf you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a reason for disconnect/removal",
+      "required": true,
+      "type": "multiline_text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -37914,6 +38785,68 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/applyHSVPNPrimaryConnection.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+lecertsubs=\$(getArgumentValue lecertsubs "\$@")
+
+set +e
+sendOtherNetworkApplyHomeServerVPNConfig "na" true "\$lecertsubs"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/applyHSVPNPrimaryConnection.json
+{
+  "name": "04 Primary VPN Application",
+  "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
+  "description": "Generates a HomeServer primary VPN application.<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, so it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
+  "group": "$group_id_othernetworks",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter the LE cert subdomains",
+      "required": true,
+      "param": "-lecertsubs=",
+      "same_arg_param": true,
+      "type": "text",
+      "default": "$(getLetsEncryptCertsDefault)",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/joinNetwork.sh
 #!/bin/bash
 
@@ -37938,7 +38871,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/joinNetwork.json
 {
-  "name": "04 Join Network",
+  "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
   "description": "Joins a network via a provided configuration.<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This utility can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will automatically be married back into this configuration based on the request ID.",
   "group": "$group_id_othernetworks",
@@ -38016,9 +38949,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/disconnectVPNConnection.json
 {
-  "name": "05 Disconnect VPN Connection",
+  "name": "06 Disconnect VPN Connection",
   "script_path": "conf/scripts/disconnectVPNConnection.sh",
-  "description": "Disconnect a HomeServer VPN connection.",
+  "description": "Disconnect a HomeServer VPN connection.<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -38064,7 +38997,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='other';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='other' order by ID asc;\" | sed 's/|//g'",
         "shell": true
       },
       "secure": false,
@@ -38101,10 +39034,11 @@ source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
+disconnectReason="\$4"
 
 set +e
 dis_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-disconnectOtherNetworkHomeServerInternetConnection \$dis_id
+disconnectOtherNetworkHomeServerInternetConnection "\$dis_id" "\$disconnectReason"
 set -e
 performExitFunctions false
 
@@ -38112,9 +39046,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/disconnectInternetConnection.json
 {
-  "name": "06 Disconnect Int Connection",
+  "name": "07 Disconnect Int Connection",
   "script_path": "conf/scripts/disconnectInternetConnection.sh",
-  "description": "Disconnect a HomeServer internet connection.",
+  "description": "Disconnect a HomeServer internet connection.<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -38160,8 +39094,21 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='other';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='other' order by ID asc;\" | sed 's/|//g'",
         "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a reason for disconnecting",
+      "required": true,
+      "type": "multiline_text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -38193,7 +39140,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/updateHomeServerDNS.json
 {
-  "name": "07 Update HomeServer DNS",
+  "name": "08 Update HomeServer DNS",
   "script_path": "conf/scripts/updateHomeServerDNS.sh",
   "description": "Update HomeServer DNS.<br/><br/>This utility allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
   "group": "$group_id_othernetworks",
@@ -38251,7 +39198,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/syncAdguardDNS.json
 {
-  "name": "08 Sync Adguard DNS Server",
+  "name": "09 Sync Adguard DNS Server",
   "script_path": "conf/scripts/syncAdguardDNS.sh",
   "description": "Sync Adguard DNS server from database.<br/><br/>This utility sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
   "group": "$group_id_othernetworks",
@@ -38302,9 +39249,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/addDomainToRelayServer.json
 {
-  "name": "01 Add Domain To RS",
+  "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer.<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Point the DNS records at the domain name provider to the RelayServer of this network.\n2. Add the domain using <ins>this</ins> utility.\n3. Add the domain to Mailu (to send/receive email on this domain).\n\nThe DNS info for Step 1 will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS) upon execution.",
+  "description": "Adds a new secondary domain to the RelayServer.<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> utility. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS records from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -38350,7 +39297,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',MailHost from mailhosts;\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',MailHost from mailhosts order by ID asc;\" | sed 's/|//g'",
         "shell": true
       },
       "secure": false,
@@ -38385,9 +39332,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeDomainFromRelayServer.json
 {
-  "name": "02 Remove Domain From RS",
+  "name": "02 Remove Secondary Domain",
   "script_path": "conf/scripts/removeDomainFromRelayServer.sh",
-  "description": "Removes a secondary domain from the RelayServer.",
+  "description": "Removes a secondary domain from the RelayServer. This will also remove any LetsEncrypt paths and exposed (sub)domains on this domain as well.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -38418,7 +39365,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select Domain,' (',MailHost,')' from mailhostmap join mailhosts on mailhostmap.MailHostID = mailhosts.ID where IsFirstDomain=false;\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select Domain,' (',MailHost,')' from mailhostmap join mailhosts on mailhostmap.MailHostID = mailhosts.ID where IsFirstDomain=false order by mailhostmap.MailHostID;\" | sed 's/|//g'",
         "shell": true
       },
       "secure": false,
@@ -38429,7 +39376,7 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/addLEDomainsToRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/addLEDomainToRelayServer.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
@@ -38439,22 +39386,39 @@ source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
-subdomains=\$(getArgumentValue subdomains "\$@")
+adddomain=\$(getArgumentValue adddomain "\$@")
 basedom=\$(getArgumentValue basedom "\$@")
-set +e
-echo "Adding LetsEncrypt subdomains..."
-addLECertPathToRelayServer "\$subdomains" "\$basedom"
-retVal=\$?
+
+is_err=false
+if [ -z "\$adddomain" ]; then
+  add_domain="\$basedom"
+else
+  if ! [ \$(checkValidString "\$adddomain" "-") = "false" ]; then
+    add_domain="\$adddomain.\$basedom"
+  else
+    echo "ERROR: Invalid subdomain name"
+    is_err=true
+  fi
+fi
+if [ "\$is_err" = "false" ]; then
+  set +e
+  echo "Adding LetsEncrypt subdomain..."
+  addLECertPathsToRelayServer "\$add_domain" "\$basedom"
+  retVal=\$?
+else
+  retVal=2
+fi
 set -e
 performExitFunctions false
 exit \$retVal
+
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/addLEDomainsToRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/addLEDomainToRelayServer.json
 {
-  "name": "03 Add LE-Managed Subdomains",
-  "script_path": "conf/scripts/addLEDomainsToRelayServer.sh",
-  "description": "Add subdomains to be managed by LetsEncrypt.<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This utility will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge. The services that are known to have these issues are already added by default.",
+  "name": "03 Add LE Subdomain",
+  "script_path": "conf/scripts/addLEDomainToRelayServer.sh",
+  "description": "Add subdomain to be managed by LetsEncrypt.<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This utility will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -38473,9 +39437,28 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter list of subdomains (comma-separated, no spaces)",
+      "name": "Select the base domain",
       "required": true,
-      "param": "-subdomains=",
+      "param": "-basedom=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from mailhostmap order by MailHostID asc, IsFirstDomain desc;\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter the subdomain",
+      "required": true,
+      "param": "-adddomain=",
       "same_arg_param": true,
       "type": "text",
       "ui": {
@@ -38485,6 +39468,53 @@ EOFSC
         }
       },
       "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeLEDomainFromRelayServer.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+seldomain=\$(getArgumentValue seldomain "\$@")
+set +e
+echo "Removing LetsEncrypt subdomain..."
+removeLECertPathsFromRelayServer "\$seldomain"
+retVal=\$?
+set -e
+performExitFunctions false
+exit \$retVal
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeLEDomainFromRelayServer.json
+{
+  "name": "04 Remove LE Subdomain",
+  "script_path": "conf/scripts/removeLEDomainFromRelayServer.sh",
+  "description": "Removes path for LetsEncrypt from RelayServer.",
+  "group": "$group_id_relayserver",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
       "pass_as": "argument"
     },
     {
@@ -38500,7 +39530,209 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select Domain from mailhostmap;\"",
+        "script": "sqlite3 $HSHQ_DB \"select BaseDomain from lecertdomains group by BaseDomain;\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the (sub)domain",
+      "required": true,
+      "param": "-seldomain=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from lecertdomains where BaseDomain='\${Select the base domain}';\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/addExposeDomainToRelayServer.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+adddomain=\$(getArgumentValue adddomain "\$@")
+basedom=\$(getArgumentValue basedom "\$@")
+
+is_err=false
+if [ -z "\$adddomain" ]; then
+  add_domain="\$basedom"
+else
+  if ! [ \$(checkValidString "\$adddomain" "-") = "false" ]; then
+    add_domain="\$adddomain.\$basedom"
+  else
+    echo "ERROR: Invalid subdomain name"
+    is_err=true
+  fi
+fi
+if [ "\$is_err" = "false" ]; then
+  set +e
+  echo "Adding exposed domain..."
+  addExposeDomainPathsToRelayServer "\$add_domain" "\$basedom"
+  retVal=\$?
+else
+  retVal=2
+fi
+set -e
+performExitFunctions false
+exit \$retVal
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/addExposeDomainToRelayServer.json
+{
+  "name": "05 Add Exposed Subdomain",
+  "script_path": "conf/scripts/addExposeDomainToRelayServer.sh",
+  "description": "Adds an exposed (sub)domain to the RelayServer.<br/><br/>This function allows you to expose a particular service on your HomeServer to the public internet. <ins>***Be very careful***</ins> with this capability as it will allow anyone on the internet to access the service that you expose. It will also automatically request (free)certificates for this (sub)domain from ZeroSSL on the RelayServer upon execution. Also note that for security reasons, some services are protected behind Authelia. So you can either expose Authelia to maintain that same security wall, or move the particular service into bypass mode in the Authelia configuration.<br/>\nSelect the base domain, then enter only the subdomain portion in the provided field below (all lowercase), i.e. www, filebrowser, etc. If the subdomain field is left blank, then the base domain will be added (you will need the base domain added if exposing Mastodon and/or Matrix (Synapse) for federation purposes).<br/>\nTo figure out what the subdomain is for a particular service, look in the address bar in your browser when accessing the service on your HomeServer. For example, if you wanted to expose Mealie, you should see https://mealie.$HOMESERVER_DOMAIN/ in the address bar, thus the subdomain is mealie.",
+  "group": "$group_id_relayserver",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the base domain",
+      "required": true,
+      "param": "-basedom=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from mailhostmap order by MailHostID asc, IsFirstDomain desc;\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter subdomain",
+      "required": false,
+      "param": "-adddomain=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeExposeDomainFromRelayServer.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+seldomain=\$(getArgumentValue seldomain "\$@")
+set +e
+echo "Removing exposed domain..."
+removeExposeDomainPathsFromRelayServer "\$seldomain"
+retVal=\$?
+set -e
+performExitFunctions false
+exit \$retVal
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeExposeDomainFromRelayServer.json
+{
+  "name": "06 Remove Exposed Subdomain",
+  "script_path": "conf/scripts/removeExposeDomainFromRelayServer.sh",
+  "description": "Removes an exposed (sub)domain from RelayServer.<br/><br/>",
+  "group": "$group_id_relayserver",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the base domain",
+      "required": true,
+      "param": "-basedom=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select BaseDomain from lecertdomains group by BaseDomain;\"",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the (sub)domain",
+      "required": true,
+      "param": "-seldomain=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select Domain from exposedomains where BaseDomain='\${Select the base domain}';\"",
         "shell": true
       },
       "secure": false,
@@ -38531,7 +39763,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/resetCaddyDNSRelayServer.json
 {
-  "name": "04 Reset Caddy Data",
+  "name": "07 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyDNSRelayServer.sh",
   "description": "Reset Caddy data on RelayServer.<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
   "group": "$group_id_relayserver",
@@ -38549,144 +39781,6 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
-    }
-  ]
-}
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/applyHSVPNPrimaryConnection.sh
-#!/bin/bash
-
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
-
-lecertsubs=\$(getArgumentValue lecertsubs "\$@")
-
-set +e
-sendOtherNetworkApplyHomeServerVPNConfig "na" true "\$lecertsubs"
-set -e
-performExitFunctions false
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/applyHSVPNPrimaryConnection.json
-{
-  "name": "05 Primary VPN Application",
-  "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
-  "description": "Generates a HomeServer primary VPN application.<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, so it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
-  "group": "$group_id_relayserver",
-  "parameters": [
-    {
-      "name": "Enter config encrypt password",
-      "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter the LE cert subdomains",
-      "required": true,
-      "param": "-lecertsubs=",
-      "same_arg_param": true,
-      "type": "text",
-      "default": "$(getLetsEncryptCertsDefault)",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": false,
-      "pass_as": "argument"
-    }
-  ]
-}
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removePrimaryVPNConnection.sh
-#!/bin/bash
-
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
-
-disconnectReason="\$3"
-
-set +e
-removeMyNetworkPrimaryVPN "\$disconnectReason"
-set -e
-performExitFunctions false
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removePrimaryVPNConnection.json
-{
-  "name": "06 Remove Primary VPN",
-  "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
-  "description": "Complete removal of primary VPN.<br/>\nIf you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThe reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
-  "group": "$group_id_relayserver",
-  "parameters": [
-    {
-      "name": "Enter sudo password",
-      "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter config encrypt password",
-      "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter a reason for disconnect/removal",
-      "required": true,
-      "type": "multiline_text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": false,
       "pass_as": "argument"
     }
   ]
@@ -39022,6 +40116,14 @@ SQLPAD_CONNECTIONS__homeassistant__username=$HOMEASSISTANT_DATABASE_USER
 SQLPAD_CONNECTIONS__homeassistant__password=$HOMEASSISTANT_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__homeassistant__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__homeassistant__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__huginn__name=Huginn
+SQLPAD_CONNECTIONS__huginn__driver=postgres
+SQLPAD_CONNECTIONS__huginn__host=huginn-db
+SQLPAD_CONNECTIONS__huginn__database=$HUGINN_DATABASE_NAME
+SQLPAD_CONNECTIONS__huginn__username=$HUGINN_DATABASE_USER
+SQLPAD_CONNECTIONS__huginn__password=$HUGINN_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__huginn__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__huginn__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__invidious__name=Invidious
 SQLPAD_CONNECTIONS__invidious__driver=postgres
 SQLPAD_CONNECTIONS__invidious__host=invidious-db
@@ -39110,6 +40212,22 @@ SQLPAD_CONNECTIONS__shlink__username=$SHLINK_DATABASE_USER
 SQLPAD_CONNECTIONS__shlink__password=$SHLINK_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__shlink__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__shlink__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__name=SpeedtestTrackerLocal
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__driver=postgres
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__host=speedtest-tracker-local-db
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__database=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__username=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__password=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__speedtesttrackerlocal__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__speedtesttrackervpn__name=SpeedtestTrackerVPN
+SQLPAD_CONNECTIONS__speedtesttrackervpn__driver=postgres
+SQLPAD_CONNECTIONS__speedtesttrackervpn__host=speedtest-tracker-vpn-db
+SQLPAD_CONNECTIONS__speedtesttrackervpn__database=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+SQLPAD_CONNECTIONS__speedtesttrackervpn__username=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
+SQLPAD_CONNECTIONS__speedtesttrackervpn__password=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__speedtesttrackervpn__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__speedtesttrackervpn__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__vaultwarden__name=Vaultwarden
 SQLPAD_CONNECTIONS__vaultwarden__driver=postgres
 SQLPAD_CONNECTIONS__vaultwarden__host=vaultwarden-db
@@ -40490,7 +41608,7 @@ function updateCaddyBlocks()
         sudo chmod 600 $HSHQ_STACKS_DIR/caddy-common/lecerts/$subdom.${HOMESERVER_DOMAIN}.*
         sudo chown root:root $HSHQ_STACKS_DIR/caddy-common/lecerts/$subdom.${HOMESERVER_DOMAIN}.*
       fi
-      addLECertPathToRelayServer $subdom.${HOMESERVER_DOMAIN} ${HOMESERVER_DOMAIN}
+      addLECertPathsToRelayServer $subdom.${HOMESERVER_DOMAIN} ${HOMESERVER_DOMAIN}
       ;;
     *)
       tls_block="import $CADDY_SNIPPET_TLS_HSHQ" ;;
