@@ -12628,7 +12628,7 @@ EOFRS
   set +e
   sudo grep "$HOMESERVER_HOST_IP" $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    sudo sed -i '/^mynetworks/ s/$/ $HOMESERVER_HOST_IP\/32/' $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
+    sudo sed -i "/^mynetworks/ s/$/ ${HOMESERVER_HOST_IP}\/32/" $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   fi
   sudo grep "$HOMESERVER_HOST_IP" $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map > /dev/null 2>&1
   if [ $? -ne 0 ]; then
