@@ -1169,6 +1169,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}- HomeServer Portainer IP URL: https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT\n"
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Username: $PORTAINER_ADMIN_USERNAME\n"
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Password: $PORTAINER_ADMIN_PASSWORD\n"
+  strInstallConfig="${strInstallConfig}- HSHQ Manager URL: https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN\n"
   strInstallConfig="${strInstallConfig}- HSHQ Manager Username: $HSHQMANAGER_ADMIN_USERNAME\n"
   strInstallConfig="${strInstallConfig}- HSHQ Manager Password: $HSHQMANAGER_ADMIN_PASSWORD\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
