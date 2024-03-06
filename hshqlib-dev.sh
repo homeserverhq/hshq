@@ -1169,6 +1169,9 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}- HomeServer Portainer IP URL: https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT\n"
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Username: $PORTAINER_ADMIN_USERNAME\n"
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Password: $PORTAINER_ADMIN_PASSWORD\n"
+  strInstallConfig="${strInstallConfig}- HSHQ Manager URL: https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN\n"
+  strInstallConfig="${strInstallConfig}- HSHQ Manager Username: $HSHQMANAGER_ADMIN_USERNAME\n"
+  strInstallConfig="${strInstallConfig}- HSHQ Manager Password: $HSHQMANAGER_ADMIN_PASSWORD\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strInstallConfig="${strInstallConfig}- RelayServer IP Address: $RELAYSERVER_SERVER_IP\n"
     strInstallConfig="${strInstallConfig}- RelayServer Host Current SSH Port: $RELAYSERVER_CURRENT_SSH_PORT\n"
@@ -39251,7 +39254,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer.<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> utility. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS records from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
+  "description": "Adds a new secondary domain to the RelayServer.<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> utility. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39713,7 +39716,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select BaseDomain from lecertdomains group by BaseDomain;\"",
+        "script": "sqlite3 $HSHQ_DB \"select BaseDomain from exposedomains group by BaseDomain;\"",
         "shell": true
       },
       "secure": false,
