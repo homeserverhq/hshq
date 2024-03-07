@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=38
+HSHQ_SCRIPT_VERSION=39
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -752,7 +752,7 @@ function addToDisabledServices()
   dis_svc=$1
   echo $DISABLED_SERVICES | grep $dis_svc > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    if [ "$DISABLED_SERVICES" = "" ]; then
+    if [ -z "$DISABLED_SERVICES" ]; then
       DISABLED_SERVICES="$dis_svc"
     else
       DISABLED_SERVICES="${DISABLED_SERVICES},$dis_svc"
@@ -863,7 +863,7 @@ function initConfig()
   done
 
   new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
-  if [ "$(cat /etc/hosts | grep $new_hostname)" = "" ]; then
+  if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
     echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
   fi
   sudo hostnamectl set-hostname $new_hostname
@@ -2011,22 +2011,57 @@ function setupHostedVPN()
     loadSvcVars
   fi
 
+  num_tries=0
+  max_tries=100
   RELAYSERVER_WG_VPN_SUBNET=""
-  while [ -z "$RELAYSERVER_WG_VPN_SUBNET" ]
+  while [ -z "$RELAYSERVER_WG_VPN_SUBNET" ] && [ $num_tries -lt $max_tries ]
   do
+    ((num_tries++))
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      RELAYSERVER_WG_VPN_SUBNET=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
+      rswgVPNTemp=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
     else
-      RELAYSERVER_WG_VPN_SUBNET=$(promptUserInputMenu 10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24 "Enter Hosting Subnet" "Enter the Hosting Subnet (in CIDR): ")
+      rswgVPNTemp=$(promptUserInputMenu 10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24 "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
     fi
-	if [ -z "$RELAYSERVER_WG_VPN_SUBNET" ] || [ "$(checkValidIPAddress $RELAYSERVER_WG_VPN_SUBNET)" = "false" ]; then
+	if [ -z "$rswgVPNTemp" ] || [ "$(checkValidIPAddress $rswgVPNTemp)" = "false" ] || ! [ -z "$(isNetworkIntersectOurNetworks $rswgVPNTemp)" ]; then
+      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
 	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
-      RELAYSERVER_WG_VPN_SUBNET=""
 	else
-	  updateConfigVar RELAYSERVER_WG_VPN_SUBNET "$RELAYSERVER_WG_VPN_SUBNET"
+      RELAYSERVER_WG_VPN_SUBNET=$rswgVPNTemp
+	  updateConfigVar RELAYSERVER_WG_VPN_SUBNET $RELAYSERVER_WG_VPN_SUBNET
 	fi
     resetRSInit
   done
+  if [ -z "$RELAYSERVER_WG_VPN_SUBNET" ]; then
+    # We tried...
+    echo "ERROR: Could not allocate VPN network subnet, exiting..."
+    exit 10000
+  fi
+
+  num_tries=0
+  RELAYSERVER_WG_INTERNET_SUBNET=""
+  while [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ] && [ $num_tries -lt $max_tries ]
+  do
+    ((num_tries++))
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      rswgIntTemp=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
+    else
+      rswgIntTemp=$(promptUserInputMenu 10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24 "Enter Subnet" "Enter the HomeServer Internet Hosting Subnet (in CIDR): ")
+    fi
+	if [ -z "$rswgIntTemp" ] || [ "$(checkValidIPAddress $rswgIntTemp)" = "false" ] || ! [ -z "$(isNetworkIntersectOurNetworks $rswgIntTemp)" ]; then
+      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
+	  showMessageBox "Invalid Subnet" "The HS Internet Subnet is invalid."
+	else
+      RELAYSERVER_WG_INTERNET_SUBNET=$rswgIntTemp
+	  updateConfigVar RELAYSERVER_WG_INTERNET_SUBNET $RELAYSERVER_WG_INTERNET_SUBNET
+	fi
+    resetRSInit
+  done
+
+  if [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ]; then
+    # We tried...
+    echo "ERROR: Could not allocate HomeServer Internet network subnet, exiting..."
+    exit 10001
+  fi
 
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -2106,7 +2141,7 @@ function setupHostedVPN()
     RELAYSERVER_SYNCTHING_FOLDER_ID=$(pwgen -c -n 5 1)-$(pwgen -c -n 5 1)
     updateConfigVar RELAYSERVER_SYNCTHING_FOLDER_ID $RELAYSERVER_SYNCTHING_FOLDER_ID
   fi
-  RELAYSERVER_WG_SV_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
+  RELAYSERVER_WG_SV_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
   updateConfigVar RELAYSERVER_WG_SV_IP $RELAYSERVER_WG_SV_IP
   RELAYSERVER_WG_SV_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_SV_PRIVATEKEY $RELAYSERVER_WG_SV_PRIVATEKEY
@@ -2114,34 +2149,34 @@ function setupHostedVPN()
   updateConfigVar RELAYSERVER_WG_SV_PRESHAREDKEY $RELAYSERVER_WG_SV_PRESHAREDKEY
   RELAYSERVER_WG_SV_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_PRIVATEKEY | wg pubkey)
   updateConfigVar RELAYSERVER_WG_SV_PUBLICKEY $RELAYSERVER_WG_SV_PUBLICKEY
-  RELAYSERVER_WG_SV_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-1))
+  RELAYSERVER_WG_SV_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-1))
   updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_IP $RELAYSERVER_WG_SV_CLIENTDNS_IP
   RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY
   RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY
   RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_HS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-2))
+  RELAYSERVER_WG_HS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-2))
   updateConfigVar RELAYSERVER_WG_HS_IP $RELAYSERVER_WG_HS_IP
   RELAYSERVER_WG_HS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_HS_PRIVATEKEY $RELAYSERVER_WG_HS_PRIVATEKEY
   RELAYSERVER_WG_HS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_HS_PRESHAREDKEY $RELAYSERVER_WG_HS_PRESHAREDKEY
   RELAYSERVER_WG_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_HS_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-3))
+  RELAYSERVER_WG_HS_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-3))
   updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_IP $RELAYSERVER_WG_HS_CLIENTDNS_IP
   RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY
   RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
   RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_INTERNET_HS_IP=$(getRandomWireGuardIP)
+  RELAYSERVER_WG_INTERNET_HS_IP=$(getRandomHSInternetIP)
   RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY
   RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY $RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY
   RELAYSERVER_WG_INTERNET_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_USER_IP=$(getRandomWireGuardIP)
+  RELAYSERVER_WG_USER_IP=$(getRandomUserIP)
   RELAYSERVER_WG_USER_PRIVATEKEY=$(wg genkey)
   RELAYSERVER_WG_USER_PRESHAREDKEY=$(wg genpsk)
   RELAYSERVER_WG_USER_PUBLICKEY=$(echo $RELAYSERVER_WG_USER_PRIVATEKEY | wg pubkey)
@@ -2387,7 +2422,7 @@ function main()
   echo "Running setup script..."
   set +e
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
-  if [ "\$(cat /etc/hosts | grep \$new_hostname)" = "" ]; then
+  if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
     echo "127.0.1.1 \$new_hostname" | sudo tee -a /etc/hosts
   fi
   sudo hostnamectl set-hostname \$new_hostname
@@ -6673,11 +6708,15 @@ function performMyNetworkCreateClientDNS()
   # Check if stack exists
   checkID=$(getStackID clientdns-${clientdns_stack_name})
   if ! [ -z $checkID ]; then
-    echo "ERROR: A stack with this name already exists"
+    echo "ERROR: A stack with this name already exists."
     return
   fi
   # Generate WireGuard config
   wg_ip=$(getRandomVPNIP)
+  if [ -z "$wg_ip" ]; then
+    echo "ERROR: Could not allocate an IP address, your network is full."
+    return
+  fi
   wg_priv_key=$(wg genkey)
   wg_pre_key=$(wg genpsk)
   wg_pub_key=$(echo $wg_priv_key | wg pubkey)
@@ -7248,7 +7287,7 @@ function performNetworkInvite()
         return 7
       fi
       if [ "$ip_address" = "New" ]; then
-        ip_address=$(getRandomWireGuardIP)
+        ip_address=$(getRandomUserIP)
         is_ip_provided=false
       else
         is_ip_provided=true
@@ -7273,17 +7312,17 @@ function performNetworkInvite()
       fi
       config_name="HS-VPN-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connnection with this name."
         return 7
       fi
       check_dom=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections join connections on hsvpn_connections.ID = connections.ID where hsvpn_connections.DomainName='$domain_name' and connections.NetworkType='mynetwork';")
-      if ! [ "$check_dom" = "" ]; then
+      if ! [ -z "$check_dom" ]; then
         echo "ERROR: There is already a connection with this domain ($domain_name)."
         return 7
       fi
       new_ip=$(getRandomVPNIP)
-      if [ "$new_ip" = "" ]; then
+      if [ -z "$new_ip" ]; then
         echo "ERROR: The VPN network is full."
         return 7
       fi
@@ -7299,14 +7338,14 @@ function performNetworkInvite()
       fi
       config_name="HS-Internet-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connnection with this name."
         return 7
       fi
     ;;
     "User")
       is_db=$(getWGNameFromIP $ip_address)
-      if ! [ "$is_db" = "" ]; then
+      if ! [ -z "$is_db" ]; then
         echo "ERROR: This IP address is already being used (Connection Name: $is_db)."
         return 7
       fi
@@ -7350,14 +7389,19 @@ function performNetworkInvite()
         mail_relay_password=$(pwgen -c -n 32 1)
         ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker exec mail-relay-postfix /etc/postfix/scripts/addMailUser.sh $domain_name $mail_relay_password"
         ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $domain_name $mail_subdomain $new_ip"
-        if ! [ "$le_domains" = "" ]; then
+        if ! [ -z "$le_domains" ]; then
           echo "Primary Adding LECertDomains: $le_domains"
           addLECertPathsToRelayServer "$le_domains" "$domain_name"
         fi
       fi
     ;;
     "HomeServer Internet")
-      new_ip=$(getRandomWireGuardIP)
+      new_ip=$(getRandomHSInternetIP)
+      if [ -z "$new_ip" ]; then
+        echo "ERROR: The HomeServer Internet network is full."
+        unloadSSHKey
+        return 7
+      fi
       ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\""
       mbres=$?
       if [ $mbres -ne 0 ]; then
@@ -7792,7 +7836,7 @@ function performNetworkJoin()
     return 8
   fi
   iface_db=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where InterfaceName='$interface_name';")
-  if ! [ "$iface_db" = "" ]; then
+  if ! [ -z "$iface_db" ]; then
     echo "ERROR: An interface with this name already exists. Change the InterfaceName value to something unique (using 10 characters or less)."
     rm -f $join_base_config_file
     return 8
@@ -7809,7 +7853,7 @@ function performNetworkJoin()
     return 8
   fi
   is_db=$(getWGNameFromIP $client_ip)
-  if ! [ "$is_db" = "" ]; then
+  if ! [ -z "$is_db" ]; then
     echo "ERROR: This IP address is already being used (Connection Name: $is_db). Please request a new one."
     rm -f $join_base_config_file
     return 8
@@ -7818,15 +7862,16 @@ function performNetworkJoin()
   case "$conn_type" in
     "HomeServer VPN")
       check_ca_dom=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections join connections on hsvpn_connections.ID = connections.ID where hsvpn_connections.DomainName='$domain_name' and connections.NetworkType='other';")
-      if ! [ "$check_ca_dom" = "" ]; then
+      if ! [ -z "$check_ca_dom" ]; then
         echo "ERROR: There is already an existing connection with this domain ($domain_name), please disconnect that existing connection and try again."
         rm -f $join_base_config_file
         return 8
       fi
       vpn_subnet=$(getValueFromConfig VPNSubnet $join_base_config_file)
       # Check for intersection with our networks
-      if [ "$(isNetworkIntersectOurNetworks $vpn_subnet)" = "true" ]; then
-        echo "ERROR: Network collision. This network intersects with an existing network. You cannot join this network."
+      check_intersect="$(isNetworkIntersectOurNetworks $vpn_subnet)"
+      if ! [ -z "$check_intersect" ]; then
+        echo "ERROR: Network collision. This network intersects with an existing network: $check_intersect"
         rm -f $join_base_config_file
         return 8
       fi
@@ -7853,7 +7898,7 @@ function performNetworkJoin()
         net_type="primary"
       fi
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connection with this name."
         rm -f $join_base_config_file
         rm -f $join_rootca_file
@@ -7952,8 +7997,15 @@ function performNetworkJoin()
       dockerNetworkName="dwg-${interface_name}"
       config_name="Other-Internet-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connection with this name."
+        rm -f $join_base_config_file
+        return 8
+      fi
+      # Check for intersection with our networks
+      check_intersect="$(isNetworkIntersectOurNetworks ${client_ip}/32)"
+      if ! [ -z "$check_intersect" ]; then
+        echo "ERROR: Network collision. This IP intersects with an existing network: $check_intersect"
         rm -f $join_base_config_file
         return 8
       fi
@@ -8273,11 +8325,15 @@ function disconnectOtherNetworkHomeServerInternetConnection()
 {
   db_id=$1
   disconnect_reason="$2"
+  set +e
   wg_config=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
   host_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf down
   del_network=$(sudo grep ^\#DOCKER_NETWORK_NAME= $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf | sed 's/^[^=]*=//')
   docker network rm $del_network > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not remove the docker network associated with this connection. There is likely one or more containers still attached to it. Ensure to shut down the container(s) and manually delete the network ($del_network)."
+  fi
   sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
 
@@ -8730,22 +8786,6 @@ function getWGNameFromIP()
   echo $(sqlite3 $HSHQ_DB "select Name from connections where IPAddress='$check_ip';")
 }
 
-function getRandomWireGuardIP()
-{
-  while true;
-  do
-    randIP=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).$(($(($RANDOM%250))+1))
-    is_in_subnet=$(isIPInSubnet $randIP $RELAYSERVER_WG_VPN_SUBNET)
-    if [ "$is_in_subnet" = "false" ]; then
-      is_db=$(getWGNameFromIP $randIP)
-      if [ "$is_db" = "" ]; then
-        echo $randIP
-        return
-      fi
-    fi
-  done
-}
-
 function isIPInSubnet()
 {
   iiis_curE=${-//[^e]/}
@@ -8767,26 +8807,26 @@ function isIPInSubnet()
 function getRandomVPNIP()
 {
   # This function is specific to a /24 sized subnet.
-  # It should be improved to a more general case based on the size of the VPN.
+  # It should be improved to a more general case based on the size of the network.
   vpnbase=$(echo $RELAYSERVER_WG_VPN_SUBNET | rev | cut -d "." -f2- | rev)
-  numTries=0
-  maxTries=250
-  while [ $numTries -lt $maxTries ]
+  numvpnipTries=0
+  maxvpnipTries=88
+  while [ $numvpnipTries -lt $maxvpnipTries ]
   do
     randIP=${vpnbase}.$(($(($RANDOM%250))+1))
     is_db=$(getWGNameFromIP $randIP)
-    if [ "$is_db" = "" ]; then
+    if [ -z "$is_db" ]; then
       echo $randIP
       return
     fi
-    ((numTries++))
+    ((numvpnipTries++))
   done
   ip_host_part=1
   while [ $ip_host_part -le 250 ]
   do
     randIP=${vpnbase}.$ip_host_part
     is_db=$(getWGNameFromIP $randIP)
-    if [ "$is_db" = "" ]; then
+    if [ -z "$is_db" ]; then
       echo $randIP
       return
     fi
@@ -8796,7 +8836,60 @@ function getRandomVPNIP()
   echo ""
 }
 
-function isNetworkIntersect()
+function getRandomHSInternetIP()
+{
+  # This function is specific to a /24 sized subnet.
+  # It should be improved to a more general case based on the size of the network.
+  hsibase=$(echo $RELAYSERVER_WG_INTERNET_SUBNET | rev | cut -d "." -f2- | rev)
+  numrhsTries=0
+  maxrhsTries=88
+  while [ $numrhsTries -lt $maxrhsTries ]
+  do
+    randIP=${hsibase}.$(($(($RANDOM%250))+1))
+    is_db=$(getWGNameFromIP $randIP)
+    if [ -z "$is_db" ]; then
+      echo $randIP
+      return
+    fi
+    ((numrhsTries++))
+  done
+  ip_host_part=1
+  while [ $ip_host_part -le 250 ]
+  do
+    randIP=${hsibase}.$ip_host_part
+    is_db=$(getWGNameFromIP $randIP)
+    if [ -z "$is_db" ]; then
+      echo $randIP
+      return
+    fi
+    ((ip_host_part++))
+  done
+  # The network is full. Caller needs to handle this.
+  echo ""
+}
+
+function getRandomUserIP()
+{
+  numRIPTries=0
+  maxRIPTries=1000
+  while [ $numRIPTries -lt $maxRIPTries ]
+  do
+    randIP=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).$(($(($RANDOM%250))+1))
+    is_in_vpn_subnet=$(isIPInSubnet $randIP $RELAYSERVER_WG_VPN_SUBNET)
+    is_in_int_subnet=$(isIPInSubnet $randIP $RELAYSERVER_WG_INTERNET_SUBNET)
+    if [ "$is_in_vpn_subnet" = "false" ] && [ "$is_in_int_subnet" = "false" ]; then
+      is_db=$(getWGNameFromIP $randIP)
+      if [ -z "$is_db" ]; then
+        echo $randIP
+        return
+      fi
+    fi
+    ((numRIPTries++))
+  done
+  echo ""
+}
+
+function checkNetworkIntersect()
 {
   net1=$1
   net2=$2
@@ -8804,8 +8897,8 @@ function isNetworkIntersect()
     echo "true"
     return
   fi
-  net1_beginip=$(sipcalc $net1 | grep Usable* | rev | cut -d " " -f3 | rev)
-  net1_endip=$(sipcalc $net1 | grep Usable* | rev | cut -d " " -f1 | rev)
+  net1_beginip=$(sipcalc $net1 | grep "^Network range" | rev | cut -d " " -f3 | rev)
+  net1_endip=$(sipcalc $net1 | grep "^Network range" | rev | cut -d " " -f1 | rev)
   is_in_subnet=$(isIPInSubnet $net1_beginip $net2)
   if [ "$is_in_subnet" = "true" ]; then
     echo "true"
@@ -8816,8 +8909,8 @@ function isNetworkIntersect()
     echo "true"
     return
   fi
-  net2_beginip=$(sipcalc $net2 | grep Usable* | rev | cut -d " " -f3 | rev)
-  net2_endip=$(sipcalc $net2 | grep Usable* | rev | cut -d " " -f1 | rev)
+  net2_beginip=$(sipcalc $net2 | grep "^Network range" | rev | cut -d " " -f3 | rev)
+  net2_endip=$(sipcalc $net2 | grep "^Network range" | rev | cut -d " " -f1 | rev)
   is_in_subnet=$(isIPInSubnet $net2_beginip $net1)
   if [ "$is_in_subnet" = "true" ]; then
     echo "true"
@@ -8834,19 +8927,35 @@ function isNetworkIntersect()
 function isNetworkIntersectOurNetworks()
 {
   checkNetwork=$1
-  if ! [ -z $RELAYSERVER_WG_VPN_SUBNET ] && [ "$(isNetworkIntersect $RELAYSERVER_WG_VPN_SUBNET $checkNetwork)" = "true" ]; then
-    echo "true"
+  if ! [ -z $RELAYSERVER_WG_VPN_SUBNET ] && [ "$(checkNetworkIntersect $RELAYSERVER_WG_VPN_SUBNET $checkNetwork)" = "true" ]; then
+    echo "The requested subnet ($checkNetwork) collides with our VPN subnet ($RELAYSERVER_WG_VPN_SUBNET)"
     return
   fi
-  vpn_arr=($(sqlite3 $HSHQ_DB "select VPN_Subnet from connections join hsvpn_connections on connections.ID = hsvpn_connections.ID where ConnectionType='homeserver_vpn' and NetworkType='other';"))
-  for curvpn in "${vpn_arr[@]}"
+  if ! [ -z $RELAYSERVER_WG_INTERNET_SUBNET ] && [ "$(checkNetworkIntersect $RELAYSERVER_WG_INTERNET_SUBNET $checkNetwork)" = "true" ]; then
+    echo "The requested subnet ($checkNetwork) collides with our HS Internet subnet ($RELAYSERVER_WG_INTERNET_SUBNET)"
+    return
+  fi
+  vpn_arr=($(sqlite3 $HSHQ_DB "select VPN_Subnet,HomeServerName from hsvpn_connections where VPN_Subnet is not null;"))
+  for curvpncheck in "${vpn_arr[@]}"
   do
-    if [ "$(isNetworkIntersect $curvpn $checkNetwork)" = "true" ]; then
-      echo "true"
+    curvpn=$(echo "$curvpncheck" | cut -d "|" -f1)
+    curhsname=$(echo "$curvpncheck" | cut -d "|" -f2)
+    if [ "$(checkNetworkIntersect $curvpn $checkNetwork)" = "true" ]; then
+      echo "The requested subnet ($checkNetwork) collides with ${curhsname} VPN subnet ($curvpn)"
       return
     fi
   done
-  echo "false"
+  ip_arr=($(sqlite3 $HSHQ_DB "select IPAddress,Name from connections where ConnectionType='homeserver_internet';"))
+  for curipcheck in "${ip_arr[@]}"
+  do
+    curip=$(echo "$curipcheck" | cut -d "|" -f1)
+    curconname=$(echo "$curipcheck" | cut -d "|" -f2)
+    if [ "$(checkNetworkIntersect ${curip}/32 $checkNetwork)" = "true" ]; then
+      echo "The requested subnet ($checkNetwork) collides with connection ${curconname} ($curip)"
+      return
+    fi
+  done
+  echo ""
 }
 
 function getNextWGRoutingTableID()
@@ -11276,6 +11385,7 @@ RELAYSERVER_WG_PORT=51821
 RELAYSERVER_WG_VPN_NETNAME=
 RELAYSERVER_WG_VPN_SUBNET=
 RELAYSERVER_WG_INTERNET_NETNAME=
+RELAYSERVER_WG_INTERNET_SUBNET=
 RELAYSERVER_WG_SV_PRIVATEKEY=
 RELAYSERVER_WG_SV_PUBLICKEY=
 RELAYSERVER_WG_SV_IP=
@@ -11908,6 +12018,12 @@ function checkUpdateVersion()
     version38Update
     is_update_performed=true
     HSHQ_VERSION=38
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 39 ]; then
+    echo "Updating to Version 39..."
+    version39Update
+    HSHQ_VERSION=39
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -12643,6 +12759,24 @@ EOFRS
   set -e
   checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
   HUGINN_INIT_ENV=false
+}
+
+function version39Update()
+{
+  set +e
+  grep "RELAYSERVER_WG_INTERNET_SUBNET" $CONFIG_FILE >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i "/^RELAYSERVER_WG_INTERNET_NETNAME/a RELAYSERVER_WG_INTERNET_SUBNET=" $CONFIG_FILE
+  fi
+  if [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ]; then
+    # Initialize RELAYSERVER_WG_INTERNET_SUBNET to our current connection subnet (if present)
+    cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where NetworkType='primary' and ConnectionType='homeserver_internet';")
+    if ! [ -z "$cur_ip" ]; then
+      RELAYSERVER_WG_INTERNET_SUBNET="$(echo $cur_ip | rev | cut -d "." -f2- | rev).0/24"
+      updateConfigVar RELAYSERVER_WG_INTERNET_SUBNET $RELAYSERVER_WG_INTERNET_SUBNET
+    fi
+  fi
+  set -e
 }
 
 function sendRSExposeScripts()
