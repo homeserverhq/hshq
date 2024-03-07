@@ -1985,7 +1985,7 @@ function setupHostedVPN()
   isReload=false
   for leCert in "${leCertsArr[@]}"
   do
-    sqlite3 $HSHQ_DB "insert into lecertdomains(Domain,BaseDomain) values('$leCert','$HOMESERVER_DOMAIN');"
+    sqlite3 $HSHQ_DB "insert or ignore into lecertdomains(Domain,BaseDomain) values('$leCert','$HOMESERVER_DOMAIN');"
     curBaseDomain=$(getBaseDomain $leCert)
     curSubDomain=$(getSubDomain $leCert)
     if [ "$curBaseDomain" = "$HOMESERVER_DOMAIN" ]; then
@@ -2010,8 +2010,7 @@ function setupHostedVPN()
   if [ "$isReload" = "true" ]; then
     loadSvcVars
   fi
-
-  num_tries=0
+  num_tries=1
   max_tries=100
   RELAYSERVER_WG_VPN_SUBNET=""
   while [ -z "$RELAYSERVER_WG_VPN_SUBNET" ] && [ $num_tries -lt $max_tries ]
@@ -2020,7 +2019,7 @@ function setupHostedVPN()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       rswgVPNTemp=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
     else
-      rswgVPNTemp=$(promptUserInputMenu 10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24 "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
+      rswgVPNTemp=$(promptUserInputMenu "10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24" "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
     fi
 	if [ -z "$rswgVPNTemp" ] || [ "$(checkValidIPAddress $rswgVPNTemp)" = "false" ] || ! [ -z "$(isNetworkIntersectOurNetworks $rswgVPNTemp)" ]; then
       if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
@@ -2033,11 +2032,10 @@ function setupHostedVPN()
   done
   if [ -z "$RELAYSERVER_WG_VPN_SUBNET" ]; then
     # We tried...
-    echo "ERROR: Could not allocate VPN network subnet, exiting..."
-    exit 10000
+    echo "ERROR: Could not allocate VPN network subnet."
+    return 1
   fi
-
-  num_tries=0
+  num_tries=1
   RELAYSERVER_WG_INTERNET_SUBNET=""
   while [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ] && [ $num_tries -lt $max_tries ]
   do
@@ -2059,8 +2057,19 @@ function setupHostedVPN()
 
   if [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ]; then
     # We tried...
-    echo "ERROR: Could not allocate HomeServer Internet network subnet, exiting..."
-    exit 10001
+    echo "ERROR: Could not allocate HomeServer Internet network subnet."
+    return 2
+  fi
+
+  pullImage $IMG_WIREGUARD
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain WireGuard docker image."
+    return 3
+  fi
+  pullImage $IMG_DNSMASQ
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain DNSMasq docker image."
+    return 4
   fi
 
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -2202,8 +2211,10 @@ function setupHostedVPN()
     insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
     insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
+    insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wireguard.png" false
     insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
     docker container start heimdall > /dev/null 2>&1
     docker container start uptimekuma > /dev/null 2>&1
     emailVaultwardenCredentials true
@@ -3744,6 +3755,8 @@ function main()
     if [ -z "\\\$subdom" ]; then continue; fi
     sed -i "/# LE certs path \\\$subdom BEGIN/,/# LE certs path \\\$subdom END/d" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \\\$HOME/tmpcadfile
+  mv \\\$HOME/tmpcadfile \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -3798,6 +3811,8 @@ function main()
     if [ -z "\\\$subdom" ]; then continue; fi
     sed -i "/# Expose domain \\\$subdom BEGIN/,/# Expose domain \\\$subdom END/d" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \\\$HOME/tmpcadfile
+  mv \\\$HOME/tmpcadfile \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -3997,7 +4012,7 @@ function installStack()
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
     sleep 1
-    ((i++))
+    i=\$((i+1))
   done
   set -e
   if [ \$isFound == "F" ]; then
@@ -4062,7 +4077,7 @@ function installPortainer()
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
     sleep 1
-    ((i++))
+    i=\$((i+1))
   done
   set -e
   if [ \$isFound == "F" ]; then
@@ -5629,7 +5644,7 @@ function installSyncthing()
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
     sleep 1
-    ((i=\$i+1))
+    i=\$((i+1))
   done
   if [ "\$isFound" = "F" ]; then
     echo "There was a problem installing syncthing"
@@ -7633,7 +7648,7 @@ function performNetworkJoin()
 {
   is_connect="$1"
   join_file="$2"
-
+  echo "Joining network..."
   # Do basic checks
   removeSpecialChars "$join_file"
   first_line="$(awk 'NF{print;exit}' $join_file)"
@@ -7869,12 +7884,14 @@ function performNetworkJoin()
       fi
       vpn_subnet=$(getValueFromConfig VPNSubnet $join_base_config_file)
       # Check for intersection with our networks
+      echo "Checking for network collision..."
       check_intersect="$(isNetworkIntersectOurNetworks $vpn_subnet)"
       if ! [ -z "$check_intersect" ]; then
-        echo "ERROR: Network collision. This network intersects with an existing network: $check_intersect"
+        echo "ERROR: Network collision: $check_intersect"
         rm -f $join_base_config_file
         return 8
       fi
+      echo "No collision."
       join_rootca_name="$(getCACertificateNameFromDomain $domain_name)"
       join_rootca_file=$HOME/$join_rootca_name
       echo -e "$root_ca_section" > $join_rootca_file
@@ -8003,12 +8020,14 @@ function performNetworkJoin()
         return 8
       fi
       # Check for intersection with our networks
+      echo "Checking for network collision..."
       check_intersect="$(isNetworkIntersectOurNetworks ${client_ip}/32)"
       if ! [ -z "$check_intersect" ]; then
-        echo "ERROR: Network collision. This IP intersects with an existing network: $check_intersect"
+        echo "ERROR: Network collision: $check_intersect"
         rm -f $join_base_config_file
         return 8
       fi
+      echo "No collision."
       join_wireguard_config_file=$HOME/${interface_name}.conf
       tableid=$(getNextWGRoutingTableID)
       allowed_ips=$(getAllowedPublicIPs)
@@ -8093,7 +8112,7 @@ function removeMyNetworkPrimaryVPN()
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
     echo "Removing ClientDNS instances..."
     # Needs testing
-    cdns_arr=($(sqlite3 $HSHQ_DB "select ID,name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
+    cdns_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
     for cur_cdns in "${cdns_arr[@]}"
     do
       cur_cdns_id=$(echo "$cur_cdns" | cut -d"|" -f1)
@@ -8218,7 +8237,7 @@ function removeMyNetworkHomeServerVPNConnection()
     fi
     sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhostmap where MailHostID=$mail_host_id;"
     sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhosts where ID=$mail_host_id;"
-    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains where BaseDomain='$domain_name';"
+    removeSecondaryDomainFromRelayServer "$domain_name"
   fi
   unloadSSHKey
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
@@ -8556,8 +8575,8 @@ function setHomeServerPrivateRange()
   set +e
   # getHomeServerPrivateRange has some issues, so wrapping the function call with and error handler.
   hspr=""
-  num_tries=0
-  max_tries=5
+  num_tries=1
+  max_tries=6
   if [ -z "$HOMESERVER_HOST_IP" ]; then
     echo "HOMESERVER_HOST_IP is empty, exiting..."
     exit 1
@@ -8809,7 +8828,7 @@ function getRandomVPNIP()
   # This function is specific to a /24 sized subnet.
   # It should be improved to a more general case based on the size of the network.
   vpnbase=$(echo $RELAYSERVER_WG_VPN_SUBNET | rev | cut -d "." -f2- | rev)
-  numvpnipTries=0
+  numvpnipTries=1
   maxvpnipTries=88
   while [ $numvpnipTries -lt $maxvpnipTries ]
   do
@@ -8841,7 +8860,7 @@ function getRandomHSInternetIP()
   # This function is specific to a /24 sized subnet.
   # It should be improved to a more general case based on the size of the network.
   hsibase=$(echo $RELAYSERVER_WG_INTERNET_SUBNET | rev | cut -d "." -f2- | rev)
-  numrhsTries=0
+  numrhsTries=1
   maxrhsTries=88
   while [ $numrhsTries -lt $maxrhsTries ]
   do
@@ -8870,7 +8889,7 @@ function getRandomHSInternetIP()
 
 function getRandomUserIP()
 {
-  numRIPTries=0
+  numRIPTries=1
   maxRIPTries=1000
   while [ $numRIPTries -lt $maxRIPTries ]
   do
@@ -8935,6 +8954,8 @@ function isNetworkIntersectOurNetworks()
     echo "The requested subnet ($checkNetwork) collides with our HS Internet subnet ($RELAYSERVER_WG_INTERNET_SUBNET)"
     return
   fi
+  OIFS=$IFS
+  IFS=$(echo -en "\n\b")
   vpn_arr=($(sqlite3 $HSHQ_DB "select VPN_Subnet,HomeServerName from hsvpn_connections where VPN_Subnet is not null;"))
   for curvpncheck in "${vpn_arr[@]}"
   do
@@ -8942,6 +8963,7 @@ function isNetworkIntersectOurNetworks()
     curhsname=$(echo "$curvpncheck" | cut -d "|" -f2)
     if [ "$(checkNetworkIntersect $curvpn $checkNetwork)" = "true" ]; then
       echo "The requested subnet ($checkNetwork) collides with ${curhsname} VPN subnet ($curvpn)"
+      IFS=$OIFS
       return
     fi
   done
@@ -8952,9 +8974,11 @@ function isNetworkIntersectOurNetworks()
     curconname=$(echo "$curipcheck" | cut -d "|" -f2)
     if [ "$(checkNetworkIntersect ${curip}/32 $checkNetwork)" = "true" ]; then
       echo "The requested subnet ($checkNetwork) collides with connection ${curconname} ($curip)"
+      IFS=$OIFS
       return
     fi
   done
+  IFS=$OIFS
   echo ""
 }
 
@@ -9437,8 +9461,8 @@ function startStopStackByID()
   if [ -z "$portainerToken" ]; then
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  numSStries=0
-  maxSStries=5
+  numSStries=1
+  maxSStries=6
   while [ $numSStries -lt $maxSStries ]
   do
     http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
@@ -9645,8 +9669,9 @@ function removeTextBlockInFile()
   set +e
   match=$(grep "$block_match_begin" $r_filename)
   if ! [ -z "$match" ]; then
-    all_text=$(cat $r_filename)
-    echo -e "${all_text%%$block_match_begin*}${all_text##*$block_match_end}" > $r_filename
+    sed -i "/$block_match_begin/,/$block_match_end/d" $r_filename
+    cat -s $r_filename > $HOME/tmpremfile
+    mv $HOME/tmpremfile $r_filename
   fi
   set +e
   if ! [ -z $rtbif_curE ]; then
@@ -9986,8 +10011,7 @@ function loadSvcVars()
     for curSub in "${subdom_list[@]}"
     do
       if [ "$curSub" = "$subdom" ]; then
-        showMessageBox "Fatal Error" "A duplicate subdomain ($curSub) was found in the configuration file. Please fix this issue and restart the script."
-        nano $CONFIG_FILE
+        echo "FATAL: A duplicate subdomain ($curSub) was found in the configuration file. Please fix this issue and restart the script."
         exit 1
       fi
     done
@@ -12776,6 +12800,9 @@ function version39Update()
       updateConfigVar RELAYSERVER_WG_INTERNET_SUBNET $RELAYSERVER_WG_INTERNET_SUBNET
     fi
   fi
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    sendRSExposeScripts
+  fi
   set -e
 }
 
@@ -12830,6 +12857,8 @@ function main()
     if [ -z "\$subdom" ]; then continue; fi
     sed -i "/# LE certs path \$subdom BEGIN/,/# LE certs path \$subdom END/d" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \$HOME/tmpcadfile
+  mv \$HOME/tmpcadfile \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -12883,6 +12912,8 @@ function main()
     if [ -z "\$subdom" ]; then continue; fi
     sed -i "/# Expose domain \$subdom BEGIN/,/# Expose domain \$subdom END/d" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \$HOME/tmpcadfile
+  mv \$HOME/tmpcadfile \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -13433,7 +13464,7 @@ function setVersionOnStacks()
   i=-1
   for curStackID in "${caddy_stack_ids[@]}"
   do
-    ((i++))
+    i=$((i+1))
     echo "Versioning ${caddy_stack_names[i]} stack..."
     curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
     curVersion=v1
@@ -13450,7 +13481,7 @@ function setVersionOnStacks()
   i=-1
   for curStackID in "${clientdns_stack_ids[@]}"
   do
-    ((i++))
+    i=$((i+1))
     echo "Versioning ${clientdns_stack_names[i]} stack..."
     curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
     curVersion=v1
@@ -13827,9 +13858,9 @@ function main()
   PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
   PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
   PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
-  num_tries=0
-  total_tries=10
   set +e
+  num_tries=1
+  total_tries=10
   portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
   retVal=\$?
   while [ \$retVal -ne 0 ] && [ \$num_tries -lt \$total_tries ]
@@ -14055,7 +14086,7 @@ function addDefaultRules()
 function while_check()
 {
   RETVAL=\$?
-  numIter=0
+  numIter=1
   while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
     CMD=\$(\$1)
     RETVAL=\$?
@@ -14188,7 +14219,7 @@ function main()
 function while_check()
 {
   RETVAL=\$?
-  numIter=0
+  numIter=1
   while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
     CMD=\$(\$1)
     RETVAL=\$?
@@ -17516,7 +17547,7 @@ function installPortainer()
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
     sleep 1
-    ((i++))
+    i=$((i+1))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -18100,7 +18131,7 @@ function installSysUtils()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
-    ((i=$i+5))
+    i=$((i+5))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -18122,7 +18153,7 @@ function installSysUtils()
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
     sleep 1
-    ((i=$i+1))
+    i=$((i+1))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -21956,7 +21987,7 @@ function addUserMailu()
   domain=$3
   password=$4
   total_tries=5
-  num_tries=0
+  num_tries=1
   is_added=false
   while [ $num_tries -lt $total_tries ]
   do
@@ -23022,7 +23053,7 @@ function installNextcloud()
       fi
       echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
       sleep 5
-      ((i=$i+5))
+      i=$((i+5))
     done
     if [ $isFound == "T" ] && [ $isError == "F" ]; then
       break
@@ -26633,7 +26664,7 @@ function installPhotoPrism()
     fi
     echo "Container not ready, sleeping 10 seconds, total wait=$i seconds..."
     sleep 10
-    ((i=$i+10))
+    i=$((i+10))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -26980,7 +27011,7 @@ function installGuacamole()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
-    ((i=$i+5))
+    i=$((i+5))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -29988,7 +30019,7 @@ function installCodeServer()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
-    ((i=$i+5))
+    i=$((i+5))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -40513,7 +40544,7 @@ function installHeimdall()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 1
-    ((i=$i+1))
+    i=$((i+1))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -42264,15 +42295,15 @@ function insertServiceUptimeKuma()
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_notification(id,monitor_id,notification_id) VALUES(NULL,$svc_id,1);"
 }
 
-function insertEnableSvcUptimeKuma()
+function checkInsertServiceUptimeKuma()
 {
   svc_stack_name=$1
   svc_proper_name=$2
   user_type=$3
   svc_url=$4
   is_restart=$5
+  svc_is_active=$6
 
-  svc_is_active=1
   set +e
   docker container stop uptimekuma > /dev/null 2>&1
   set -e
@@ -42287,6 +42318,11 @@ function insertEnableSvcUptimeKuma()
     docker container start uptimekuma > /dev/null 2>&1
   fi
   set -e
+}
+
+function insertEnableSvcUptimeKuma()
+{
+  checkInsertServiceUptimeKuma "$1" "$2" "$3" "$4" "$5" 1
 }
 
 function disableSvcUptimeKuma()
