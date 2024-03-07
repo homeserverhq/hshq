@@ -2018,21 +2018,20 @@ function setupHostedVPN()
   do
     ((num_tries++))
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      rswgVPNTemp=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
+      RELAYSERVER_WG_VPN_SUBNET=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
     else
-      rswgVPNTemp=$(promptUserInputMenu "10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24" "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
+      RELAYSERVER_WG_VPN_SUBNET=$(promptUserInputMenu "10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24" "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
     fi
-	if [ -z "$rswgVPNTemp" ] || [ "$(checkValidIPAddress $rswgVPNTemp)" = "false" ]; then
+	if [ -z "$RELAYSERVER_WG_VPN_SUBNET" ] || [ "$(checkValidIPAddress $RELAYSERVER_WG_VPN_SUBNET)" = "false" ]; then
 	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
       continue
 	fi
-    is_intersect="$(isNetworkIntersectOurNetworks $rswgVPNTemp)"
+    is_intersect="$(isNetworkIntersectOurNetworks $RELAYSERVER_WG_VPN_SUBNET)"
     if ! [ -z "$is_intersect" ]; then
       if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
 	  showMessageBox "Network Collision" "Network Collision: $is_intersect"
       continue
     fi
-    RELAYSERVER_WG_VPN_SUBNET=$rswgVPNTemp
 	updateConfigVar RELAYSERVER_WG_VPN_SUBNET $RELAYSERVER_WG_VPN_SUBNET
     resetRSInit
   done
@@ -2196,6 +2195,7 @@ function setupHostedVPN()
     insertEnableSvcHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wireguard.png" false
     insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
+    checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
     docker container start heimdall > /dev/null 2>&1
     docker container start uptimekuma > /dev/null 2>&1
     emailVaultwardenCredentials true
@@ -21953,7 +21953,7 @@ function addUserMailu()
   total_tries=5
   num_tries=1
   is_added=false
-  while [ $num_tries -lt $total_tries ]
+  while [ $num_tries -le $total_tries ]
   do
     docker exec mailu-admin flask mailu $add_type $username $domain $password
     if [ $? -eq 0 ]; then
@@ -41097,7 +41097,7 @@ function getHeimdallUserIDFromType()
   echo $user_id
 }
 
-function insertEnableSvcHeimdall()
+function checkInsertServiceHeimdall()
 {
   svc_stack_name=$1
   svc_proper_name=$2
@@ -41105,8 +41105,8 @@ function insertEnableSvcHeimdall()
   svc_url=$4
   svc_img=$5
   is_restart=$6
+  svc_is_active=$7
 
-  svc_is_active=1
   user_id=$(getHeimdallUserIDFromType $user_type)
   docker container stop heimdall > /dev/null 2>&1
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
@@ -41119,6 +41119,11 @@ function insertEnableSvcHeimdall()
   if [ "$is_restart" = "true" ]; then
     docker container start heimdall > /dev/null 2>&1
   fi
+}
+
+function insertEnableSvcHeimdall()
+{
+  checkInsertServiceHeimdall "$1" "$2" "$3" "$4" "$5" "$6" 1
 }
 
 function disableSvcHeimdall()
