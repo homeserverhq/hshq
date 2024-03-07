@@ -2292,15 +2292,15 @@ PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
   curdt=$(getCurrentDate)
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_PRESHAREDKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
   mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_VPN_SUBNET','$RELAYSERVER_WG_SV_IP');"
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_IP',true,'${RELAYSERVER_WG_VPN_NETNAME}-user1','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'${RELAYSERVER_WG_VPN_NETNAME}-user1','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
@@ -6724,7 +6724,7 @@ function performMyNetworkCreateClientDNS()
     echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer, returning..."
     return
   fi
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-$clientdns_stack_name','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','mynetwork','$wg_pub_key','$wg_ip',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$(getCurrentDate)');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-$clientdns_stack_name','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','mynetwork','$wg_pub_key','$wg_pre_key','$wg_ip',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$(getCurrentDate)');"
 
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf >/dev/null <<EOFCF
@@ -7055,7 +7055,7 @@ function createOtherNetworkApplyUserConfig()
     return
   fi
   if ! [ -z "$ip_address" ]; then
-    if [ "$(checkValidIPAddress $ip_address)" = "false" ] || ! [ "$(echo $ip_address | cut -d "." -f1)" = "10" ]; then
+    if [ "$(checkValidIPAddress $ip_address)" = "false" ] || [ "$(isIPInSubnet $ip_address 10.0.0.0/8)" = "false" ]; then
       showMessageBox "Invalid IP" "Invalid IP address, returning..."
       return
     fi
@@ -7288,7 +7288,7 @@ function performNetworkInvite()
       else
         is_ip_provided=true
       fi
-      if [ -z "$ip_address" ] || [ "$(checkValidIPAddress $ip_address)" = "false" ] || ! [ $(echo $ip_address | cut -d "." -f1) = "10" ]; then
+      if [ -z "$ip_address" ] || [ "$(checkValidIPAddress $ip_address)" = "false" ] || [ "$(isIPInSubnet $ip_address 10.0.0.0/8)" = "false" ]; then
         echo "ERROR: Invalid IP address."
         return 7
       fi
@@ -7367,7 +7367,7 @@ function performNetworkInvite()
         unloadSSHKey
         return 7
       fi
-      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','mynetwork','$pub_key','$new_ip',false,'','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
+      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','mynetwork','$pub_key','$preshared_key','$new_ip',false,'','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
       mail_host_id=NULL
       if [ "$is_primary" = "true" ]; then
         mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$mail_subdomain');select last_insert_rowid();")
@@ -7405,7 +7405,7 @@ function performNetworkInvite()
         unloadSSHKey
         return 7
       fi
-      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','homeserver_internet','mynetwork','$pub_key','$new_ip',true,'$curdt');"
+      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','homeserver_internet','mynetwork','$pub_key','$preshared_key','$new_ip',true,'$curdt');"
     ;;
     "User")
       ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$ip_address\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
@@ -7415,7 +7415,7 @@ function performNetworkInvite()
         unloadSSHKey
         return 7
       fi
-      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','user','mynetwork','$pub_key','$ip_address','$is_internet','$curdt');"
+      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','user','mynetwork','$pub_key','$preshared_key','$ip_address','$is_internet','$curdt');"
       priv_key=$(getValueFromConfig "PrivateKey" $apply_file)
     ;;
   esac
@@ -7445,6 +7445,7 @@ function performNetworkInvite()
       mail_body=$mail_body"EndpointPort = $RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
+      mail_body=$mail_body"PresharedKey = $preshared_key\n"
       mail_body=$mail_body"HomeServerName = $HOMESERVER_NAME\n"
       mail_body=$mail_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
       mail_body=$mail_body"InternalPrefix = $INT_DOMAIN_PREFIX\n"
@@ -7702,6 +7703,12 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
+  preshared_key=$(getValueFromConfig "PresharedKey" $join_base_config_file)
+  if [ -z "$preshared_key" ]; then
+    echo "ERROR: Invalid preshared key."
+    rm -f $join_base_config_file
+    return 8
+  fi
 
   case "$conn_type" in
     "HomeServer VPN")
@@ -7802,12 +7809,6 @@ function performNetworkJoin()
       endpoint_pub_key=$(getValueFromConfig "EndpointPublicKey" $join_base_config_file)
       if [ -z "$endpoint_pub_key" ]; then
         echo "ERROR: Invalid endpoint public key."
-        rm -f $join_base_config_file
-        return 8
-      fi
-      preshared_key=$(getValueFromConfig "PresharedKey" $join_base_config_file)
-      if [ -z "$preshared_key" ]; then
-        echo "ERROR: Invalid preshared key."
         rm -f $join_base_config_file
         return 8
       fi
@@ -7955,7 +7956,7 @@ function performNetworkJoin()
       dns_file=$HOME/dns.tmp
       echo -e "$dns_section" > $dns_file
       curdt=$(getCurrentDate)
-      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
+      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$preshared_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
       sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$vpn_subnet','$rs_vpn_ip');"
       if [ "$IS_INSTALLED" = "true" ]; then
         echo "Updating HomeServer DNS and restarting Heimdall..."
@@ -8035,7 +8036,7 @@ function performNetworkJoin()
       sudo mv $join_wireguard_config_file $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
       rm -f $join_config_file
       curdt=$(getCurrentDate)
-      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_internet','other','$my_pub_key','$client_ip',true,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
+      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_internet','other','$my_pub_key','$preshared_key','$client_ip',true,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
       JOINED_DB_ID=$db_id
       set -e
       if [ "$is_connect" = "true" ]; then
@@ -8364,6 +8365,10 @@ function changeHSInternetPrimaryIPAddress()
     return 2
   fi
   echo "No collision."
+  if [ "$(isIPInSubnet $new_ip 10.0.0.0/8)" = "false" ]; then
+    echo "ERROR: IP not in the 10.0.0.0/8 range."
+    return 3
+  fi
   db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_internet' and NetworkType='primary';")
   pub_key=$(sqlite3 $HSHQ_DB "select PublicKey from connections where ID=$db_id;")
   cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
@@ -8374,19 +8379,74 @@ function changeHSInternetPrimaryIPAddress()
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
     unloadSSHKey
-    return
+    return 4
   fi
   ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"Primary-Internet-$HOMESERVER_DOMAIN\" \"$EMAIL_ADMIN_EMAIL_ADDRESS\" \"$pub_key\" \"$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\""
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
     unloadSSHKey
-    return
+    return 5
   fi
   unloadSSHKey
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf down
   sudo sed -i "s/^#CLIENT_ADDRESS=.*/#CLIENT_ADDRESS=$new_ip\/32/g" $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf up
   sqlite3 $HSHQ_DB "update connections set IPAddress='$new_ip' where ID=$db_id;"
+}
+
+function changeUserIPAddress()
+{
+  # Just in case there's a network collision, allow
+  # user to change the IP address rather than having
+  # to redo the apply/invite.
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  db_id=$1
+  new_ip=$2
+
+  is_db=$(getWGNameFromIP $new_ip)
+  if ! [ -z "$is_db" ]; then
+    echo "ERROR: This IP address is already being used (Connection Name: $is_db)."
+    return 2
+  fi
+  is_in_subnet=$(isIPInSubnet $new_ip $RELAYSERVER_WG_VPN_SUBNET)
+  if [ "$is_in_subnet" = "true" ]; then
+    echo "ERROR: This IP address is inside of your VPN range designated for hosting HomeServers."
+    return 3
+  fi
+  cur_name=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$db_id;")
+  email_address=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
+  pub_key=$(sqlite3 $HSHQ_DB "select PublicKey from connections where ID=$db_id;")
+  pre_key=$(sqlite3 $HSHQ_DB "select PresharedKey from connections where ID=$db_id;")
+  cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
+  is_internet=$(sqlite3 $HSHQ_DB "select IsInternet from connections where ID=$db_id;")
+
+  wgPortalAuth="$(getWGPortalAuth)"
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return 4
+  fi
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$cur_name\" \"$email_address\" \"$pub_key\" \"$pre_key\" \"$new_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return 5
+  fi
+  unloadSSHKey
+  sqlite3 $HSHQ_DB "update connections set IPAddress='$new_ip' where ID=$db_id;"
+  email_subj="User Interface IP Address Change Notice from $HOMESERVER_NAME"
+  email_body=""
+  email_body=$email_body"User Interface IP Address Change Notice from $HOMESERVER_NAME\n"
+  email_body=$email_body"================================================================\n\n"
+  email_body=$email_body"IP address successfully changed.\n\n"
+  email_body=$email_body"Old: $cur_ip\n"
+  email_body=$email_body"New: $new_ip\n"
+  sendEmail -s "$email_subj" -b "$email_body" -t "$email_address" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
 # Util Functions
@@ -8812,7 +8872,7 @@ function changeHostStaticIP()
 function initWireGuardDB()
 {
   rm -f $HSHQ_DB
-  sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
+  sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
   sqlite3 $HSHQ_DB "create table mailhosts(ID integer not null primary key autoincrement,MailHost text not null);"
   sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,VPN_Subnet text default null,RS_VPN_IP text default null);"
   sqlite3 $HSHQ_DB "create table hsvpn_dns(ID integer not null primary key autoincrement,HostDomain text not null,PeerDomain text not null,PeerDomainExtPrefix text not null,IPAddress text not null,DateAdded datetime,IsActive boolean);"
@@ -8820,6 +8880,7 @@ function initWireGuardDB()
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
   sqlite3 $HSHQ_DB "create table lecertdomains(Domain text primary key,BaseDomain text not null);"
   sqlite3 $HSHQ_DB "create table exposedomains(Domain text primary key,BaseDomain text not null);"
+  chmod 600 $HSHQ_DB
 }
 
 function getWGNameFromIP()
@@ -12764,10 +12825,43 @@ EOFRS
 function version39Update()
 {
   set +e
+  clearAllHSHQManagerScripts
+  outputAllHSHQManagerScripts
+  set -e
+  sqlite3 $HSHQ_DB "create table newconnections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
+  sqlite3 $HSHQ_DB "insert into newconnections(ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated) select ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated from connections;"
+  sqlite3 $HSHQ_DB "drop table connections;"
+  sqlite3 $HSHQ_DB "ALTER TABLE newconnections RENAME TO connections;"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
+    loadSSHKey
+    keylist=($(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sqlite3 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db \"select public_key,preshared_key from peers;\""
+    unloadSSHKey))
+    for curKeys in "${keylist[@]}"
+    do
+      pub_key=$(echo "$curKeys" | cut -d "|" -f1)
+      pre_key=$(echo "$curKeys" | cut -d "|" -f2)
+      sqlite3 $HSHQ_DB "update connections set PresharedKey='$pre_key' where PublicKey='$pub_key';"
+    done
+    sqlite3 $HSHQ_DB "update connections set PresharedKey='$RELAYSERVER_WG_SV_PRESHAREDKEY' where Name='WireGuardServer';"
   fi
-  set -e
+  hs_vpn=($(sqlite3 $HSHQ_DB "select ID,InterfaceName from connections where NetworkType='other' and ConnectionType='homeserver_vpn';"))
+  for curVPN in "${hs_vpn[@]}"
+  do
+    cur_id=$(echo "$curVPN" | cut -d "|" -f1)
+    cur_iface=$(echo "$curVPN" | cut -d "|" -f2)
+    pre_key=$(sudo grep "^PresharedKey" $HSHQ_WIREGUARD_DIR/vpn/${cur_iface}.conf | cut -d " " -f3)
+    sqlite3 $HSHQ_DB "update connections set PresharedKey='$pre_key' where ID='$cur_id';"
+  done
+  hs_int=($(sqlite3 $HSHQ_DB "select ID,InterfaceName from connections where NetworkType='other' and ConnectionType='homeserver_internet';"))
+  for curInt in "${hs_int[@]}"
+  do
+    cur_id=$(echo "$curInt" | cut -d "|" -f1)
+    cur_iface=$(echo "$curInt" | cut -d "|" -f2)
+    pre_key=$(sudo grep "^PresharedKey" $HSHQ_WIREGUARD_DIR/internet/${cur_iface}.conf | cut -d " " -f3)
+    sqlite3 $HSHQ_DB "update connections set PresharedKey='$pre_key' where ID='$cur_id';"
+  done
+  chmod 600 $HSHQ_DB
 }
 
 function sendRSExposeScripts()
@@ -12886,14 +12980,12 @@ EOFEX
   chmod 500 $HOME/removeExposeDomains.sh
 
   loadSSHKey
-  set +e
+  set -e
   ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh"
   scp -P $RELAYSERVER_SSH_PORT $HOME/addLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
   scp -P $RELAYSERVER_SSH_PORT $HOME/removeLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
   scp -P $RELAYSERVER_SSH_PORT $HOME/addExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
   scp -P $RELAYSERVER_SSH_PORT $HOME/removeExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
-
-  set -e
   unloadSSHKey
   rm -f $HOME/addLECertDomains.sh
   rm -f $HOME/removeLECertDomains.sh
@@ -38108,7 +38200,7 @@ EOFSC
 {
   "name": "03 Change Primary HS Int IP",
   "script_path": "conf/scripts/changeHSPrimaryInternetIP.sh",
-  "description": "Changes the interface IP address of the HomeServer Internet connection.<br/><br/>The primary use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.",
+  "description": "Changes the interface IP address of the primary HomeServer Internet connection.<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38164,6 +38256,91 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeUserIP.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+selconnection=\$(getArgumentValue selconnection "\$@")
+ipaddr=\$(getArgumentValue ipaddr "\$@")
+
+set +e
+rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
+changeUserIPAddress \$rem_id \$ipaddr
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeUserIP.json
+{
+  "name": "04 Change User IP",
+  "script_path": "conf/scripts/changeUserIP.sh",
+  "description": "Changes the interface IP address of a user connection.<br/><br/>The main use case for this function is if a user requests a new interface IP address due to a collision. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select connection",
+      "required": true,
+      "param": "-selconnection=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,' - ',IPAddress from connections where ConnectionType='user' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a new IP address",
+      "required": true,
+      "param": "-ipaddr=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": { 
+        "script": "conf/scripts/generateRandomIP.sh"
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeHSVPNConnection.sh
 #!/bin/bash
 
@@ -38187,7 +38364,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSVPNConnection.json
 {
-  "name": "04 Remove HS VPN Connection",
+  "name": "05 Remove HS VPN Connection",
   "script_path": "conf/scripts/removeHSVPNConnection.sh",
   "description": "Remove a HomeServer VPN connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.",
   "group": "$group_id_mynetwork",
@@ -38267,7 +38444,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSInternetConnection.json
 {
-  "name": "05 Remove HS Int Connection",
+  "name": "06 Remove HS Int Connection",
   "script_path": "conf/scripts/removeHSInternetConnection.sh",
   "description": "Remove a HomeServer Internet connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.",
   "group": "$group_id_mynetwork",
@@ -38347,7 +38524,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeUserConnection.json
 {
-  "name": "06 Remove User Connection",
+  "name": "07 Remove User Connection",
   "script_path": "conf/scripts/removeUserConnection.sh",
   "description": "Remove a user connection.<br/><br/>The reason for removal will be emailed to the user being removed.",
   "group": "$group_id_mynetwork",
@@ -38424,7 +38601,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailHomeServersDNSList.json
 {
-  "name": "07 Email HomeServers DNS List",
+  "name": "08 Email HomeServers DNS List",
   "script_path": "conf/scripts/emailHomeServersDNSList.sh",
   "description": "Email HomeServers DNS list.<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
   "group": "$group_id_mynetwork",
@@ -38469,7 +38646,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailUsersDNSList.json
 {
-  "name": "08 Email Users DNS List",
+  "name": "09 Email Users DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
   "description": "Email HomeServers DNS list.<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this project).",
   "group": "$group_id_mynetwork",
@@ -38517,7 +38694,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/createClientDNSServer.json
 {
-  "name": "09 Create ClientDNS Server",
+  "name": "10 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
   "description": "Create a ClientDNS server.<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer Adguard where this ClientDNS server is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_mynetwork",
@@ -38596,7 +38773,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeClientDNSServer.json
 {
-  "name": "10 Remove Client DNS Server",
+  "name": "11 Remove Client DNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
   "description": "Remove a client DNS server.",
   "group": "$group_id_mynetwork",
@@ -38678,7 +38855,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removePrimaryVPNConnection.json
 {
-  "name": "11 Remove Primary VPN",
+  "name": "12 Remove Primary VPN",
   "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
   "description": "Complete removal of primary VPN. <br/>\nIf you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
   "group": "$group_id_mynetwork",
