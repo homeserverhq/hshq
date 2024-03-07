@@ -2010,6 +2010,7 @@ function setupHostedVPN()
   if [ "$isReload" = "true" ]; then
     loadSvcVars
   fi
+  resetRSInit
   num_tries=1
   max_tries=100
   RELAYSERVER_WG_VPN_SUBNET=""
@@ -2021,44 +2022,24 @@ function setupHostedVPN()
     else
       rswgVPNTemp=$(promptUserInputMenu "10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24" "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
     fi
-	if [ -z "$rswgVPNTemp" ] || [ "$(checkValidIPAddress $rswgVPNTemp)" = "false" ] || ! [ -z "$(isNetworkIntersectOurNetworks $rswgVPNTemp)" ]; then
-      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
+	if [ -z "$rswgVPNTemp" ] || [ "$(checkValidIPAddress $rswgVPNTemp)" = "false" ]; then
 	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
-	else
-      RELAYSERVER_WG_VPN_SUBNET=$rswgVPNTemp
-	  updateConfigVar RELAYSERVER_WG_VPN_SUBNET $RELAYSERVER_WG_VPN_SUBNET
+      continue
 	fi
+    is_intersect="$(isNetworkIntersectOurNetworks $rswgVPNTemp)"
+    if ! [ -z "$is_intersect" ]; then
+      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
+	  showMessageBox "Network Collision" "Network Collision: $is_intersect"
+      continue
+    fi
+    RELAYSERVER_WG_VPN_SUBNET=$rswgVPNTemp
+	updateConfigVar RELAYSERVER_WG_VPN_SUBNET $RELAYSERVER_WG_VPN_SUBNET
     resetRSInit
   done
   if [ -z "$RELAYSERVER_WG_VPN_SUBNET" ]; then
     # We tried...
     echo "ERROR: Could not allocate VPN network subnet."
     return 1
-  fi
-  num_tries=1
-  RELAYSERVER_WG_INTERNET_SUBNET=""
-  while [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ] && [ $num_tries -lt $max_tries ]
-  do
-    ((num_tries++))
-    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      rswgIntTemp=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
-    else
-      rswgIntTemp=$(promptUserInputMenu 10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24 "Enter Subnet" "Enter the HomeServer Internet Hosting Subnet (in CIDR): ")
-    fi
-	if [ -z "$rswgIntTemp" ] || [ "$(checkValidIPAddress $rswgIntTemp)" = "false" ] || ! [ -z "$(isNetworkIntersectOurNetworks $rswgIntTemp)" ]; then
-      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
-	  showMessageBox "Invalid Subnet" "The HS Internet Subnet is invalid."
-	else
-      RELAYSERVER_WG_INTERNET_SUBNET=$rswgIntTemp
-	  updateConfigVar RELAYSERVER_WG_INTERNET_SUBNET $RELAYSERVER_WG_INTERNET_SUBNET
-	fi
-    resetRSInit
-  done
-
-  if [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ]; then
-    # We tried...
-    echo "ERROR: Could not allocate HomeServer Internet network subnet."
-    return 2
   fi
 
   pullImage $IMG_WIREGUARD
@@ -2179,13 +2160,13 @@ function setupHostedVPN()
   RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
   RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_INTERNET_HS_IP=$(getRandomHSInternetIP)
+  RELAYSERVER_WG_INTERNET_HS_IP=$(getRandomWireGuardIP)
   RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY
   RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY $RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY
   RELAYSERVER_WG_INTERNET_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_USER_IP=$(getRandomUserIP)
+  RELAYSERVER_WG_USER_IP=$(getRandomWireGuardIP)
   RELAYSERVER_WG_USER_PRIVATEKEY=$(wg genkey)
   RELAYSERVER_WG_USER_PRESHAREDKEY=$(wg genpsk)
   RELAYSERVER_WG_USER_PUBLICKEY=$(echo $RELAYSERVER_WG_USER_PRIVATEKEY | wg pubkey)
@@ -7302,7 +7283,7 @@ function performNetworkInvite()
         return 7
       fi
       if [ "$ip_address" = "New" ]; then
-        ip_address=$(getRandomUserIP)
+        ip_address=$(getRandomWireGuardIP)
         is_ip_provided=false
       else
         is_ip_provided=true
@@ -7411,7 +7392,7 @@ function performNetworkInvite()
       fi
     ;;
     "HomeServer Internet")
-      new_ip=$(getRandomHSInternetIP)
+      new_ip=$(getRandomWireGuardIP)
       if [ -z "$new_ip" ]; then
         echo "ERROR: The HomeServer Internet network is full."
         unloadSSHKey
@@ -8366,6 +8347,48 @@ function disconnectOtherNetworkHomeServerInternetConnection()
   sendEmail -s "$email_subj" -b "$email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$host_email" 
 }
 
+function changeHSInternetPrimaryIPAddress()
+{
+  # Just in case there's a network collision, allow
+  # user to change the IP address rather than having
+  # to tear down the entire hosted VPN structure.
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  new_ip=$1
+  echo "Checking for network collision..."
+  check_intersect="$(isNetworkIntersectOurNetworks ${new_ip}/32)"
+  if ! [ -z "$check_intersect" ]; then
+    echo "ERROR: Network collision: $check_intersect"
+    return 2
+  fi
+  echo "No collision."
+  db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_internet' and NetworkType='primary';")
+  pub_key=$(sqlite3 $HSHQ_DB "select PublicKey from connections where ID=$db_id;")
+  cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
+  interface_name=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  wgPortalAuth="$(getWGPortalAuth)"
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"true\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return
+  fi
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"Primary-Internet-$HOMESERVER_DOMAIN\" \"$EMAIL_ADMIN_EMAIL_ADDRESS\" \"$pub_key\" \"$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return
+  fi
+  unloadSSHKey
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf down
+  sudo sed -i "s/^#CLIENT_ADDRESS=.*/#CLIENT_ADDRESS=$new_ip\/32/g" $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf up
+  sqlite3 $HSHQ_DB "update connections set IPAddress='$new_ip' where ID=$db_id;"
+}
+
 # Util Functions
 function openHSHQScript()
 {
@@ -8833,19 +8856,18 @@ function getRandomVPNIP()
   while [ $numvpnipTries -lt $maxvpnipTries ]
   do
     randIP=${vpnbase}.$(($(($RANDOM%250))+1))
-    is_db=$(getWGNameFromIP $randIP)
-    if [ -z "$is_db" ]; then
+    if [ -z "$(getWGNameFromIP $randIP)" ]; then
       echo $randIP
       return
     fi
     ((numvpnipTries++))
   done
+  # Just start at the beginning...
   ip_host_part=1
   while [ $ip_host_part -le 250 ]
   do
     randIP=${vpnbase}.$ip_host_part
-    is_db=$(getWGNameFromIP $randIP)
-    if [ -z "$is_db" ]; then
+    if [ -z "$(getWGNameFromIP $randIP)" ]; then
       echo $randIP
       return
     fi
@@ -8855,53 +8877,16 @@ function getRandomVPNIP()
   echo ""
 }
 
-function getRandomHSInternetIP()
-{
-  # This function is specific to a /24 sized subnet.
-  # It should be improved to a more general case based on the size of the network.
-  hsibase=$(echo $RELAYSERVER_WG_INTERNET_SUBNET | rev | cut -d "." -f2- | rev)
-  numrhsTries=1
-  maxrhsTries=88
-  while [ $numrhsTries -lt $maxrhsTries ]
-  do
-    randIP=${hsibase}.$(($(($RANDOM%250))+1))
-    is_db=$(getWGNameFromIP $randIP)
-    if [ -z "$is_db" ]; then
-      echo $randIP
-      return
-    fi
-    ((numrhsTries++))
-  done
-  ip_host_part=1
-  while [ $ip_host_part -le 250 ]
-  do
-    randIP=${hsibase}.$ip_host_part
-    is_db=$(getWGNameFromIP $randIP)
-    if [ -z "$is_db" ]; then
-      echo $randIP
-      return
-    fi
-    ((ip_host_part++))
-  done
-  # The network is full. Caller needs to handle this.
-  echo ""
-}
-
-function getRandomUserIP()
+function getRandomWireGuardIP()
 {
   numRIPTries=1
   maxRIPTries=1000
   while [ $numRIPTries -lt $maxRIPTries ]
   do
     randIP=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).$(($(($RANDOM%250))+1))
-    is_in_vpn_subnet=$(isIPInSubnet $randIP $RELAYSERVER_WG_VPN_SUBNET)
-    is_in_int_subnet=$(isIPInSubnet $randIP $RELAYSERVER_WG_INTERNET_SUBNET)
-    if [ "$is_in_vpn_subnet" = "false" ] && [ "$is_in_int_subnet" = "false" ]; then
-      is_db=$(getWGNameFromIP $randIP)
-      if [ -z "$is_db" ]; then
-        echo $randIP
-        return
-      fi
+    if [ "$(isIPInSubnet $randIP $RELAYSERVER_WG_VPN_SUBNET)" = "false" ] && [ -z "$(getWGNameFromIP $randIP)" ]; then
+      echo $randIP
+      return
     fi
     ((numRIPTries++))
   done
@@ -8946,14 +8931,6 @@ function checkNetworkIntersect()
 function isNetworkIntersectOurNetworks()
 {
   checkNetwork=$1
-  if ! [ -z $RELAYSERVER_WG_VPN_SUBNET ] && [ "$(checkNetworkIntersect $RELAYSERVER_WG_VPN_SUBNET $checkNetwork)" = "true" ]; then
-    echo "The requested subnet ($checkNetwork) collides with our VPN subnet ($RELAYSERVER_WG_VPN_SUBNET)"
-    return
-  fi
-  if ! [ -z $RELAYSERVER_WG_INTERNET_SUBNET ] && [ "$(checkNetworkIntersect $RELAYSERVER_WG_INTERNET_SUBNET $checkNetwork)" = "true" ]; then
-    echo "The requested subnet ($checkNetwork) collides with our HS Internet subnet ($RELAYSERVER_WG_INTERNET_SUBNET)"
-    return
-  fi
   OIFS=$IFS
   IFS=$(echo -en "\n\b")
   vpn_arr=($(sqlite3 $HSHQ_DB "select VPN_Subnet,HomeServerName from hsvpn_connections where VPN_Subnet is not null;"))
@@ -8967,13 +8944,13 @@ function isNetworkIntersectOurNetworks()
       return
     fi
   done
-  ip_arr=($(sqlite3 $HSHQ_DB "select IPAddress,Name from connections where ConnectionType='homeserver_internet';"))
+  ip_arr=($(sqlite3 $HSHQ_DB "select IPAddress,Name from connections where ConnectionType='homeserver_internet' and NetworkType in ('primary','other');"))
   for curipcheck in "${ip_arr[@]}"
   do
     curip=$(echo "$curipcheck" | cut -d "|" -f1)
     curconname=$(echo "$curipcheck" | cut -d "|" -f2)
     if [ "$(checkNetworkIntersect ${curip}/32 $checkNetwork)" = "true" ]; then
-      echo "The requested subnet ($checkNetwork) collides with connection ${curconname} ($curip)"
+      echo "The requested subnet ($checkNetwork) collides with HS Internet connection ${curconname} ($curip)"
       IFS=$OIFS
       return
     fi
@@ -11409,7 +11386,6 @@ RELAYSERVER_WG_PORT=51821
 RELAYSERVER_WG_VPN_NETNAME=
 RELAYSERVER_WG_VPN_SUBNET=
 RELAYSERVER_WG_INTERNET_NETNAME=
-RELAYSERVER_WG_INTERNET_SUBNET=
 RELAYSERVER_WG_SV_PRIVATEKEY=
 RELAYSERVER_WG_SV_PUBLICKEY=
 RELAYSERVER_WG_SV_IP=
@@ -12788,18 +12764,6 @@ EOFRS
 function version39Update()
 {
   set +e
-  grep "RELAYSERVER_WG_INTERNET_SUBNET" $CONFIG_FILE >/dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    sed -i "/^RELAYSERVER_WG_INTERNET_NETNAME/a RELAYSERVER_WG_INTERNET_SUBNET=" $CONFIG_FILE
-  fi
-  if [ -z "$RELAYSERVER_WG_INTERNET_SUBNET" ]; then
-    # Initialize RELAYSERVER_WG_INTERNET_SUBNET to our current connection subnet (if present)
-    cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where NetworkType='primary' and ConnectionType='homeserver_internet';")
-    if ! [ -z "$cur_ip" ]; then
-      RELAYSERVER_WG_INTERNET_SUBNET="$(echo $cur_ip | rev | cut -d "." -f2- | rev).0/24"
-      updateConfigVar RELAYSERVER_WG_INTERNET_SUBNET $RELAYSERVER_WG_INTERNET_SUBNET
-    fi
-  fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
   fi
@@ -36315,6 +36279,13 @@ fi
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/generateRandomIP.sh
+#!/bin/bash
+
+echo 10.\$(( \$RANDOM % 256 )).\$(( \$RANDOM % 256 )).\$((\$((\$RANDOM%250))+1))
+
+EOFSC
+
   # 01 Misc Utils
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/restartAuthelia.sh
 #!/bin/bash
@@ -36626,7 +36597,6 @@ EOFSC
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
@@ -38113,6 +38083,87 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeHSPrimaryInternetIP.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+ipaddr=\$(getArgumentValue ipaddr "\$@")
+
+set +e
+changeHSInternetPrimaryIPAddress \$ipaddr
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeHSPrimaryInternetIP.json
+{
+  "name": "03 Change Primary HS Int IP",
+  "script_path": "conf/scripts/changeHSPrimaryInternetIP.sh",
+  "description": "Changes the interface IP address of the HomeServer Internet connection.<br/><br/>The primary use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a new IP address",
+      "required": true,
+      "param": "-ipaddr=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": { 
+        "script": "conf/scripts/generateRandomIP.sh"
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeHSVPNConnection.sh
 #!/bin/bash
 
@@ -38136,7 +38187,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSVPNConnection.json
 {
-  "name": "03 Remove HS VPN Connection",
+  "name": "04 Remove HS VPN Connection",
   "script_path": "conf/scripts/removeHSVPNConnection.sh",
   "description": "Remove a HomeServer VPN connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.",
   "group": "$group_id_mynetwork",
@@ -38216,7 +38267,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSInternetConnection.json
 {
-  "name": "04 Remove HS Int Connection",
+  "name": "05 Remove HS Int Connection",
   "script_path": "conf/scripts/removeHSInternetConnection.sh",
   "description": "Remove a HomeServer Internet connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.",
   "group": "$group_id_mynetwork",
@@ -38296,7 +38347,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeUserConnection.json
 {
-  "name": "05 Remove User Connection",
+  "name": "06 Remove User Connection",
   "script_path": "conf/scripts/removeUserConnection.sh",
   "description": "Remove a user connection.<br/><br/>The reason for removal will be emailed to the user being removed.",
   "group": "$group_id_mynetwork",
@@ -38373,7 +38424,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailHomeServersDNSList.json
 {
-  "name": "06 Email HomeServers DNS List",
+  "name": "07 Email HomeServers DNS List",
   "script_path": "conf/scripts/emailHomeServersDNSList.sh",
   "description": "Email HomeServers DNS list.<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
   "group": "$group_id_mynetwork",
@@ -38418,7 +38469,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailUsersDNSList.json
 {
-  "name": "07 Email Users DNS List",
+  "name": "08 Email Users DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
   "description": "Email HomeServers DNS list.<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this project).",
   "group": "$group_id_mynetwork",
@@ -38466,7 +38517,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/createClientDNSServer.json
 {
-  "name": "08 Create ClientDNS Server",
+  "name": "09 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
   "description": "Create a ClientDNS server.<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer Adguard where this ClientDNS server is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_mynetwork",
@@ -38545,7 +38596,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeClientDNSServer.json
 {
-  "name": "09 Remove Client DNS Server",
+  "name": "10 Remove Client DNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
   "description": "Remove a client DNS server.",
   "group": "$group_id_mynetwork",
@@ -38627,7 +38678,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removePrimaryVPNConnection.json
 {
-  "name": "10 Remove Primary VPN",
+  "name": "11 Remove Primary VPN",
   "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
   "description": "Complete removal of primary VPN. <br/>\nIf you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
   "group": "$group_id_mynetwork",
