@@ -7208,6 +7208,13 @@ function performNetworkInvite()
   fi
   apply_file="$1"
   config_name="$2"
+  # First check if there are any shell expansions in the file.
+  # If there is, throw up big a red flag.
+  check_file=$(checkFileShellExpansion $apply_file)
+  if ! [ -z "$check_file" ]; then
+    echo -e "$check_file"
+    return 2
+  fi
   # Do basic checks
   removeSpecialChars "$apply_file"
   first_line="$(awk 'NF{print;exit}' $apply_file)"
@@ -7228,7 +7235,7 @@ function performNetworkInvite()
     return 7
   fi
   pub_key=$(getValueFromConfig "PublicKey" $apply_file)
-  if [ -z "$pub_key" ] || [ "$(checkValidWireGuardKey $client_public_key)" = "false" ]; then
+  if [ -z "$pub_key" ] || [ "$(checkValidWireGuardKey $pub_key)" = "false" ]; then
     echo "ERROR: Invalid public key."
     return 7
   fi
@@ -7325,7 +7332,7 @@ function performNetworkInvite()
   case "$conn_type" in
     "HomeServer VPN")
       if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
-        echo "ERROR: This is your domain, idiot..."
+        echo "ERROR: This is your domain, dummy!"
         return 7
       fi
       config_name="HS-VPN-$domain_name"
@@ -7351,7 +7358,7 @@ function performNetworkInvite()
     ;;
     "HomeServer Internet")
       if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
-        echo "ERROR: This is your domain, idiot..."
+        echo "ERROR: This is your domain, dummy!"
         return 7
       fi
       config_name="HS-Internet-$domain_name"
@@ -7659,6 +7666,13 @@ function performNetworkJoin()
   is_connect="$1"
   join_file="$2"
   echo "Joining network..."
+  # First check if there are any shell expansions in the file.
+  # If there is, throw up a big red flag.
+  check_file=$(checkFileShellExpansion $join_file)
+  if ! [ -z "$check_file" ]; then
+    echo -e "$check_file"
+    return 2
+  fi
   # Do basic checks
   removeSpecialChars "$join_file"
   first_line="$(awk 'NF{print;exit}' $join_file)"
@@ -7859,7 +7873,7 @@ function performNetworkJoin()
 
   # Do logical checks
   if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
-    echo "ERROR: This is your domain, idiot..."
+    echo "ERROR: This is your domain, dummy!"
     rm -f $join_base_config_file
     return 8
   fi
@@ -8264,8 +8278,10 @@ function removeMyNetworkHomeServerInternetConnection()
 {
   db_id=$1
   removal_reason="$2"
+  echo "Removing $db_id"
   peer_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
   removeMyNetworkNonHomeServerConnection $db_id
+  echo "Sending email to $peer_email"
   notifyHomeServerInternetNetworkRemoval "$peer_email" "$removal_reason"
 }
 
@@ -9471,6 +9487,32 @@ function checkDecryptConfigFile()
       exit 4
     fi
   fi
+}
+
+function checkFileShellExpansion()
+{
+  cfse_curE=${-//[^e]/}
+  check_file=$1
+  set +e
+  retVal=""
+  grep '\$' $check_file > /dev/null 2>&1
+  retDS=$?
+  grep '\~' $check_file > /dev/null 2>&1
+  retTD=$?
+  grep '\*' $check_file > /dev/null 2>&1
+  retAS=$?
+  if [ $retDS -eq 0 ] || [ $retTD -eq 0 ] || [ $retAS -eq 0 ]; then
+    retVal=$retVal"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+    retVal=$retVal"@               Shell expansion attempt detected!              @\n"
+    retVal=$retVal"@            Check the sender of this configuration.           @\n"
+    retVal=$retVal"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+  else
+    echo ""
+  fi
+  if ! [ -z $cfse_curE ]; then
+    set -e
+  fi
+  echo "$retVal"
 }
 
 function createStackJson()
@@ -10730,6 +10772,25 @@ function sendEmailMyNetworkFullUserDetails()
     full_network_email_body=$full_network_email_body"$cur_name,$cur_email,$pub_key,$pre_key,$ip_addr,$is_internet\n"
   done
   full_network_email_body=$full_network_email_body"\n\n"
+  sendEmail -s "$full_network_email_subj" -b "$full_network_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+}
+
+function sendEmailMyNetworkBroadcast()
+{
+  strMessage="$1"
+  full_network_email_subj="Broadcase Message from $HOMESERVER_NAME"
+  full_network_email_body=""
+  full_network_email_body=$full_network_email_body"Broadcase Message from $HOMESERVER_NAME\n"
+  full_network_email_body=$full_network_email_body"------------------------------------------------------------------------\n"
+  full_network_email_body=$full_network_email_body"$strMessage\n\n"
+  email_list=($(sqlite3 $HSHQ_DB "select EmailAddress from connections where NetworkType='mynetwork';"))
+  for cur_email in "${email_list[@]}"
+  do
+    echo "Sending broadcast message to ${cur_email}..."
+    sendEmail -s "$full_network_email_subj" -b "$full_network_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$cur_email"
+  done
+  # Send to self
+  echo "Sending broadcast message to self..."
   sendEmail -s "$full_network_email_subj" -b "$full_network_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
@@ -38702,7 +38763,7 @@ removeReason="\$3"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-removeMyNetworkNonHomeServerConnection \$rem_id
+removeMyNetworkHomeServerInternetConnection "\$rem_id" "\$removeReason"
 set -e
 performExitFunctions false
 
@@ -38869,7 +38930,7 @@ EOFSC
 {
   "name": "08 Email HomeServers DNS List",
   "script_path": "conf/scripts/emailHomeServersDNSList.sh",
-  "description": "Emails HomeServers DNS list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38914,7 +38975,7 @@ EOFSC
 {
   "name": "09 Email Users DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
-  "description": "Emails HomeServers DNS list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this project).",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this project).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38948,7 +39009,7 @@ source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-echo "Emailing all user details..."
+echo "Emailing user details..."
 sendEmailMyNetworkFullUserDetails
 set -e
 performExitFunctions false
@@ -38957,9 +39018,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailMyNetworkUserDetails.json
 {
-  "name": "09 Email All User Details",
+  "name": "10 Email User Details",
   "script_path": "conf/scripts/emailMyNetworkUserDetails.sh",
-  "description": "Emails all user details. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all user connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and restore the primary network. This will allow you to re-add the users to the new network with the same information.",
+  "description": "Emails user details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all user connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the users to the new network with the same information.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38981,6 +39042,66 @@ EOFSC
 }
 
 EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailMyNetworkBroadcast.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+strMsg="\$2"
+set +e
+echo "Emailing broadcast message..."
+sendEmailMyNetworkBroadcast "\$strMsg"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailMyNetworkBroadcast.json
+{
+  "name": "11 Email All Broadcast",
+  "script_path": "conf/scripts/emailMyNetworkBroadcast.sh",
+  "description": "Emails a broadcast message. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will send a broadcast message to all users and connected devices on your network.",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter the message",
+      "required": true,
+      "type": "multiline_text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/createClientDNSServer.sh
 #!/bin/bash
@@ -39005,9 +39126,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/createClientDNSServer.json
 {
-  "name": "11 Create ClientDNS Server",
+  "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
-  "description": "Create a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer Adguard where this ClientDNS server is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Create a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39084,7 +39205,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeClientDNSServer.json
 {
-  "name": "12 Remove Client DNS Server",
+  "name": "13 Remove Client DNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
   "description": "Remove a client DNS server. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_mynetwork",
@@ -39166,7 +39287,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removePrimaryVPNConnection.json
 {
-  "name": "13 Remove Primary VPN",
+  "name": "14 Remove Primary VPN",
   "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
   "description": "Complete removal of primary VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
   "group": "$group_id_mynetwork",
@@ -39304,7 +39425,7 @@ EOFSC
 {
   "name": "02 HS Internet Application",
   "script_path": "conf/scripts/applyHSInternetConnection.sh",
-  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)<br/>A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39515,7 +39636,7 @@ EOFSC
 {
   "name": "04 Primary VPN Application",
   "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
-  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, so it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
