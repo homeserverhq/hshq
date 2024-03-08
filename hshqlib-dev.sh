@@ -244,19 +244,16 @@ EOF
 
 function showInstalledMenu()
 {
-  if [ -f $HSHQ_INSTALL_CFG ]; then
-    showYesNoMessageBox "Install Config" "The installation configuration file still exists ($HSHQ_INSTALL_CFG). It contains sensitive data in plain text. If you have successfully performed the installation and utilized the information, then it is recommended that you delete this file. Do you wish to remove it?"
-    mbres=$?
-    if [ $mbres -eq 0 ]; then
-      rm -f $HSHQ_INSTALL_CFG
-      # Clean up the log files as well, don't need them anymore.
-      rm -f $HOME/hshq/$HSHQ_FULL_LOG_NAME
-      rm -f $HOME/hshq/$HSHQ_TIMESTAMP_LOG_NAME
-    fi
-  fi
-  if [ -f /etc/sudoers.d/$SUDO_LONG_TIMEOUT_FILENAME ]; then
-    removeSudoTimeoutInstall
-  fi
+  #if [ -f $HSHQ_INSTALL_CFG ]; then
+  #  read -p "The installation configuration file still exists ($HSHQ_INSTALL_CFG). It contains sensitive data in plain text. If you have successfully performed the installation and utilized the information, then it is recommended that you delete this file. Do you wish to remove it? Enter yes to remove." is_rem_install_config
+  #  mbres=$?
+  #  if [ $mbres -eq 0 ]; then
+  #    rm -f $HSHQ_INSTALL_CFG
+  #    # Clean up the log files as well, don't need them anymore.
+  #    rm -f $HOME/hshq/$HSHQ_FULL_LOG_NAME
+  #    rm -f $HOME/hshq/$HSHQ_TIMESTAMP_LOG_NAME
+  #  fi
+  #fi
   installedmenu=$(cat << EOF
 
 $hshqlogo
@@ -1196,7 +1193,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}depending on hardward specs and download speeds.\n"
   strInstallConfig="${strInstallConfig}Copy the above info before proceeding. (Ensure to scroll up and\n"
   strInstallConfig="${strInstallConfig}retain everything between the ##### borders)\n"
-  strInstallConfig="${strInstallConfig}This install configuration is also stored in $HSHQ_INSTALL_CFG.\n"
+ # strInstallConfig="${strInstallConfig}This install configuration is also stored in $HSHQ_INSTALL_CFG.\n"
   strInstallConfig="${strInstallConfig}The process will run continuously uninterrupted in a 'screen'\n"
   strInstallConfig="${strInstallConfig}If you lose connection, then enter 'screen -r hshqInstall' to resume\n"
   strInstallConfig="${strInstallConfig}the screen if you want to continue to view the process.\n"
@@ -1217,9 +1214,9 @@ function initInstallation()
     strInstallConfig="${strInstallConfig}in the user's home directory (/home/$RELAYSERVER_REMOTE_USERNAME). Start the installation\n"
     strInstallConfig="${strInstallConfig}on your RelayServer first before starting the installation here.\n"
   fi
-  rm -f $HSHQ_INSTALL_CFG
-  echo -e "$strInstallConfig" > $HSHQ_INSTALL_CFG
-  chmod 0400 $HSHQ_INSTALL_CFG
+  #rm -f $HSHQ_INSTALL_CFG
+  #echo -e "$strInstallConfig" > $HSHQ_INSTALL_CFG
+  #chmod 0400 $HSHQ_INSTALL_CFG
   echo -e "${strInstallConfig}"
   isRelayInstallInit=false
   while true;
@@ -1334,8 +1331,8 @@ function performBaseInstallation()
     clearQueryLogAndStatsAdguardRS
   fi
   installLogNotify "Post Installation"
-  postInstallation
   removeSudoTimeoutInstall
+  postInstallation
 }
 
 function postInstallation()
@@ -38384,7 +38381,7 @@ EOFSC
 {
   "name": "02 Invite User to Network",
   "script_path": "conf/scripts/myNetworkInviteUserConnection.sh",
-  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' utility. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in either case, one will be generated.",
+  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' utility. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
