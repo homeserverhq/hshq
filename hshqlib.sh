@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=38
+HSHQ_SCRIPT_VERSION=39
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -244,19 +244,16 @@ EOF
 
 function showInstalledMenu()
 {
-  if [ -f $HSHQ_INSTALL_CFG ]; then
-    showYesNoMessageBox "Install Config" "The installation configuration file still exists ($HSHQ_INSTALL_CFG). It contains sensitive data in plain text. If you have successfully performed the installation and utilized the information, then it is recommended that you delete this file. Do you wish to remove it?"
-    mbres=$?
-    if [ $mbres -eq 0 ]; then
-      rm -f $HSHQ_INSTALL_CFG
-      # Clean up the log files as well, don't need them anymore.
-      rm -f $HOME/hshq/$HSHQ_FULL_LOG_NAME
-      rm -f $HOME/hshq/$HSHQ_TIMESTAMP_LOG_NAME
-    fi
-  fi
-  if [ -f /etc/sudoers.d/$SUDO_LONG_TIMEOUT_FILENAME ]; then
-    removeSudoTimeoutInstall
-  fi
+  #if [ -f $HSHQ_INSTALL_CFG ]; then
+  #  read -p "The installation configuration file still exists ($HSHQ_INSTALL_CFG). It contains sensitive data in plain text. If you have successfully performed the installation and utilized the information, then it is recommended that you delete this file. Do you wish to remove it? Enter yes to remove." is_rem_install_config
+  #  mbres=$?
+  #  if [ $mbres -eq 0 ]; then
+  #    rm -f $HSHQ_INSTALL_CFG
+  #    # Clean up the log files as well, don't need them anymore.
+  #    rm -f $HOME/hshq/$HSHQ_FULL_LOG_NAME
+  #    rm -f $HOME/hshq/$HSHQ_TIMESTAMP_LOG_NAME
+  #  fi
+  #fi
   installedmenu=$(cat << EOF
 
 $hshqlogo
@@ -752,7 +749,7 @@ function addToDisabledServices()
   dis_svc=$1
   echo $DISABLED_SERVICES | grep $dis_svc > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    if [ "$DISABLED_SERVICES" = "" ]; then
+    if [ -z "$DISABLED_SERVICES" ]; then
       DISABLED_SERVICES="$dis_svc"
     else
       DISABLED_SERVICES="${DISABLED_SERVICES},$dis_svc"
@@ -863,7 +860,7 @@ function initConfig()
   done
 
   new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
-  if [ "$(cat /etc/hosts | grep $new_hostname)" = "" ]; then
+  if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
     echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
   fi
   sudo hostnamectl set-hostname $new_hostname
@@ -1196,7 +1193,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}depending on hardward specs and download speeds.\n"
   strInstallConfig="${strInstallConfig}Copy the above info before proceeding. (Ensure to scroll up and\n"
   strInstallConfig="${strInstallConfig}retain everything between the ##### borders)\n"
-  strInstallConfig="${strInstallConfig}This install configuration is also stored in $HSHQ_INSTALL_CFG.\n"
+ # strInstallConfig="${strInstallConfig}This install configuration is also stored in $HSHQ_INSTALL_CFG.\n"
   strInstallConfig="${strInstallConfig}The process will run continuously uninterrupted in a 'screen'\n"
   strInstallConfig="${strInstallConfig}If you lose connection, then enter 'screen -r hshqInstall' to resume\n"
   strInstallConfig="${strInstallConfig}the screen if you want to continue to view the process.\n"
@@ -1217,9 +1214,9 @@ function initInstallation()
     strInstallConfig="${strInstallConfig}in the user's home directory (/home/$RELAYSERVER_REMOTE_USERNAME). Start the installation\n"
     strInstallConfig="${strInstallConfig}on your RelayServer first before starting the installation here.\n"
   fi
-  rm -f $HSHQ_INSTALL_CFG
-  echo -e "$strInstallConfig" > $HSHQ_INSTALL_CFG
-  chmod 0400 $HSHQ_INSTALL_CFG
+  #rm -f $HSHQ_INSTALL_CFG
+  #echo -e "$strInstallConfig" > $HSHQ_INSTALL_CFG
+  #chmod 0400 $HSHQ_INSTALL_CFG
   echo -e "${strInstallConfig}"
   isRelayInstallInit=false
   while true;
@@ -1334,8 +1331,8 @@ function performBaseInstallation()
     clearQueryLogAndStatsAdguardRS
   fi
   installLogNotify "Post Installation"
-  postInstallation
   removeSudoTimeoutInstall
+  postInstallation
 }
 
 function postInstallation()
@@ -1985,7 +1982,7 @@ function setupHostedVPN()
   isReload=false
   for leCert in "${leCertsArr[@]}"
   do
-    sqlite3 $HSHQ_DB "insert into lecertdomains(Domain,BaseDomain) values('$leCert','$HOMESERVER_DOMAIN');"
+    sqlite3 $HSHQ_DB "insert or ignore into lecertdomains(Domain,BaseDomain) values('$leCert','$HOMESERVER_DOMAIN');"
     curBaseDomain=$(getBaseDomain $leCert)
     curSubDomain=$(getSubDomain $leCert)
     if [ "$curBaseDomain" = "$HOMESERVER_DOMAIN" ]; then
@@ -2010,23 +2007,47 @@ function setupHostedVPN()
   if [ "$isReload" = "true" ]; then
     loadSvcVars
   fi
-
+  resetRSInit
+  num_tries=1
+  max_tries=100
   RELAYSERVER_WG_VPN_SUBNET=""
-  while [ -z "$RELAYSERVER_WG_VPN_SUBNET" ]
+  while [ -z "$RELAYSERVER_WG_VPN_SUBNET" ] && [ $num_tries -lt $max_tries ]
   do
+    ((num_tries++))
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       RELAYSERVER_WG_VPN_SUBNET=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
     else
-      RELAYSERVER_WG_VPN_SUBNET=$(promptUserInputMenu 10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24 "Enter Hosting Subnet" "Enter the Hosting Subnet (in CIDR): ")
+      RELAYSERVER_WG_VPN_SUBNET=$(promptUserInputMenu "10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24" "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
     fi
 	if [ -z "$RELAYSERVER_WG_VPN_SUBNET" ] || [ "$(checkValidIPAddress $RELAYSERVER_WG_VPN_SUBNET)" = "false" ]; then
 	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
-      RELAYSERVER_WG_VPN_SUBNET=""
-	else
-	  updateConfigVar RELAYSERVER_WG_VPN_SUBNET "$RELAYSERVER_WG_VPN_SUBNET"
+      continue
 	fi
+    is_intersect="$(isNetworkIntersectOurNetworks $RELAYSERVER_WG_VPN_SUBNET false)"
+    if ! [ -z "$is_intersect" ]; then
+      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
+	  showMessageBox "Network Collision" "Network Collision: $is_intersect"
+      continue
+    fi
+	updateConfigVar RELAYSERVER_WG_VPN_SUBNET $RELAYSERVER_WG_VPN_SUBNET
     resetRSInit
   done
+  if [ -z "$RELAYSERVER_WG_VPN_SUBNET" ]; then
+    # We tried...
+    echo "ERROR: Could not allocate VPN network subnet."
+    return 1
+  fi
+
+  pullImage $IMG_WIREGUARD
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain WireGuard docker image."
+    return 3
+  fi
+  pullImage $IMG_DNSMASQ
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain DNSMasq docker image."
+    return 4
+  fi
 
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -2106,29 +2127,31 @@ function setupHostedVPN()
     RELAYSERVER_SYNCTHING_FOLDER_ID=$(pwgen -c -n 5 1)-$(pwgen -c -n 5 1)
     updateConfigVar RELAYSERVER_SYNCTHING_FOLDER_ID $RELAYSERVER_SYNCTHING_FOLDER_ID
   fi
-  RELAYSERVER_WG_SV_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
+  RELAYSERVER_WG_SV_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
   updateConfigVar RELAYSERVER_WG_SV_IP $RELAYSERVER_WG_SV_IP
-  RELAYSERVER_WG_SV_PRIVATEKEY=$(wg genkey)
-  updateConfigVar RELAYSERVER_WG_SV_PRIVATEKEY $RELAYSERVER_WG_SV_PRIVATEKEY
+  if [ -z "$RELAYSERVER_WG_SV_PRIVATEKEY" ]; then
+    RELAYSERVER_WG_SV_PRIVATEKEY=$(wg genkey)
+    updateConfigVar RELAYSERVER_WG_SV_PRIVATEKEY $RELAYSERVER_WG_SV_PRIVATEKEY
+    RELAYSERVER_WG_SV_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_PRIVATEKEY | wg pubkey)
+    updateConfigVar RELAYSERVER_WG_SV_PUBLICKEY $RELAYSERVER_WG_SV_PUBLICKEY
+  fi
   RELAYSERVER_WG_SV_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_SV_PRESHAREDKEY $RELAYSERVER_WG_SV_PRESHAREDKEY
-  RELAYSERVER_WG_SV_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_PRIVATEKEY | wg pubkey)
-  updateConfigVar RELAYSERVER_WG_SV_PUBLICKEY $RELAYSERVER_WG_SV_PUBLICKEY
-  RELAYSERVER_WG_SV_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-1))
+  RELAYSERVER_WG_SV_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-1))
   updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_IP $RELAYSERVER_WG_SV_CLIENTDNS_IP
   RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY
   RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY
   RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_HS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-2))
+  RELAYSERVER_WG_HS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-2))
   updateConfigVar RELAYSERVER_WG_HS_IP $RELAYSERVER_WG_HS_IP
   RELAYSERVER_WG_HS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_HS_PRIVATEKEY $RELAYSERVER_WG_HS_PRIVATEKEY
   RELAYSERVER_WG_HS_PRESHAREDKEY=$(wg genpsk)
   updateConfigVar RELAYSERVER_WG_HS_PRESHAREDKEY $RELAYSERVER_WG_HS_PRESHAREDKEY
   RELAYSERVER_WG_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_HS_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep Usable* | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-3))
+  RELAYSERVER_WG_HS_CLIENTDNS_IP=$(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $RELAYSERVER_WG_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-3))
   updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_IP $RELAYSERVER_WG_HS_CLIENTDNS_IP
   RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY=$(wg genkey)
   updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY
@@ -2167,8 +2190,11 @@ function setupHostedVPN()
     insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
     insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
+    insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wireguard.png" false
     insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
+    checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
     docker container start heimdall > /dev/null 2>&1
     docker container start uptimekuma > /dev/null 2>&1
     emailVaultwardenCredentials true
@@ -2265,15 +2291,15 @@ PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
   curdt=$(getCurrentDate)
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_PRESHAREDKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
   mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_VPN_SUBNET','$RELAYSERVER_WG_SV_IP');"
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_IP',true,'${RELAYSERVER_WG_VPN_NETNAME}-user1','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'${RELAYSERVER_WG_VPN_NETNAME}-user1','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
@@ -2387,7 +2413,7 @@ function main()
   echo "Running setup script..."
   set +e
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
-  if [ "\$(cat /etc/hosts | grep \$new_hostname)" = "" ]; then
+  if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
     echo "127.0.1.1 \$new_hostname" | sudo tee -a /etc/hosts
   fi
   sudo hostnamectl set-hostname \$new_hostname
@@ -3709,6 +3735,8 @@ function main()
     if [ -z "\\\$subdom" ]; then continue; fi
     sed -i "/# LE certs path \\\$subdom BEGIN/,/# LE certs path \\\$subdom END/d" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \\\$HOME/tmpcadfile
+  mv \\\$HOME/tmpcadfile \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -3763,6 +3791,8 @@ function main()
     if [ -z "\\\$subdom" ]; then continue; fi
     sed -i "/# Expose domain \\\$subdom BEGIN/,/# Expose domain \\\$subdom END/d" \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \\\$HOME/tmpcadfile
+  mv \\\$HOME/tmpcadfile \\\$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -3962,7 +3992,7 @@ function installStack()
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
     sleep 1
-    ((i++))
+    i=\$((i+1))
   done
   set -e
   if [ \$isFound == "F" ]; then
@@ -4027,7 +4057,7 @@ function installPortainer()
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
     sleep 1
-    ((i++))
+    i=\$((i+1))
   done
   set -e
   if [ \$isFound == "F" ]; then
@@ -5594,7 +5624,7 @@ function installSyncthing()
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
     sleep 1
-    ((i=\$i+1))
+    i=\$((i+1))
   done
   if [ "\$isFound" = "F" ]; then
     echo "There was a problem installing syncthing"
@@ -6673,11 +6703,15 @@ function performMyNetworkCreateClientDNS()
   # Check if stack exists
   checkID=$(getStackID clientdns-${clientdns_stack_name})
   if ! [ -z $checkID ]; then
-    echo "ERROR: A stack with this name already exists"
+    echo "ERROR: A stack with this name already exists."
     return
   fi
   # Generate WireGuard config
   wg_ip=$(getRandomVPNIP)
+  if [ -z "$wg_ip" ]; then
+    echo "ERROR: Could not allocate an IP address, your network is full."
+    return
+  fi
   wg_priv_key=$(wg genkey)
   wg_pre_key=$(wg genpsk)
   wg_pub_key=$(echo $wg_priv_key | wg pubkey)
@@ -6689,7 +6723,7 @@ function performMyNetworkCreateClientDNS()
     echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer, returning..."
     return
   fi
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-$clientdns_stack_name','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','mynetwork','$wg_pub_key','$wg_ip',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$(getCurrentDate)');"
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-$clientdns_stack_name','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','mynetwork','$wg_pub_key','$wg_pre_key','$wg_ip',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$(getCurrentDate)');"
 
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf >/dev/null <<EOFCF
@@ -7020,7 +7054,7 @@ function createOtherNetworkApplyUserConfig()
     return
   fi
   if ! [ -z "$ip_address" ]; then
-    if [ "$(checkValidIPAddress $ip_address)" = "false" ] || ! [ "$(echo $ip_address | cut -d "." -f1)" = "10" ]; then
+    if [ "$(checkValidIPAddress $ip_address)" = "false" ] || [ "$(isIPInSubnet $ip_address 10.0.0.0/8)" = "false" ]; then
       showMessageBox "Invalid IP" "Invalid IP address, returning..."
       return
     fi
@@ -7066,6 +7100,12 @@ function sendOtherNetworkApplyUserConfig()
     priv_key=$(wg genkey)
     pub_key=$(echo $priv_key | wg pubkey)
     sendEmail -s "Private Key ($request_id)" -b "DO NOT SEND THIS TO ANYONE!!!\n\nKeep it secret, keep it safe.\n\nRequestID: $request_id\nDescription: $description\nPrivate Key: $priv_key\n" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t $email_address
+  elif [ "$(checkValidWireGuardKey $client_public_key)" = "false" ]; then
+    echo "ERROR: Invalid public key."
+    return 2
+  elif ! [ -z "$(getWGNameFromPubkey $pub_key)" ]; then
+    echo "ERROR: Duplicate public key."
+    return 2
   fi
   msg_body=""
   msg_body=$msg_body"$APPLICATION_FIRST_LINE\n"
@@ -7123,7 +7163,8 @@ function createMyNetworkUserInvite()
   is_internet="$2"
   ip_address="$3"
   pub_key="$4"
-  apply_file="$5"
+  pre_key="$5"
+  apply_file="$6"
   priv_key=""
   request_id=$(getRandomRequestID)
   if [ -z "$pub_key" ] && ! [ -z "$ip_address" ]; then
@@ -7137,6 +7178,9 @@ function createMyNetworkUserInvite()
     priv_key=$(wg genkey)
     pub_key=$(echo $priv_key | wg pubkey)
   fi
+  if [ -z "$pre_key" ]; then
+    pre_key=$(wg genpsk)
+  fi
   msg_body=""
   msg_body=$msg_body"$APPLICATION_FIRST_LINE\n"
   msg_body=$msg_body"RequestID = $request_id\n"
@@ -7145,6 +7189,7 @@ function createMyNetworkUserInvite()
   if ! [ -z "$priv_key" ]; then
     msg_body=$msg_body"PrivateKey = $priv_key\n"
   fi
+  msg_body=$msg_body"PresharedKey = $pre_key\n"
   msg_body=$msg_body"PublicKey = $pub_key\n"
   msg_body=$msg_body"IsInternet = $is_internet\n"
   msg_body=$msg_body"IPAddress = $ip_address\n"
@@ -7160,6 +7205,13 @@ function performNetworkInvite()
   fi
   apply_file="$1"
   config_name="$2"
+  # First check if there are any shell expansions in the file.
+  # If there is, throw up big a red flag.
+  check_file=$(checkFileShellExpansion $apply_file)
+  if ! [ -z "$check_file" ]; then
+    echo -e "$check_file"
+    return 2
+  fi
   # Do basic checks
   removeSpecialChars "$apply_file"
   first_line="$(awk 'NF{print;exit}' $apply_file)"
@@ -7180,8 +7232,17 @@ function performNetworkInvite()
     return 7
   fi
   pub_key=$(getValueFromConfig "PublicKey" $apply_file)
-  if [ -z "$pub_key" ]; then
+  if [ -z "$pub_key" ] || [ "$(checkValidWireGuardKey $pub_key)" = "false" ]; then
     echo "ERROR: Invalid public key."
+    return 7
+  fi
+  if ! [ -z "$(getWGNameFromPubkey $pub_key)" ]; then
+    echo "ERROR: Duplicate public key."
+    return 7
+  fi
+  preshared_key=$(getValueFromConfig "PresharedKey" $apply_file)
+  if ! [ -z "$preshared_key" ] && [ "$(checkValidWireGuardKey $preshared_key)" = "false" ]; then
+    echo "ERROR: Invalid preshared key."
     return 7
   fi
 
@@ -7253,7 +7314,7 @@ function performNetworkInvite()
       else
         is_ip_provided=true
       fi
-      if [ -z "$ip_address" ] || [ "$(checkValidIPAddress $ip_address)" = "false" ] || ! [ $(echo $ip_address | cut -d "." -f1) = "10" ]; then
+      if [ -z "$ip_address" ] || [ "$(checkValidIPAddress $ip_address)" = "false" ] || [ "$(isIPInSubnet $ip_address 10.0.0.0/8)" = "false" ]; then
         echo "ERROR: Invalid IP address."
         return 7
       fi
@@ -7268,22 +7329,22 @@ function performNetworkInvite()
   case "$conn_type" in
     "HomeServer VPN")
       if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
-        echo "ERROR: This is your domain, idiot..."
+        echo "ERROR: This is your domain, dummy!"
         return 7
       fi
       config_name="HS-VPN-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connnection with this name."
         return 7
       fi
       check_dom=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections join connections on hsvpn_connections.ID = connections.ID where hsvpn_connections.DomainName='$domain_name' and connections.NetworkType='mynetwork';")
-      if ! [ "$check_dom" = "" ]; then
+      if ! [ -z "$check_dom" ]; then
         echo "ERROR: There is already a connection with this domain ($domain_name)."
         return 7
       fi
       new_ip=$(getRandomVPNIP)
-      if [ "$new_ip" = "" ]; then
+      if [ -z "$new_ip" ]; then
         echo "ERROR: The VPN network is full."
         return 7
       fi
@@ -7294,19 +7355,19 @@ function performNetworkInvite()
     ;;
     "HomeServer Internet")
       if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
-        echo "ERROR: This is your domain, idiot..."
+        echo "ERROR: This is your domain, dummy!"
         return 7
       fi
       config_name="HS-Internet-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connnection with this name."
         return 7
       fi
     ;;
     "User")
       is_db=$(getWGNameFromIP $ip_address)
-      if ! [ "$is_db" = "" ]; then
+      if ! [ -z "$is_db" ]; then
         echo "ERROR: This IP address is already being used (Connection Name: $is_db)."
         return 7
       fi
@@ -7319,7 +7380,9 @@ function performNetworkInvite()
   esac
 
   # Perform application steps
-  preshared_key=$(wg genpsk)
+  if [ -z "$preshared_key" ]; then
+    preshared_key=$(wg genpsk)
+  fi
   wgPortalAuth="$(getWGPortalAuth)"
   loadSSHKey
   curdt=$(getCurrentDate)
@@ -7332,7 +7395,7 @@ function performNetworkInvite()
         unloadSSHKey
         return 7
       fi
-      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','mynetwork','$pub_key','$new_ip',false,'','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
+      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','mynetwork','$pub_key','$preshared_key','$new_ip',false,'','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
       mail_host_id=NULL
       if [ "$is_primary" = "true" ]; then
         mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$mail_subdomain');select last_insert_rowid();")
@@ -7350,7 +7413,7 @@ function performNetworkInvite()
         mail_relay_password=$(pwgen -c -n 32 1)
         ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker exec mail-relay-postfix /etc/postfix/scripts/addMailUser.sh $domain_name $mail_relay_password"
         ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $domain_name $mail_subdomain $new_ip"
-        if ! [ "$le_domains" = "" ]; then
+        if ! [ -z "$le_domains" ]; then
           echo "Primary Adding LECertDomains: $le_domains"
           addLECertPathsToRelayServer "$le_domains" "$domain_name"
         fi
@@ -7358,6 +7421,11 @@ function performNetworkInvite()
     ;;
     "HomeServer Internet")
       new_ip=$(getRandomWireGuardIP)
+      if [ -z "$new_ip" ]; then
+        echo "ERROR: The HomeServer Internet network is full."
+        unloadSSHKey
+        return 7
+      fi
       ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\""
       mbres=$?
       if [ $mbres -ne 0 ]; then
@@ -7365,7 +7433,7 @@ function performNetworkInvite()
         unloadSSHKey
         return 7
       fi
-      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','homeserver_internet','mynetwork','$pub_key','$new_ip',true,'$curdt');"
+      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','homeserver_internet','mynetwork','$pub_key','$preshared_key','$new_ip',true,'$curdt');"
     ;;
     "User")
       ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$ip_address\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
@@ -7375,7 +7443,11 @@ function performNetworkInvite()
         unloadSSHKey
         return 7
       fi
-      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','user','mynetwork','$pub_key','$ip_address','$is_internet','$curdt');"
+      isInternet=false
+      if [ "$is_internet" = "true" ]; then
+        isInternet=true
+      fi
+      sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','user','mynetwork','$pub_key','$preshared_key','$ip_address',$isInternet,'$curdt');"
       priv_key=$(getValueFromConfig "PrivateKey" $apply_file)
     ;;
   esac
@@ -7405,6 +7477,7 @@ function performNetworkInvite()
       mail_body=$mail_body"EndpointPort = $RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
+      mail_body=$mail_body"PresharedKey = $preshared_key\n"
       mail_body=$mail_body"HomeServerName = $HOMESERVER_NAME\n"
       mail_body=$mail_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
       mail_body=$mail_body"InternalPrefix = $INT_DOMAIN_PREFIX\n"
@@ -7589,13 +7662,30 @@ function performNetworkJoin()
 {
   is_connect="$1"
   join_file="$2"
-
+  echo "Joining network..."
+  # First check if there are any shell expansions in the file.
+  # If there is, throw up a big red flag.
+  check_file=$(checkFileShellExpansion $join_file)
+  if ! [ -z "$check_file" ]; then
+    echo -e "$check_file"
+    return 2
+  fi
   # Do basic checks
   removeSpecialChars "$join_file"
   first_line="$(awk 'NF{print;exit}' $join_file)"
   last_line="$(awk 'NF{s=$0}END{print s}' $join_file)"
   if ! [ "$first_line" = "$INVITATION_FIRST_LINE" ] || ! [ "$last_line" = "$INVITATION_LAST_LINE" ]; then
     echo "ERROR: Incomplete invitation."
+    return 8
+  fi
+  # Check right away for matching RequestID
+  request_id=$(getValueFromConfig "RequestID" $join_file)
+  if [ -z "$request_id" ]; then
+    echo "ERROR: Invalid request ID."
+    return 8
+  fi
+  if ! [ -f $HSHQ_WIREGUARD_DIR/requestkeys/$request_id ]; then
+    echo "ERROR: No matching key for this request."
     return 8
   fi
   base_config_section=$(getTextBetweenStrings $join_file "Base Config Begin" "Base Config End")
@@ -7606,19 +7696,7 @@ function performNetworkJoin()
   mail_key_section=$(getTextBetweenStrings $join_file "mail.key Begin" "mail.key End")
   join_base_config_file=$HOME/joinvpn_base_config.cnf
   echo -e "$base_config_section" > $join_base_config_file
-  request_id=$(getValueFromConfig "RequestID" $join_base_config_file)
-  if [ -z "$request_id" ]; then
-    echo "ERROR: Invalid request ID."
-    rm -f $join_base_config_file
-    return 8
-  fi
-  if ! [ -f $HSHQ_WIREGUARD_DIR/requestkeys/$request_id ]; then
-    echo "ERROR: No matching key for this request."
-    rm -f $join_base_config_file
-    return 8
-  fi
   priv_key=$(sudo awk 'NF{print;exit}' $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
-
   conn_type=$(getValueFromConfig "ConnectionType" $join_base_config_file)
   interface_name=$(getValueFromConfig "InterfaceName" $join_base_config_file)
   if [ -z "$interface_name" ] || [ $(checkValidString "$interface_name" "-") = "false" ]; then
@@ -7657,8 +7735,19 @@ function performNetworkJoin()
     return 8
   fi
   client_public_key=$(getValueFromConfig "ClientPublicKey" $join_base_config_file)
-  if [ -z "$client_public_key" ]; then
+  if [ -z "$client_public_key" ] || [ "$(checkValidWireGuardKey $client_public_key)" = "false" ]; then
     echo "ERROR: Invalid client public key."
+    rm -f $join_base_config_file
+    return 8
+  fi
+  if ! [ -z "$(getWGNameFromPubkey $client_public_key)" ]; then
+    echo "ERROR: Duplicate client public key."
+    rm -f $join_base_config_file
+    return 8
+  fi
+  preshared_key=$(getValueFromConfig "PresharedKey" $join_base_config_file)
+  if [ -z "$preshared_key" ]; then
+    echo "ERROR: Invalid preshared key."
     rm -f $join_base_config_file
     return 8
   fi
@@ -7765,12 +7854,6 @@ function performNetworkJoin()
         rm -f $join_base_config_file
         return 8
       fi
-      preshared_key=$(getValueFromConfig "PresharedKey" $join_base_config_file)
-      if [ -z "$preshared_key" ]; then
-        echo "ERROR: Invalid preshared key."
-        rm -f $join_base_config_file
-        return 8
-      fi
       mtu=$(getValueFromConfig "MTU" $join_base_config_file)
       if [ -z "$mtu" ]; then
         echo "ERROR: Invalid MTU."
@@ -7787,12 +7870,12 @@ function performNetworkJoin()
 
   # Do logical checks
   if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
-    echo "ERROR: This is your domain, idiot..."
+    echo "ERROR: This is your domain, dummy!"
     rm -f $join_base_config_file
     return 8
   fi
   iface_db=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where InterfaceName='$interface_name';")
-  if ! [ "$iface_db" = "" ]; then
+  if ! [ -z "$iface_db" ]; then
     echo "ERROR: An interface with this name already exists. Change the InterfaceName value to something unique (using 10 characters or less)."
     rm -f $join_base_config_file
     return 8
@@ -7809,7 +7892,7 @@ function performNetworkJoin()
     return 8
   fi
   is_db=$(getWGNameFromIP $client_ip)
-  if ! [ "$is_db" = "" ]; then
+  if ! [ -z "$is_db" ]; then
     echo "ERROR: This IP address is already being used (Connection Name: $is_db). Please request a new one."
     rm -f $join_base_config_file
     return 8
@@ -7818,18 +7901,21 @@ function performNetworkJoin()
   case "$conn_type" in
     "HomeServer VPN")
       check_ca_dom=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections join connections on hsvpn_connections.ID = connections.ID where hsvpn_connections.DomainName='$domain_name' and connections.NetworkType='other';")
-      if ! [ "$check_ca_dom" = "" ]; then
+      if ! [ -z "$check_ca_dom" ]; then
         echo "ERROR: There is already an existing connection with this domain ($domain_name), please disconnect that existing connection and try again."
         rm -f $join_base_config_file
         return 8
       fi
       vpn_subnet=$(getValueFromConfig VPNSubnet $join_base_config_file)
       # Check for intersection with our networks
-      if [ "$(isNetworkIntersectOurNetworks $vpn_subnet)" = "true" ]; then
-        echo "ERROR: Network collision. This network intersects with an existing network. You cannot join this network."
+      echo "Checking for network collision..."
+      check_intersect="$(isNetworkIntersectOurNetworks $vpn_subnet false)"
+      if ! [ -z "$check_intersect" ]; then
+        echo "ERROR: Network collision: $check_intersect"
         rm -f $join_base_config_file
         return 8
       fi
+      echo "No collision."
       join_rootca_name="$(getCACertificateNameFromDomain $domain_name)"
       join_rootca_file=$HOME/$join_rootca_name
       echo -e "$root_ca_section" > $join_rootca_file
@@ -7853,7 +7939,7 @@ function performNetworkJoin()
         net_type="primary"
       fi
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connection with this name."
         rm -f $join_base_config_file
         rm -f $join_rootca_file
@@ -7912,7 +7998,7 @@ function performNetworkJoin()
       dns_file=$HOME/dns.tmp
       echo -e "$dns_section" > $dns_file
       curdt=$(getCurrentDate)
-      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
+      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$preshared_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
       sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$vpn_subnet','$rs_vpn_ip');"
       if [ "$IS_INSTALLED" = "true" ]; then
         echo "Updating HomeServer DNS and restarting Heimdall..."
@@ -7952,11 +8038,20 @@ function performNetworkJoin()
       dockerNetworkName="dwg-${interface_name}"
       config_name="Other-Internet-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
-      if ! [ "$checkname_db" = "" ]; then
+      if ! [ -z "$checkname_db" ]; then
         echo "ERROR: There is already a connection with this name."
         rm -f $join_base_config_file
         return 8
       fi
+      # Check for intersection with our networks
+      echo "Checking for network collision..."
+      check_intersect="$(isNetworkIntersectOurNetworks ${client_ip}/32 false)"
+      if ! [ -z "$check_intersect" ]; then
+        echo "ERROR: Network collision: $check_intersect"
+        rm -f $join_base_config_file
+        return 8
+      fi
+      echo "No collision."
       join_wireguard_config_file=$HOME/${interface_name}.conf
       tableid=$(getNextWGRoutingTableID)
       allowed_ips=$(getAllowedPublicIPs)
@@ -7983,7 +8078,7 @@ function performNetworkJoin()
       sudo mv $join_wireguard_config_file $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
       rm -f $join_config_file
       curdt=$(getCurrentDate)
-      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_internet','other','$my_pub_key','$client_ip',true,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
+      db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_internet','other','$my_pub_key','$preshared_key','$client_ip',true,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
       JOINED_DB_ID=$db_id
       set -e
       if [ "$is_connect" = "true" ]; then
@@ -8041,7 +8136,7 @@ function removeMyNetworkPrimaryVPN()
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
     echo "Removing ClientDNS instances..."
     # Needs testing
-    cdns_arr=($(sqlite3 $HSHQ_DB "select ID,name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
+    cdns_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
     for cur_cdns in "${cdns_arr[@]}"
     do
       cur_cdns_id=$(echo "$cur_cdns" | cut -d"|" -f1)
@@ -8166,7 +8261,7 @@ function removeMyNetworkHomeServerVPNConnection()
     fi
     sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhostmap where MailHostID=$mail_host_id;"
     sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhosts where ID=$mail_host_id;"
-    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains where BaseDomain='$domain_name';"
+    removeSecondaryDomainFromRelayServer "$domain_name"
   fi
   unloadSSHKey
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
@@ -8180,8 +8275,10 @@ function removeMyNetworkHomeServerInternetConnection()
 {
   db_id=$1
   removal_reason="$2"
+  echo "Removing $db_id"
   peer_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
   removeMyNetworkNonHomeServerConnection $db_id
+  echo "Sending email to $peer_email"
   notifyHomeServerInternetNetworkRemoval "$peer_email" "$removal_reason"
 }
 
@@ -8273,11 +8370,15 @@ function disconnectOtherNetworkHomeServerInternetConnection()
 {
   db_id=$1
   disconnect_reason="$2"
+  set +e
   wg_config=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
   host_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf down
   del_network=$(sudo grep ^\#DOCKER_NETWORK_NAME= $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf | sed 's/^[^=]*=//')
   docker network rm $del_network > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not remove the docker network associated with this connection. There is likely one or more containers still attached to it. Ensure to shut down the container(s) and manually delete the network ($del_network)."
+  fi
   sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${wg_config}.conf
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
 
@@ -8289,6 +8390,110 @@ function disconnectOtherNetworkHomeServerInternetConnection()
   email_body=${email_body}"Domain: $HOMESERVER_DOMAIN\n"
   email_body=${email_body}"Reason Provided: $disconnect_reason\n\n"
   sendEmail -s "$email_subj" -b "$email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$host_email" 
+}
+
+function changeHSInternetPrimaryIPAddress()
+{
+  # Just in case there's a network collision, allow
+  # user to change the IP address rather than having
+  # to tear down the entire hosted VPN structure.
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  new_ip=$1
+  echo "Checking for network collision..."
+  check_intersect="$(isNetworkIntersectOurNetworks ${new_ip}/32 false)"
+  if ! [ -z "$check_intersect" ]; then
+    echo "ERROR: Network collision: $check_intersect"
+    return 2
+  fi
+  echo "No collision."
+  if [ "$(isIPInSubnet $new_ip 10.0.0.0/8)" = "false" ]; then
+    echo "ERROR: IP not in the 10.0.0.0/8 range."
+    return 3
+  fi
+  db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_internet' and NetworkType='primary';")
+  pub_key=$(sqlite3 $HSHQ_DB "select PublicKey from connections where ID=$db_id;")
+  cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
+  interface_name=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  wgPortalAuth="$(getWGPortalAuth)"
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"true\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return 4
+  fi
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"Primary-Internet-$HOMESERVER_DOMAIN\" \"$EMAIL_ADMIN_EMAIL_ADDRESS\" \"$pub_key\" \"$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return 5
+  fi
+  unloadSSHKey
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf down
+  sudo sed -i "s/^#CLIENT_ADDRESS=.*/#CLIENT_ADDRESS=$new_ip\/32/g" $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf up
+  sqlite3 $HSHQ_DB "update connections set IPAddress='$new_ip' where ID=$db_id;"
+}
+
+function changeUserIPAddress()
+{
+  # Just in case there's a network collision, allow
+  # user to change the IP address rather than having
+  # to redo the apply/invite.
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  db_id=$1
+  new_ip=$2
+
+  is_db=$(getWGNameFromIP $new_ip)
+  if ! [ -z "$is_db" ]; then
+    echo "ERROR: This IP address is already being used (Connection Name: $is_db)."
+    return 2
+  fi
+  is_in_subnet=$(isIPInSubnet $new_ip $RELAYSERVER_WG_VPN_SUBNET)
+  if [ "$is_in_subnet" = "true" ]; then
+    echo "ERROR: This IP address is inside of your VPN range designated for hosting HomeServers."
+    return 3
+  fi
+  cur_name=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$db_id;")
+  email_address=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
+  pub_key=$(sqlite3 $HSHQ_DB "select PublicKey from connections where ID=$db_id;")
+  pre_key=$(sqlite3 $HSHQ_DB "select PresharedKey from connections where ID=$db_id;")
+  cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
+  isInt=$(sqlite3 $HSHQ_DB "select IsInternet from connections where ID=$db_id;")
+  is_internet="false"
+  if [ "$isInt" = "1" ]; then
+    is_internet="true"
+  fi
+  wgPortalAuth="$(getWGPortalAuth)"
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return 4
+  fi
+  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$cur_name\" \"$email_address\" \"$pub_key\" \"$pre_key\" \"$new_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
+    unloadSSHKey
+    return 5
+  fi
+  unloadSSHKey
+  sqlite3 $HSHQ_DB "update connections set IPAddress='$new_ip' where ID=$db_id;"
+  email_subj="User Interface IP Address Change Notice from $HOMESERVER_NAME"
+  email_body=""
+  email_body=$email_body"User Interface IP Address Change Notice from $HOMESERVER_NAME\n"
+  email_body=$email_body"================================================================\n\n"
+  email_body=$email_body"IP address successfully changed.\n\n"
+  email_body=$email_body"Old: $cur_ip\n"
+  email_body=$email_body"New: $new_ip\n"
+  sendEmail -s "$email_subj" -b "$email_body" -t "$email_address" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
 # Util Functions
@@ -8500,8 +8705,8 @@ function setHomeServerPrivateRange()
   set +e
   # getHomeServerPrivateRange has some issues, so wrapping the function call with and error handler.
   hspr=""
-  num_tries=0
-  max_tries=5
+  num_tries=1
+  max_tries=6
   if [ -z "$HOMESERVER_HOST_IP" ]; then
     echo "HOMESERVER_HOST_IP is empty, exiting..."
     exit 1
@@ -8714,7 +8919,7 @@ function changeHostStaticIP()
 function initWireGuardDB()
 {
   rm -f $HSHQ_DB
-  sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
+  sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
   sqlite3 $HSHQ_DB "create table mailhosts(ID integer not null primary key autoincrement,MailHost text not null);"
   sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,VPN_Subnet text default null,RS_VPN_IP text default null);"
   sqlite3 $HSHQ_DB "create table hsvpn_dns(ID integer not null primary key autoincrement,HostDomain text not null,PeerDomain text not null,PeerDomainExtPrefix text not null,IPAddress text not null,DateAdded datetime,IsActive boolean);"
@@ -8722,6 +8927,7 @@ function initWireGuardDB()
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
   sqlite3 $HSHQ_DB "create table lecertdomains(Domain text primary key,BaseDomain text not null);"
   sqlite3 $HSHQ_DB "create table exposedomains(Domain text primary key,BaseDomain text not null);"
+  chmod 600 $HSHQ_DB
 }
 
 function getWGNameFromIP()
@@ -8730,20 +8936,22 @@ function getWGNameFromIP()
   echo $(sqlite3 $HSHQ_DB "select Name from connections where IPAddress='$check_ip';")
 }
 
-function getRandomWireGuardIP()
+function getWGNameFromPubkey()
 {
-  while true;
-  do
-    randIP=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).$(($(($RANDOM%250))+1))
-    is_in_subnet=$(isIPInSubnet $randIP $RELAYSERVER_WG_VPN_SUBNET)
-    if [ "$is_in_subnet" = "false" ]; then
-      is_db=$(getWGNameFromIP $randIP)
-      if [ "$is_db" = "" ]; then
-        echo $randIP
-        return
-      fi
-    fi
-  done
+  check_key=$1
+  echo $(sqlite3 $HSHQ_DB "select Name from connections where PublicKey='$check_key';")
+}
+
+function checkValidWireGuardKey()
+{
+  # Thank you gjoranv: https://stackoverflow.com/questions/74438436/how-to-validate-a-wireguard-public-key
+  check_key=$1
+  keyregex="^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=$"
+  if [[ $check_key =~ $keyregex ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
 }
 
 function isIPInSubnet()
@@ -8767,26 +8975,25 @@ function isIPInSubnet()
 function getRandomVPNIP()
 {
   # This function is specific to a /24 sized subnet.
-  # It should be improved to a more general case based on the size of the VPN.
+  # It should be improved to a more general case based on the size of the network.
   vpnbase=$(echo $RELAYSERVER_WG_VPN_SUBNET | rev | cut -d "." -f2- | rev)
-  numTries=0
-  maxTries=250
-  while [ $numTries -lt $maxTries ]
+  numvpnipTries=1
+  maxvpnipTries=88
+  while [ $numvpnipTries -lt $maxvpnipTries ]
   do
     randIP=${vpnbase}.$(($(($RANDOM%250))+1))
-    is_db=$(getWGNameFromIP $randIP)
-    if [ "$is_db" = "" ]; then
+    if [ -z "$(getWGNameFromIP $randIP)" ]; then
       echo $randIP
       return
     fi
-    ((numTries++))
+    ((numvpnipTries++))
   done
+  # Just start at the beginning...
   ip_host_part=1
   while [ $ip_host_part -le 250 ]
   do
     randIP=${vpnbase}.$ip_host_part
-    is_db=$(getWGNameFromIP $randIP)
-    if [ "$is_db" = "" ]; then
+    if [ -z "$(getWGNameFromIP $randIP)" ]; then
       echo $randIP
       return
     fi
@@ -8796,7 +9003,23 @@ function getRandomVPNIP()
   echo ""
 }
 
-function isNetworkIntersect()
+function getRandomWireGuardIP()
+{
+  numRIPTries=1
+  maxRIPTries=1000
+  while [ $numRIPTries -lt $maxRIPTries ]
+  do
+    randIP=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).$(($(($RANDOM%250))+1))
+    if [ "$(isIPInSubnet $randIP $RELAYSERVER_WG_VPN_SUBNET)" = "false" ] && [ -z "$(getWGNameFromIP $randIP)" ]; then
+      echo $randIP
+      return
+    fi
+    ((numRIPTries++))
+  done
+  echo ""
+}
+
+function checkNetworkIntersect()
 {
   net1=$1
   net2=$2
@@ -8804,8 +9027,8 @@ function isNetworkIntersect()
     echo "true"
     return
   fi
-  net1_beginip=$(sipcalc $net1 | grep Usable* | rev | cut -d " " -f3 | rev)
-  net1_endip=$(sipcalc $net1 | grep Usable* | rev | cut -d " " -f1 | rev)
+  net1_beginip=$(sipcalc $net1 | grep "^Network range" | rev | cut -d " " -f3 | rev)
+  net1_endip=$(sipcalc $net1 | grep "^Network range" | rev | cut -d " " -f1 | rev)
   is_in_subnet=$(isIPInSubnet $net1_beginip $net2)
   if [ "$is_in_subnet" = "true" ]; then
     echo "true"
@@ -8816,8 +9039,8 @@ function isNetworkIntersect()
     echo "true"
     return
   fi
-  net2_beginip=$(sipcalc $net2 | grep Usable* | rev | cut -d " " -f3 | rev)
-  net2_endip=$(sipcalc $net2 | grep Usable* | rev | cut -d " " -f1 | rev)
+  net2_beginip=$(sipcalc $net2 | grep "^Network range" | rev | cut -d " " -f3 | rev)
+  net2_endip=$(sipcalc $net2 | grep "^Network range" | rev | cut -d " " -f1 | rev)
   is_in_subnet=$(isIPInSubnet $net2_beginip $net1)
   if [ "$is_in_subnet" = "true" ]; then
     echo "true"
@@ -8834,19 +9057,44 @@ function isNetworkIntersect()
 function isNetworkIntersectOurNetworks()
 {
   checkNetwork=$1
-  if ! [ -z $RELAYSERVER_WG_VPN_SUBNET ] && [ "$(isNetworkIntersect $RELAYSERVER_WG_VPN_SUBNET $checkNetwork)" = "true" ]; then
-    echo "true"
+  checkAll=$2
+  checknet_ip=$(echo $checkNetwork | cut -d"/" -f1)
+  if [ "$(checkValidIPAddress $checknet_ip)" = "false" ]; then
+    echo "ERROR: Invalid IP address/subnet."
     return
   fi
-  vpn_arr=($(sqlite3 $HSHQ_DB "select VPN_Subnet from connections join hsvpn_connections on connections.ID = hsvpn_connections.ID where ConnectionType='homeserver_vpn' and NetworkType='other';"))
-  for curvpn in "${vpn_arr[@]}"
+  OIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  vpn_arr=($(sqlite3 $HSHQ_DB "select VPN_Subnet,HomeServerName from hsvpn_connections where VPN_Subnet is not null;"))
+  for curvpncheck in "${vpn_arr[@]}"
   do
-    if [ "$(isNetworkIntersect $curvpn $checkNetwork)" = "true" ]; then
-      echo "true"
+    curvpn=$(echo "$curvpncheck" | cut -d "|" -f1)
+    curhsname=$(echo "$curvpncheck" | cut -d "|" -f2)
+    if [ "$(checkNetworkIntersect $curvpn $checkNetwork)" = "true" ]; then
+      echo "The requested subnet ($checkNetwork) collides with ${curhsname} VPN subnet ($curvpn)"
+      IFS=$OIFS
       return
     fi
   done
-  echo "false"
+  if [ "$checkAll" = "true" ]; then
+    # Check all possible connections
+    ip_arr=($(sqlite3 $HSHQ_DB "select IPAddress,Name from connections;"))
+  else
+    # Check only connections on this HomeServer.
+    ip_arr=($(sqlite3 $HSHQ_DB "select IPAddress,Name from connections where ConnectionType='homeserver_internet' and NetworkType in ('primary','other');"))
+  fi
+  for curipcheck in "${ip_arr[@]}"
+  do
+    curip=$(echo "$curipcheck" | cut -d "|" -f1)
+    curconname=$(echo "$curipcheck" | cut -d "|" -f2)
+    if [ "$(checkNetworkIntersect ${curip}/32 $checkNetwork)" = "true" ]; then
+      echo "The requested subnet ($checkNetwork) collides with connection ${curconname} ($curip)"
+      IFS=$OIFS
+      return
+    fi
+  done
+  IFS=$OIFS
+  echo ""
 }
 
 function getNextWGRoutingTableID()
@@ -9238,6 +9486,32 @@ function checkDecryptConfigFile()
   fi
 }
 
+function checkFileShellExpansion()
+{
+  cfse_curE=${-//[^e]/}
+  check_file=$1
+  set +e
+  retVal=""
+  grep '\$' $check_file > /dev/null 2>&1
+  retDS=$?
+  grep '\~' $check_file > /dev/null 2>&1
+  retTD=$?
+  grep '\*' $check_file > /dev/null 2>&1
+  retAS=$?
+  if [ $retDS -eq 0 ] || [ $retTD -eq 0 ] || [ $retAS -eq 0 ]; then
+    retVal=$retVal"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+    retVal=$retVal"@               Shell expansion attempt detected!              @\n"
+    retVal=$retVal"@            Check the sender of this configuration.           @\n"
+    retVal=$retVal"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+  else
+    echo ""
+  fi
+  if ! [ -z $cfse_curE ]; then
+    set -e
+  fi
+  echo "$retVal"
+}
+
 function createStackJson()
 {
   echo "{\"Name\":\"$1\",""$( jq -Rscjr '{StackFileContent: . }' $2 | tail -c +2 | head -c -1 )"",\"Env\":"$(envToJson $3)"}"
@@ -9328,8 +9602,8 @@ function startStopStackByID()
   if [ -z "$portainerToken" ]; then
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  numSStries=0
-  maxSStries=5
+  numSStries=1
+  maxSStries=6
   while [ $numSStries -lt $maxSStries ]
   do
     http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
@@ -9536,8 +9810,9 @@ function removeTextBlockInFile()
   set +e
   match=$(grep "$block_match_begin" $r_filename)
   if ! [ -z "$match" ]; then
-    all_text=$(cat $r_filename)
-    echo -e "${all_text%%$block_match_begin*}${all_text##*$block_match_end}" > $r_filename
+    sed -i "/$block_match_begin/,/$block_match_end/d" $r_filename
+    cat -s $r_filename > $HOME/tmpremfile
+    mv $HOME/tmpremfile $r_filename
   fi
   set +e
   if ! [ -z $rtbif_curE ]; then
@@ -9877,8 +10152,7 @@ function loadSvcVars()
     for curSub in "${subdom_list[@]}"
     do
       if [ "$curSub" = "$subdom" ]; then
-        showMessageBox "Fatal Error" "A duplicate subdomain ($curSub) was found in the configuration file. Please fix this issue and restart the script."
-        nano $CONFIG_FILE
+        echo "FATAL: A duplicate subdomain ($curSub) was found in the configuration file. Please fix this issue and restart the script."
         exit 1
       fi
     done
@@ -10465,10 +10739,68 @@ function showEmailMyNetworkHomeServerDNSListClientDNSNoMenu()
 
 function sendEmailMyNetworkHomeServerDNSListClient()
 {
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
   users_email_subj="(MGR COPY)HomeServer Client DNS Update from $HOMESERVER_NAME"
   users_email_body="$(getMyNetworkHomeServerDNSListClientDNSBody)"
   echo "Sending ClientDNS email to self"
   sendEmail -s "$users_email_subj" -b "$users_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+}
+
+function sendEmailMyNetworkFullUserDetails()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  full_network_email_subj="Full User Details for Hosted VPN"
+  full_network_email_body=""
+  full_network_email_body=$full_network_email_body"Full User Details for Hosted VPN\n\n"
+  full_network_email_body=$full_network_email_body"------------------------------------------------------------------------\n"
+  full_network_email_body=$full_network_email_body"Name,Email,PublicKey,PresharedKey,IP Address,Is Internet?\n"
+  full_network_email_body=$full_network_email_body"------------------------------------------------------------------------\n"
+  user_arr=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType='mynetwork' and ConnectionType='user';"))
+  for cur_user_id in "${user_arr[@]}"
+  do
+    cur_name=$(sqlite3 $HSHQ_DB "select Name from connections where ID='$cur_user_id';")
+    cur_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID='$cur_user_id';")
+    pub_key=$(sqlite3 $HSHQ_DB "select PublicKey from connections where ID='$cur_user_id';")
+    pre_key=$(sqlite3 $HSHQ_DB "select PresharedKey from connections where ID='$cur_user_id';")
+    ip_addr=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID='$cur_user_id';")
+    is_int=$(sqlite3 $HSHQ_DB "select IsInternet from connections where ID='$cur_user_id';")
+    is_internet="No"
+    if [ $is_int = 1 ]; then
+      is_internet="Yes"
+    fi
+    full_network_email_body=$full_network_email_body"$cur_name,$cur_email,$pub_key,$pre_key,$ip_addr,$is_internet\n"
+  done
+  full_network_email_body=$full_network_email_body"\n\n"
+  sendEmail -s "$full_network_email_subj" -b "$full_network_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+}
+
+function sendEmailMyNetworkBroadcast()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
+  strMessage="$1"
+  full_network_email_subj="Broadcase Message from $HOMESERVER_NAME"
+  full_network_email_body=""
+  full_network_email_body=$full_network_email_body"Broadcase Message from $HOMESERVER_NAME\n"
+  full_network_email_body=$full_network_email_body"------------------------------------------------------------------------\n"
+  full_network_email_body=$full_network_email_body"$strMessage\n\n"
+  email_list=($(sqlite3 $HSHQ_DB "select EmailAddress from connections where NetworkType='mynetwork';"))
+  for cur_email in "${email_list[@]}"
+  do
+    echo "Sending broadcast message to ${cur_email}..."
+    sendEmail -s "$full_network_email_subj" -b "$full_network_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$cur_email"
+  done
+  # Send to self
+  echo "Sending broadcast message to self..."
+  sendEmail -s "$full_network_email_subj" -b "$full_network_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
 function notifyMyNetworkHomeServersDNSUpdate()
@@ -11910,6 +12242,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=38
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 39 ]; then
+    echo "Updating to Version 39..."
+    version39Update
+    HSHQ_VERSION=39
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     is_update_performed=true
@@ -12645,6 +12983,50 @@ EOFRS
   HUGINN_INIT_ENV=false
 }
 
+function version39Update()
+{
+  set +e
+  clearAllHSHQManagerScripts
+  outputAllHSHQManagerScripts
+  set -e
+  sqlite3 $HSHQ_DB "create table newconnections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
+  sqlite3 $HSHQ_DB "insert into newconnections(ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated) select ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated from connections;"
+  sqlite3 $HSHQ_DB "drop table connections;"
+  sqlite3 $HSHQ_DB "ALTER TABLE newconnections RENAME TO connections;"
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    sendRSExposeScripts
+    loadSSHKey
+    keylist=($(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sqlite3 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db \"select public_key,preshared_key from peers;\""
+    unloadSSHKey))
+    for curKeys in "${keylist[@]}"
+    do
+      pub_key=$(echo "$curKeys" | cut -d "|" -f1)
+      pre_key=$(echo "$curKeys" | cut -d "|" -f2)
+      sqlite3 $HSHQ_DB "update connections set PresharedKey='$pre_key' where PublicKey='$pub_key';"
+    done
+    sqlite3 $HSHQ_DB "update connections set PresharedKey='$RELAYSERVER_WG_SV_PRESHAREDKEY' where Name='WireGuardServer';"
+  fi
+  hs_vpn=($(sqlite3 $HSHQ_DB "select ID,InterfaceName from connections where NetworkType='other' and ConnectionType='homeserver_vpn';"))
+  for curVPN in "${hs_vpn[@]}"
+  do
+    cur_id=$(echo "$curVPN" | cut -d "|" -f1)
+    cur_iface=$(echo "$curVPN" | cut -d "|" -f2)
+    pre_key=$(sudo grep "^PresharedKey" $HSHQ_WIREGUARD_DIR/vpn/${cur_iface}.conf | cut -d " " -f3)
+    sqlite3 $HSHQ_DB "update connections set PresharedKey='$pre_key' where ID='$cur_id';"
+  done
+  hs_int=($(sqlite3 $HSHQ_DB "select ID,InterfaceName from connections where NetworkType='other' and ConnectionType='homeserver_internet';"))
+  for curInt in "${hs_int[@]}"
+  do
+    cur_id=$(echo "$curInt" | cut -d "|" -f1)
+    cur_iface=$(echo "$curInt" | cut -d "|" -f2)
+    pre_key=$(sudo grep "^PresharedKey" $HSHQ_WIREGUARD_DIR/internet/${cur_iface}.conf | cut -d " " -f3)
+    sqlite3 $HSHQ_DB "update connections set PresharedKey='$pre_key' where ID='$cur_id';"
+  done
+  sqlite3 $HSHQ_DB "update connections set IsInternet=true where IsInternet='true';"
+  sqlite3 $HSHQ_DB "update connections set IsInternet=false where IsInternet='false';"
+  chmod 600 $HSHQ_DB
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -12696,6 +13078,8 @@ function main()
     if [ -z "\$subdom" ]; then continue; fi
     sed -i "/# LE certs path \$subdom BEGIN/,/# LE certs path \$subdom END/d" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \$HOME/tmpcadfile
+  mv \$HOME/tmpcadfile \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -12749,6 +13133,8 @@ function main()
     if [ -z "\$subdom" ]; then continue; fi
     sed -i "/# Expose domain \$subdom BEGIN/,/# Expose domain \$subdom END/d" \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   done
+  cat -s \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile > \$HOME/tmpcadfile
+  mv \$HOME/tmpcadfile \$RELAYSERVER_HSHQ_STACKS_DIR/caddy/Caddyfile
   docker container restart caddy
 }
 
@@ -12757,14 +13143,12 @@ EOFEX
   chmod 500 $HOME/removeExposeDomains.sh
 
   loadSSHKey
-  set +e
+  set -e
   ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh"
   scp -P $RELAYSERVER_SSH_PORT $HOME/addLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
   scp -P $RELAYSERVER_SSH_PORT $HOME/removeLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
   scp -P $RELAYSERVER_SSH_PORT $HOME/addExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
   scp -P $RELAYSERVER_SSH_PORT $HOME/removeExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
-
-  set -e
   unloadSSHKey
   rm -f $HOME/addLECertDomains.sh
   rm -f $HOME/removeLECertDomains.sh
@@ -13299,7 +13683,7 @@ function setVersionOnStacks()
   i=-1
   for curStackID in "${caddy_stack_ids[@]}"
   do
-    ((i++))
+    i=$((i+1))
     echo "Versioning ${caddy_stack_names[i]} stack..."
     curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
     curVersion=v1
@@ -13316,7 +13700,7 @@ function setVersionOnStacks()
   i=-1
   for curStackID in "${clientdns_stack_ids[@]}"
   do
-    ((i++))
+    i=$((i+1))
     echo "Versioning ${clientdns_stack_names[i]} stack..."
     curCompose=$HSHQ_STACKS_DIR/portainer/compose/$curStackID/docker-compose.yml
     curVersion=v1
@@ -13693,9 +14077,9 @@ function main()
   PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
   PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
   PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
-  num_tries=0
-  total_tries=10
   set +e
+  num_tries=1
+  total_tries=10
   portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
   retVal=\$?
   while [ \$retVal -ne 0 ] && [ \$num_tries -lt \$total_tries ]
@@ -13921,7 +14305,7 @@ function addDefaultRules()
 function while_check()
 {
   RETVAL=\$?
-  numIter=0
+  numIter=1
   while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
     CMD=\$(\$1)
     RETVAL=\$?
@@ -14054,7 +14438,7 @@ function main()
 function while_check()
 {
   RETVAL=\$?
-  numIter=0
+  numIter=1
   while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
     CMD=\$(\$1)
     RETVAL=\$?
@@ -17382,7 +17766,7 @@ function installPortainer()
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
     sleep 1
-    ((i++))
+    i=$((i+1))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -17966,7 +18350,7 @@ function installSysUtils()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
-    ((i=$i+5))
+    i=$((i+5))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -17988,7 +18372,7 @@ function installSysUtils()
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
     sleep 1
-    ((i=$i+1))
+    i=$((i+1))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -21822,9 +22206,9 @@ function addUserMailu()
   domain=$3
   password=$4
   total_tries=5
-  num_tries=0
+  num_tries=1
   is_added=false
-  while [ $num_tries -lt $total_tries ]
+  while [ $num_tries -le $total_tries ]
   do
     docker exec mailu-admin flask mailu $add_type $username $domain $password
     if [ $? -eq 0 ]; then
@@ -22888,7 +23272,7 @@ function installNextcloud()
       fi
       echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
       sleep 5
-      ((i=$i+5))
+      i=$((i+5))
     done
     if [ $isFound == "T" ] && [ $isError == "F" ]; then
       break
@@ -26499,7 +26883,7 @@ function installPhotoPrism()
     fi
     echo "Container not ready, sleeping 10 seconds, total wait=$i seconds..."
     sleep 10
-    ((i=$i+10))
+    i=$((i+10))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -26846,7 +27230,7 @@ function installGuacamole()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
-    ((i=$i+5))
+    i=$((i+5))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -29854,7 +30238,7 @@ function installCodeServer()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
-    ((i=$i+5))
+    i=$((i+5))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -35921,10 +36305,6 @@ function installHSHQManager()
   inner_block=$inner_block">>https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>forward_auth https://authelia:9091 {\n"
-  inner_block=$inner_block">>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
-  inner_block=$inner_block">>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
-  inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$HSHQMANAGER_LOCALHOST_PORT {\n"
@@ -36150,6 +36530,13 @@ fi
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/generateRandomIP.sh
+#!/bin/bash
+
+echo 10.\$(( \$RANDOM % 256 )).\$(( \$RANDOM % 256 )).\$((\$((\$RANDOM%250))+1))
+
+EOFSC
+
   # 01 Misc Utils
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/restartAuthelia.sh
 #!/bin/bash
@@ -36163,7 +36550,7 @@ EOFSC
 {
   "name": "01 Restart Authelia",
   "script_path": "conf/scripts/restartAuthelia.sh",
-  "description": "Restarts Authelia container.<br/><br/>This is typically useful after updates have been applied to the configuration.",
+  "description": "Restarts Authelia container. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is typically useful after updates have been applied to the configuration.",
   "group": "$group_id_misc",
   "parameters": []
 }
@@ -36183,7 +36570,7 @@ EOFSC
 {
   "name": "02 Restart Caddy Container",
   "script_path": "conf/scripts/restartCaddyContainer.sh",
-  "description": "Restarts a specific Caddy container.",
+  "description": "Restarts a specific Caddy container. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36226,7 +36613,7 @@ EOFSC
 {
   "name": "03 Restart All Caddy Containers",
   "script_path": "conf/scripts/restartAllCaddyContainers.sh",
-  "description": "Restarts all Caddy containers.<br/><br/>Enter confirm in the box below.",
+  "description": "Restarts all Caddy containers. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36275,7 +36662,7 @@ EOFSC
 {
   "name": "04 Generate Signed Certificate",
   "script_path": "conf/scripts/generateSignedCertificate.sh",
-  "description": "Generates a certificate signed by the Root CA.<br/>\n- The resulting key/certificate pair will be stored in $HSHQ_SSL_DIR.\n- Multiple domain names and/or IP addresses should be a comma-separated list (no spaces).\n- Dates should be formatted as '2023-01-01 00:00:00 GMT'.\n- Leave start date empty to default to current date/time.\n- If end date is empty, then the certificate will expire $CERTS_INTERNAL_CA_DAYS days after the start date.",
+  "description": "Generates a certificate signed by the Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/>\n- The resulting key/certificate pair will be stored in $HSHQ_SSL_DIR.\n- Multiple domain names and/or IP addresses should be a comma-separated list (no spaces).\n- Dates should be formatted as '2023-01-01 00:00:00 GMT'.\n- Leave start date empty to default to current date/time.\n- If end date is empty, then the certificate will expire $CERTS_INTERNAL_CA_DAYS days after the start date.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36399,7 +36786,7 @@ EOFSC
 {
   "name": "05 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyData.sh",
-  "description": "Clears out all data for the selected Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
+  "description": "Clears out all data for the selected Caddy instance and restarts the stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36461,7 +36848,6 @@ EOFSC
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
 source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
@@ -36480,7 +36866,7 @@ EOFSC
 {
   "name": "06 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks.<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web utility during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web utility during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36541,7 +36927,7 @@ EOFSC
 {
   "name": "07 Email Vaultwarden Credentials",
   "script_path": "conf/scripts/emailCredentialsVaultwarden.sh",
-  "description": "Emails all login credentials, in a format that can easily be imported into Vaultwarden, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails Vaultwarden credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a format that can easily be imported into Vaultwarden, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36587,7 +36973,7 @@ EOFSC
 {
   "name": "08 Email Root CA",
   "script_path": "conf/scripts/emailRootCA.sh",
-  "description": "Emails the Root Certificate Authority (CA) certificate to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the Root Certificate Authority (CA) certificate to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -36637,7 +37023,7 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install.<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -36719,7 +37105,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list.<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -36783,7 +37169,7 @@ EOFSC
 {
   "name": "03 Update Service(s)",
   "script_path": "conf/scripts/updateServicesFromList.sh",
-  "description": "Select the service(s) that you wish to update.",
+  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -36863,7 +37249,7 @@ EOFSC
 {
   "name": "04 Update All Available Services",
   "script_path": "conf/scripts/updateAllAvailableServices.sh",
-  "description": "Updates all available services that have an update available.",
+  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -36927,7 +37313,7 @@ EOFSC
 {
   "name": "05 Remove Service(s)",
   "script_path": "conf/scripts/removeServicesFromList.sh",
-  "description": "Select the service(s) that you wish to remove. This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data related to this service.",
+  "description": "Select the service(s) that you wish to remove. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data related to this service.",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -37000,7 +37386,7 @@ EOFSC
 {
   "name": "01 Clear History",
   "script_path": "conf/scripts/clearHSHQManagerProcessLogs.sh",
-  "description": "Clears out all of the process logs (history) in this utility.<br/><br/>Enter confirm in the box below.",
+  "description": "Clears out all of the process logs (history) in this utility. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37044,7 +37430,7 @@ EOFSC
 {
   "name": "02 Restore Scripts",
   "script_path": "conf/scripts/restoreHSHQManagerScripts.sh",
-  "description": "Restores all HSHQ Manager scripts. Does not clear/remove any scripts, but will overwrite those with the same name.",
+  "description": "Restores all HSHQ Manager scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Does not clear/remove any scripts, but will overwrite those with the same name.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37090,7 +37476,7 @@ EOFSC
 {
   "name": "03 Clear and Restore Scripts",
   "script_path": "conf/scripts/clearRestoreHSHQManagerScripts.sh",
-  "description": "Clears and restores all HSHQ Manager scripts. If you have added/modified any scripts, they will be deleted.",
+  "description": "Clears and restores all HSHQ Manager scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you have added/modified any scripts, they will be deleted.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37135,7 +37521,7 @@ EOFSC
 {
   "name": "04 Full HSHQ Manager Reset",
   "script_path": "conf/scripts/fullResetHSHQManagerScripts.sh",
-  "description": "Performs a full reset and restore of all scripts and runners in the HSHQ Manager utility to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
+  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the HSHQ Manager utility to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37223,7 +37609,7 @@ EOFSC
 {
   "name": "01 Check Update HSHQ",
   "script_path": "conf/scripts/checkUpdateHSHQ.sh",
-  "description": "Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.",
+  "description": "Check for updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.",
   "group": "$group_id_systemutils",
   "parameters": []
 }
@@ -37342,7 +37728,7 @@ EOFSC
 {
   "name": "02 Perform Update HSHQ",
   "script_path": "conf/scripts/performUpdateHSHQ.sh",
-  "description": "Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.",
+  "description": "Performs HSHQ Updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -37400,7 +37786,7 @@ EOFSC
 {
   "name": "03 Update Linux OS and Reboot",
   "script_path": "conf/scripts/updateHostAndReboot.sh",
-  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer.<br/><br/>This process will (obviously) disconnect you from this web utility during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
+  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web utility during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -37439,7 +37825,7 @@ EOFSC
 {
   "name": "04 Power off HomeServer",
   "script_path": "conf/scripts/poweroffHomeServer.sh",
-  "description": "Shuts down the HomeServer.",
+  "description": "Shuts down the HomeServer. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -37478,7 +37864,7 @@ EOFSC
 {
   "name": "05 Download All Docker Images",
   "script_path": "conf/scripts/downloadAllDockerImages.sh",
-  "description": "Downloads all docker images.<br/><br/>Enter confirm in the box below.",
+  "description": "Downloads all docker images. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -37516,7 +37902,7 @@ EOFSC
 {
   "name": "06 Reset HSHQ Open Status",
   "script_path": "conf/scripts/resetHSHQOpenStatus.sh",
-  "description": "Resets the HSHQ open status.<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles. Enter confirm in the box below.",
+  "description": "Resets the HSHQ open status. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles. Enter confirm in the box below.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -37573,7 +37959,7 @@ EOFSC
 {
   "name": "07 Change Connection Email",
   "script_path": "conf/scripts/changeConnectionEmail.sh",
-  "description": "Change a connection email.<br/><br/>This utility will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
+  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -37646,7 +38032,7 @@ EOFSC
 {
   "name": "01 Sudo Password Test",
   "script_path": "conf/scripts/sudoPasswordTest.sh",
-  "description": "Checks if sudo (super user do...something) password is correct.",
+  "description": "Checks if sudo (super user do...something) password is correct. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -37684,7 +38070,7 @@ EOFSC
 {
   "name": "02 Decrypt Config Password Test",
   "script_path": "conf/scripts/decryptConfigPasswordTest.sh",
-  "description": "Checks if config encrypt password is correct.",
+  "description": "Checks if config encrypt password is correct. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -37721,9 +38107,166 @@ EOFSC
 {
   "name": "03 Check HSHQ Open Status",
   "script_path": "conf/scripts/checkOpenStatus.sh",
-  "description": "Checks if the HSHQ script is open in another instance.<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. If you need to reset it, go to Reset HSHQ Open Status in System Utils.",
+  "description": "Checks if the HSHQ script is open in another instance. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. If you need to reset it, go to Reset HSHQ Open Status in System Utils.",
   "group": "$group_id_testing",
   "parameters": []
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkIPAddress.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+ischeckall=\$(getArgumentValue ischeckall "\$@")
+ipaddr=\$(getArgumentValue ipaddr "\$@")
+cidrlen=\$(getArgumentValue cidrlen "\$@")
+
+set +e
+is_check_all=false
+if [ "\$ischeckall" = "Yes" ]; then
+  is_check_all=true
+fi
+retVal=\$(isNetworkIntersectOurNetworks "\${ipaddr}/\${cidrlen}" \$is_check_all)
+if [ -z "\$retVal" ]; then
+  echo -e "\nThere are no network collisions with \${ipaddr}/\${cidrlen}\n"
+else
+  echo -e "\nNetwork Collision: \$retVal\n"
+fi
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/checkIPAddress.json
+{
+  "name": "04 Check for Network Collision",
+  "script_path": "conf/scripts/checkIPAddress.sh",
+  "description": "Tests an IP address or subnet for network collisions. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided IP address or subnet intersects with any of the networks that this HomeServer is on. It does not perform any actions, just performs the tests.<br/><br/>Regarding Check all possible connections - with it set to No, it will only check the network connections directly on this HomeServer. With it set to Yes, it will check any and all connections that this HomeServer manages, i.e. if hosting a VPN, then it will check all User and/or HS Internet connections, which may be on behalf of another device in the network. If the explanation for this distinction is confusing, then ask on the [Forum](https://forum.homeserverhq.com/).<br/><br/>If you want to test a subnet range, then input its CIDR length. For a single IP address, leave it at the default of 32.",
+  "group": "$group_id_testing",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Check all possible connections?",
+      "required": true,
+      "param": "-ischeckall=",
+      "same_arg_param": true,
+      "type": "list",
+      "default": "No",
+      "values": [
+        "Yes",
+        "No"
+      ],
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter an IP address",
+      "required": true,
+      "param": "-ipaddr=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": { 
+        "script": "conf/scripts/generateRandomIP.sh"
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "CIDR length",
+      "required": true,
+      "param": "-cidrlen=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 1
+      },
+      "default": "32",
+      "min": "0",
+      "max": "32",
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkWireGuardKey.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+
+checkkey=\$(getArgumentValue checkkey "\$@")
+
+set +e
+retVal=\$(checkValidWireGuardKey "\$checkkey")
+if [ "\$retVal" = "true" ]; then
+  echo -e "\nThe key is valid.\n"
+else
+  echo -e "\nThe key is NOT valid.\n"
+fi
+set -e
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/checkWireGuardKey.json
+{
+  "name": "05 Check WireGuard Key",
+  "script_path": "conf/scripts/checkWireGuardKey.sh",
+  "description": "Tests a WireGuard key for validity. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided key (public/private/preshared) is a valid WireGuard key.",
+  "group": "$group_id_testing",
+  "parameters": [
+    {
+      "name": "Enter an key",
+      "required": true,
+      "param": "-checkkey=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
 }
 
 EOFSC
@@ -37758,7 +38301,7 @@ EOFSC
 {
   "name": "01 Invite to Network",
   "script_path": "conf/scripts/myNetworkInviteConnection.sh",
-  "description": "Performs a network invite.<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or User to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will automatically be sent to the requesting email address upon execution. The name field only applies to User applications, for your your own internal reference. Names for other connection types will be automatically generated.",
+  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or User to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will automatically be sent to the requesting email address upon execution. The name field only applies to User applications, for your your own internal reference. Names for other connection types will be automatically generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -37824,13 +38367,14 @@ requestemailaddress=\$(getArgumentValue requestemailaddress "\$@")
 requestinternet=\$(getArgumentValue requestinternet "\$@")
 ipaddress=\$(getArgumentValue ipaddress "\$@")
 publickey=\$(getArgumentValue publickey "\$@")
+presharedkey=\$(getArgumentValue presharedkey "\$@")
 
 req_internet=false
 if [ "\$requestinternet" = "Yes" ]; then
   req_internet=true
 fi
 set +e
-createMyNetworkUserInvite "\$requestemailaddress" "\$req_internet" "\$ipaddress" "\$publickey" "\$HOME/apply_hsv.cnf"
+createMyNetworkUserInvite "\$requestemailaddress" "\$req_internet" "\$ipaddress" "\$publickey" "\$presharedkey" "\$HOME/apply_hsv.cnf"
 retVal=\$?
 if [ \$retVal -eq 0 ]; then
   performNetworkInvite "\$HOME/apply_hsv.cnf" "\$configname"
@@ -37845,7 +38389,7 @@ EOFSC
 {
   "name": "02 Invite User to Network",
   "script_path": "conf/scripts/myNetworkInviteUserConnection.sh",
-  "description": "Performs a user invite to your network.<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' utility. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.",
+  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' utility. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -37942,6 +38486,187 @@ EOFSC
       },
       "secure": false,
       "pass_as": "argument"
+    },
+    {
+      "name": "Enter the preshared key",
+      "required": false,
+      "param": "-presharedkey=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeHSPrimaryInternetIP.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+ipaddr=\$(getArgumentValue ipaddr "\$@")
+
+set +e
+changeHSInternetPrimaryIPAddress \$ipaddr
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeHSPrimaryInternetIP.json
+{
+  "name": "03 Change Primary HS Int IP",
+  "script_path": "conf/scripts/changeHSPrimaryInternetIP.sh",
+  "description": "Changes the interface IP address of the primary HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a new IP address",
+      "required": true,
+      "param": "-ipaddr=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": { 
+        "script": "conf/scripts/generateRandomIP.sh"
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeUserIP.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+selconnection=\$(getArgumentValue selconnection "\$@")
+ipaddr=\$(getArgumentValue ipaddr "\$@")
+
+set +e
+rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
+changeUserIPAddress \$rem_id \$ipaddr
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeUserIP.json
+{
+  "name": "04 Change User IP",
+  "script_path": "conf/scripts/changeUserIP.sh",
+  "description": "Changes the interface IP address of a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address due to a collision. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.<br/><br/>Upon a successful change, an email will automatically be sent to the corresponding email address for this connection.",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select connection",
+      "required": true,
+      "param": "-selconnection=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,' - ',IPAddress from connections where ConnectionType='user' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter a new IP address",
+      "required": true,
+      "param": "-ipaddr=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": { 
+        "script": "conf/scripts/generateRandomIP.sh"
+      },
+      "secure": false,
+      "pass_as": "argument"
     }
   ]
 }
@@ -37971,9 +38696,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSVPNConnection.json
 {
-  "name": "03 Remove HS VPN Connection",
+  "name": "05 Remove HS VPN Connection",
   "script_path": "conf/scripts/removeHSVPNConnection.sh",
-  "description": "Remove a HomeServer VPN connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.",
+  "description": "Removes a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38043,7 +38768,7 @@ removeReason="\$3"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-removeMyNetworkNonHomeServerConnection \$rem_id
+removeMyNetworkHomeServerInternetConnection "\$rem_id" "\$removeReason"
 set -e
 performExitFunctions false
 
@@ -38051,9 +38776,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSInternetConnection.json
 {
-  "name": "04 Remove HS Int Connection",
+  "name": "06 Remove HS Int Connection",
   "script_path": "conf/scripts/removeHSInternetConnection.sh",
-  "description": "Remove a HomeServer Internet connection.<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.",
+  "description": "Removes a HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38131,9 +38856,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeUserConnection.json
 {
-  "name": "05 Remove User Connection",
+  "name": "07 Remove User Connection",
   "script_path": "conf/scripts/removeUserConnection.sh",
-  "description": "Remove a user connection.<br/><br/>The reason for removal will be emailed to the user being removed.",
+  "description": "Removes a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the user being removed.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38208,9 +38933,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailHomeServersDNSList.json
 {
-  "name": "06 Email HomeServers DNS List",
+  "name": "08 Email HomeServers DNS List",
   "script_path": "conf/scripts/emailHomeServersDNSList.sh",
-  "description": "Email HomeServers DNS list.<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38253,9 +38978,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailUsersDNSList.json
 {
-  "name": "07 Email Users DNS List",
+  "name": "09 Email Users DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
-  "description": "Email HomeServers DNS list.<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this project).",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this project).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38277,6 +39002,111 @@ EOFSC
 }
 
 EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailMyNetworkUserDetails.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+set +e
+echo "Emailing user details..."
+sendEmailMyNetworkFullUserDetails
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailMyNetworkUserDetails.json
+{
+  "name": "10 Email User Details",
+  "script_path": "conf/scripts/emailMyNetworkUserDetails.sh",
+  "description": "Emails user details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all user connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the users to the new network with the same information.",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailMyNetworkBroadcast.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+strMsg="\$2"
+set +e
+echo "Emailing broadcast message..."
+sendEmailMyNetworkBroadcast "\$strMsg"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailMyNetworkBroadcast.json
+{
+  "name": "11 Email All Broadcast",
+  "script_path": "conf/scripts/emailMyNetworkBroadcast.sh",
+  "description": "Emails a broadcast message. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will send a broadcast message to all users and connected devices on your network.",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter the message",
+      "required": true,
+      "type": "multiline_text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/createClientDNSServer.sh
 #!/bin/bash
@@ -38301,9 +39131,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/createClientDNSServer.json
 {
-  "name": "08 Create ClientDNS Server",
+  "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
-  "description": "Create a ClientDNS server.<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer Adguard where this ClientDNS server is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Create a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38380,9 +39210,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeClientDNSServer.json
 {
-  "name": "09 Remove Client DNS Server",
+  "name": "13 Remove Client DNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
-  "description": "Remove a client DNS server.",
+  "description": "Remove a client DNS server. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38462,9 +39292,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removePrimaryVPNConnection.json
 {
-  "name": "10 Remove Primary VPN",
+  "name": "14 Remove Primary VPN",
   "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
-  "description": "Complete removal of primary VPN. <br/>\nIf you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
+  "description": "Complete removal of primary VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38539,7 +39369,7 @@ EOFSC
 {
   "name": "01 HS VPN Application",
   "script_path": "conf/scripts/applyHSVPNConnection.sh",
-  "description": "Generates and sends a HomeServer VPN application to the recipient email address.<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -38600,7 +39430,7 @@ EOFSC
 {
   "name": "02 HS Internet Application",
   "script_path": "conf/scripts/applyHSInternetConnection.sh",
-  "description": "Generates and sends a HomeServer internet application to the recipient email address.<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)<br/>A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -38670,7 +39500,7 @@ EOFSC
 {
   "name": "03 User Connection Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user application to the recipient email address.<br/><br/>A user application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If you request public internet access and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email.\n3. When the requestor receives the invitation to the network, they must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
+  "description": "Generates and sends a user application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If you request public internet access and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email.\n3. When the requestor receives the invitation to the network, they must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -38811,7 +39641,7 @@ EOFSC
 {
   "name": "04 Primary VPN Application",
   "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
-  "description": "Generates a HomeServer primary VPN application.<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, so it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -38876,7 +39706,7 @@ EOFSC
 {
   "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
-  "description": "Joins a network via a provided configuration.<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This utility can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will automatically be married back into this configuration based on the request ID.",
+  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This utility can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will automatically be married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -38954,7 +39784,7 @@ EOFSC
 {
   "name": "06 Disconnect VPN Connection",
   "script_path": "conf/scripts/disconnectVPNConnection.sh",
-  "description": "Disconnect a HomeServer VPN connection.<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
+  "description": "Disconnect a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39051,7 +39881,7 @@ EOFSC
 {
   "name": "07 Disconnect Int Connection",
   "script_path": "conf/scripts/disconnectInternetConnection.sh",
-  "description": "Disconnect a HomeServer internet connection.<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
+  "description": "Disconnect a HomeServer internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39145,7 +39975,7 @@ EOFSC
 {
   "name": "08 Update HomeServer DNS",
   "script_path": "conf/scripts/updateHomeServerDNS.sh",
-  "description": "Update HomeServer DNS.<br/><br/>This utility allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
+  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39203,7 +40033,7 @@ EOFSC
 {
   "name": "09 Sync Adguard DNS Server",
   "script_path": "conf/scripts/syncAdguardDNS.sh",
-  "description": "Sync Adguard DNS server from database.<br/><br/>This utility sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
+  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39254,7 +40084,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer.<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> utility. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> utility. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39337,7 +40167,7 @@ EOFSC
 {
   "name": "02 Remove Secondary Domain",
   "script_path": "conf/scripts/removeDomainFromRelayServer.sh",
-  "description": "Removes a secondary domain from the RelayServer. This will also remove any LetsEncrypt paths and exposed (sub)domains on this domain as well.",
+  "description": "Removes a secondary domain from the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This will also remove any LetsEncrypt paths and exposed (sub)domains on this domain as well.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39421,7 +40251,7 @@ EOFSC
 {
   "name": "03 Add LE Subdomain",
   "script_path": "conf/scripts/addLEDomainToRelayServer.sh",
-  "description": "Add subdomain to be managed by LetsEncrypt.<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This utility will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
+  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This utility will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39502,7 +40332,7 @@ EOFSC
 {
   "name": "04 Remove LE Subdomain",
   "script_path": "conf/scripts/removeLEDomainFromRelayServer.sh",
-  "description": "Removes path for LetsEncrypt from RelayServer.",
+  "description": "Removes path for LetsEncrypt from RelayServer. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39604,7 +40434,7 @@ EOFSC
 {
   "name": "05 Add Exposed Subdomain",
   "script_path": "conf/scripts/addExposeDomainToRelayServer.sh",
-  "description": "Adds an exposed (sub)domain to the RelayServer.<br/><br/>This function allows you to expose a particular service on your HomeServer to the public internet. <ins>***Be very careful***</ins> with this capability as it will allow anyone on the internet to access the service that you expose. It will also automatically request (free)certificates for this (sub)domain from ZeroSSL on the RelayServer upon execution. Also note that for security reasons, some services are protected behind Authelia. So you can either expose Authelia to maintain that same security wall, or move the particular service into bypass mode in the Authelia configuration.<br/>\nSelect the base domain, then enter only the subdomain portion in the provided field below (all lowercase), i.e. www, filebrowser, etc. If the subdomain field is left blank, then the base domain will be added (you will need the base domain added if exposing Mastodon and/or Matrix (Synapse) for federation purposes).<br/>\nTo figure out what the subdomain is for a particular service, look in the address bar in your browser when accessing the service on your HomeServer. For example, if you wanted to expose Mealie, you should see https://mealie.$HOMESERVER_DOMAIN/ in the address bar, thus the subdomain is mealie.",
+  "description": "Adds an exposed (sub)domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to expose a particular service on your HomeServer to the public internet. <ins>***Be very careful***</ins> with this capability as it will allow anyone on the internet to access the service that you expose. It will also automatically request (free)certificates for this (sub)domain from ZeroSSL on the RelayServer upon execution. Also note that for security reasons, some services are protected behind Authelia. So you can either expose Authelia to maintain that same security wall, or move the particular service into bypass mode in the Authelia configuration.<br/>\nSelect the base domain, then enter only the subdomain portion in the provided field below (all lowercase), i.e. www, filebrowser, etc. If the subdomain field is left blank, then the base domain will be added (you will need the base domain added if exposing Mastodon and/or Matrix (Synapse) for federation purposes).<br/>\nTo figure out what the subdomain is for a particular service, look in the address bar in your browser when accessing the service on your HomeServer. For example, if you wanted to expose Mealie, you should see https://mealie.$HOMESERVER_DOMAIN/ in the address bar, thus the subdomain is mealie.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39685,7 +40515,7 @@ EOFSC
 {
   "name": "06 Remove Exposed Subdomain",
   "script_path": "conf/scripts/removeExposeDomainFromRelayServer.sh",
-  "description": "Removes an exposed (sub)domain from RelayServer.<br/><br/>",
+  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39768,7 +40598,7 @@ EOFSC
 {
   "name": "07 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyDNSRelayServer.sh",
-  "description": "Reset Caddy data on RelayServer.<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
+  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -39821,7 +40651,7 @@ EOFSC
 {
   "name": "05 Host VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Host a VPN.",
+  "description": "Host a VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -40379,7 +41209,7 @@ function installHeimdall()
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 1
-    ((i=$i+1))
+    i=$((i+1))
   done
   set -e
   if [ $isFound == "F" ]; then
@@ -40881,7 +41711,7 @@ function getHeimdallUserIDFromType()
   echo $user_id
 }
 
-function insertEnableSvcHeimdall()
+function checkInsertServiceHeimdall()
 {
   svc_stack_name=$1
   svc_proper_name=$2
@@ -40889,8 +41719,8 @@ function insertEnableSvcHeimdall()
   svc_url=$4
   svc_img=$5
   is_restart=$6
+  svc_is_active=$7
 
-  svc_is_active=1
   user_id=$(getHeimdallUserIDFromType $user_type)
   docker container stop heimdall > /dev/null 2>&1
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
@@ -40903,6 +41733,11 @@ function insertEnableSvcHeimdall()
   if [ "$is_restart" = "true" ]; then
     docker container start heimdall > /dev/null 2>&1
   fi
+}
+
+function insertEnableSvcHeimdall()
+{
+  checkInsertServiceHeimdall "$1" "$2" "$3" "$4" "$5" "$6" 1
 }
 
 function disableSvcHeimdall()
@@ -42130,15 +42965,15 @@ function insertServiceUptimeKuma()
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO monitor_notification(id,monitor_id,notification_id) VALUES(NULL,$svc_id,1);"
 }
 
-function insertEnableSvcUptimeKuma()
+function checkInsertServiceUptimeKuma()
 {
   svc_stack_name=$1
   svc_proper_name=$2
   user_type=$3
   svc_url=$4
   is_restart=$5
+  svc_is_active=$6
 
-  svc_is_active=1
   set +e
   docker container stop uptimekuma > /dev/null 2>&1
   set -e
@@ -42153,6 +42988,11 @@ function insertEnableSvcUptimeKuma()
     docker container start uptimekuma > /dev/null 2>&1
   fi
   set -e
+}
+
+function insertEnableSvcUptimeKuma()
+{
+  checkInsertServiceUptimeKuma "$1" "$2" "$3" "$4" "$5" 1
 }
 
 function disableSvcUptimeKuma()

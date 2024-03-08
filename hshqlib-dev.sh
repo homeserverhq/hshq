@@ -10739,6 +10739,10 @@ function showEmailMyNetworkHomeServerDNSListClientDNSNoMenu()
 
 function sendEmailMyNetworkHomeServerDNSListClient()
 {
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
   users_email_subj="(MGR COPY)HomeServer Client DNS Update from $HOMESERVER_NAME"
   users_email_body="$(getMyNetworkHomeServerDNSListClientDNSBody)"
   echo "Sending ClientDNS email to self"
@@ -10747,6 +10751,10 @@ function sendEmailMyNetworkHomeServerDNSListClient()
 
 function sendEmailMyNetworkFullUserDetails()
 {
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
   full_network_email_subj="Full User Details for Hosted VPN"
   full_network_email_body=""
   full_network_email_body=$full_network_email_body"Full User Details for Hosted VPN\n\n"
@@ -10774,6 +10782,10 @@ function sendEmailMyNetworkFullUserDetails()
 
 function sendEmailMyNetworkBroadcast()
 {
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "ERROR: You are not hosting a RelayServer."
+    return 1
+  fi
   strMessage="$1"
   full_network_email_subj="Broadcase Message from $HOMESERVER_NAME"
   full_network_email_body=""
@@ -36293,10 +36305,6 @@ function installHSHQManager()
   inner_block=$inner_block">>https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>forward_auth https://authelia:9091 {\n"
-  inner_block=$inner_block">>>>>>uri /api/verify?rd=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
-  inner_block=$inner_block">>>>>>copy_headers Remote-User Remote-Groups Remote-Name Remote-Email\n"
-  inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$HSHQMANAGER_LOCALHOST_PORT {\n"
