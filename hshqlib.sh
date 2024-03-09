@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=39
+HSHQ_SCRIPT_VERSION=40
 
 # Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
 #
@@ -67,6 +67,7 @@ function init()
   MENU_WIDTH=85
   MENU_HEIGHT=25
   MENU_INT_HEIGHT=10
+  ENABLE_STACK_DELETE=false
   SUDO_NORMAL_TIMEOUT=15
   SUDO_LONG_TIMEOUT=1440
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
@@ -1773,7 +1774,9 @@ EOF
     del_stack_list="${del_stack_list}${svc//\"},"
     cur_svc=${svc//\"}
   done
+  ENABLE_STACK_DELETE=true
   deleteListOfStacks false "$del_stack_list"
+  ENABLE_STACK_DELETE=false
 }
 
 function deleteListOfStacks()
@@ -1875,7 +1878,7 @@ EOF
       if [ $? -ne 0 ]; then
         return 1
       fi
-      PRIMARY_VPN_SETUP_TYPE="join"
+      PRIMARY_VPN_SETUP_TYPE=join
       updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE ;;
     3)
       return 1 ;;
@@ -6022,45 +6025,6 @@ function connectVPN()
   
   enableWGInterfaceQuick $ifaceName
 
-  ip_address_for_status=$rs_vpn_ip
-  total_attempts=1
-  max_attempts=10
-  timeout_length=5
-  connect_success=false
-  is_skip_connect=false
-  set +e
-  while [ "$is_skip_connect" = "false" ] && [ "$connect_success" = "false" ]
-  do
-    while [ $total_attempts -lt $max_attempts ]
-    do
-      echo "Attempting to connect to remote host over VPN ($total_attempts of $max_attempts)..."
-      timeout $timeout_length ping -c 1 $ip_address_for_status > /dev/null
-      if [ $? -eq 0 ]; then
-        echo "Successfully connected to RelayServer!"
-        connect_success=true
-        break
-      fi
-      sleep $timeout_length
-      ((total_attempts++))
-    done
-    if ! [ "$connect_success" = "true" ]; then
-      errString="Unable to ping host over private network. Press Retry or Skip."
-      if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ $is_primary = 1 ]; then
-        errString="Unable to ping RelayServer over private network. If you are hosting a VPN, wait until the RelayServer installation process has completed and the system fully rebooted, then press Retry."
-      fi
-      errmenu=$(cat << EOF
-$hshqlogo
-
-$errString
-EOF
-  )
-      if ! (whiptail --title "VPN Connection Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Skip" --yes-button "Retry"); then
-        is_skip_connect=true
-      fi
-      total_attempts=1
-    fi
-  done
-
   # If not hosting or non-primary VPN, then add CA domain.
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || ! [ $is_primary = 1 ]; then
     addDomainAndWildcardAdguardNoReplaceHS "$domain_name" "$ca_ip"
@@ -6068,7 +6032,6 @@ EOF
     addDomainAndWildcardIgnoreQuerylogAndStatsHS "$domain_name"
     insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://home.$domain_name" true
   fi
-  echo "Adding RelayServer IP - VPN Type: $PRIMARY_VPN_SETUP_TYPE, Is Primary: $is_primary, RS Domain: rs.$int_prefix.$domain_name, Server IP: $rs_vpn_ip"
   addDomainAdguardHS "*.$int_prefix.$domain_name" "$rs_vpn_ip"
   primary_string=other
   if [ $is_primary = 1 ]; then
@@ -6077,27 +6040,60 @@ EOF
       restartAllCaddyContainers
     fi
   fi
+  # Update Advertise IPs for Jitsi
+  addAdvertiseIP $client_ip
   # Add new Caddy container.
   installCaddy $ifaceName $primary_string $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
-  # If hosting VPN, setup Syncthing and add ClientDNS stack
+  if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
+    updateMailuStackRelayHost
+  fi
+  # If hosting VPN, add ClientDNS stack and setup Syncthing
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "Installing ClientDNS..."
+    installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP $ADMIN_USERNAME_BASE"_clientdns" $(pwgen -c -n 32 1)
     loadSSHKey
     set +e
-    total_attempts=1
-    max_attempts=10
-    connect_success=false
-    while [ $total_attempts -lt $max_attempts ]
+    while true;
     do
-      ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo Successfully logged in to RelayServer!"
-      if [ $? -eq 0 ]; then
-        connect_success=true
+      total_attempts=1
+      max_attempts=5
+      isBreak=false
+      while [ $total_attempts -le $max_attempts ]
+      do
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo Successfully logged in to RelayServer!"
+        if [ $? -eq 0 ]; then
+          isBreak=true
+          break
+        fi
+        echo "Problem connecting to RelayServer, retrying in 5 seconds..."
+        sleep 5
+        total_attempts=$((total_attempts + 1))
+      done
+      if ! [ "$isBreak" = "true" ]; then
+        echo "Could not log in to RelayServer to setup Syncthing."
+        echo "If this step is skipped, you will have to manually"
+        echo "set up the RelayServer backup in Syncthing. "
+        while true;
+        do
+          read -p "Enter 'retry' or 'cancel': " isRetryConnect
+          case "$isRetryConnect" in
+            "retry")
+              break
+            ;;
+            "cancel")
+              isBreak=true
+              break
+            ;;
+            *)
+              echo "Unknown response..."
+            ;;
+          esac
+        done
+      fi
+      if [ "$isBreak" = "true" ]; then
         break
       fi
     done
-    if ! [ "$connect_success" = "true" ]; then
-      echo "ERROR: Could not log in to RelayServer, exiting..."
-      exit 1
-    fi
     # Setup syncthing link
     echo "Setting up Syncthing..."
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
@@ -6117,14 +6113,7 @@ EOF
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
     set -e
     unloadSSHKey
-    echo "Installing ClientDNS..."
-    installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP $ADMIN_USERNAME_BASE"_clientdns" $(pwgen -c -n 32 1)
   fi
-  if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    updateMailuStackRelayHost
-  fi
-  # Update Advertise IPs for Jitsi
-  addAdvertiseIP $client_ip
 }
 
 function connectInternet()
@@ -6931,7 +6920,10 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   request_id=$(getRandomRequestID)
   priv_key=$(wg genkey)
   pub_key=$(echo $priv_key | wg pubkey)
-  echo $priv_key > $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "RequestID = $request_id" > $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "PrivateKey = $priv_key" >> $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "ConnectionType = HomeServer VPN" >> $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "IsPrimary = $is_primary" >> $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
   chmod 0400 $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
   domain_name=$HOMESERVER_DOMAIN
   msg_body="$APPLICATION_FIRST_LINE\n"
@@ -7019,7 +7011,10 @@ function sendOtherNetworkApplyHomeServerInternetConfig()
   request_id=$(getRandomRequestID)
   priv_key=$(wg genkey)
   pub_key=$(echo $priv_key | wg pubkey)
-  echo $priv_key > $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "RequestID = $request_id" > $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "PrivateKey = $priv_key" >> $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "ConnectionType = HomeServer Internet" >> $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
+  echo "IsPrimary = false" >> $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
   chmod 0400 $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
   msg_body=""
   msg_body=$msg_body"$APPLICATION_FIRST_LINE\n"
@@ -7206,7 +7201,7 @@ function performNetworkInvite()
   apply_file="$1"
   config_name="$2"
   # First check if there are any shell expansions in the file.
-  # If there is, throw up big a red flag.
+  # If there is, throw up a big red flag.
   check_file=$(checkFileShellExpansion $apply_file)
   if ! [ -z "$check_file" ]; then
     echo -e "$check_file"
@@ -7388,6 +7383,7 @@ function performNetworkInvite()
   curdt=$(getCurrentDate)
   case "$conn_type" in
     "HomeServer VPN")
+      echo "Adding to RelayServer..."
       ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"HS-$domain_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$new_ip\" \"false\" \"true\" \"$wgPortalAuth\""
       mbres=$?
       if [ $mbres -ne 0 ]; then
@@ -7401,6 +7397,7 @@ function performNetworkInvite()
         mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$mail_subdomain');select last_insert_rowid();")
       fi
       sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,MailHostID) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$external_prefix',$mail_host_id);"
+      echo "Adding DNS entries to AdguardHome..."
       addDomainAndWildcardAdguardHS "$domain_name" "$new_ip"
       addDomainAndWildcardAdguardRS "$domain_name" "$new_ip"
       addDomainAdguardHS "*.$external_prefix.$domain_name" "A"
@@ -7409,6 +7406,7 @@ function performNetworkInvite()
       sqlite3 $HSHQ_DB "update hsvpn_dns set IsActive=0 where PeerDomain='$domain_name';"
       sqlite3 $HSHQ_DB "insert into hsvpn_dns(HostDomain,PeerDomain,PeerDomainExtPrefix,IPAddress,DateAdded,IsActive) values('$HOMESERVER_DOMAIN','$domain_name','$external_prefix','$new_ip','$curdt',1);"
       if [ "$is_primary" = "true" ]; then
+        echo "Adding mail domain to RelayServer..."
         sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$domain_name',true);"
         mail_relay_password=$(pwgen -c -n 32 1)
         ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker exec mail-relay-postfix /etc/postfix/scripts/addMailUser.sh $domain_name $mail_relay_password"
@@ -7452,7 +7450,7 @@ function performNetworkInvite()
     ;;
   esac
   unloadSSHKey
-
+  echo "Emailing the invitation..."
   # Finally, email the invitation.
   case "$conn_type" in
     "HomeServer VPN")
@@ -7463,7 +7461,7 @@ function performNetworkInvite()
       if [ "$is_primary" = "true" ]; then
         mail_body=${mail_body}"$(getDNSRecordsInfo $domain_name)\n\n"
       fi
-      mail_body=$mail_body"1) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 04 Join Network.\n"
+      mail_body=$mail_body"1) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"2) Copy everything BELOW the following line and paste the contents where appropriate.\n"
       mail_body=$mail_body"_______________________________________________________________________\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -7550,7 +7548,7 @@ function performNetworkInvite()
       mail_body=${mail_body}"HomeServer Internet Invitation from $HOMESERVER_NAME\n"
       mail_body=${mail_body}"================================================================\n\n"
       mail_body=$mail_body"1) Copy everything BELOW the following line.\n"
-      mail_body=$mail_body"2) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 04 Join Network.\n"
+      mail_body=$mail_body"2) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"3) Paste the contents where appropriate. \n"
       mail_body=$mail_body"_______________________________________________________________________\n\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -7587,7 +7585,9 @@ function performNetworkInvite()
         mail_body=$mail_body"     1. Copy and paste the configuration INSIDE the ### borders below, or\n"
         mail_body=$mail_body"     2. Scan the attached QR image (${config_name}-qr.png) from within the WireGuard client, or\n"
         mail_body=$mail_body"     3. Load the attached config file (${config_name}.conf).\n\n"
-        mail_body=$mail_body"Ensure to replace your private key in the config before activating.\n"
+        if [ -z "$priv_key" ]; then
+          mail_body=$mail_body"Ensure to replace your private key in the config before activating.\n"
+        fi
       else
         mail_body=$mail_body"Append the config section below to your existing configuration.\n"
       fi
@@ -7634,7 +7634,7 @@ function performNetworkInvite()
       rm -f $HOME/${config_name}-qr.png
     ;;
   esac
-
+  echo "Invite complete."
 }
 
 # VPN Join functions
@@ -7696,8 +7696,17 @@ function performNetworkJoin()
   mail_key_section=$(getTextBetweenStrings $join_file "mail.key Begin" "mail.key End")
   join_base_config_file=$HOME/joinvpn_base_config.cnf
   echo -e "$base_config_section" > $join_base_config_file
-  priv_key=$(sudo awk 'NF{print;exit}' $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
+
+  priv_key=$(getValueFromConfig "PrivateKey" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
+  req_conn_type=$(getValueFromConfig "ConnectionType" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
+  req_is_primary=$(getValueFromConfig "IsPrimary" $HSHQ_WIREGUARD_DIR/requestkeys/$request_id)
+
   conn_type=$(getValueFromConfig "ConnectionType" $join_base_config_file)
+  if ! [ "$conn_type" = "$req_conn_type" ]; then
+    echo "ERROR: Apply/join connection type mismatch. You applied for $req_conn_type, but invitation has $conn_type."
+    rm -f $join_base_config_file
+    return 8
+  fi
   interface_name=$(getValueFromConfig "InterfaceName" $join_base_config_file)
   if [ -z "$interface_name" ] || [ $(checkValidString "$interface_name" "-") = "false" ]; then
     echo "ERROR: Invalid interface name."
@@ -7820,7 +7829,22 @@ function performNetworkJoin()
         rm -f $join_base_config_file
         return 8
       fi
+      conn_type=$(getValueFromConfig "ConnectionType" $join_base_config_file)
+      if ! [ "$is_primary" = "$req_is_primary" ]; then
+        if [ "$is_primary" = "true" ]; then
+          echo "ERROR: Apply/join IsPrimary mismatch. You applied for a non-primary connection, but the invitation indicates a primary connection."
+        else
+          echo "ERROR: Apply/join IsPrimary mismatch. You applied for a primary connection, but the invitation indicates a non-primary connection."
+        fi
+        rm -f $join_base_config_file
+        return 8
+      fi
       if [ "$is_primary" = "true" ]; then
+        if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+          echo "ERROR: You are already hosting a VPN, cannot join another network as primary."
+          rm -f $join_base_config_file
+          return 8
+        fi
         smtp_relay_host=$(getValueFromConfig "SMTPRelayHost" $join_base_config_file)
         if [ -z "$smtp_relay_host" ]; then
           echo "ERROR: Invalid SMTP relay host."
@@ -8023,8 +8047,8 @@ function performNetworkJoin()
           echo "Updating CA certificates in Nextcloud..."
           docker exec -u www-data nextcloud-app php occ --no-warnings security:certificates:import /usr/local/share/ca-certificates/$join_rootca_name
         fi
-        echo "Restarting HomeAssistant (if running) due to new CA certificate..."
-        restartStackIfRunning homeassistant 10
+        #echo "Restarting HomeAssistant (if running) due to new CA certificate..."
+        #restartStackIfRunning homeassistant 10
       fi
       echo "Adding advertise IP..."
       addAdvertiseIP $client_ip
@@ -8032,7 +8056,6 @@ function performNetworkJoin()
       if [ "$is_connect" = "true" ]; then
         connectVPN $db_id
       fi
-      rm -f $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
     ;;
     "HomeServer Internet")
       dockerNetworkName="dwg-${interface_name}"
@@ -8072,7 +8095,6 @@ function performNetworkJoin()
       echo -e "AllowedIPs = $allowed_ips" >> $join_wireguard_config_file
       echo -e "Endpoint = ${endpoint_hostname}:${endpoint_port}" >> $join_wireguard_config_file
       echo -e "PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE" >> $join_wireguard_config_file
-      rm -f $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
       chmod 400 $join_wireguard_config_file
       sudo chown root:root $join_wireguard_config_file
       sudo mv $join_wireguard_config_file $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
@@ -8086,6 +8108,7 @@ function performNetworkJoin()
       fi
     ;;
   esac
+  rm -f $HSHQ_WIREGUARD_DIR/requestkeys/$request_id
 }
 
 # VPN Remove functions
@@ -8626,8 +8649,12 @@ function checkDeleteStackAndDirectory()
   if ! [ "$is_check_stack" = "false" ]; then
     stackID=$(getStackID $stack_name)
     if ! [ -z "$stackID" ]; then
+      if ! [ "$ENABLE_STACK_DELETE" = "true" ] && ! [ "$is_force_delete" = "true" ]; then
+        echo "ERROR: Stack deletion is disabled, exiting..."
+        exit 5
+      fi
       if [ "$is_force_delete" = "true" ]; then
-        deleteStack $stack_name
+        is_delete_stack=true
       else
         showYesNoMessageBox "Stack Exists" "The stack '$stack_name' exists. Do you wish to delete it?"
         mbres=$?
@@ -8640,6 +8667,10 @@ function checkDeleteStackAndDirectory()
     fi
   fi
   if [ -d "$HSHQ_STACKS_DIR/$stack_name" ] || [ -d "$HSHQ_NONBACKUP_DIR/$stack_name" ]; then
+    if ! [ "$ENABLE_STACK_DELETE" = "true" ] && ! [ "$is_force_delete" = "true" ]; then
+      echo "ERROR: Stack deletion is disabled, exiting..."
+      exit 5
+    fi
     if [ "$is_force_delete" = "true" ]; then
       is_delete_dirs=true
     else
@@ -10715,7 +10746,7 @@ function sendEmailMyNetworkHomeServerDNSList()
 {
   hs_email_subj="(MGR COPY)HomeServer DNS Update from $HOMESERVER_NAME"
   hs_email_body="$(getMyNetworkHomeServersDNSUpdateEmailBody)"
-  echo "Sending HSUpdate email to self"
+  echo "Sending HomeServer Update email to self"
   sendEmail -s "$hs_email_subj" -b "$hs_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
@@ -10818,11 +10849,11 @@ function notifyMyNetworkHomeServersDNSUpdate()
   do
     # Skip the domain being added/removed. This will skip anyone with an email address on that domain, but this is less impactful and likely better than the alternative.
     if ! [ "$(getDomainFromEmailAddress $curEmail)" = "$addRemoveDomainName" ]; then 
-      echo "Sending HSUpdate email to $curEmail"
+      echo "Sending HomeServer Update email to $curEmail"
       sendEmail -s "$hs_email_subj" -b "$hs_email_body" -t "$curEmail" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     fi
   done
-  echo "Sending HSUpdate email to self"
+  echo "Sending HomeServer Update email to self"
   hs_email_subj="(MGR COPY)HomeServer DNS Update from $HOMESERVER_NAME"
   sendEmail -s "$hs_email_subj" -b "$hs_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
@@ -15872,10 +15903,6 @@ function initServicesCredentials()
   if [ -z "$HSHQMANAGER_ADMIN_PASSWORD" ]; then
     HSHQMANAGER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar HSHQMANAGER_ADMIN_PASSWORD $HSHQMANAGER_ADMIN_PASSWORD
-  fi
-  if [ -z "$CLIENTDNS_ADMIN_PASSWORD" ]; then
-    CLIENTDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar CLIENTDNS_ADMIN_PASSWORD $CLIENTDNS_ADMIN_PASSWORD
   fi
   if [ -z "$GRAFANA_ADMIN_USERNAME" ]; then
     GRAFANA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_grafana"
@@ -37671,10 +37698,10 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
   if [ \$ver_res -ne 0 ]; then
     # Not verified, raise the red flag
     rm -f \$HSHQ_WRAP_TMP
-    echo "**************************SECURITY ALERT**************************"
-    echo "There was a verification error on the latest wrapper version (Version \${hshq_wrap_dl_version})."
-    echo "Please email security@homeserverhq.com as soon as possible."
-    echo "******************************************************************"
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+    echo "@ There was a verification error on the latest wrapper version (Version \${hshq_wrap_dl_version}). @"
+    echo "@         Please email security@homeserverhq.com as soon as possible.        @"
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
     exit 8
   fi
   rm -f \$HSHQ_WRAP_SCRIPT
@@ -37698,10 +37725,10 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
   if [ \$ver_res -ne 0 ]; then
     # Not verified, raise the red flag
     rm -f \$HSHQ_LIB_TMP
-    echo "**************************SECURITY ALERT**************************"
-    echo "There was a verification error on the latest lib version (Version \${hshq_lib_dl_version})."
-    echo "Please email security@homeserverhq.com as soon as possible."
-    echo "******************************************************************"
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+    echo "@   There was a verification error on the latest lib version (Version \${hshq_lib_dl_version}).   @"
+    echo "@         Please email security@homeserverhq.com as soon as possible.        @"
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
     exit 8
   fi
   rm -f \$HSHQ_LIB_SCRIPT
@@ -38301,7 +38328,7 @@ EOFSC
 {
   "name": "01 Invite to Network",
   "script_path": "conf/scripts/myNetworkInviteConnection.sh",
-  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or User to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will automatically be sent to the requesting email address upon execution. The name field only applies to User applications, for your your own internal reference. Names for other connection types will be automatically generated.",
+  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or User to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User applications, for your your own internal reference. Names for other connection types will be automatically generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -38613,7 +38640,7 @@ EOFSC
 {
   "name": "04 Change User IP",
   "script_path": "conf/scripts/changeUserIP.sh",
-  "description": "Changes the interface IP address of a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address due to a collision. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.<br/><br/>Upon a successful change, an email will automatically be sent to the corresponding email address for this connection.",
+  "description": "Changes the interface IP address of a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address due to a collision. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39706,7 +39733,7 @@ EOFSC
 {
   "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
-  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This utility can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will automatically be married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
+  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This utility can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -40792,8 +40819,11 @@ EOFSC
 function outputStackListsHSHQManager()
 {
   echo ${HSHQ_REQUIRED_STACKS},${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_FULL_STACKLIST_FILENAME
+  sort -o $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_FULL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_FULL_STACKLIST_FILENAME
   echo ${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_OPTIONAL_STACKLIST_FILENAME
+  sort -o $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_OPTIONAL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_OPTIONAL_STACKLIST_FILENAME
   echo $(getStacksToUpdate) | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_UPDATE_STACKLIST_FILENAME
+  sort -o $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_UPDATE_STACKLIST_FILENAME $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_UPDATE_STACKLIST_FILENAME
 }
 
 # SQLPad
