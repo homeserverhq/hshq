@@ -12279,6 +12279,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=39
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 40 ]; then
+    echo "Updating to Version 40..."
+    version40Update
+    HSHQ_VERSION=40
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     is_update_performed=true
@@ -13056,6 +13062,14 @@ function version39Update()
   sqlite3 $HSHQ_DB "update connections set IsInternet=true where IsInternet='true';"
   sqlite3 $HSHQ_DB "update connections set IsInternet=false where IsInternet='false';"
   chmod 600 $HSHQ_DB
+}
+
+function version40Update()
+{
+  set +e
+  clearAllHSHQManagerScripts
+  outputAllHSHQManagerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
