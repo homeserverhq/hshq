@@ -9813,6 +9813,27 @@ function removeTextBlockInFile()
   fi
 }
 
+function insertSubAuthelia()
+{
+  insSub="$1"
+  selBlock="$2"
+  set +e
+  grep "$insSub" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    return
+  fi
+  grep "# Authelia $selBlock END" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  sed -i "/# Authelia $selBlock END/i\        - $insSub" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  docker container restart authelia > /dev/null 2>&1
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
 function urlEncode()
 {
   strLength="${#1}"
@@ -12122,116 +12143,116 @@ EOFCF
 
 function checkUpdateVersion()
 {
-  is_update_performed=false
+  is_update_stack_lists=false
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
     setStaticIPToCurrent
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=11
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 14 ]; then
     echo "Updating to Version 14..."
     version14Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 22 ]; then
     echo "Updating to Version 22..."
     version22Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=22
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 23 ]; then
     echo "Updating to Version 23..."
     version23Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=23
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 24 ]; then
     echo "Updating to Version 24..."
     version24Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=24
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 25 ]; then
     echo "Updating to Version 25..."
     version25Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=25
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 26 ]; then
     echo "Updating to Version 26..."
     version26Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=26
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 27 ]; then
     echo "Updating to Version 27..."
     version27Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=27
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 29 ]; then
     echo "Updating to Version 29..."
     version29Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=29
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 30 ]; then
     echo "Updating to Version 30..."
     version30Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=30
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 31 ]; then
     echo "Updating to Version 31..."
     version31Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=31
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 32 ]; then
     echo "Updating to Version 32..."
     version32Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=32
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 34 ]; then
     echo "Updating to Version 34..."
     version34Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=34
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 35 ]; then
     echo "Updating to Version 35..."
     version35Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=35
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 37 ]; then
     echo "Updating to Version 37..."
     version37Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=37
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 38 ]; then
     echo "Updating to Version 38..."
     version38Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=38
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
@@ -12250,16 +12271,17 @@ function checkUpdateVersion()
   if [ $HSHQ_VERSION -lt 41 ]; then
     echo "Updating to Version 41..."
     version41Update
+    is_update_stack_lists=true
     HSHQ_VERSION=41
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ "$is_update_performed" = "true" ]; then
+  if [ "$is_update_stack_lists" = "true" ]; then
     outputStackListsHSHQManager
   fi
 }
@@ -13208,6 +13230,9 @@ EOFWA
     rm -f $HOME/v41.sh
   fi
   set -e
+  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
+  outputBootScripts
+  fixAutheliaConfig
 }
 
 function sendRSExposeScripts()
@@ -13354,6 +13379,113 @@ function checkFixPortainerEnv()
     startStopStack duplicati start
     startStopStack syncthing start
   fi
+}
+
+function fixAutheliaConfig()
+{
+  inputfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  set +e
+  grep "# Authelia bypass BEGIN" $inputfile > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    return
+  fi
+  outres=""
+  OIFS=$IFS
+  IFS=$(echo -en "\n\r")
+  readarray -t inputArr < $inputfile
+  curnum=0
+  while [ $curnum -lt ${#inputArr[@]} ]
+  do
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ access_control ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia bypass BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia bypass END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia basicusers BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia basicusers END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia primaryusers BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia primaryusers END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia admins BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia admins END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+  
+  done
+  IFS=$OIFS
+  
+  echo -e "$outres" > $inputfile
 }
 
 function checkImageList()
@@ -14041,7 +14173,7 @@ function nukeHSHQ()
 
 function getExposedPortsList()
 {
-  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,22000,21027,$PORTAINER_LOCAL_HTTPS_PORT"
+  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,22000,21027,3478,5349,$PORTAINER_LOCAL_HTTPS_PORT"
 }
 
 function outputBootScripts()
@@ -15556,6 +15688,7 @@ function loadPinnedDockerImages()
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser
   IMG_CODESERVER=codercom/code-server:4.20.1
   IMG_COLLABORA=collabora/code:23.05.8.2.1
+  IMG_COTURN=coturn/coturn:4.6
   IMG_DISCOURSE=bitnami/discourse:3.1.3
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
   IMG_DOZZLE=amir20/dozzle:v6.1.1
@@ -15567,6 +15700,7 @@ function loadPinnedDockerImages()
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
   IMG_FILEBROWSER=filebrowser/filebrowser:v2.27.0
+  IMG_FILEDROP=filedrop/filedrop:1
   IMG_FIREFLY=fireflyiii/core:version-6.1.7
   IMG_FRESHRSS=freshrss/freshrss:1.23.1
   IMG_GHOST=ghost:5.78.0-alpine
@@ -15772,6 +15906,10 @@ function getScriptStackVersion()
       echo "v1" ;;
     huginn)
       echo "v1" ;;
+    coturn)
+      echo "v1" ;;
+    filedrop)
+      echo "v1" ;;
     ofelia)
       echo "v2" ;;
     sqlpad)
@@ -15890,6 +16028,8 @@ function pullDockerImages()
   pullImage $IMG_CHANGEDETECTION_APP
   pullImage $IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME
   pullImage $IMG_HUGINN_APP
+  pullImage $IMG_COTURN
+  pullImage $IMG_FILEDROP
 }
 
 function pullBaseServicesDockerImages()
@@ -16728,6 +16868,10 @@ function initServicesCredentials()
     HUGINN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar HUGINN_DATABASE_USER_PASSWORD $HUGINN_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$COTURN_STATIC_SECRET" ]; then
+    COTURN_STATIC_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar COTURN_STATIC_SECRET $COTURN_STATIC_SECRET
+  fi
 }
 
 function installBaseStacks()
@@ -16761,6 +16905,7 @@ function initServiceVars()
   checkAddSvc "SVCD_CLIENTDNS=clientdns,clientdns,primary,admin,ClientDNS,clientdns,hshq"
   checkAddSvc "SVCD_CODESERVER=codeserver,codeserver,primary,admin,CodeServer,codeserver,hshq"
   checkAddSvc "SVCD_COLLABORA=collabora,collabora,other,user,Collabora,collabora,hshq"
+  checkAddSvc "SVCD_COTURN=coturn,coturn,other,user,Coturn,coturn,hshq"
   checkAddSvc "SVCD_DISCOURSE=discourse,discourse,other,user,Discourse,discourse,hshq"
   checkAddSvc "SVCD_DOZZLE=dozzle,dozzle,primary,admin,Dozzle,dozzle,hshq"
   checkAddSvc "SVCD_DRAWIO_WEB=drawio,drawio,primary,user,Draw.io,drawio,hshq"
@@ -16769,6 +16914,7 @@ function initServiceVars()
   checkAddSvc "SVCD_EXCALIDRAW_SERVER=excalidraw,excalidraw-server,primary,user,Excalidraw Server,excalidraw-server,hshq"
   checkAddSvc "SVCD_EXCALIDRAW_STORAGE=excalidraw,excalidraw-storage,primary,user,Excalidraw Storage,excalidraw-storage,hshq"
   checkAddSvc "SVCD_FILEBROWSER=filebrowser,filebrowser,other,user,FileBrowser,filebrowser,hshq"
+  checkAddSvc "SVCD_FILEDROP=filedrop,filedrop,other,user,FileDrop,filedrop,hshq"
   checkAddSvc "SVCD_FILES=files,files,other,user,Files,files,hshq"
   checkAddSvc "SVCD_FIREFLY=firefly,firefly,home,admin,Firefly III,fireflyiii,hshq"
   checkAddSvc "SVCD_FRESHRSS=freshrss,freshrss,primary,user,FreshRSS,freshrss,le"
@@ -16945,6 +17091,10 @@ function installStackByName()
       installChangeDetection $is_integrate ;;
     huginn)
       installHuginn $is_integrate ;;
+    coturn)
+      installCoturn $is_integrate ;;
+    filedrop)
+      installFileDrop $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -17071,6 +17221,10 @@ function performUpdateStackByName()
       performUpdateChangeDetection "$portainerToken" ;;
     huginn)
       performUpdateHuginn "$portainerToken" ;;
+    coturn)
+      performUpdateCoturn "$portainerToken" ;;
+    filedrop)
+      performUpdateFileDrop "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -17095,6 +17249,7 @@ function getAutheliaBlock()
   retval="${retval}  default_policy: deny\n"
   retval="${retval}  rules:\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia bypass BEGIN\n"
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
@@ -17103,6 +17258,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FILEBROWSER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FILEDROP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FRESHRSS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITEA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEIMDALL.$HOMESERVER_DOMAIN\n"
@@ -17129,15 +17285,19 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia basicusers BEGIN\n"
   retval="${retval}        - $SUB_DISCOURSE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PHOTOPRISM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_INVIDIOUS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia basicusers END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_BASIC_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia primaryusers BEGIN\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
@@ -17146,10 +17306,12 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia primaryusers END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_PRIMARY_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia admins BEGIN\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
@@ -17179,6 +17341,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia admins END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_ADMIN_USER_GROUP_NAME\"\n"
@@ -17338,6 +17501,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0 "paperless.png"
   insertIntoHeimdallDB "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0 "changedetection.png"
   insertIntoHeimdallDB "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0 "huginn.png"
+  insertIntoHeimdallDB "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0 "filedrop.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -17422,6 +17586,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -17440,7 +17605,7 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,sqlpad"
 
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
@@ -17886,6 +18051,12 @@ function getScriptImageByContainerName()
       ;;
     "huginn-app")
       container_image=$IMG_HUGINN_APP
+      ;;
+    "coturn")
+      container_image=$IMG_COTURN
+      ;;
+    "filedrop")
+      container_image=$IMG_FILEDROP
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -33436,6 +33607,7 @@ function installCalibre()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CALIBRE_SERVER $MANAGETLS_CALIBRE_SERVER "$is_integrate_hshq" $NETDEFAULT_CALIBRE_SERVER "$inner_block"
+  insertSubAuthelia $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN admins
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN {\n"
@@ -33451,6 +33623,7 @@ function installCalibre()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CALIBRE_WEB $MANAGETLS_CALIBRE_WEB "$is_integrate_hshq" $NETDEFAULT_CALIBRE_WEB "$inner_block"
+  insertSubAuthelia $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll calibre "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" "calibre-server.png"
@@ -33627,6 +33800,7 @@ function installNetdata()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NETDATA $MANAGETLS_NETDATA "$is_integrate_hshq" $NETDEFAULT_NETDATA "$inner_block"
+  insertSubAuthelia $SUB_NETDATA.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll netdata "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" "netdata.png"
@@ -33788,6 +33962,7 @@ function installLinkwarden()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_LINKWARDEN $MANAGETLS_LINKWARDEN "$is_integrate_hshq" $NETDEFAULT_LINKWARDEN "$inner_block"
+  insertSubAuthelia $SUB_LINKWARDEN.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
@@ -33978,6 +34153,7 @@ function installStirlingPDF()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_STIRLINGPDF $MANAGETLS_STIRLINGPDF "$is_integrate_hshq" $NETDEFAULT_STIRLINGPDF "$inner_block"
+  insertSubAuthelia $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll stirlingpdf "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" "stirlingpdf.png"
@@ -34123,6 +34299,7 @@ function installBarAssistant()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BARASSISTANT $MANAGETLS_BARASSISTANT "$is_integrate_hshq" $NETDEFAULT_BARASSISTANT "$inner_block"
+  insertSubAuthelia $SUB_BARASSISTANT.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll bar-assistant "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" "bar-assistant.png"
@@ -34443,6 +34620,7 @@ function installFreshRSS()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_FRESHRSS $MANAGETLS_FRESHRSS "$is_integrate_hshq" $NETDEFAULT_FRESHRSS "$inner_block"
+  insertSubAuthelia $SUB_FRESHRSS.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
@@ -34679,6 +34857,7 @@ function installKeila()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_KEILA $MANAGETLS_KEILA "$is_integrate_hshq" $NETDEFAULT_KEILA "$inner_block"
+  insertSubAuthelia $SUB_KEILA.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
@@ -34920,6 +35099,7 @@ function installWallabag()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_WALLABAG $MANAGETLS_WALLABAG "$is_integrate_hshq" $NETDEFAULT_WALLABAG "$inner_block"
+  insertSubAuthelia $SUB_WALLABAG.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
@@ -35157,6 +35337,7 @@ function installJupyter()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_JUPYTER $MANAGETLS_JUPYTER "$is_integrate_hshq" $NETDEFAULT_JUPYTER "$inner_block"
+  insertSubAuthelia $SUB_JUPYTER.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll jupyter "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" "jupyter.png"
@@ -35308,6 +35489,7 @@ function installPaperless()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PAPERLESS $MANAGETLS_PAPERLESS "$is_integrate_hshq" $NETDEFAULT_PAPERLESS "$inner_block"
+  insertSubAuthelia $SUB_PAPERLESS.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
@@ -35592,6 +35774,7 @@ function installSpeedtestTrackerLocal()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_LOCAL $MANAGETLS_SPEEDTEST_TRACKER_LOCAL "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_LOCAL "$inner_block"
+  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
@@ -35832,6 +36015,7 @@ function installSpeedtestTrackerVPN()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_VPN $MANAGETLS_SPEEDTEST_TRACKER_VPN "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_VPN "$inner_block"
+  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
@@ -36077,6 +36261,7 @@ function installChangeDetection()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CHANGEDETECTION $MANAGETLS_CHANGEDETECTION "$is_integrate_hshq" $NETDEFAULT_CHANGEDETECTION "$inner_block"
+  insertSubAuthelia $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll changedetection "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" "changedetection.png"
@@ -36273,6 +36458,7 @@ function installHuginn()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_HUGINN $MANAGETLS_HUGINN "$is_integrate_hshq" $NETDEFAULT_HUGINN "$inner_block"
+  insertSubAuthelia $SUB_HUGINN.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
@@ -36450,6 +36636,267 @@ function performUpdateHuginn()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Coturn
+function installCoturn()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory coturn "$FMLNAME_COTURN"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  pullImage $IMG_COTURN
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  mkdir $HSHQ_STACKS_DIR/coturn
+  initServicesCredentials
+  outputConfigCoturn
+  generateCert coturn "coturn,$SUB_COTURN.$HOMESERVER_DOMAIN"
+  installStack coturn coturn "" $HOME/coturn.env
+  sleep 3
+}
+
+function outputConfigCoturn()
+{
+  cat <<EOFOF > $HOME/coturn-compose.yml
+$STACK_VERSION_PREFIX coturn $(getScriptStackVersion coturn)
+version: '3.5'
+
+services:
+  coturn:
+    image: $(getScriptImageByContainerName coturn)
+    container_name: coturn
+    hostname: coturn
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49100-49200:49100-49200/udp"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/coturn/turnserver.conf:/etc/coturn/turnserver.conf
+      - \${HSHQ_SSL_DIR}/coturn.crt:/usr/local/etc/cert.pem
+      - \${HSHQ_SSL_DIR}/coturn.key:/usr/local/etc/key.pem
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFOF
+
+  cat <<EOFRM > $HOME/coturn.env
+TZ=\${TZ}
+EOFRM
+
+  cat <<EOFRM > $HSHQ_STACKS_DIR/coturn/turnserver.conf
+listening-port=3478
+tls-listening-port=5349
+min-port=49100
+max-port=49200
+fingerprint
+use-auth-secret
+static-auth-secret=$COTURN_STATIC_SECRET
+realm=$SUB_COTURN.$HOMESERVER_DOMAIN
+total-quota=0
+bps-capacity=0
+stale-nonce=600
+cert=/usr/local/etc/cert.pem
+pkey=/usr/local/etc/key.pem
+no-multicast-peers
+no-rfc5780
+no-stun-backward-compatibility
+response-origin-only-with-rfc5780
+no-cli
+EOFRM
+
+}
+
+function performUpdateCoturn()
+{
+  perform_stack_name=coturn
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=coturn/coturn:4.6
+      image_update_map[0]="coturn/coturn:4.6,coturn/coturn:4.6"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# FileDrop
+function installFileDrop()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory filedrop "FileDrop"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set +e
+  git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
+  docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
+  retVal=$?
+  sudo rm -fr $HSHQ_BUILD_DIR/filedrop
+  if [ $retVal -ne 0 ]; then
+    return
+  fi
+  if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    echo "Missing coturn, installing..."
+    installCoturn
+    if [ $? -ne 0 ]; then
+      return
+    fi
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/filedrop
+  outputConfigFileDrop
+  installStack filedrop filedrop "" $HOME/filedrop.env
+  sleep 3
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FILEDROP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://filedrop:5000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FILEDROP $MANAGETLS_FILEDROP "$is_integrate_hshq" $NETDEFAULT_FILEDROP "$inner_block"
+  insertSubAuthelia $SUB_FILEDROP.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll filedrop "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" "filedrop.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigFileDrop()
+{
+  cat <<EOFDZ > $HOME/filedrop-compose.yml
+$STACK_VERSION_PREFIX filedrop $(getScriptStackVersion filedrop)
+version: '3.5'
+
+services:
+  filedrop:
+    image: $(getScriptImageByContainerName filedrop)
+    container_name: filedrop
+    hostname: filedrop
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFDZ
+
+  cat <<EOFDZ > $HOME/filedrop.env
+TZ=\${TZ}
+WS_HOST=0.0.0.0
+WS_APP_NAME=$HOMESERVER_NAME FileDrop
+WS_ABUSE_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+WS_REQUIRE_CRYPTO=1
+TURN_MODE=hmac
+TURN_SERVER=turn:$SUB_COTURN.$HOMESERVER_DOMAIN:5349
+TURN_USERNAME=filedrop
+TURN_SECRET=$COTURN_STATIC_SECRET
+STUN_SERVER=
+EOFDZ
+
+}
+
+function performUpdateFileDrop()
+{
+  perform_stack_name=filedrop
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=filedrop/filedrop:1
+      image_update_map[0]="filedrop/filedrop:1,filedrop/filedrop:1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # HSHQ Manager
 function installHSHQManager()
 {
@@ -36505,6 +36952,7 @@ function installHSHQManager()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_HSHQMANAGER $MANAGETLS_HSHQMANAGER "$is_integrate_hshq" $NETDEFAULT_HSHQMANAGER "$inner_block"
+  insertSubAuthelia $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN admins
 
   insertEnableSvcAll hshqmanager "$FMLNAME_HSHQMANAGER" $USERTYPE_HSHQMANAGER "https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN" "homeserverhq.png"
   restartAllCaddyContainers
