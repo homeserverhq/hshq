@@ -1,7 +1,7 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=40
+HSHQ_SCRIPT_VERSION=41
 
-# Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
+# Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -1581,6 +1581,9 @@ function getStacksToUpdate()
     fi
     if [ $? -ne 0 ]; then continue; fi
   done
+  if ! [ -z "$stacks_to_update_list" ]; then
+    stacks_to_update_list=${stacks_to_update_list%?}
+  fi
   echo "$stacks_to_update_list"
 }
 
@@ -1628,46 +1631,7 @@ EOF
 function performAllAvailableStackUpdates()
 {
   is_msgbox_prompt="$1"
-  set +e
-  stacksToUpdate=""
-  # Special case for portainer compose
-  check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/docker-compose.yml)
-  if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
-    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
-    if [ $? -eq 0 ]; then
-      check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
-      if [ $? -eq 0 ]; then
-        hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
-        if [ $? -eq 0 ]; then
-          if [ $check_stack_version -lt $hshq_stack_ver ]; then
-            stacksToUpdate=${stacksToUpdate}"${check_stack_name},"
-          fi
-        fi
-      fi
-    fi
-  fi
-  dirList=($(sudo ls $HSHQ_STACKS_DIR/portainer/compose/))
-  for curDir in "${dirList[@]}"
-  do
-    check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/compose/$curDir/docker-compose.yml)
-    if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
-      continue
-    fi
-    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
-    if [ $? -ne 0 ]; then continue; fi
-    check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
-    if [ $? -ne 0 ]; then continue; fi
-    hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
-    if [ $? -ne 0 ]; then continue; fi
-    if [ -z $check_stack_version ] || [ -z $hshq_stack_ver ]; then
-      echo "Could not find stack version for $check_stack_name, Stack version: $check_stack_version, HSHQ version: $hshq_stack_ver"
-      continue
-    fi
-    if [ $check_stack_version -lt $hshq_stack_ver ]; then
-      stacksToUpdate=${stacksToUpdate}"${check_stack_name},"
-    fi
-    if [ $? -ne 0 ]; then continue; fi
-  done
+  stacksToUpdate="$(getStacksToUpdate)"
   if [ -z "$stacksToUpdate" ]; then
     if [ "$is_msgbox_prompt" = "true" ]; then
       showMessageBox "No Available Updates" "All services are updated."
@@ -1682,17 +1646,7 @@ function performAllAvailableStackUpdates()
       return
     fi
   fi
-  update_list=""
-  unset stackListArr
-  stackListArr=($(echo $stacksToUpdate | tr "," "\n"))
-  for cur_update_stack_name in "${stackListArr[@]}"
-  do
-    if [ -z "$cur_update_stack_name" ]; then
-      continue
-    fi
-    update_list="${update_list}${cur_update_stack_name},"
-  done
-  updateListOfStacks "$update_list"
+  updateListOfStacks "$stacksToUpdate"
 }
 
 function updateListOfStacks()
@@ -2194,7 +2148,7 @@ function setupHostedVPN()
     insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
     insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wireguard.png" false
+    checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
     insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
     checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
@@ -4908,6 +4862,8 @@ COMMAND=\\\$1
 RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
 set +e
 
+default_iface=\$default_iface
+
 function main()
 {
   shift
@@ -4924,25 +4880,34 @@ function up()
   iplist=\\\$(cat \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset)
   for curip in \\\$iplist
   do
+    if [ -z \\\$curip ]; then continue; fi
     ipset add inetusers \\\$curip
   done
-  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -j ACCEPT
+  ipset create alldevices hash:net
+  alliplist=(\\\$(sqlite3 \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db "select ips_str from peers;"))
+  for cur_ip in "\\\${alliplist[@]}"
+  do
+    if [ -z \\\$cur_ip ]; then continue; fi
+    ipset add alldevices \\\$cur_ip
+  done
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -j MASQUERADE
-  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
-  iptables -A FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -A POSTROUTING -o \$default_iface -j MASQUERADE
+  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -A FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
 }
 
 function down()
 {
-  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -j MASQUERADE
-  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
-  iptables -D FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -D POSTROUTING -o \$default_iface -j MASQUERADE
+  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -D FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers -j MASQUERADE
   ipset destroy inetusers
+  ipset destroy alldevices
 }
 
 main "\\\$@"
@@ -4969,6 +4934,8 @@ if [ \\\$? -ne 0 ]; then
   exit 1
 fi
 
+ipset add alldevices \\\${ipAddress}/32
+
 if ! [ "\\\$isInVPNSubnet" = "true" ]; then
   route add \\\${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
 fi
@@ -4977,6 +4944,7 @@ if [ "\\\$isInet" = "true" ]; then
   ipset add inetusers \\\${ipAddress}/32
   echo \\\${ipAddress}/32 | tee -a \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset >/dev/null
 fi
+
 
 EOFWA
   sudo chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh
@@ -4996,6 +4964,7 @@ function main()
   if [ \\\$? -ne 0 ]; then
     echo "There was a problem removing this client..."
   fi
+  ipset del alldevices \\\${ipAddress}/32
   if ! [ "\\\$isInVPNSubnet" = "true" ]; then
     route del \\\${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
   fi
@@ -5091,7 +5060,7 @@ core:
   createDefaultPeer: false
   ldapEnabled: false
   company: $RELAYSERVER_NAME
-  title: $RELAYSERVER_NAME WireGuard Portal
+  title: $RELAYSERVER_NAME WG Portal
   mailFrom: WireGuard <$EMAIL_SMTP_EMAIL_ADDRESS>
 database:
   type: sqlite
@@ -6686,7 +6655,7 @@ function performMyNetworkCreateClientDNS()
   fi
   clientdns_stack_name="$1"
   if [ $(checkValidString "$clientdns_stack_name") = "false" ] || [ ${#clientdns_stack_name} -lt 3 ] || [ ${#clientdns_stack_name} -gt 10 ]; then
-    echo "ERROR: Invalid client dns stack name - must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters."
+    echo "ERROR: Invalid ClientDNS stack name - must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters."
     return
   fi
   # Check if stack exists
@@ -6982,7 +6951,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   else
     msg_header="HomeServer VPN Application from $HOMESERVER_NAME ($request_id)\n\n"
     msg_header=${msg_header}"For the receiving manager: \n"
-    msg_header=${msg_header}"1) Go to the HSHQ Manager utility, and navigate to 06 My Network > 01 Invite to Network.\n"
+    msg_header=${msg_header}"1) Go to the HSHQ Manager app, and navigate to 06 My Network > 01 Invite to Network.\n"
     msg_header=${msg_header}"2) Copy everything BELOW the following line and paste the contents where appropriate.\n\n"
     msg_header=${msg_header}"_______________________________________________________________________\n\n"
     msg_body=${msg_header}"$msg_body"
@@ -7461,7 +7430,7 @@ function performNetworkInvite()
       if [ "$is_primary" = "true" ]; then
         mail_body=${mail_body}"$(getDNSRecordsInfo $domain_name)\n\n"
       fi
-      mail_body=$mail_body"1) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 05 Join Network.\n"
+      mail_body=$mail_body"1) Go to the HSHQ Manager app, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"2) Copy everything BELOW the following line and paste the contents where appropriate.\n"
       mail_body=$mail_body"_______________________________________________________________________\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -7548,7 +7517,7 @@ function performNetworkInvite()
       mail_body=${mail_body}"HomeServer Internet Invitation from $HOMESERVER_NAME\n"
       mail_body=${mail_body}"================================================================\n\n"
       mail_body=$mail_body"1) Copy everything BELOW the following line.\n"
-      mail_body=$mail_body"2) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 05 Join Network.\n"
+      mail_body=$mail_body"2) Go to the HSHQ Manager app, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"3) Paste the contents where appropriate. \n"
       mail_body=$mail_body"_______________________________________________________________________\n\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -7617,7 +7586,7 @@ function performNetworkInvite()
       mail_body=$mail_body"\n#################### WireGuard Config Begin ####################\n\n"
       mail_body=$mail_body"$wg_config"
       mail_body=$mail_body"\n##################### WireGuard Config End #####################\n\n"
-      mail_body=$mail_body"Add/update the entries below into your client DNS.\n"
+      mail_body=$mail_body"If this is not your primary VPN, add/update the entries below into your ClientDNS server.\n"
       mail_body=$mail_body"_______________________________________________________________________\n"
       mail_body=$mail_body"\n#################### HomeServers DNS Begin #####################\n\n"
       mail_body=$mail_body"$(getMyNetworkHomeServerDNSListForClientDNS)"
@@ -9243,14 +9212,7 @@ function restartAllStacks()
     sleep 1
   done
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
-  docker network rm dock-ext > /dev/null 2>&1
-  docker network rm dock-proxy > /dev/null 2>&1
-  docker network rm dock-privateip > /dev/null 2>&1
-  docker network rm dock-internalmail > /dev/null 2>&1
-  docker network rm dock-dbs > /dev/null 2>&1
-  docker network rm dock-ldap > /dev/null 2>&1
-  docker network rm dock-mailu-ext > /dev/null 2>&1
-  docker network rm dock-mailu-int > /dev/null 2>&1
+  removeDockerNetworks
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
@@ -9392,7 +9354,7 @@ function updateMailuStackRelayHost()
   sleep 5
 }
 
-function modFunUpdateMailuRelaySettings
+function modFunUpdateMailuRelaySettings()
 {
   sed -i "s|RELAYHOST=.*|RELAYHOST=$SMTP_RELAY_HOST|" $HOME/${updateStackName}.env
   sed -i "s|RELAYUSER=.*|RELAYUSER=$SMTP_RELAY_USERNAME|" $HOME/${updateStackName}.env
@@ -10774,7 +10736,7 @@ function sendEmailMyNetworkHomeServerDNSListClient()
     echo "ERROR: You are not hosting a RelayServer."
     return 1
   fi
-  users_email_subj="(MGR COPY)HomeServer Client DNS Update from $HOMESERVER_NAME"
+  users_email_subj="(MGR COPY)HomeServer ClientDNS Update from $HOMESERVER_NAME"
   users_email_body="$(getMyNetworkHomeServerDNSListClientDNSBody)"
   echo "Sending ClientDNS email to self"
   sendEmail -s "$users_email_subj" -b "$users_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
@@ -10874,7 +10836,7 @@ function notifyMyNetworkUsersDNSUpdate()
   addRemoveDomainName="$3"
   addRemoveDomainNameExtPrefix="$4"
   addRemoveDomainNameIPAddress="$5"
-  users_email_subj="HomeServer Client DNS Update from $HOMESERVER_NAME"
+  users_email_subj="HomeServer ClientDNS Update from $HOMESERVER_NAME"
   users_email_body=$(getMyNetworkHomeServerDNSListClientDNSBody "$addOrRemove" "$addRemoveHSName" "$addRemoveDomainName" "$addRemoveDomainNameExtPrefix" "$addRemoveDomainNameIPAddress")
   users_list=($(sqlite3 $HSHQ_DB "select EmailAddress from connections where ConnectionType='user' and NetworkType='mynetwork' group by EmailAddress;"))
   for curEmail in "${users_list[@]}"
@@ -10883,7 +10845,7 @@ function notifyMyNetworkUsersDNSUpdate()
     sendEmail -s "$users_email_subj" -b "$users_email_body" -t "$curEmail" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
   done
   echo "Sending ClientDNS email to self"
-  users_email_subj="(MGR COPY)HomeServer Client DNS Update from $HOMESERVER_NAME"
+  users_email_subj="(MGR COPY)HomeServer ClientDNS Update from $HOMESERVER_NAME"
   sendEmail -s "$users_email_subj" -b "$users_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
@@ -10915,7 +10877,7 @@ function getMyNetworkHomeServersDNSUpdateEmailBody()
   fi
   email_body=${email_body}"1. Ensure this is the most recent version of this email with matching subject\n"
   email_body=${email_body}"line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n"
-  email_body=${email_body}"2. Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 07 Update HomeServer DNS\n"
+  email_body=${email_body}"2. Go to the HSHQ Manager app, and navigate to 07 Other Networks > 07 Update HomeServer DNS\n"
   email_body=${email_body}"and paste the ENTIRE list BELOW the following line where appropriate.\n\n"
   email_body=${email_body}"3. After applying the update, you may delete any prior emails with the matching\n"
   email_body=${email_body}"subject line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n\n"
@@ -10933,7 +10895,7 @@ function getMyNetworkHomeServerDNSListClientDNSBody()
   addRemoveDomainNameExtPrefix="$4"
   addRemoveDomainNameIPAddress="$5"
   email_body=""
-  email_body=${email_body}"HomeServer Client DNS Update from $HOMESERVER_NAME\n"
+  email_body=${email_body}"HomeServer ClientDNS Update from $HOMESERVER_NAME\n"
   email_body=${email_body}"=======================================================================\n\n"
   email_body=${email_body}"If your client device uses a DNS server in this network\n"
   email_body=${email_body}"($RELAYSERVER_WG_VPN_SUBNET), then you can likely disregard this message.\n"
@@ -12285,6 +12247,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=40
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 41 ]; then
+    echo "Updating to Version 41..."
+    version41Update
+    HSHQ_VERSION=41
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     is_update_performed=true
@@ -12355,14 +12323,7 @@ function version22Update()
 
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   set +e
-  docker network rm dock-ext > /dev/null 2>&1
-  docker network rm dock-proxy > /dev/null 2>&1
-  docker network rm dock-privateip > /dev/null 2>&1
-  docker network rm dock-internalmail > /dev/null 2>&1
-  docker network rm dock-dbs > /dev/null 2>&1
-  docker network rm dock-ldap > /dev/null 2>&1
-  docker network rm dock-mailu-ext > /dev/null 2>&1
-  docker network rm dock-mailu-int > /dev/null 2>&1
+  removeDockerNetworks
   docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
 
   set +e
@@ -13069,6 +13030,183 @@ function version40Update()
   set +e
   clearAllHSHQManagerScripts
   outputAllHSHQManagerScripts
+  set -e
+}
+
+function version41Update()
+{
+  set +e
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    read -p "Press enter to continue."
+    loadSSHKey
+    set +e
+    rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+
+    tee $HOME/wgupdown.sh >/dev/null <<EOFPU
+#!/bin/bash
+COMMAND=\$1
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+set +e
+
+default_iface=$rs_default_iface
+
+function main()
+{
+  shift
+  shift
+  case "\$COMMAND" in
+    up) up ;;
+    down) down ;;
+  esac
+}
+
+function up()
+{
+  ipset create inetusers hash:net
+  iplist=\$(cat \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset)
+  for curip in \$iplist
+  do
+    if [ -z \$curip ]; then continue; fi
+    ipset add inetusers \$curip
+  done
+  ipset create alldevices hash:net
+  alliplist=(\$(sqlite3 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db "select ips_str from peers;"))
+  for cur_ip in "\${alliplist[@]}"
+  do
+    if [ -z \$cur_ip ]; then continue; fi
+    ipset add alldevices \$cur_ip
+  done
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -A FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o \$default_iface -m set --match-set inetusers src -j MASQUERADE
+}
+
+function down()
+{
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -D FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o \$default_iface -m set --match-set inetusers -j MASQUERADE
+  ipset destroy inetusers
+  ipset destroy alldevices
+}
+
+main "\$@"
+EOFPU
+
+    tee $HOME/addPeer.sh >/dev/null <<EOFWA
+#!/bin/bash
+
+name=\$1
+email=\$2
+publicKey=\$3
+presharedKey=\$4
+ipAddress=\$5
+isInet=\$6
+isInVPNSubnet=\$7
+auth=\$8
+
+uuid=\$(uuidgen | sed 's|-||g')
+jsonbody="{\"UID\": \"\$uuid\", \"DeviceName\": \"$RELAYSERVER_WG_INTERFACE_NAME\", \"DeviceType\": \"client\", \"Identifier\": \"\$name\", \"Email\": \"\$email\", \"IgnoreGlobalSettings\": true, \"PublicKey\": \"\$publicKey\", \"PresharedKey\": \"\$presharedKey\", \"Endpoint\": \"$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\", \"PersistentKeepalive\": 0, \"IPsStr\": \"\${ipAddress}/32\", \"Mtu\": $RELAYSERVER_CLIENT_DEFAULT_MTU}"
+curl -s -X 'POST' 'http://127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT/api/v1/backend/peers?DeviceName=$RELAYSERVER_WG_INTERFACE_NAME' -H 'accept: application/json' -H "Authorization: Basic \$auth" -H 'Content-Type: application/json' -d "\$jsonbody" >/dev/null
+if [ \$? -ne 0 ]; then
+  echo "There was a problem adding this client..."
+  exit 1
+fi
+
+ipset add alldevices \${ipAddress}/32
+
+if ! [ "\$isInVPNSubnet" = "true" ]; then
+  route add \${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
+fi
+
+if [ "\$isInet" = "true" ]; then
+  ipset add inetusers \${ipAddress}/32
+  echo \${ipAddress}/32 | tee -a $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset >/dev/null
+fi
+
+
+EOFWA
+
+    tee $HOME/removePeer.sh >/dev/null <<EOFWA
+#!/bin/bash
+set +e
+publicKey=\$1
+ipAddress=\$2
+isInet=\$3
+isInVPNSubnet=\$4
+auth=\$5
+
+function main()
+{
+  curl -s -X 'DELETE' "http://127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT/api/v1/backend/peer?PublicKey=\$(urlEncode \$publicKey)" -H 'accept: application/json' -H "Authorization: Basic \$auth" -H 'Content-Type: application/json' >/dev/null
+  if [ \$? -ne 0 ]; then
+    echo "There was a problem removing this client..."
+  fi
+  ipset del alldevices \${ipAddress}/32
+  if ! [ "\$isInVPNSubnet" = "true" ]; then
+    route del \${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
+  fi
+  if [ "\$isInet" = "true" ]; then
+    ipset del inetusers \${ipAddress}/32
+    sed -i '/\${ipAddress}/d' $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset
+  fi
+}
+
+function urlEncode()
+{
+  strLength="\${#1}"
+  for (( i = 0; i < strLength; i++ )); do
+    c="\${1:i:1}"
+    case \$c in
+      [a-zA-Z0-9.~_-]) printf "\$c" ;;
+      *) printf '%%%02X' "'\$c" ;;
+    esac
+  done
+}
+
+function urlDecode()
+{
+  url_encoded="\${1//+/ }"
+  printf '%b' "\${url_encoded//%/\\x}"
+}
+
+main "\$@"
+EOFWA
+
+    tee $HOME/v41.sh >/dev/null <<EOFWA
+#!/bin/bash
+
+chmod 500 $RELAYSERVER_HSHQ_SCRIPTS_DIR/wgupdown.sh
+chmod 500 $RELAYSERVER_HSHQ_SCRIPTS_DIR/addPeer.sh
+chmod 500 $RELAYSERVER_HSHQ_SCRIPTS_DIR/removePeer.sh
+chown root:root $RELAYSERVER_HSHQ_SCRIPTS_DIR/wgupdown.sh
+chown root:root $RELAYSERVER_HSHQ_SCRIPTS_DIR/addPeer.sh
+chown root:root $RELAYSERVER_HSHQ_SCRIPTS_DIR/removePeer.sh
+mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/wgupdown.sh $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh
+mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/addPeer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh
+mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/removePeer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh
+rm -f \$0
+reboot
+EOFWA
+
+    scp -P $RELAYSERVER_SSH_PORT $HOME/wgupdown.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/addPeer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/removePeer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/v41.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo bash $RELAYSERVER_HSHQ_SCRIPTS_DIR/v41.sh"
+    unloadSSHKey
+    rm -f $HOME/wgupdown.sh
+    rm -f $HOME/addPeer.sh
+    rm -f $HOME/removePeer.sh
+    rm -f $HOME/v41.sh
+  fi
   set -e
 }
 
@@ -15275,6 +15413,18 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null 2>/dev/null
 }
 
+function removeDockerNetworks()
+{
+  docker network rm dock-ext > /dev/null 2>&1
+  docker network rm dock-proxy > /dev/null 2>&1
+  docker network rm dock-privateip > /dev/null 2>&1
+  docker network rm dock-internalmail > /dev/null 2>&1
+  docker network rm dock-dbs > /dev/null 2>&1
+  docker network rm dock-ldap > /dev/null 2>&1
+  docker network rm dock-mailu-ext > /dev/null 2>&1
+  docker network rm dock-mailu-int > /dev/null 2>&1
+}
+
 function checkStackHSHQManaged()
 {
   check_hshq_managed="$1"
@@ -16677,7 +16827,7 @@ function initServiceVars()
   checkAddSvc "SVCD_VAULTWARDEN=vaultwarden,vaultwarden,primary,user,Vaultwarden,vaultwarden,hshq"
   checkAddSvc "SVCD_WALLABAG=wallabag,wallabag,primary,user,Wallabag,wallabag,le"
   checkAddSvc "SVCD_WAZUH=wazuh,wazuh,primary,admin,Wazuh,wazuh,hshq"
-  checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WireGuard Portal,wgportal,hshq"
+  checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WG Portal,wgportal,hshq"
   checkAddSvc "SVCD_WIKIJS=wikijs,wikijs,other,user,Wiki.js,wikijs,hshq"
   checkAddSvc "SVCD_WORDPRESS=wordpress,wordpress,other,user,WordPress,wordpress,hshq"
   set -e
@@ -17198,7 +17348,7 @@ function insertServicesHeimdall()
     insertIntoHeimdallDB "$FMLNAME_PORTAINER" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "portainer.png"
     insertIntoHeimdallDB "$FMLNAME_RSPAMD" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "rspamd.png"
     insertIntoHeimdallDB "$FMLNAME_SYNCTHING" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "syncthing.png"
-    insertIntoHeimdallDB "$FMLNAME_WGPORTAL" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "wireguard.png"
+    insertIntoHeimdallDB "$FMLNAME_WGPORTAL" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "wgportal.png"
     insertIntoHeimdallDB "$FMLNAME_FILEBROWSER" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "filebrowser.png"
   fi
 }
@@ -22259,7 +22409,7 @@ function addUserMailu()
     fi
     sleep 1
     ((num_tries++))
-    echo "[Mailu] Error Adding $username, retry $((num_tries+1)) of $total_tries"
+    echo "[Mailu] Error Adding $username, retry $num_tries of $total_tries"
   done
   if [ "$is_added" = "false" ]; then
     echo "[Mailu] Error adding $username, exiting..."
@@ -36907,7 +37057,7 @@ EOFSC
 {
   "name": "06 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web utility during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -37427,7 +37577,7 @@ EOFSC
 {
   "name": "01 Clear History",
   "script_path": "conf/scripts/clearHSHQManagerProcessLogs.sh",
-  "description": "Clears out all of the process logs (history) in this utility. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Clears out all of the process logs (history) in this app. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37562,7 +37712,7 @@ EOFSC
 {
   "name": "04 Full HSHQ Manager Reset",
   "script_path": "conf/scripts/fullResetHSHQManagerScripts.sh",
-  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the HSHQ Manager utility to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
+  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the HSHQ Manager app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37827,7 +37977,7 @@ EOFSC
 {
   "name": "03 Update Linux OS and Reboot",
   "script_path": "conf/scripts/updateHostAndReboot.sh",
-  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web utility during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
+  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web app during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -38000,7 +38150,7 @@ EOFSC
 {
   "name": "07 Change Connection Email",
   "script_path": "conf/scripts/changeConnectionEmail.sh",
-  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
+  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -38430,7 +38580,7 @@ EOFSC
 {
   "name": "02 Invite User to Network",
   "script_path": "conf/scripts/myNetworkInviteUserConnection.sh",
-  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' utility. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
+  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' function. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39174,7 +39324,7 @@ EOFSC
 {
   "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
-  "description": "Create a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39251,9 +39401,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeClientDNSServer.json
 {
-  "name": "13 Remove Client DNS Server",
+  "name": "13 Remove ClientDNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
-  "description": "Remove a client DNS server. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Removes a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39410,7 +39560,7 @@ EOFSC
 {
   "name": "01 HS VPN Application",
   "script_path": "conf/scripts/applyHSVPNConnection.sh",
-  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39471,7 +39621,7 @@ EOFSC
 {
   "name": "02 HS Internet Application",
   "script_path": "conf/scripts/applyHSInternetConnection.sh",
-  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39682,7 +39832,7 @@ EOFSC
 {
   "name": "04 Primary VPN Application",
   "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
-  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This function is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network function with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39747,7 +39897,7 @@ EOFSC
 {
   "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
-  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This utility can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
+  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This function can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -40016,7 +40166,7 @@ EOFSC
 {
   "name": "08 Update HomeServer DNS",
   "script_path": "conf/scripts/updateHomeServerDNS.sh",
-  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
+  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -40074,7 +40224,7 @@ EOFSC
 {
   "name": "09 Sync Adguard DNS Server",
   "script_path": "conf/scripts/syncAdguardDNS.sh",
-  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
+  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -40125,7 +40275,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> utility. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -40292,7 +40442,7 @@ EOFSC
 {
   "name": "03 Add LE Subdomain",
   "script_path": "conf/scripts/addLEDomainToRelayServer.sh",
-  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This utility will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
+  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This function will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -41184,7 +41334,7 @@ function performUpdateSQLPad()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function modFunUpdateSQLPad
+function modFunUpdateSQLPad()
 {
   grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
   if [ $? -eq 0 ]; then
