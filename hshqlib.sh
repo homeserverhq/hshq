@@ -1,7 +1,7 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=40
+HSHQ_SCRIPT_VERSION=41
 
-# Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
+# Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -1581,6 +1581,9 @@ function getStacksToUpdate()
     fi
     if [ $? -ne 0 ]; then continue; fi
   done
+  if ! [ -z "$stacks_to_update_list" ]; then
+    stacks_to_update_list=${stacks_to_update_list%?}
+  fi
   echo "$stacks_to_update_list"
 }
 
@@ -1628,46 +1631,7 @@ EOF
 function performAllAvailableStackUpdates()
 {
   is_msgbox_prompt="$1"
-  set +e
-  stacksToUpdate=""
-  # Special case for portainer compose
-  check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/docker-compose.yml)
-  if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
-    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
-    if [ $? -eq 0 ]; then
-      check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
-      if [ $? -eq 0 ]; then
-        hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
-        if [ $? -eq 0 ]; then
-          if [ $check_stack_version -lt $hshq_stack_ver ]; then
-            stacksToUpdate=${stacksToUpdate}"${check_stack_name},"
-          fi
-        fi
-      fi
-    fi
-  fi
-  dirList=($(sudo ls $HSHQ_STACKS_DIR/portainer/compose/))
-  for curDir in "${dirList[@]}"
-  do
-    check_stack_firstline=$(sudo sed -n 1p $HSHQ_STACKS_DIR/portainer/compose/$curDir/docker-compose.yml)
-    if ! [ "$(checkStackHSHQManaged $check_stack_firstline)" = "true" ]; then
-      continue
-    fi
-    check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
-    if [ $? -ne 0 ]; then continue; fi
-    check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
-    if [ $? -ne 0 ]; then continue; fi
-    hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
-    if [ $? -ne 0 ]; then continue; fi
-    if [ -z $check_stack_version ] || [ -z $hshq_stack_ver ]; then
-      echo "Could not find stack version for $check_stack_name, Stack version: $check_stack_version, HSHQ version: $hshq_stack_ver"
-      continue
-    fi
-    if [ $check_stack_version -lt $hshq_stack_ver ]; then
-      stacksToUpdate=${stacksToUpdate}"${check_stack_name},"
-    fi
-    if [ $? -ne 0 ]; then continue; fi
-  done
+  stacksToUpdate="$(getStacksToUpdate)"
   if [ -z "$stacksToUpdate" ]; then
     if [ "$is_msgbox_prompt" = "true" ]; then
       showMessageBox "No Available Updates" "All services are updated."
@@ -1682,17 +1646,7 @@ function performAllAvailableStackUpdates()
       return
     fi
   fi
-  update_list=""
-  unset stackListArr
-  stackListArr=($(echo $stacksToUpdate | tr "," "\n"))
-  for cur_update_stack_name in "${stackListArr[@]}"
-  do
-    if [ -z "$cur_update_stack_name" ]; then
-      continue
-    fi
-    update_list="${update_list}${cur_update_stack_name},"
-  done
-  updateListOfStacks "$update_list"
+  updateListOfStacks "$stacksToUpdate"
 }
 
 function updateListOfStacks()
@@ -2194,7 +2148,7 @@ function setupHostedVPN()
     insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
     insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wireguard.png" false
+    checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
     insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
     checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
@@ -4908,6 +4862,8 @@ COMMAND=\\\$1
 RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
 set +e
 
+default_iface=\$default_iface
+
 function main()
 {
   shift
@@ -4924,25 +4880,34 @@ function up()
   iplist=\\\$(cat \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset)
   for curip in \\\$iplist
   do
+    if [ -z \\\$curip ]; then continue; fi
     ipset add inetusers \\\$curip
   done
-  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -j ACCEPT
+  ipset create alldevices hash:net
+  alliplist=(\\\$(sqlite3 \\\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db "select ips_str from peers;"))
+  for cur_ip in "\\\${alliplist[@]}"
+  do
+    if [ -z \\\$cur_ip ]; then continue; fi
+    ipset add alldevices \\\$cur_ip
+  done
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -j MASQUERADE
-  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
-  iptables -A FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -A POSTROUTING -o \$default_iface -j MASQUERADE
+  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -A FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o \\\$default_iface -m set --match-set inetusers src -j MASQUERADE
 }
 
 function down()
 {
-  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
   iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -j MASQUERADE
-  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
-  iptables -D FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
-  iptables -t nat -D POSTROUTING -o \$default_iface -j MASQUERADE
+  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \\\$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -D FORWARD -i \\\$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o \\\$default_iface -m set --match-set inetusers -j MASQUERADE
   ipset destroy inetusers
+  ipset destroy alldevices
 }
 
 main "\\\$@"
@@ -4969,6 +4934,8 @@ if [ \\\$? -ne 0 ]; then
   exit 1
 fi
 
+ipset add alldevices \\\${ipAddress}/32
+
 if ! [ "\\\$isInVPNSubnet" = "true" ]; then
   route add \\\${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
 fi
@@ -4977,6 +4944,7 @@ if [ "\\\$isInet" = "true" ]; then
   ipset add inetusers \\\${ipAddress}/32
   echo \\\${ipAddress}/32 | tee -a \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset >/dev/null
 fi
+
 
 EOFWA
   sudo chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh
@@ -4996,6 +4964,7 @@ function main()
   if [ \\\$? -ne 0 ]; then
     echo "There was a problem removing this client..."
   fi
+  ipset del alldevices \\\${ipAddress}/32
   if ! [ "\\\$isInVPNSubnet" = "true" ]; then
     route del \\\${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
   fi
@@ -5091,7 +5060,7 @@ core:
   createDefaultPeer: false
   ldapEnabled: false
   company: $RELAYSERVER_NAME
-  title: $RELAYSERVER_NAME WireGuard Portal
+  title: $RELAYSERVER_NAME WG Portal
   mailFrom: WireGuard <$EMAIL_SMTP_EMAIL_ADDRESS>
 database:
   type: sqlite
@@ -6686,7 +6655,7 @@ function performMyNetworkCreateClientDNS()
   fi
   clientdns_stack_name="$1"
   if [ $(checkValidString "$clientdns_stack_name") = "false" ] || [ ${#clientdns_stack_name} -lt 3 ] || [ ${#clientdns_stack_name} -gt 10 ]; then
-    echo "ERROR: Invalid client dns stack name - must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters."
+    echo "ERROR: Invalid ClientDNS stack name - must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters."
     return
   fi
   # Check if stack exists
@@ -6982,7 +6951,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   else
     msg_header="HomeServer VPN Application from $HOMESERVER_NAME ($request_id)\n\n"
     msg_header=${msg_header}"For the receiving manager: \n"
-    msg_header=${msg_header}"1) Go to the HSHQ Manager utility, and navigate to 06 My Network > 01 Invite to Network.\n"
+    msg_header=${msg_header}"1) Go to the HSHQ Manager app, and navigate to 06 My Network > 01 Invite to Network.\n"
     msg_header=${msg_header}"2) Copy everything BELOW the following line and paste the contents where appropriate.\n\n"
     msg_header=${msg_header}"_______________________________________________________________________\n\n"
     msg_body=${msg_header}"$msg_body"
@@ -7461,7 +7430,7 @@ function performNetworkInvite()
       if [ "$is_primary" = "true" ]; then
         mail_body=${mail_body}"$(getDNSRecordsInfo $domain_name)\n\n"
       fi
-      mail_body=$mail_body"1) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 05 Join Network.\n"
+      mail_body=$mail_body"1) Go to the HSHQ Manager app, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"2) Copy everything BELOW the following line and paste the contents where appropriate.\n"
       mail_body=$mail_body"_______________________________________________________________________\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -7548,7 +7517,7 @@ function performNetworkInvite()
       mail_body=${mail_body}"HomeServer Internet Invitation from $HOMESERVER_NAME\n"
       mail_body=${mail_body}"================================================================\n\n"
       mail_body=$mail_body"1) Copy everything BELOW the following line.\n"
-      mail_body=$mail_body"2) Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 05 Join Network.\n"
+      mail_body=$mail_body"2) Go to the HSHQ Manager app, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"3) Paste the contents where appropriate. \n"
       mail_body=$mail_body"_______________________________________________________________________\n\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -7617,7 +7586,7 @@ function performNetworkInvite()
       mail_body=$mail_body"\n#################### WireGuard Config Begin ####################\n\n"
       mail_body=$mail_body"$wg_config"
       mail_body=$mail_body"\n##################### WireGuard Config End #####################\n\n"
-      mail_body=$mail_body"Add/update the entries below into your client DNS.\n"
+      mail_body=$mail_body"If this is not your primary VPN, add/update the entries below into your ClientDNS server.\n"
       mail_body=$mail_body"_______________________________________________________________________\n"
       mail_body=$mail_body"\n#################### HomeServers DNS Begin #####################\n\n"
       mail_body=$mail_body"$(getMyNetworkHomeServerDNSListForClientDNS)"
@@ -9243,14 +9212,7 @@ function restartAllStacks()
     sleep 1
   done
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
-  docker network rm dock-ext > /dev/null 2>&1
-  docker network rm dock-proxy > /dev/null 2>&1
-  docker network rm dock-privateip > /dev/null 2>&1
-  docker network rm dock-internalmail > /dev/null 2>&1
-  docker network rm dock-dbs > /dev/null 2>&1
-  docker network rm dock-ldap > /dev/null 2>&1
-  docker network rm dock-mailu-ext > /dev/null 2>&1
-  docker network rm dock-mailu-int > /dev/null 2>&1
+  removeDockerNetworks
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
@@ -9392,7 +9354,7 @@ function updateMailuStackRelayHost()
   sleep 5
 }
 
-function modFunUpdateMailuRelaySettings
+function modFunUpdateMailuRelaySettings()
 {
   sed -i "s|RELAYHOST=.*|RELAYHOST=$SMTP_RELAY_HOST|" $HOME/${updateStackName}.env
   sed -i "s|RELAYUSER=.*|RELAYUSER=$SMTP_RELAY_USERNAME|" $HOME/${updateStackName}.env
@@ -9848,6 +9810,27 @@ function removeTextBlockInFile()
   set +e
   if ! [ -z $rtbif_curE ]; then
     set -e
+  fi
+}
+
+function insertSubAuthelia()
+{
+  insSub="$1"
+  selBlock="$2"
+  set +e
+  grep "$insSub" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    return
+  fi
+  grep "# Authelia $selBlock END" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  sed -i "/# Authelia $selBlock END/i\        - $insSub" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  docker container restart authelia > /dev/null 2>&1
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
   fi
 }
 
@@ -10774,7 +10757,7 @@ function sendEmailMyNetworkHomeServerDNSListClient()
     echo "ERROR: You are not hosting a RelayServer."
     return 1
   fi
-  users_email_subj="(MGR COPY)HomeServer Client DNS Update from $HOMESERVER_NAME"
+  users_email_subj="(MGR COPY)HomeServer ClientDNS Update from $HOMESERVER_NAME"
   users_email_body="$(getMyNetworkHomeServerDNSListClientDNSBody)"
   echo "Sending ClientDNS email to self"
   sendEmail -s "$users_email_subj" -b "$users_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
@@ -10874,7 +10857,7 @@ function notifyMyNetworkUsersDNSUpdate()
   addRemoveDomainName="$3"
   addRemoveDomainNameExtPrefix="$4"
   addRemoveDomainNameIPAddress="$5"
-  users_email_subj="HomeServer Client DNS Update from $HOMESERVER_NAME"
+  users_email_subj="HomeServer ClientDNS Update from $HOMESERVER_NAME"
   users_email_body=$(getMyNetworkHomeServerDNSListClientDNSBody "$addOrRemove" "$addRemoveHSName" "$addRemoveDomainName" "$addRemoveDomainNameExtPrefix" "$addRemoveDomainNameIPAddress")
   users_list=($(sqlite3 $HSHQ_DB "select EmailAddress from connections where ConnectionType='user' and NetworkType='mynetwork' group by EmailAddress;"))
   for curEmail in "${users_list[@]}"
@@ -10883,7 +10866,7 @@ function notifyMyNetworkUsersDNSUpdate()
     sendEmail -s "$users_email_subj" -b "$users_email_body" -t "$curEmail" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
   done
   echo "Sending ClientDNS email to self"
-  users_email_subj="(MGR COPY)HomeServer Client DNS Update from $HOMESERVER_NAME"
+  users_email_subj="(MGR COPY)HomeServer ClientDNS Update from $HOMESERVER_NAME"
   sendEmail -s "$users_email_subj" -b "$users_email_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
@@ -10915,7 +10898,7 @@ function getMyNetworkHomeServersDNSUpdateEmailBody()
   fi
   email_body=${email_body}"1. Ensure this is the most recent version of this email with matching subject\n"
   email_body=${email_body}"line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n"
-  email_body=${email_body}"2. Go to the HSHQ Manager utility, and navigate to 07 Other Networks > 07 Update HomeServer DNS\n"
+  email_body=${email_body}"2. Go to the HSHQ Manager app, and navigate to 07 Other Networks > 07 Update HomeServer DNS\n"
   email_body=${email_body}"and paste the ENTIRE list BELOW the following line where appropriate.\n\n"
   email_body=${email_body}"3. After applying the update, you may delete any prior emails with the matching\n"
   email_body=${email_body}"subject line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n\n"
@@ -10933,7 +10916,7 @@ function getMyNetworkHomeServerDNSListClientDNSBody()
   addRemoveDomainNameExtPrefix="$4"
   addRemoveDomainNameIPAddress="$5"
   email_body=""
-  email_body=${email_body}"HomeServer Client DNS Update from $HOMESERVER_NAME\n"
+  email_body=${email_body}"HomeServer ClientDNS Update from $HOMESERVER_NAME\n"
   email_body=${email_body}"=======================================================================\n\n"
   email_body=${email_body}"If your client device uses a DNS server in this network\n"
   email_body=${email_body}"($RELAYSERVER_WG_VPN_SUBNET), then you can likely disregard this message.\n"
@@ -12160,116 +12143,116 @@ EOFCF
 
 function checkUpdateVersion()
 {
-  is_update_performed=false
+  is_update_stack_lists=false
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
     setStaticIPToCurrent
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=11
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 14 ]; then
     echo "Updating to Version 14..."
     version14Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 22 ]; then
     echo "Updating to Version 22..."
     version22Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=22
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 23 ]; then
     echo "Updating to Version 23..."
     version23Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=23
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 24 ]; then
     echo "Updating to Version 24..."
     version24Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=24
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 25 ]; then
     echo "Updating to Version 25..."
     version25Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=25
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 26 ]; then
     echo "Updating to Version 26..."
     version26Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=26
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 27 ]; then
     echo "Updating to Version 27..."
     version27Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=27
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 29 ]; then
     echo "Updating to Version 29..."
     version29Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=29
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 30 ]; then
     echo "Updating to Version 30..."
     version30Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=30
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 31 ]; then
     echo "Updating to Version 31..."
     version31Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=31
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 32 ]; then
     echo "Updating to Version 32..."
     version32Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=32
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 34 ]; then
     echo "Updating to Version 34..."
     version34Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=34
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 35 ]; then
     echo "Updating to Version 35..."
     version35Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=35
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 37 ]; then
     echo "Updating to Version 37..."
     version37Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=37
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 38 ]; then
     echo "Updating to Version 38..."
     version38Update
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=38
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
@@ -12285,13 +12268,20 @@ function checkUpdateVersion()
     HSHQ_VERSION=40
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 41 ]; then
+    echo "Updating to Version 41..."
+    version41Update
+    is_update_stack_lists=true
+    HSHQ_VERSION=41
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
-    is_update_performed=true
+    is_update_stack_lists=true
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ "$is_update_performed" = "true" ]; then
+  if [ "$is_update_stack_lists" = "true" ]; then
     outputStackListsHSHQManager
   fi
 }
@@ -12355,14 +12345,7 @@ function version22Update()
 
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   set +e
-  docker network rm dock-ext > /dev/null 2>&1
-  docker network rm dock-proxy > /dev/null 2>&1
-  docker network rm dock-privateip > /dev/null 2>&1
-  docker network rm dock-internalmail > /dev/null 2>&1
-  docker network rm dock-dbs > /dev/null 2>&1
-  docker network rm dock-ldap > /dev/null 2>&1
-  docker network rm dock-mailu-ext > /dev/null 2>&1
-  docker network rm dock-mailu-int > /dev/null 2>&1
+  removeDockerNetworks
   docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
 
   set +e
@@ -13072,6 +13055,186 @@ function version40Update()
   set -e
 }
 
+function version41Update()
+{
+  set +e
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    read -p "Press enter to continue."
+    loadSSHKey
+    set +e
+    rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+
+    tee $HOME/wgupdown.sh >/dev/null <<EOFPU
+#!/bin/bash
+COMMAND=\$1
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+set +e
+
+default_iface=$rs_default_iface
+
+function main()
+{
+  shift
+  shift
+  case "\$COMMAND" in
+    up) up ;;
+    down) down ;;
+  esac
+}
+
+function up()
+{
+  ipset create inetusers hash:net
+  iplist=\$(cat \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset)
+  for curip in \$iplist
+  do
+    if [ -z \$curip ]; then continue; fi
+    ipset add inetusers \$curip
+  done
+  ipset create alldevices hash:net
+  alliplist=(\$(sqlite3 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db "select ips_str from peers;"))
+  for cur_ip in "\${alliplist[@]}"
+  do
+    if [ -z \$cur_ip ]; then continue; fi
+    ipset add alldevices \$cur_ip
+  done
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -A FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -A FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -A POSTROUTING -o \$default_iface -m set --match-set inetusers src -j MASQUERADE
+}
+
+function down()
+{
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j ACCEPT
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o $RELAYSERVER_WG_INTERFACE_NAME -d $RELAYSERVER_WG_VPN_SUBNET -m set --match-set alldevices src -j MASQUERADE
+  iptables -D FORWARD -i $RELAYSERVER_WG_INTERFACE_NAME -o \$default_iface -m set --match-set inetusers src -j ACCEPT
+  iptables -D FORWARD -i \$default_iface -o $RELAYSERVER_WG_INTERFACE_NAME -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -t nat -D POSTROUTING -o \$default_iface -m set --match-set inetusers -j MASQUERADE
+  ipset destroy inetusers
+  ipset destroy alldevices
+}
+
+main "\$@"
+EOFPU
+
+    tee $HOME/addPeer.sh >/dev/null <<EOFWA
+#!/bin/bash
+
+name=\$1
+email=\$2
+publicKey=\$3
+presharedKey=\$4
+ipAddress=\$5
+isInet=\$6
+isInVPNSubnet=\$7
+auth=\$8
+
+uuid=\$(uuidgen | sed 's|-||g')
+jsonbody="{\"UID\": \"\$uuid\", \"DeviceName\": \"$RELAYSERVER_WG_INTERFACE_NAME\", \"DeviceType\": \"client\", \"Identifier\": \"\$name\", \"Email\": \"\$email\", \"IgnoreGlobalSettings\": true, \"PublicKey\": \"\$publicKey\", \"PresharedKey\": \"\$presharedKey\", \"Endpoint\": \"$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\", \"PersistentKeepalive\": 0, \"IPsStr\": \"\${ipAddress}/32\", \"Mtu\": $RELAYSERVER_CLIENT_DEFAULT_MTU}"
+curl -s -X 'POST' 'http://127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT/api/v1/backend/peers?DeviceName=$RELAYSERVER_WG_INTERFACE_NAME' -H 'accept: application/json' -H "Authorization: Basic \$auth" -H 'Content-Type: application/json' -d "\$jsonbody" >/dev/null
+if [ \$? -ne 0 ]; then
+  echo "There was a problem adding this client..."
+  exit 1
+fi
+
+ipset add alldevices \${ipAddress}/32
+
+if ! [ "\$isInVPNSubnet" = "true" ]; then
+  route add \${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
+fi
+
+if [ "\$isInet" = "true" ]; then
+  ipset add inetusers \${ipAddress}/32
+  echo \${ipAddress}/32 | tee -a $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset >/dev/null
+fi
+
+
+EOFWA
+
+    tee $HOME/removePeer.sh >/dev/null <<EOFWA
+#!/bin/bash
+set +e
+publicKey=\$1
+ipAddress=\$2
+isInet=\$3
+isInVPNSubnet=\$4
+auth=\$5
+
+function main()
+{
+  curl -s -X 'DELETE' "http://127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT/api/v1/backend/peer?PublicKey=\$(urlEncode \$publicKey)" -H 'accept: application/json' -H "Authorization: Basic \$auth" -H 'Content-Type: application/json' >/dev/null
+  if [ \$? -ne 0 ]; then
+    echo "There was a problem removing this client..."
+  fi
+  ipset del alldevices \${ipAddress}/32
+  if ! [ "\$isInVPNSubnet" = "true" ]; then
+    route del \${ipAddress}/32 $RELAYSERVER_WG_INTERFACE_NAME
+  fi
+  if [ "\$isInet" = "true" ]; then
+    ipset del inetusers \${ipAddress}/32
+    sed -i '/\${ipAddress}/d' $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset
+  fi
+}
+
+function urlEncode()
+{
+  strLength="\${#1}"
+  for (( i = 0; i < strLength; i++ )); do
+    c="\${1:i:1}"
+    case \$c in
+      [a-zA-Z0-9.~_-]) printf "\$c" ;;
+      *) printf '%%%02X' "'\$c" ;;
+    esac
+  done
+}
+
+function urlDecode()
+{
+  url_encoded="\${1//+/ }"
+  printf '%b' "\${url_encoded//%/\\x}"
+}
+
+main "\$@"
+EOFWA
+
+    tee $HOME/v41.sh >/dev/null <<EOFWA
+#!/bin/bash
+
+chmod 500 $RELAYSERVER_HSHQ_SCRIPTS_DIR/wgupdown.sh
+chmod 500 $RELAYSERVER_HSHQ_SCRIPTS_DIR/addPeer.sh
+chmod 500 $RELAYSERVER_HSHQ_SCRIPTS_DIR/removePeer.sh
+chown root:root $RELAYSERVER_HSHQ_SCRIPTS_DIR/wgupdown.sh
+chown root:root $RELAYSERVER_HSHQ_SCRIPTS_DIR/addPeer.sh
+chown root:root $RELAYSERVER_HSHQ_SCRIPTS_DIR/removePeer.sh
+mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/wgupdown.sh $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh
+mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/addPeer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh
+mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/removePeer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh
+rm -f \$0
+reboot
+EOFWA
+
+    scp -P $RELAYSERVER_SSH_PORT $HOME/wgupdown.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/addPeer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/removePeer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/v41.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo bash $RELAYSERVER_HSHQ_SCRIPTS_DIR/v41.sh"
+    unloadSSHKey
+    rm -f $HOME/wgupdown.sh
+    rm -f $HOME/addPeer.sh
+    rm -f $HOME/removePeer.sh
+    rm -f $HOME/v41.sh
+  fi
+  set -e
+  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
+  outputBootScripts
+  fixAutheliaConfig
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -13215,6 +13378,118 @@ function checkFixPortainerEnv()
     sleep 5
     startStopStack duplicati start
     startStopStack syncthing start
+  fi
+}
+
+function fixAutheliaConfig()
+{
+  inputfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  set +e
+  grep "# Authelia bypass BEGIN" $inputfile > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    return
+  fi
+  outres=""
+  OIFS=$IFS
+  IFS=$(echo -en "\n\r")
+  readarray -t inputArr < $inputfile
+  curnum=0
+  while [ $curnum -lt ${#inputArr[@]} ]
+  do
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ access_control ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia bypass BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia bypass END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia basicusers BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia basicusers END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia primaryusers BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia primaryusers END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      if [[ "${inputArr[$curnum]}" =~ domain: ]]; then break; fi
+      curnum=$((curnum+1))
+    done
+    curnum=$((curnum+1))
+    outres="${outres}# Authelia admins BEGIN\n"
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+    outres="${outres}# Authelia admins END\n"
+    outres="${outres}${inputArr[$curnum]}\n"
+    curnum=$((curnum+1))
+  
+    while [ $curnum -lt ${#inputArr[@]} ]
+    do
+      outres="${outres}${inputArr[$curnum]}\n"
+      curnum=$((curnum+1))
+    done
+  
+  done
+  IFS=$OIFS
+  
+  echo -e "$outres" > $inputfile
+  docker container restart authelia > /dev/null 2>&1
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
   fi
 }
 
@@ -13903,7 +14178,7 @@ function nukeHSHQ()
 
 function getExposedPortsList()
 {
-  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,22000,21027,$PORTAINER_LOCAL_HTTPS_PORT"
+  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,22000,21027,3478,5349,$PORTAINER_LOCAL_HTTPS_PORT"
 }
 
 function outputBootScripts()
@@ -15275,6 +15550,18 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null 2>/dev/null
 }
 
+function removeDockerNetworks()
+{
+  docker network rm dock-ext > /dev/null 2>&1
+  docker network rm dock-proxy > /dev/null 2>&1
+  docker network rm dock-privateip > /dev/null 2>&1
+  docker network rm dock-internalmail > /dev/null 2>&1
+  docker network rm dock-dbs > /dev/null 2>&1
+  docker network rm dock-ldap > /dev/null 2>&1
+  docker network rm dock-mailu-ext > /dev/null 2>&1
+  docker network rm dock-mailu-int > /dev/null 2>&1
+}
+
 function checkStackHSHQManaged()
 {
   check_hshq_managed="$1"
@@ -15406,6 +15693,7 @@ function loadPinnedDockerImages()
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser
   IMG_CODESERVER=codercom/code-server:4.20.1
   IMG_COLLABORA=collabora/code:23.05.8.2.1
+  IMG_COTURN=coturn/coturn:4.6
   IMG_DISCOURSE=bitnami/discourse:3.1.3
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
   IMG_DOZZLE=amir20/dozzle:v6.1.1
@@ -15417,6 +15705,7 @@ function loadPinnedDockerImages()
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
   IMG_FILEBROWSER=filebrowser/filebrowser:v2.27.0
+  IMG_FILEDROP=filedrop/filedrop:1
   IMG_FIREFLY=fireflyiii/core:version-6.1.7
   IMG_FRESHRSS=freshrss/freshrss:1.23.1
   IMG_GHOST=ghost:5.78.0-alpine
@@ -15622,6 +15911,10 @@ function getScriptStackVersion()
       echo "v1" ;;
     huginn)
       echo "v1" ;;
+    coturn)
+      echo "v1" ;;
+    filedrop)
+      echo "v1" ;;
     ofelia)
       echo "v2" ;;
     sqlpad)
@@ -15740,6 +16033,8 @@ function pullDockerImages()
   pullImage $IMG_CHANGEDETECTION_APP
   pullImage $IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME
   pullImage $IMG_HUGINN_APP
+  pullImage $IMG_COTURN
+  pullImage $IMG_FILEDROP
 }
 
 function pullBaseServicesDockerImages()
@@ -16578,6 +16873,10 @@ function initServicesCredentials()
     HUGINN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar HUGINN_DATABASE_USER_PASSWORD $HUGINN_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$COTURN_STATIC_SECRET" ]; then
+    COTURN_STATIC_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar COTURN_STATIC_SECRET $COTURN_STATIC_SECRET
+  fi
 }
 
 function installBaseStacks()
@@ -16611,6 +16910,7 @@ function initServiceVars()
   checkAddSvc "SVCD_CLIENTDNS=clientdns,clientdns,primary,admin,ClientDNS,clientdns,hshq"
   checkAddSvc "SVCD_CODESERVER=codeserver,codeserver,primary,admin,CodeServer,codeserver,hshq"
   checkAddSvc "SVCD_COLLABORA=collabora,collabora,other,user,Collabora,collabora,hshq"
+  checkAddSvc "SVCD_COTURN=coturn,coturn,other,user,Coturn,coturn,hshq"
   checkAddSvc "SVCD_DISCOURSE=discourse,discourse,other,user,Discourse,discourse,hshq"
   checkAddSvc "SVCD_DOZZLE=dozzle,dozzle,primary,admin,Dozzle,dozzle,hshq"
   checkAddSvc "SVCD_DRAWIO_WEB=drawio,drawio,primary,user,Draw.io,drawio,hshq"
@@ -16619,6 +16919,7 @@ function initServiceVars()
   checkAddSvc "SVCD_EXCALIDRAW_SERVER=excalidraw,excalidraw-server,primary,user,Excalidraw Server,excalidraw-server,hshq"
   checkAddSvc "SVCD_EXCALIDRAW_STORAGE=excalidraw,excalidraw-storage,primary,user,Excalidraw Storage,excalidraw-storage,hshq"
   checkAddSvc "SVCD_FILEBROWSER=filebrowser,filebrowser,other,user,FileBrowser,filebrowser,hshq"
+  checkAddSvc "SVCD_FILEDROP=filedrop,filedrop,other,user,FileDrop,filedrop,hshq"
   checkAddSvc "SVCD_FILES=files,files,other,user,Files,files,hshq"
   checkAddSvc "SVCD_FIREFLY=firefly,firefly,home,admin,Firefly III,fireflyiii,hshq"
   checkAddSvc "SVCD_FRESHRSS=freshrss,freshrss,primary,user,FreshRSS,freshrss,le"
@@ -16677,7 +16978,7 @@ function initServiceVars()
   checkAddSvc "SVCD_VAULTWARDEN=vaultwarden,vaultwarden,primary,user,Vaultwarden,vaultwarden,hshq"
   checkAddSvc "SVCD_WALLABAG=wallabag,wallabag,primary,user,Wallabag,wallabag,le"
   checkAddSvc "SVCD_WAZUH=wazuh,wazuh,primary,admin,Wazuh,wazuh,hshq"
-  checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WireGuard Portal,wgportal,hshq"
+  checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WG Portal,wgportal,hshq"
   checkAddSvc "SVCD_WIKIJS=wikijs,wikijs,other,user,Wiki.js,wikijs,hshq"
   checkAddSvc "SVCD_WORDPRESS=wordpress,wordpress,other,user,WordPress,wordpress,hshq"
   set -e
@@ -16795,6 +17096,10 @@ function installStackByName()
       installChangeDetection $is_integrate ;;
     huginn)
       installHuginn $is_integrate ;;
+    coturn)
+      installCoturn $is_integrate ;;
+    filedrop)
+      installFileDrop $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -16921,6 +17226,10 @@ function performUpdateStackByName()
       performUpdateChangeDetection "$portainerToken" ;;
     huginn)
       performUpdateHuginn "$portainerToken" ;;
+    coturn)
+      performUpdateCoturn "$portainerToken" ;;
+    filedrop)
+      performUpdateFileDrop "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -16945,6 +17254,7 @@ function getAutheliaBlock()
   retval="${retval}  default_policy: deny\n"
   retval="${retval}  rules:\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia bypass BEGIN\n"
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
@@ -16953,6 +17263,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FILEBROWSER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FILEDROP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FRESHRSS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITEA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEIMDALL.$HOMESERVER_DOMAIN\n"
@@ -16979,15 +17290,19 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia basicusers BEGIN\n"
   retval="${retval}        - $SUB_DISCOURSE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PHOTOPRISM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_INVIDIOUS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia basicusers END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_BASIC_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia primaryusers BEGIN\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
@@ -16996,10 +17311,12 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia primaryusers END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_PRIMARY_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
+  retval="${retval}# Authelia admins BEGIN\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
@@ -17029,6 +17346,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}# Authelia admins END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_ADMIN_USER_GROUP_NAME\"\n"
@@ -17188,6 +17506,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0 "paperless.png"
   insertIntoHeimdallDB "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0 "changedetection.png"
   insertIntoHeimdallDB "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0 "huginn.png"
+  insertIntoHeimdallDB "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0 "filedrop.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -17198,7 +17517,7 @@ function insertServicesHeimdall()
     insertIntoHeimdallDB "$FMLNAME_PORTAINER" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "portainer.png"
     insertIntoHeimdallDB "$FMLNAME_RSPAMD" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "rspamd.png"
     insertIntoHeimdallDB "$FMLNAME_SYNCTHING" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "syncthing.png"
-    insertIntoHeimdallDB "$FMLNAME_WGPORTAL" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "wireguard.png"
+    insertIntoHeimdallDB "$FMLNAME_WGPORTAL" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "wgportal.png"
     insertIntoHeimdallDB "$FMLNAME_FILEBROWSER" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "filebrowser.png"
   fi
 }
@@ -17272,6 +17591,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -17290,7 +17610,7 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,sqlpad"
 
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
@@ -17736,6 +18056,12 @@ function getScriptImageByContainerName()
       ;;
     "huginn-app")
       container_image=$IMG_HUGINN_APP
+      ;;
+    "coturn")
+      container_image=$IMG_COTURN
+      ;;
+    "filedrop")
+      container_image=$IMG_FILEDROP
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -22259,7 +22585,7 @@ function addUserMailu()
     fi
     sleep 1
     ((num_tries++))
-    echo "[Mailu] Error Adding $username, retry $((num_tries+1)) of $total_tries"
+    echo "[Mailu] Error Adding $username, retry $num_tries of $total_tries"
   done
   if [ "$is_added" = "false" ]; then
     echo "[Mailu] Error adding $username, exiting..."
@@ -33286,6 +33612,7 @@ function installCalibre()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CALIBRE_SERVER $MANAGETLS_CALIBRE_SERVER "$is_integrate_hshq" $NETDEFAULT_CALIBRE_SERVER "$inner_block"
+  insertSubAuthelia $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN admins
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN {\n"
@@ -33301,6 +33628,7 @@ function installCalibre()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CALIBRE_WEB $MANAGETLS_CALIBRE_WEB "$is_integrate_hshq" $NETDEFAULT_CALIBRE_WEB "$inner_block"
+  insertSubAuthelia $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll calibre "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" "calibre-server.png"
@@ -33477,6 +33805,7 @@ function installNetdata()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NETDATA $MANAGETLS_NETDATA "$is_integrate_hshq" $NETDEFAULT_NETDATA "$inner_block"
+  insertSubAuthelia $SUB_NETDATA.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll netdata "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" "netdata.png"
@@ -33638,6 +33967,7 @@ function installLinkwarden()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_LINKWARDEN $MANAGETLS_LINKWARDEN "$is_integrate_hshq" $NETDEFAULT_LINKWARDEN "$inner_block"
+  insertSubAuthelia $SUB_LINKWARDEN.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
@@ -33828,6 +34158,7 @@ function installStirlingPDF()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_STIRLINGPDF $MANAGETLS_STIRLINGPDF "$is_integrate_hshq" $NETDEFAULT_STIRLINGPDF "$inner_block"
+  insertSubAuthelia $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll stirlingpdf "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" "stirlingpdf.png"
@@ -33973,6 +34304,7 @@ function installBarAssistant()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BARASSISTANT $MANAGETLS_BARASSISTANT "$is_integrate_hshq" $NETDEFAULT_BARASSISTANT "$inner_block"
+  insertSubAuthelia $SUB_BARASSISTANT.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll bar-assistant "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" "bar-assistant.png"
@@ -34293,6 +34625,7 @@ function installFreshRSS()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_FRESHRSS $MANAGETLS_FRESHRSS "$is_integrate_hshq" $NETDEFAULT_FRESHRSS "$inner_block"
+  insertSubAuthelia $SUB_FRESHRSS.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
@@ -34529,6 +34862,7 @@ function installKeila()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_KEILA $MANAGETLS_KEILA "$is_integrate_hshq" $NETDEFAULT_KEILA "$inner_block"
+  insertSubAuthelia $SUB_KEILA.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
@@ -34770,6 +35104,7 @@ function installWallabag()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_WALLABAG $MANAGETLS_WALLABAG "$is_integrate_hshq" $NETDEFAULT_WALLABAG "$inner_block"
+  insertSubAuthelia $SUB_WALLABAG.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
@@ -35007,6 +35342,7 @@ function installJupyter()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_JUPYTER $MANAGETLS_JUPYTER "$is_integrate_hshq" $NETDEFAULT_JUPYTER "$inner_block"
+  insertSubAuthelia $SUB_JUPYTER.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll jupyter "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" "jupyter.png"
@@ -35158,6 +35494,7 @@ function installPaperless()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PAPERLESS $MANAGETLS_PAPERLESS "$is_integrate_hshq" $NETDEFAULT_PAPERLESS "$inner_block"
+  insertSubAuthelia $SUB_PAPERLESS.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
@@ -35442,6 +35779,7 @@ function installSpeedtestTrackerLocal()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_LOCAL $MANAGETLS_SPEEDTEST_TRACKER_LOCAL "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_LOCAL "$inner_block"
+  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
@@ -35682,6 +36020,7 @@ function installSpeedtestTrackerVPN()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_VPN $MANAGETLS_SPEEDTEST_TRACKER_VPN "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_VPN "$inner_block"
+  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN admins
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
@@ -35927,6 +36266,7 @@ function installChangeDetection()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CHANGEDETECTION $MANAGETLS_CHANGEDETECTION "$is_integrate_hshq" $NETDEFAULT_CHANGEDETECTION "$inner_block"
+  insertSubAuthelia $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll changedetection "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" "changedetection.png"
@@ -36123,6 +36463,7 @@ function installHuginn()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_HUGINN $MANAGETLS_HUGINN "$is_integrate_hshq" $NETDEFAULT_HUGINN "$inner_block"
+  insertSubAuthelia $SUB_HUGINN.$HOMESERVER_DOMAIN primaryusers
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
@@ -36300,6 +36641,267 @@ function performUpdateHuginn()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Coturn
+function installCoturn()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory coturn "$FMLNAME_COTURN"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  pullImage $IMG_COTURN
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  mkdir $HSHQ_STACKS_DIR/coturn
+  initServicesCredentials
+  outputConfigCoturn
+  generateCert coturn "coturn,$SUB_COTURN.$HOMESERVER_DOMAIN"
+  installStack coturn coturn "" $HOME/coturn.env
+  sleep 3
+}
+
+function outputConfigCoturn()
+{
+  cat <<EOFOF > $HOME/coturn-compose.yml
+$STACK_VERSION_PREFIX coturn $(getScriptStackVersion coturn)
+version: '3.5'
+
+services:
+  coturn:
+    image: $(getScriptImageByContainerName coturn)
+    container_name: coturn
+    hostname: coturn
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+      - "5349:5349"
+      - "5349:5349/udp"
+      - "49100-49200:49100-49200/udp"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/coturn/turnserver.conf:/etc/coturn/turnserver.conf
+      - \${HSHQ_SSL_DIR}/coturn.crt:/usr/local/etc/cert.pem
+      - \${HSHQ_SSL_DIR}/coturn.key:/usr/local/etc/key.pem
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFOF
+
+  cat <<EOFRM > $HOME/coturn.env
+TZ=\${TZ}
+EOFRM
+
+  cat <<EOFRM > $HSHQ_STACKS_DIR/coturn/turnserver.conf
+listening-port=3478
+tls-listening-port=5349
+min-port=49100
+max-port=49200
+fingerprint
+use-auth-secret
+static-auth-secret=$COTURN_STATIC_SECRET
+realm=$SUB_COTURN.$HOMESERVER_DOMAIN
+total-quota=0
+bps-capacity=0
+stale-nonce=600
+cert=/usr/local/etc/cert.pem
+pkey=/usr/local/etc/key.pem
+no-multicast-peers
+no-rfc5780
+no-stun-backward-compatibility
+response-origin-only-with-rfc5780
+no-cli
+EOFRM
+
+}
+
+function performUpdateCoturn()
+{
+  perform_stack_name=coturn
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=coturn/coturn:4.6
+      image_update_map[0]="coturn/coturn:4.6,coturn/coturn:4.6"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# FileDrop
+function installFileDrop()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory filedrop "FileDrop"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set +e
+  git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
+  docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
+  retVal=$?
+  sudo rm -fr $HSHQ_BUILD_DIR/filedrop
+  if [ $retVal -ne 0 ]; then
+    return
+  fi
+  if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    echo "Missing coturn, installing..."
+    installCoturn
+    if [ $? -ne 0 ]; then
+      return
+    fi
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/filedrop
+  outputConfigFileDrop
+  installStack filedrop filedrop "" $HOME/filedrop.env
+  sleep 3
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FILEDROP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://filedrop:5000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FILEDROP $MANAGETLS_FILEDROP "$is_integrate_hshq" $NETDEFAULT_FILEDROP "$inner_block"
+  insertSubAuthelia $SUB_FILEDROP.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll filedrop "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" "filedrop.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigFileDrop()
+{
+  cat <<EOFDZ > $HOME/filedrop-compose.yml
+$STACK_VERSION_PREFIX filedrop $(getScriptStackVersion filedrop)
+version: '3.5'
+
+services:
+  filedrop:
+    image: $(getScriptImageByContainerName filedrop)
+    container_name: filedrop
+    hostname: filedrop
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFDZ
+
+  cat <<EOFDZ > $HOME/filedrop.env
+TZ=\${TZ}
+WS_HOST=0.0.0.0
+WS_APP_NAME=$HOMESERVER_NAME FileDrop
+WS_ABUSE_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+WS_REQUIRE_CRYPTO=1
+TURN_MODE=hmac
+TURN_SERVER=turn:$SUB_COTURN.$HOMESERVER_DOMAIN:5349
+TURN_USERNAME=filedrop
+TURN_SECRET=$COTURN_STATIC_SECRET
+STUN_SERVER=
+EOFDZ
+
+}
+
+function performUpdateFileDrop()
+{
+  perform_stack_name=filedrop
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=filedrop/filedrop:1
+      image_update_map[0]="filedrop/filedrop:1,filedrop/filedrop:1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # HSHQ Manager
 function installHSHQManager()
 {
@@ -36355,6 +36957,7 @@ function installHSHQManager()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_HSHQMANAGER $MANAGETLS_HSHQMANAGER "$is_integrate_hshq" $NETDEFAULT_HSHQMANAGER "$inner_block"
+  insertSubAuthelia $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN admins
 
   insertEnableSvcAll hshqmanager "$FMLNAME_HSHQMANAGER" $USERTYPE_HSHQMANAGER "https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN" "homeserverhq.png"
   restartAllCaddyContainers
@@ -36907,7 +37510,7 @@ EOFSC
 {
   "name": "06 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web utility during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -37427,7 +38030,7 @@ EOFSC
 {
   "name": "01 Clear History",
   "script_path": "conf/scripts/clearHSHQManagerProcessLogs.sh",
-  "description": "Clears out all of the process logs (history) in this utility. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Clears out all of the process logs (history) in this app. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37562,7 +38165,7 @@ EOFSC
 {
   "name": "04 Full HSHQ Manager Reset",
   "script_path": "conf/scripts/fullResetHSHQManagerScripts.sh",
-  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the HSHQ Manager utility to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
+  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the HSHQ Manager app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
@@ -37827,7 +38430,7 @@ EOFSC
 {
   "name": "03 Update Linux OS and Reboot",
   "script_path": "conf/scripts/updateHostAndReboot.sh",
-  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web utility during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
+  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web app during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -38000,7 +38603,7 @@ EOFSC
 {
   "name": "07 Change Connection Email",
   "script_path": "conf/scripts/changeConnectionEmail.sh",
-  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
+  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -38430,7 +39033,7 @@ EOFSC
 {
   "name": "02 Invite User to Network",
   "script_path": "conf/scripts/myNetworkInviteUserConnection.sh",
-  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' utility. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
+  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' function. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39174,7 +39777,7 @@ EOFSC
 {
   "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
-  "description": "Create a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39251,9 +39854,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeClientDNSServer.json
 {
-  "name": "13 Remove Client DNS Server",
+  "name": "13 Remove ClientDNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
-  "description": "Remove a client DNS server. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Removes a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39410,7 +40013,7 @@ EOFSC
 {
   "name": "01 HS VPN Application",
   "script_path": "conf/scripts/applyHSVPNConnection.sh",
-  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39471,7 +40074,7 @@ EOFSC
 {
   "name": "02 HS Internet Application",
   "script_path": "conf/scripts/applyHSInternetConnection.sh",
-  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39682,7 +40285,7 @@ EOFSC
 {
   "name": "04 Primary VPN Application",
   "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
-  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This utility is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network utility with the invitation to finalize the connection.",
+  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This function is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network function with the invitation to finalize the connection.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -39747,7 +40350,7 @@ EOFSC
 {
   "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
-  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This utility can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
+  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This function can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -40016,7 +40619,7 @@ EOFSC
 {
   "name": "08 Update HomeServer DNS",
   "script_path": "conf/scripts/updateHomeServerDNS.sh",
-  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
+  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -40074,7 +40677,7 @@ EOFSC
 {
   "name": "09 Sync Adguard DNS Server",
   "script_path": "conf/scripts/syncAdguardDNS.sh",
-  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
+  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -40125,7 +40728,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This utility will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> utility. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -40292,7 +40895,7 @@ EOFSC
 {
   "name": "03 Add LE Subdomain",
   "script_path": "conf/scripts/addLEDomainToRelayServer.sh",
-  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This utility will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
+  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This function will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -41184,7 +41787,7 @@ function performUpdateSQLPad()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function modFunUpdateSQLPad
+function modFunUpdateSQLPad()
 {
   grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
   if [ $? -eq 0 ]; then
