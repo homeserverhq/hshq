@@ -13486,6 +13486,11 @@ function fixAutheliaConfig()
   IFS=$OIFS
   
   echo -e "$outres" > $inputfile
+  docker container restart authelia > /dev/null 2>&1
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
 }
 
 function checkImageList()
