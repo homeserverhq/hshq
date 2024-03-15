@@ -12121,6 +12121,10 @@ HUGINN_DATABASE_USER=
 HUGINN_DATABASE_USER_PASSWORD=
 # Huginn (Service Details) END
 
+# Coturn (Service Details) BEGIN
+COTURN_STATIC_SECRET=
+# Coturn (Service Details) END
+
 # Service Details END
 EOFCF
   set +e
@@ -23700,6 +23704,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi display_join_using_the_jitsi_app --value=1
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi jitsi_server_url --value="https://$SUB_JITSI.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi enabled --value="yes"
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:5349\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install richdocuments
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments wopi_allowlist --value="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8"
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments public_wopi_url --value="https://$SUB_COLLABORA.$HOMESERVER_DOMAIN"
