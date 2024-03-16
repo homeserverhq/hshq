@@ -15701,7 +15701,7 @@ function loadPinnedDockerImages()
   IMG_COTURN=coturn/coturn:4.6
   IMG_DISCOURSE=bitnami/discourse:3.2.1
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v6.3.1
+  IMG_DOZZLE=amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
   IMG_DRAWIO_WEB=jgraph/drawio:24.0.7
@@ -15833,7 +15833,7 @@ function getScriptStackVersion()
     mastodon)
       echo "v4" ;;
     dozzle)
-      echo "v5" ;;
+      echo "v4" ;;
     searxng)
       echo "v3" ;;
     jellyfin)
@@ -26652,29 +26652,24 @@ function performUpdateDozzle()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v5
+      newVer=v4
       curImageList=amir20/dozzle:v4.10.26
-      image_update_map[0]="amir20/dozzle:v4.10.26,amir20/dozzle:v6.3.1"
+      image_update_map[0]="amir20/dozzle:v4.10.26,amir20/dozzle:v6.1.1"
     ;;
     2)
-      newVer=v5
+      newVer=v4
       curImageList=amir20/dozzle:v5.8.1
-      image_update_map[0]="amir20/dozzle:v5.8.1,amir20/dozzle:v6.3.1"
+      image_update_map[0]="amir20/dozzle:v5.8.1,amir20/dozzle:v6.1.1"
     ;;
     3)
-      newVer=v5
+      newVer=v4
       curImageList=amir20/dozzle:v6.0.8
-      image_update_map[0]="amir20/dozzle:v6.0.8,amir20/dozzle:v6.3.1"
+      image_update_map[0]="amir20/dozzle:v6.0.8,amir20/dozzle:v6.1.1"
     ;;
     4)
-      newVer=v5
+      newVer=v4
       curImageList=amir20/dozzle:v6.1.1
-      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.3.1"
-    ;;
-    5)
-      newVer=v5
-      curImageList=amir20/dozzle:v6.3.1
-      image_update_map[0]="amir20/dozzle:v6.3.1,amir20/dozzle:v6.3.1"
+      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.1.1"
     ;;
     *)
       is_upgrade_error=true
@@ -36088,9 +36083,9 @@ function installSpeedtestTrackerLocal()
 
   docker exec speedtest-tracker-local-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport/setupDBSettings.sh
-
+  sleep 4
   startStopStack speedtest-tracker-local stop
-  sleep 3
+  sleep 1
   startStopStack speedtest-tracker-local start
 
   inner_block=""
@@ -36228,6 +36223,7 @@ MAIL_FROM_NAME=SpeedtestTrackerLocal $HSHQ_ADMIN_NAME
 EOFBA
 
   pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
+  rand_minute=$((3 + RANDOM % 24))
   cat <<EOFDS > $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport/setupDBSettings.sh
 #!/bin/bash
 
@@ -36237,7 +36233,7 @@ echo "update settings set payload=to_json('$TZ'::text) where name='timezone';" |
 echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 echo "update settings set payload=to_json(false) where name='public_dashboard_enabled';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 echo "update settings set payload=to_json(true) where name='db_has_timezone';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-echo "update settings set payload=to_json('$(echo $((3 + RANDOM % 24))) */3 * * *'::text) where name='speedtest_schedule';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+echo "update settings set payload=to_json('$rand_minute */3 * * *'::text) where name='speedtest_schedule';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 
 echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerLocal Admin', email='$SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 
@@ -36338,9 +36334,9 @@ function installSpeedtestTrackerVPN()
 
   docker exec speedtest-tracker-vpn-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
-
+  sleep 4
   startStopStack speedtest-tracker-vpn stop
-  sleep 3
+  sleep 1
   startStopStack speedtest-tracker-vpn start
 
   inner_block=""
@@ -36478,6 +36474,7 @@ MAIL_FROM_NAME=SpeedtestTrackerVPN $HSHQ_ADMIN_NAME
 EOFBA
 
   pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
+  rand_minute=$((33 + RANDOM % 24))
   cat <<EOFDS > $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
 #!/bin/bash
 
@@ -36487,7 +36484,7 @@ echo "update settings set payload=to_json('$TZ'::text) where name='timezone';" |
 echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 echo "update settings set payload=to_json(false) where name='public_dashboard_enabled';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 echo "update settings set payload=to_json(true) where name='db_has_timezone';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-echo "update settings set payload=to_json('$(echo $((33 + RANDOM % 24))) */3 * * *'::text) where name='speedtest_schedule';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+echo "update settings set payload=to_json('$rand_minute */3 * * *'::text) where name='speedtest_schedule';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 
 echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerVPN Admin', email='$SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 
