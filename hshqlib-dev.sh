@@ -15676,7 +15676,7 @@ function upgradeStack()
     fi
   fi
   removeImageCSVList "$rm_image_list"
-  stack_upgrade_report="$comp_stack_name: Successfully upgraded from $old_ver to $new_ver"
+  stack_upgrade_report="$comp_stack_name: Upgraded from $old_ver to $new_ver"
 }
 
 function doNothing()
@@ -31266,7 +31266,15 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:3.7.3,shlinkio/shlink:4.0.3"
       image_update_map[2]="shlinkio/shlink-web-client:4.0.0,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      if [ "$stackStatus" = "1" ];then
+        startStopStack shlink stop "$portainerToken"
+        sleep 3
+      fi
+      sudo rm -fr $HSHQ_NONBACKUP_DIR/shlink/redis/*
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfShlinkFixRedisUrl
+      if [ "$stackStatus" = "2" ];then
+        startStopStack shlink stop "$portainerToken"
+      fi
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -33781,7 +33789,7 @@ function performUpdateRemotely()
       curImageList=immybot/remotely:69
       image_update_map[0]="immybot/remotely:69,immybot/remotely:69"
       is_upgrade_error=true
-      perform_update_report="ERROR ($perform_stack_name): This version of Remotely cannot be upgraded to the next version. You must uninstall and reinstall this application."
+      perform_update_report="ERROR ($perform_stack_name): This version of Remotely cannot be upgraded to the next version. You must uninstall your current version and reinstall the new version."
       return
     ;;
     2)
@@ -34862,7 +34870,7 @@ function performUpdateBarAssistant()
 function clearMeiliData()
 {
   # This function assumes the BarAssistant stack/containers are NOT running.
-  echo -e "\nClearing BarAssistant Meili data...\n"
+  echo -e "\nClearing BarAssistant Meilisearch data...\n"
   sudo rm -fr ${HSHQ_STACKS_DIR}/bar-assistant/meilisearch/*
   sleep 3
 }

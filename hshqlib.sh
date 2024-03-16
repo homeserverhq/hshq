@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=41
+HSHQ_SCRIPT_VERSION=42
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -15530,8 +15530,7 @@ function pullImage()
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
     docker pull $img_and_version
-    img_name=$(echo $img_and_version | cut -d":" -f1)
-    docker image ls | grep "$img_name"
+    docker image inspect $img_and_version > /dev/null 2>&1
     is_success=$?
     ((num_tries++))
   done
@@ -15623,6 +15622,7 @@ function upgradeStack()
   portainerToken="$7"
   stackModFunction=$8
   isReinstallStack=$9
+  stackReinstallModFunction=${10}
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
@@ -15668,6 +15668,7 @@ function upgradeStack()
       sudo cp $HSHQ_STACKS_DIR/portainer/compose/$comp_stack_id/stack.env $HOME/${comp_stack_name}.env
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}-compose.yml
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}.env
+      $stackReinstallModFunction
       updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env "$portainerToken"
       rm -f $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env
     else
@@ -15675,7 +15676,7 @@ function upgradeStack()
     fi
   fi
   removeImageCSVList "$rm_image_list"
-  stack_upgrade_report="$comp_stack_name: Successfully upgraded from $old_ver to $new_ver"
+  stack_upgrade_report="$comp_stack_name: Upgraded from $old_ver to $new_ver"
 }
 
 function doNothing()
@@ -15686,116 +15687,116 @@ function doNothing()
 # Services Functions
 function loadPinnedDockerImages()
 {
-  IMG_ADGUARD=adguard/adguardhome:v0.107.43
-  IMG_AUTHELIA=authelia/authelia:4.37.5
-  IMG_BARASSISTANT_APP=barassistant/server:v3
+  IMG_ADGUARD=adguard/adguardhome:v0.107.45
+  IMG_AUTHELIA=authelia/authelia:4.38.2
+  IMG_BARASSISTANT_APP=barassistant/server:3.11.0
   IMG_BARASSISTANT_WEB=nginx:1.25.3-alpine
   IMG_CADDY=caddy:2.7.6
-  IMG_CALIBRE_SERVER=linuxserver/calibre:7.4.0
-  IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.21
-  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.45.14
-  IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser
-  IMG_CODESERVER=codercom/code-server:4.20.1
-  IMG_COLLABORA=collabora/code:23.05.8.2.1
+  IMG_CALIBRE_SERVER=linuxserver/calibre:7.7.0
+  IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.21-ls257
+  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.45.16
+  IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
+  IMG_CODESERVER=codercom/code-server:4.22.1
+  IMG_COLLABORA=collabora/code:23.05.9.4.1
   IMG_COTURN=coturn/coturn:4.6
-  IMG_DISCOURSE=bitnami/discourse:3.1.3
+  IMG_DISCOURSE=bitnami/discourse:3.2.1
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v6.1.1
+  IMG_DOZZLE=amir20/dozzle:v6.3.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
-  IMG_DRAWIO_WEB=jgraph/drawio:23.1.0
+  IMG_DRAWIO_WEB=jgraph/drawio:24.0.7
   IMG_DUPLICATI=linuxserver/duplicati:2.0.7
   IMG_EXCALIDRAW_SERVER=excalidraw/excalidraw-room
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
   IMG_FILEBROWSER=filebrowser/filebrowser:v2.27.0
   IMG_FILEDROP=filedrop/filedrop:1
-  IMG_FIREFLY=fireflyiii/core:version-6.1.7
+  IMG_FIREFLY=fireflyiii/core:version-6.1.10
   IMG_FRESHRSS=freshrss/freshrss:1.23.1
-  IMG_GHOST=ghost:5.78.0-alpine
-  IMG_GITEA_APP=gitea/gitea:1.21.4
-  IMG_GITLAB_APP=gitlab/gitlab-ce:16.8.1-ce.0
-  IMG_GRAFANA=grafana/grafana-oss:10.3.1
+  IMG_GHOST=ghost:5.80.3-alpine
+  IMG_GITEA_APP=gitea/gitea:1.21.8
+  IMG_GITLAB_APP=gitlab/gitlab-ce:16.8.4-ce.0
+  IMG_GRAFANA=grafana/grafana-oss:10.3.4
   IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.4
   IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.4
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
-  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2024.1.6
+  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2024.3.1
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
-  IMG_HOMEASSISTANT_NODERED=nodered/node-red:3.0.2
-  IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
+  IMG_HOMEASSISTANT_NODERED=nodered/node-red:3.1.7
+  IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.0.1
   IMG_HUGINN_APP=ghcr.io/huginn/huginn:c2839b8a78335a1cb7052d6ee1c4fbdc11ee6bb5
   IMG_INFLUXDB=influxdb:2.7.5-alpine
   IMG_INVIDIOUS=quay.io/invidious/invidious
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=jellyfin/jellyfin:10.8.13
-  IMG_JITSI_WEB=jitsi/web:stable-9220
-  IMG_JITSI_PROSODY=jitsi/prosody:stable-9220
-  IMG_JITSI_JICOFO=jitsi/jicofo:stable-9220
-  IMG_JITSI_JVB=jitsi/jvb:stable-9220
-  IMG_JUPYTER=continuumio/anaconda3:2023.09-0
-  IMG_KASM=lscr.io/linuxserver/kasm:1.14.0
+  IMG_JITSI_WEB=jitsi/web:stable-9258
+  IMG_JITSI_PROSODY=jitsi/prosody:stable-9258
+  IMG_JITSI_JICOFO=jitsi/jicofo:stable-9258
+  IMG_JITSI_JVB=jitsi/jvb:stable-9258
+  IMG_JUPYTER=continuumio/anaconda3:2024.02-1
+  IMG_KASM=lscr.io/linuxserver/kasm:1.15.0
   IMG_KEILA=pentacent/keila:0.14.0
-  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.4.9
+  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.5.1
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
   IMG_MAIL_RELAY_UNBOUND=mvance/unbound:1.19.0
-  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2.0.37
-  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2.0.37
-  IMG_MAILU_ANTIVIRUS=ghcr.io/mailu/clamav:2.0.37
-  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2.0.37
-  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2.0.37
-  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2.0.37
-  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2.0.37
-  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2.0.37
-  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2.0.37
-  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2.0.37
-  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2.0.37
-  IMG_MASTODON_APP=tootsuite/mastodon:v4.2.3
+  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2.0.39
+  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2.0.39
+  IMG_MAILU_ANTIVIRUS=ghcr.io/mailu/clamav:2.0.39
+  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2.0.39
+  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2.0.39
+  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2.0.39
+  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2.0.39
+  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2.0.39
+  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2.0.39
+  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2.0.39
+  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2.0.39
+  IMG_MASTODON_APP=tootsuite/mastodon:v4.2.8
   IMG_MASTODON_WEB=nginx:1.25.3-alpine
-  IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.12.0
-  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.57
-  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.100.0
-  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v1.1.0
-  IMG_MEILISEARCH=getmeili/meilisearch:v1.4
+  IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.12.2
+  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.61
+  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.102.0
+  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v1.3.2
+  IMG_MEILISEARCH=getmeili/meilisearch:v1.6
   IMG_MYSQL=mariadb:10.7.3
-  IMG_NETDATA=netdata/netdata:v1.44.1
-  IMG_NEXTCLOUD_APP=nextcloud:27.1.6-fpm-alpine
+  IMG_NETDATA=netdata/netdata:v1.44.3
+  IMG_NEXTCLOUD_APP=nextcloud:27.1.7-fpm-alpine
   IMG_NEXTCLOUD_WEB=nginx:1.25.3-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:latest
-  IMG_NTFY=binwiederhier/ntfy:v2.8.0
+  IMG_NTFY=binwiederhier/ntfy:v2.9.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.7.0
-  IMG_OFELIA=mcuadros/ofelia:v0.3.9
+  IMG_OFELIA=mcuadros/ofelia:0.3.10
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
-  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.4.3
-  IMG_PAPERLESS_GOTENBERG=gotenberg/gotenberg:7.10
+  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.6.2
+  IMG_PAPERLESS_GOTENBERG=gotenberg/gotenberg:8.2.2
   IMG_PAPERLESS_TIKA=ghcr.io/paperless-ngx/tika:2.9.1-minimal
-  IMG_PEERTUBE_APP=chocobozzz/peertube:v6.0.2-bookworm
+  IMG_PEERTUBE_APP=chocobozzz/peertube:v6.0.3-bookworm
   IMG_PHOTOPRISM_APP=photoprism/photoprism:220901-bullseye
   IMG_PORTAINER=portainer/portainer-ce:2.19.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
-  IMG_PROMETHEUS=prom/prometheus:v2.49.1
+  IMG_PROMETHEUS=prom/prometheus:v2.50.1
   IMG_REDIS=bitnami/redis:7.0.5
-  IMG_REMOTELY=immybot/remotely:69
-  IMG_SALTRIM=barassistant/salt-rim:v2
-  IMG_SEARXNG=searxng/searxng:2023.12.29-27e26b3d6
-  IMG_SHLINK_APP=shlinkio/shlink:3.7.3
-  IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.0.0
-  IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:0.15.4
-  IMG_SQLPAD=sqlpad/sqlpad:7.3.1
-  IMG_STIRLINGPDF=frooodle/s-pdf:0.20.1
-  IMG_SYNCTHING=syncthing/syncthing:1.27.2
+  IMG_REMOTELY=immybot/remotely:88
+  IMG_SALTRIM=barassistant/salt-rim:2.11.0
+  IMG_SEARXNG=searxng/searxng:2024.3.15-e2af3e497
+  IMG_SHLINK_APP=shlinkio/shlink:4.0.3
+  IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.0.1
+  IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:0.18.3
+  IMG_SQLPAD=sqlpad/sqlpad:7.4.1
+  IMG_STIRLINGPDF=frooodle/s-pdf:0.22.2
+  IMG_SYNCTHING=syncthing/syncthing:1.27.4
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.11-alpine
-  IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.2-alpine
+  IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.5-alpine
   IMG_VAULTWARDEN_LDAP=thegeeklab/vaultwarden-ldap:0.6.2
   IMG_WALLABAG=wallabag/wallabag:2.6.8
-  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.2
-  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.2
-  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.7.2
+  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.3
+  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.3
+  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.7.3
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
-  IMG_WIKIJS=requarks/wiki:2.5
+  IMG_WIKIJS=requarks/wiki:2.5.301
   IMG_WIREGUARD=linuxserver/wireguard:1.0.20210914
   IMG_WORDPRESS=wordpress:php8.3-apache
 }
@@ -15808,35 +15809,33 @@ function getScriptStackVersion()
     portainer)
       echo "v2" ;;
     adguard)
-      echo "v2" ;;
-    sysutils)
       echo "v3" ;;
+    sysutils)
+      echo "v4" ;;
     openldap)
       echo "v1" ;;
     mailu)
-      echo "v2" ;;
+      echo "v3" ;;
     wazuh)
-      echo "v3" ;;
+      echo "v4" ;;
     collabora)
-      echo "v3" ;;
+      echo "v4" ;;
     nextcloud)
-      echo "v3" ;;
+      echo "v4" ;;
     jitsi)
-      echo "v3" ;;
-    jupyter)
-      echo "v1" ;;
+      echo "v4" ;;
     matrix)
-      echo "v3" ;;
+      echo "v4" ;;
     wikijs)
-      echo "v1" ;;
+      echo "v2" ;;
     duplicati)
       echo "v1" ;;
     mastodon)
-      echo "v3" ;;
-    dozzle)
       echo "v4" ;;
+    dozzle)
+      echo "v5" ;;
     searxng)
-      echo "v2" ;;
+      echo "v3" ;;
     jellyfin)
       echo "v2" ;;
     filebrowser)
@@ -15846,73 +15845,75 @@ function getScriptStackVersion()
     guacamole)
       echo "v2" ;;
     authelia)
-      echo "v1" ;;
+      echo "v2" ;;
     wordpress)
       echo "v2" ;;
     ghost)
-      echo "v3" ;;
-    peertube)
-      echo "v2" ;;
-    homeassistant)
       echo "v4" ;;
+    peertube)
+      echo "v3" ;;
+    homeassistant)
+      echo "v5" ;;
     gitlab)
-      echo "v3" ;;
+      echo "v4" ;;
     vaultwarden)
-      echo "v3" ;;
+      echo "v4" ;;
     discourse)
-      echo "v2" ;;
+      echo "v3" ;;
     syncthing)
-      echo "v3" ;;
+      echo "v4" ;;
     codeserver)
-      echo "v3" ;;
+      echo "v4" ;;
     shlink)
-      echo "v3" ;;
+      echo "v4" ;;
     firefly)
-      echo "v3" ;;
+      echo "v4" ;;
     excalidraw)
       echo "v1" ;;
     drawio)
-      echo "v2" ;;
+      echo "v3" ;;
     invidious)
       echo "v1" ;;
     ittools)
       echo "v1" ;;
     gitea)
-      echo "v3" ;;
+      echo "v4" ;;
     mealie)
-      echo "v3" ;;
+      echo "v4" ;;
     kasm)
-      echo "v2" ;;
+      echo "v3" ;;
     ntfy)
-      echo "v2" ;;
+      echo "v3" ;;
     remotely)
-      echo "v1" ;;
+      echo "v2" ;;
     calibre)
-      echo "v2" ;;
+      echo "v3" ;;
     netdata)
-      echo "v1" ;;
+      echo "v2" ;;
     linkwarden)
-      echo "v2" ;;
+      echo "v3" ;;
     stirlingpdf)
-      echo "v2" ;;
+      echo "v3" ;;
     bar-assistant)
-      echo "v1" ;;
+      echo "v2" ;;
     freshrss)
       echo "v1" ;;
     keila)
       echo "v2" ;;
     wallabag)
       echo "v1" ;;
+    jupyter)
+      echo "v2" ;;
     paperless)
-      echo "v1" ;;
+      echo "v2" ;;
     speedtest-tracker-local)
-      echo "v2" ;;
+      echo "v3" ;;
     speedtest-tracker-vpn)
-      echo "v2" ;;
+      echo "v3" ;;
     heimdall)
       echo "v1" ;;
     changedetection)
-      echo "v1" ;;
+      echo "v2" ;;
     huginn)
       echo "v1" ;;
     coturn)
@@ -15920,9 +15921,9 @@ function getScriptStackVersion()
     filedrop)
       echo "v1" ;;
     ofelia)
-      echo "v2" ;;
-    sqlpad)
       echo "v3" ;;
+    sqlpad)
+      echo "v4" ;;
     caddy-*)
       echo "v2" ;;
     clientdns-*)
@@ -17394,7 +17395,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Identity/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Identity/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
@@ -18645,14 +18646,19 @@ function performUpdateAdGuard()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=adguard/adguardhome:v0.107.41
-      image_update_map[0]="adguard/adguardhome:v0.107.41,adguard/adguardhome:v0.107.43"
+      image_update_map[0]="adguard/adguardhome:v0.107.41,adguard/adguardhome:v0.107.45"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=adguard/adguardhome:v0.107.43
-      image_update_map[0]="adguard/adguardhome:v0.107.43,adguard/adguardhome:v0.107.43"
+      image_update_map[0]="adguard/adguardhome:v0.107.43,adguard/adguardhome:v0.107.45"
+    ;;
+    3)
+      newVer=v3
+      curImageList=adguard/adguardhome:v0.107.45
+      image_update_map[0]="adguard/adguardhome:v0.107.45,adguard/adguardhome:v0.107.45"
     ;;
     *)
       is_upgrade_error=true
@@ -21402,10 +21408,10 @@ function performUpdateSysUtils()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=grafana/grafana-oss:9.5.8,prom/prometheus:v2.46.0,prom/node-exporter:v1.6.1,influxdb:2.7.1-alpine
-      image_update_map[0]="grafana/grafana-oss:9.5.8,grafana/grafana-oss:10.3.1"
-      image_update_map[1]="prom/prometheus:v2.46.0,prom/prometheus:v2.49.1"
+      image_update_map[0]="grafana/grafana-oss:9.5.8,grafana/grafana-oss:10.3.4"
+      image_update_map[1]="prom/prometheus:v2.46.0,prom/prometheus:v2.50.1"
       image_update_map[2]="prom/node-exporter:v1.6.1,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.1-alpine,influxdb:2.7.5-alpine"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
@@ -21413,10 +21419,10 @@ function performUpdateSysUtils()
       return
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=grafana/grafana-oss:9.5.15,prom/prometheus:v2.48.1,prom/node-exporter:v1.7.0,influxdb:2.7.4-alpine
-      image_update_map[0]="grafana/grafana-oss:9.5.15,grafana/grafana-oss:10.3.1"
-      image_update_map[1]="prom/prometheus:v2.48.1,prom/prometheus:v2.49.1"
+      image_update_map[0]="grafana/grafana-oss:9.5.15,grafana/grafana-oss:10.3.4"
+      image_update_map[1]="prom/prometheus:v2.48.1,prom/prometheus:v2.50.1"
       image_update_map[2]="prom/node-exporter:v1.7.0,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.4-alpine,influxdb:2.7.5-alpine"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
@@ -21424,10 +21430,18 @@ function performUpdateSysUtils()
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=grafana/grafana-oss:10.3.1,prom/prometheus:v2.49.1,prom/node-exporter:v1.7.0,influxdb:2.7.5-alpine
-      image_update_map[0]="grafana/grafana-oss:10.3.1,grafana/grafana-oss:10.3.1"
-      image_update_map[1]="prom/prometheus:v2.49.1,prom/prometheus:v2.49.1"
+      image_update_map[0]="grafana/grafana-oss:10.3.1,grafana/grafana-oss:10.3.4"
+      image_update_map[1]="prom/prometheus:v2.49.1,prom/prometheus:v2.50.1"
+      image_update_map[2]="prom/node-exporter:v1.7.0,prom/node-exporter:v1.7.0"
+      image_update_map[3]="influxdb:2.7.5-alpine,influxdb:2.7.5-alpine"
+    ;;
+    4)
+      newVer=v4
+      curImageList=grafana/grafana-oss:10.3.4,prom/prometheus:v2.50.1,prom/node-exporter:v1.7.0,influxdb:2.7.5-alpine
+      image_update_map[0]="grafana/grafana-oss:10.3.4,grafana/grafana-oss:10.3.4"
+      image_update_map[1]="prom/prometheus:v2.50.1,prom/prometheus:v2.50.1"
       image_update_map[2]="prom/node-exporter:v1.7.0,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.5-alpine,influxdb:2.7.5-alpine"
     ;;
@@ -22528,36 +22542,52 @@ function performUpdateMailu()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0,ghcr.io/mailu/rspamd:2.0,ghcr.io/mailu/clamav:2.0,ghcr.io/mailu/fetchmail:2.0,ghcr.io/mailu/nginx:2.0,ghcr.io/mailu/dovecot:2.0,ghcr.io/mailu/oletools:2.0,ghcr.io/mailu/postfix:2.0,ghcr.io/mailu/unbound:2.0,ghcr.io/mailu/radicale:2.0,ghcr.io/mailu/webmail:2.0
       image_update_map[0]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[1]="ghcr.io/mailu/admin:2.0,ghcr.io/mailu/admin:2.0.37"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2.0,ghcr.io/mailu/rspamd:2.0.37"
-      image_update_map[3]="ghcr.io/mailu/clamav:2.0,ghcr.io/mailu/clamav:2.0.37"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2.0,ghcr.io/mailu/fetchmail:2.0.37"
-      image_update_map[5]="ghcr.io/mailu/nginx:2.0,ghcr.io/mailu/nginx:2.0.37"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2.0,ghcr.io/mailu/dovecot:2.0.37"
-      image_update_map[7]="ghcr.io/mailu/oletools:2.0,ghcr.io/mailu/oletools:2.0.37"
-      image_update_map[8]="ghcr.io/mailu/postfix:2.0,ghcr.io/mailu/postfix:2.0.37"
-      image_update_map[9]="ghcr.io/mailu/unbound:2.0,ghcr.io/mailu/unbound:2.0.37"
-      image_update_map[10]="ghcr.io/mailu/radicale:2.0,ghcr.io/mailu/radicale:2.0.37"
-      image_update_map[11]="ghcr.io/mailu/webmail:2.0,ghcr.io/mailu/webmail:2.0.37"
+      image_update_map[1]="ghcr.io/mailu/admin:2.0,ghcr.io/mailu/admin:2.0.39"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2.0,ghcr.io/mailu/rspamd:2.0.39"
+      image_update_map[3]="ghcr.io/mailu/clamav:2.0,ghcr.io/mailu/clamav:2.0.39"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2.0,ghcr.io/mailu/fetchmail:2.0.39"
+      image_update_map[5]="ghcr.io/mailu/nginx:2.0,ghcr.io/mailu/nginx:2.0.39"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2.0,ghcr.io/mailu/dovecot:2.0.39"
+      image_update_map[7]="ghcr.io/mailu/oletools:2.0,ghcr.io/mailu/oletools:2.0.39"
+      image_update_map[8]="ghcr.io/mailu/postfix:2.0,ghcr.io/mailu/postfix:2.0.39"
+      image_update_map[9]="ghcr.io/mailu/unbound:2.0,ghcr.io/mailu/unbound:2.0.39"
+      image_update_map[10]="ghcr.io/mailu/radicale:2.0,ghcr.io/mailu/radicale:2.0.39"
+      image_update_map[11]="ghcr.io/mailu/webmail:2.0,ghcr.io/mailu/webmail:2.0.39"
     ;;
     2)
-      newVer=v2
-      curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0.37,ghcr.io/mailu/rspamd:2.0.37,ghcr.io/mailu/clamav:2.0.37,ghcr.io/mailu/fetchmail:2.0.37,ghcr.io/mailu/nginx:2.0.37,ghcr.io/mailu/dovecot:2.0.37,ghcr.io/mailu/oletools:2.0.37,ghcr.io/mailu/postfix:2.0.37,ghcr.io/mailu/unbound:2.0.37,ghcr.io/mailu/radicale:2.0.37,ghcr.io/mailu/webmail:2.0
+      newVer=v3
+      curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0.37,ghcr.io/mailu/rspamd:2.0.37,ghcr.io/mailu/clamav:2.0.37,ghcr.io/mailu/fetchmail:2.0.37,ghcr.io/mailu/nginx:2.0.37,ghcr.io/mailu/dovecot:2.0.37,ghcr.io/mailu/oletools:2.0.37,ghcr.io/mailu/postfix:2.0.37,ghcr.io/mailu/unbound:2.0.37,ghcr.io/mailu/radicale:2.0.37,ghcr.io/mailu/webmail:2.0.37
       image_update_map[0]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[1]="ghcr.io/mailu/admin:2.0.37,ghcr.io/mailu/admin:2.0.37"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2.0.37,ghcr.io/mailu/rspamd:2.0.37"
-      image_update_map[3]="ghcr.io/mailu/clamav:2.0.37,ghcr.io/mailu/clamav:2.0.37"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2.0.37,ghcr.io/mailu/fetchmail:2.0.37"
-      image_update_map[5]="ghcr.io/mailu/nginx:2.0.37,ghcr.io/mailu/nginx:2.0.37"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2.0.37,ghcr.io/mailu/dovecot:2.0.37"
-      image_update_map[7]="ghcr.io/mailu/oletools:2.0.37,ghcr.io/mailu/oletools:2.0.37"
-      image_update_map[8]="ghcr.io/mailu/postfix:2.0.37,ghcr.io/mailu/postfix:2.0.37"
-      image_update_map[9]="ghcr.io/mailu/unbound:2.0.37,ghcr.io/mailu/unbound:2.0.37"
-      image_update_map[10]="ghcr.io/mailu/radicale:2.0.37,ghcr.io/mailu/radicale:2.0.37"
-      image_update_map[11]="ghcr.io/mailu/webmail:2.0.37,ghcr.io/mailu/webmail:2.0.37"
+      image_update_map[1]="ghcr.io/mailu/admin:2.0.37,ghcr.io/mailu/admin:2.0.39"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2.0.37,ghcr.io/mailu/rspamd:2.0.39"
+      image_update_map[3]="ghcr.io/mailu/clamav:2.0.37,ghcr.io/mailu/clamav:2.0.39"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2.0.37,ghcr.io/mailu/fetchmail:2.0.39"
+      image_update_map[5]="ghcr.io/mailu/nginx:2.0.37,ghcr.io/mailu/nginx:2.0.39"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2.0.37,ghcr.io/mailu/dovecot:2.0.39"
+      image_update_map[7]="ghcr.io/mailu/oletools:2.0.37,ghcr.io/mailu/oletools:2.0.39"
+      image_update_map[8]="ghcr.io/mailu/postfix:2.0.37,ghcr.io/mailu/postfix:2.0.39"
+      image_update_map[9]="ghcr.io/mailu/unbound:2.0.37,ghcr.io/mailu/unbound:2.0.39"
+      image_update_map[10]="ghcr.io/mailu/radicale:2.0.37,ghcr.io/mailu/radicale:2.0.39"
+      image_update_map[11]="ghcr.io/mailu/webmail:2.0.37,ghcr.io/mailu/webmail:2.0.39"
+    ;;
+    3)
+      newVer=v3
+      curImageList=bitnami/redis:7.0.5,ghcr.io/mailu/admin:2.0.39,ghcr.io/mailu/rspamd:2.0.39,ghcr.io/mailu/clamav:2.0.39,ghcr.io/mailu/fetchmail:2.0.39,ghcr.io/mailu/nginx:2.0.39,ghcr.io/mailu/dovecot:2.0.39,ghcr.io/mailu/oletools:2.0.39,ghcr.io/mailu/postfix:2.0.39,ghcr.io/mailu/unbound:2.0.39,ghcr.io/mailu/radicale:2.0.39,ghcr.io/mailu/webmail:2.0.39
+      image_update_map[0]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[1]="ghcr.io/mailu/admin:2.0.39,ghcr.io/mailu/admin:2.0.39"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2.0.39,ghcr.io/mailu/rspamd:2.0.39"
+      image_update_map[3]="ghcr.io/mailu/clamav:2.0.39,ghcr.io/mailu/clamav:2.0.39"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2.0.39,ghcr.io/mailu/fetchmail:2.0.39"
+      image_update_map[5]="ghcr.io/mailu/nginx:2.0.39,ghcr.io/mailu/nginx:2.0.39"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2.0.39,ghcr.io/mailu/dovecot:2.0.39"
+      image_update_map[7]="ghcr.io/mailu/oletools:2.0.39,ghcr.io/mailu/oletools:2.0.39"
+      image_update_map[8]="ghcr.io/mailu/postfix:2.0.39,ghcr.io/mailu/postfix:2.0.39"
+      image_update_map[9]="ghcr.io/mailu/unbound:2.0.39,ghcr.io/mailu/unbound:2.0.39"
+      image_update_map[10]="ghcr.io/mailu/radicale:2.0.39,ghcr.io/mailu/radicale:2.0.39"
+      image_update_map[11]="ghcr.io/mailu/webmail:2.0.39,ghcr.io/mailu/webmail:2.0.39"
     ;;
     *)
       is_upgrade_error=true
@@ -23413,25 +23443,32 @@ function performUpdateWazuh()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=wazuh/wazuh-manager:4.6.0,wazuh/wazuh-indexer:4.6.0,wazuh/wazuh-dashboard:4.6.0
-      image_update_map[0]="wazuh/wazuh-manager:4.6.0,wazuh/wazuh-manager:4.7.2"
-      image_update_map[1]="wazuh/wazuh-indexer:4.6.0,wazuh/wazuh-indexer:4.7.2"
-      image_update_map[2]="wazuh/wazuh-dashboard:4.6.0,wazuh/wazuh-dashboard:4.7.2"
+      image_update_map[0]="wazuh/wazuh-manager:4.6.0,wazuh/wazuh-manager:4.7.3"
+      image_update_map[1]="wazuh/wazuh-indexer:4.6.0,wazuh/wazuh-indexer:4.7.3"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.6.0,wazuh/wazuh-dashboard:4.7.3"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=wazuh/wazuh-manager:4.7.1,wazuh/wazuh-indexer:4.7.1,wazuh/wazuh-dashboard:4.7.1
-      image_update_map[0]="wazuh/wazuh-manager:4.7.1,wazuh/wazuh-manager:4.7.2"
-      image_update_map[1]="wazuh/wazuh-indexer:4.7.1,wazuh/wazuh-indexer:4.7.2"
-      image_update_map[2]="wazuh/wazuh-dashboard:4.7.1,wazuh/wazuh-dashboard:4.7.2"
+      image_update_map[0]="wazuh/wazuh-manager:4.7.1,wazuh/wazuh-manager:4.7.3"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.1,wazuh/wazuh-indexer:4.7.3"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.1,wazuh/wazuh-dashboard:4.7.3"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=wazuh/wazuh-manager:4.7.2,wazuh/wazuh-indexer:4.7.2,wazuh/wazuh-dashboard:4.7.2
-      image_update_map[0]="wazuh/wazuh-manager:4.7.2,wazuh/wazuh-manager:4.7.2"
-      image_update_map[1]="wazuh/wazuh-indexer:4.7.2,wazuh/wazuh-indexer:4.7.2"
-      image_update_map[2]="wazuh/wazuh-dashboard:4.7.2,wazuh/wazuh-dashboard:4.7.2"
+      image_update_map[0]="wazuh/wazuh-manager:4.7.2,wazuh/wazuh-manager:4.7.3"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.2,wazuh/wazuh-indexer:4.7.3"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.2,wazuh/wazuh-dashboard:4.7.3"
+    ;;
+    4)
+      newVer=v4
+      curImageList=wazuh/wazuh-manager:4.7.3,wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-dashboard:4.7.3
+      image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.7.3"
     ;;
     *)
       is_upgrade_error=true
@@ -23547,19 +23584,24 @@ function performUpdateCollabora()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=collabora/code:23.05.5.3.1
-      image_update_map[0]="collabora/code:23.05.5.3.1,collabora/code:23.05.8.2.1"
+      image_update_map[0]="collabora/code:23.05.5.3.1,collabora/code:23.05.9.4.1"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=collabora/code:23.05.6.4.1
-      image_update_map[0]="collabora/code:23.05.6.4.1,collabora/code:23.05.8.2.1"
+      image_update_map[0]="collabora/code:23.05.6.4.1,collabora/code:23.05.9.4.1"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=collabora/code:23.05.8.2.1
-      image_update_map[0]="collabora/code:23.05.8.2.1,collabora/code:23.05.8.2.1"
+      image_update_map[0]="collabora/code:23.05.8.2.1,collabora/code:23.05.9.4.1"
+    ;;
+    4)
+      newVer=v4
+      curImageList=collabora/code:23.05.9.4.1
+      image_update_map[0]="collabora/code:23.05.9.4.1,collabora/code:23.05.9.4.1"
     ;;
     *)
       is_upgrade_error=true
@@ -23593,6 +23635,13 @@ function installNextcloud()
   pullImage $IMG_NEXTCLOUD_IMAGINARY
   if [ $? -ne 0 ]; then
     return
+  fi
+  if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    echo "Missing coturn, installing..."
+    installCoturn
+    if [ $? -ne 0 ]; then
+      return
+    fi
   fi
 
   initServicesCredentials
@@ -23699,6 +23748,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install workflow_media_converter
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install drawio
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install riotchat
+  docker exec -u www-data nextcloud-app php occ --no-warnings app:install previewgenerator
   docker exec -u www-data nextcloud-app php occ config:app:set riotchat custom_json --value="{\"disable_guests\":true,\"piwik\":false,\"settingDefaults\":{\"language\":\"en\"},\"disable_custom_urls\":true,\"disable_login_language_selector\":true,\"disable_3pid_login\": true,\"default_server_config\":{\"m.homeserver\":{\"base_url\":\"https:\/\/$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN\",\"server_name\":\"$HOMESERVER_DOMAIN\"}},\"brand\":\"Nextcloud\",\"branding\":{\"authHeaderLogoUrl\":\"\/core\/img\/logo\/logo.svg?v=0\"},\"showLabsSettings\":true,\"sso_immediate_redirect\":false,\"jitsi\": {\"preferred_domain\": \"$SUB_JITSI.$HOMESERVER_DOMAIN\"},\"roomDirectory\": {\"servers\": [\"$HOMESERVER_DOMAIN\"]},\"default_theme\": \"dark\"}"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install jitsi
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi display_join_using_the_jitsi_app --value=1
@@ -24512,29 +24562,38 @@ function performUpdateNextcloud()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.3-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.23.2-alpine
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[2]="nextcloud:27.1.3-fpm-alpine,nextcloud:27.1.6-fpm-alpine"
+      image_update_map[2]="nextcloud:27.1.3-fpm-alpine,nextcloud:27.1.7-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.23.2-alpine,nginx:1.25.3-alpine"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.5-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.25.3-alpine
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[2]="nextcloud:27.1.5-fpm-alpine,nextcloud:27.1.6-fpm-alpine"
+      image_update_map[2]="nextcloud:27.1.5-fpm-alpine,nextcloud:27.1.7-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.6-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.25.3-alpine
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[2]="nextcloud:27.1.6-fpm-alpine,nextcloud:27.1.6-fpm-alpine"
+      image_update_map[2]="nextcloud:27.1.6-fpm-alpine,nextcloud:27.1.7-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
+      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,nextcloud:27.1.7-fpm-alpine,nextcloud/aio-imaginary:latest,nginx:1.25.3-alpine
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="nextcloud:27.1.7-fpm-alpine,nextcloud:27.1.7-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
     ;;
@@ -24737,28 +24796,36 @@ function performUpdateJitsi()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=jitsi/jicofo:stable-8719,jitsi/jvb:stable-8719,jitsi/prosody:stable-8719,jitsi/web:stable-8719
-      image_update_map[0]="jitsi/jicofo:stable-8719,jitsi/jicofo:stable-9220"
-      image_update_map[1]="jitsi/jvb:stable-8719,jitsi/jvb:stable-9220"
-      image_update_map[2]="jitsi/prosody:stable-8719,jitsi/prosody:stable-9220"
-      image_update_map[3]="jitsi/web:stable-8719,jitsi/web:stable-9220"
+      image_update_map[0]="jitsi/jicofo:stable-8719,jitsi/jicofo:stable-9258"
+      image_update_map[1]="jitsi/jvb:stable-8719,jitsi/jvb:stable-9258"
+      image_update_map[2]="jitsi/prosody:stable-8719,jitsi/prosody:stable-9258"
+      image_update_map[3]="jitsi/web:stable-8719,jitsi/web:stable-9258"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=jitsi/jicofo:stable-9111,jitsi/jvb:stable-9111,jitsi/prosody:stable-9111,jitsi/web:stable-9111
-      image_update_map[0]="jitsi/jicofo:stable-9111,jitsi/jicofo:stable-9220"
-      image_update_map[1]="jitsi/jvb:stable-9111,jitsi/jvb:stable-9220"
-      image_update_map[2]="jitsi/prosody:stable-9111,jitsi/prosody:stable-9220"
-      image_update_map[3]="jitsi/web:stable-9111,jitsi/web:stable-9220"
+      image_update_map[0]="jitsi/jicofo:stable-9111,jitsi/jicofo:stable-9258"
+      image_update_map[1]="jitsi/jvb:stable-9111,jitsi/jvb:stable-9258"
+      image_update_map[2]="jitsi/prosody:stable-9111,jitsi/prosody:stable-9258"
+      image_update_map[3]="jitsi/web:stable-9111,jitsi/web:stable-9258"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=jitsi/jicofo:stable-9220,jitsi/jvb:stable-9220,jitsi/prosody:stable-9220,jitsi/web:stable-9220
-      image_update_map[0]="jitsi/jicofo:stable-9220,jitsi/jicofo:stable-9220"
-      image_update_map[1]="jitsi/jvb:stable-9220,jitsi/jvb:stable-9220"
-      image_update_map[2]="jitsi/prosody:stable-9220,jitsi/prosody:stable-9220"
-      image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-9220"
+      image_update_map[0]="jitsi/jicofo:stable-9220,jitsi/jicofo:stable-9258"
+      image_update_map[1]="jitsi/jvb:stable-9220,jitsi/jvb:stable-9258"
+      image_update_map[2]="jitsi/prosody:stable-9220,jitsi/prosody:stable-9258"
+      image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-9258"
+    ;;
+    4)
+      newVer=v4
+      curImageList=jitsi/jicofo:stable-9258,jitsi/jvb:stable-9258,jitsi/prosody:stable-9258,jitsi/web:stable-9258
+      image_update_map[0]="jitsi/jicofo:stable-9258,jitsi/jicofo:stable-9258"
+      image_update_map[1]="jitsi/jvb:stable-9258,jitsi/jvb:stable-9258"
+      image_update_map[2]="jitsi/prosody:stable-9258,jitsi/prosody:stable-9258"
+      image_update_map[3]="jitsi/web:stable-9258,jitsi/web:stable-9258"
     ;;
     *)
       is_upgrade_error=true
@@ -25215,28 +25282,36 @@ function performUpdateMatrix()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.90.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.40
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="matrixdotorg/synapse:v1.90.0,matrixdotorg/synapse:v1.100.0"
+      image_update_map[1]="matrixdotorg/synapse:v1.90.0,matrixdotorg/synapse:v1.102.0"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[3]="vectorim/element-web:v1.11.40,vectorim/element-web:v1.11.57"
+      image_update_map[3]="vectorim/element-web:v1.11.40,vectorim/element-web:v1.11.61"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.98.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.52
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="matrixdotorg/synapse:v1.98.0,matrixdotorg/synapse:v1.100.0"
+      image_update_map[1]="matrixdotorg/synapse:v1.98.0,matrixdotorg/synapse:v1.102.0"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[3]="vectorim/element-web:v1.11.52,vectorim/element-web:v1.11.57"
+      image_update_map[3]="vectorim/element-web:v1.11.52,vectorim/element-web:v1.11.61"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.100.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.57
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="matrixdotorg/synapse:v1.100.0,matrixdotorg/synapse:v1.100.0"
+      image_update_map[1]="matrixdotorg/synapse:v1.100.0,matrixdotorg/synapse:v1.102.0"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[3]="vectorim/element-web:v1.11.57,vectorim/element-web:v1.11.57"
+      image_update_map[3]="vectorim/element-web:v1.11.57,vectorim/element-web:v1.11.61"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.102.0,bitnami/redis:7.0.5,vectorim/element-web:v1.11.61
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="matrixdotorg/synapse:v1.102.0,matrixdotorg/synapse:v1.102.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[3]="vectorim/element-web:v1.11.61,vectorim/element-web:v1.11.61"
     ;;
     *)
       is_upgrade_error=true
@@ -25542,10 +25617,16 @@ function performUpdateWikijs()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=postgres:15.0-bullseye,requarks/wiki:2.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="requarks/wiki:2.5,requarks/wiki:2.5"
+      image_update_map[1]="requarks/wiki:2.5,requarks/wiki:2.5.301"
+    ;;
+    2)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,requarks/wiki:2.5.301
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="requarks/wiki:2.5.301,requarks/wiki:2.5.301"
     ;;
     *)
       is_upgrade_error=true
@@ -26254,13 +26335,13 @@ function performUpdateMastodon()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.1.6,nginx:1.23.2-alpine,elasticsearch:8.8.1
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[2]="tootsuite/mastodon:v4.1.6,tootsuite/mastodon:v4.2.3"
+      image_update_map[2]="tootsuite/mastodon:v4.1.6,tootsuite/mastodon:v4.2.8"
       image_update_map[3]="nginx:1.23.2-alpine,nginx:1.25.3-alpine"
-      image_update_map[4]="elasticsearch:8.8.1,elasticsearch:8.12.0"
+      image_update_map[4]="elasticsearch:8.8.1,elasticsearch:8.12.2"
       # This upgrade requires a migration
       outputMastdonMigrate postgres:15.0-bullseye bitnami/redis:7.0.5 tootsuite/mastodon:v4.2.3
       sudo cp $HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/stack.env $HSHQ_STACKS_DIR/mastodon/stack.env
@@ -26270,22 +26351,31 @@ function performUpdateMastodon()
       return
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.3,nginx:1.25.3-alpine,elasticsearch:8.11.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[2]="tootsuite/mastodon:v4.2.3,tootsuite/mastodon:v4.2.3"
+      image_update_map[2]="tootsuite/mastodon:v4.2.3,tootsuite/mastodon:v4.2.8"
       image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      image_update_map[4]="elasticsearch:8.11.3,elasticsearch:8.12.0"
+      image_update_map[4]="elasticsearch:8.11.3,elasticsearch:8.12.2"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.3,nginx:1.25.3-alpine,elasticsearch:8.12.0
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[2]="tootsuite/mastodon:v4.2.3,tootsuite/mastodon:v4.2.3"
+      image_update_map[2]="tootsuite/mastodon:v4.2.3,tootsuite/mastodon:v4.2.8"
       image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      image_update_map[4]="elasticsearch:8.12.0,elasticsearch:8.12.0"
+      image_update_map[4]="elasticsearch:8.12.0,elasticsearch:8.12.2"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.8,nginx:1.25.3-alpine,elasticsearch:8.12.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="tootsuite/mastodon:v4.2.8,tootsuite/mastodon:v4.2.8"
+      image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+      image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
     ;;
     *)
       is_upgrade_error=true
@@ -26293,7 +26383,7 @@ function performUpdateMastodon()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -26415,7 +26505,7 @@ EOFMD
 function migrateMastodon()
 {
   # This function assumes the Mastodon stack/containers are NOT running.
-  echo -e "\nPerforming mastodon database migration...this could take a few minutes\n"
+  echo -e "\nPerforming Mastodon database migration...this could take a few minutes\n"
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
   docker-compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null
@@ -26435,6 +26525,26 @@ function mfMigrateMastodon()
     sleep 3
   fi
   migrateMastodon
+}
+
+function clearStaticAssetsMastodon()
+{
+  # This function assumes the Mastodon stack/containers are NOT running.
+  echo -e "\nClearing Mastodon static assets...\n"
+  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
+  sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
+  sleep 3
+}
+
+function mfClearStaticAssetsMastodon()
+{
+  if [ "$stackStatus" = "1" ];then
+    # Stack is running, stop it, then clear assets
+    startStopStack mastodon stop "$portainerToken"
+    isStartStackFromStopped=true
+    sleep 3
+  fi
+  clearStaticAssetsMastodon
 }
 
 # Dozzle
@@ -26542,24 +26652,29 @@ function performUpdateDozzle()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v5
       curImageList=amir20/dozzle:v4.10.26
-      image_update_map[0]="amir20/dozzle:v4.10.26,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v4.10.26,amir20/dozzle:v6.3.1"
     ;;
     2)
-      newVer=v4
+      newVer=v5
       curImageList=amir20/dozzle:v5.8.1
-      image_update_map[0]="amir20/dozzle:v5.8.1,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v5.8.1,amir20/dozzle:v6.3.1"
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=amir20/dozzle:v6.0.8
-      image_update_map[0]="amir20/dozzle:v6.0.8,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v6.0.8,amir20/dozzle:v6.3.1"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=amir20/dozzle:v6.1.1
-      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.3.1"
+    ;;
+    5)
+      newVer=v5
+      curImageList=amir20/dozzle:v6.3.1
+      image_update_map[0]="amir20/dozzle:v6.3.1,amir20/dozzle:v6.3.1"
     ;;
     *)
       is_upgrade_error=true
@@ -26880,14 +26995,19 @@ function performUpdateSearxNG()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=searxng/searxng:2023.8.19-018b0a932
-      image_update_map[0]="searxng/searxng:2023.8.19-018b0a932,searxng/searxng:2023.12.29-27e26b3d6"
+      image_update_map[0]="searxng/searxng:2023.8.19-018b0a932,searxng/searxng:2024.3.15-e2af3e497"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=searxng/searxng:2023.12.29-27e26b3d6
-      image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2023.12.29-27e26b3d6"
+      image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2024.3.15-e2af3e497"
+    ;;
+    3)
+      newVer=v3
+      curImageList=searxng/searxng:2024.3.15-e2af3e497
+      image_update_map[0]="searxng/searxng:2024.3.15-e2af3e497,searxng/searxng:2024.3.15-e2af3e497"
     ;;
     *)
       is_upgrade_error=true
@@ -28128,9 +28248,15 @@ function performUpdateAuthelia()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
-      image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.37.5"
+      image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.38.2"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    2)
+      newVer=v2
+      curImageList=authelia/authelia:4.38.2,bitnami/redis:7.0.5
+      image_update_map[0]="authelia/authelia:4.38.2,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
@@ -28526,22 +28652,28 @@ function performUpdateGhost()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=mariadb:10.7.3,ghost:5.59.1-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.59.1-alpine,ghost:5.78.0-alpine"
+      image_update_map[1]="ghost:5.59.1-alpine,ghost:5.80.3-alpine"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=mariadb:10.7.3,ghost:5.75.2-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.75.2-alpine,ghost:5.78.0-alpine"
+      image_update_map[1]="ghost:5.75.2-alpine,ghost:5.80.3-alpine"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=mariadb:10.7.3,ghost:5.78.0-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.78.0-alpine,ghost:5.78.0-alpine"
+      image_update_map[1]="ghost:5.78.0-alpine,ghost:5.80.3-alpine"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mariadb:10.7.3,ghost:5.80.3-alpine
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="ghost:5.80.3-alpine,ghost:5.80.3-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -28804,17 +28936,24 @@ function performUpdatePeerTube()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v5.2.0-bullseye,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="chocobozzz/peertube:v5.2.0-bullseye,chocobozzz/peertube:v6.0.2-bookworm"
+      image_update_map[1]="chocobozzz/peertube:v5.2.0-bullseye,chocobozzz/peertube:v6.0.3-bookworm"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v6.0.2-bookworm,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="chocobozzz/peertube:v6.0.2-bookworm,chocobozzz/peertube:v6.0.2-bookworm"
+      image_update_map[1]="chocobozzz/peertube:v6.0.2-bookworm,chocobozzz/peertube:v6.0.3-bookworm"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v6.0.3-bookworm,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="chocobozzz/peertube:v6.0.3-bookworm,chocobozzz/peertube:v6.0.3-bookworm"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
@@ -29252,46 +29391,55 @@ function performUpdateHomeAssistant()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2023.8,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="homeassistant/home-assistant:2023.8,homeassistant/home-assistant:2024.1.6"
-      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[1]="homeassistant/home-assistant:2023.8,homeassistant/home-assistant:2024.3.1"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
-      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.3,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="homeassistant/home-assistant:2024.1.3,homeassistant/home-assistant:2024.1.6"
-      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[1]="homeassistant/home-assistant:2024.1.3,homeassistant/home-assistant:2024.3.1"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
-      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.5,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="homeassistant/home-assistant:2024.1.5,homeassistant/home-assistant:2024.1.6"
-      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[1]="homeassistant/home-assistant:2024.1.5,homeassistant/home-assistant:2024.3.1"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
-      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.1.6,nodered/node-red:3.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="homeassistant/home-assistant:2024.1.6,homeassistant/home-assistant:2024.1.6"
-      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.0.2"
+      image_update_map[1]="homeassistant/home-assistant:2024.1.6,homeassistant/home-assistant:2024.3.1"
+      image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
-      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v3.1.0"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
+    ;;
+    5)
+      newVer=v5
+      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.3.1,nodered/node-red:3.1.7,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="homeassistant/home-assistant:2024.3.1,homeassistant/home-assistant:2024.3.1"
+      image_update_map[2]="nodered/node-red:3.1.7,nodered/node-red:3.1.7"
+      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.0.1,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
     ;;
     *)
       is_upgrade_error=true
@@ -29847,24 +29995,31 @@ function performUpdateGitlab()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.2.4-ce.0,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitlab/gitlab-ce:16.2.4-ce.0,gitlab/gitlab-ce:16.8.1-ce.0"
+      image_update_map[1]="gitlab/gitlab-ce:16.2.4-ce.0,gitlab/gitlab-ce:16.8.4-ce.0"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.7.0-ce.0,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitlab/gitlab-ce:16.7.0-ce.0,gitlab/gitlab-ce:16.8.1-ce.0"
+      image_update_map[1]="gitlab/gitlab-ce:16.7.0-ce.0,gitlab/gitlab-ce:16.8.4-ce.0"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.8.1-ce.0,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitlab/gitlab-ce:16.8.1-ce.0,gitlab/gitlab-ce:16.8.1-ce.0"
+      image_update_map[1]="gitlab/gitlab-ce:16.8.1-ce.0,gitlab/gitlab-ce:16.8.4-ce.0"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:16.8.4-ce.0,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitlab/gitlab-ce:16.8.4-ce.0,gitlab/gitlab-ce:16.8.4-ce.0"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
@@ -30095,24 +30250,31 @@ function performUpdateVaultwarden()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.29.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.29.1-alpine,vaultwarden/server:1.30.2-alpine"
+      image_update_map[1]="vaultwarden/server:1.29.1-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.30.1-alpine,vaultwarden/server:1.30.2-alpine"
+      image_update_map[1]="vaultwarden/server:1.30.1-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.2-alpine,thegeeklab/vaultwarden-ldap:0.6.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.30.2-alpine,vaultwarden/server:1.30.2-alpine"
+      image_update_map[1]="vaultwarden/server:1.30.2-alpine,vaultwarden/server:1.30.5-alpine"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.5-alpine,thegeeklab/vaultwarden-ldap:0.6.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.30.5-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
     ;;
     *)
@@ -30380,25 +30542,32 @@ function performUpdateDiscourse()
       newVer=v1
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.0.6,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/discourse:3.0.6,bitnami/discourse:3.1.4"
+      image_update_map[1]="bitnami/discourse:3.0.6,bitnami/discourse:3.2.1"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): This version of Discourse cannot be upgraded to the next version. You must export your data from this instance, uninstall and reinstall Discourse, then import your data into the new instance."
       return
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.3,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/discourse:3.1.3,bitnami/discourse:3.1.4"
+      image_update_map[1]="bitnami/discourse:3.1.3,bitnami/discourse:3.2.1"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
       # This is unstable as a fresh installation. It strangely works when upgrading from 3.1.3...
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.1.4,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/discourse:3.1.4,bitnami/discourse:3.1.4"
+      image_update_map[1]="bitnami/discourse:3.1.4,bitnami/discourse:3.2.1"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,bitnami/discourse:3.2.1,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/discourse:3.2.1,bitnami/discourse:3.2.1"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
@@ -30547,19 +30716,24 @@ function performUpdateSyncthing()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=syncthing/syncthing:1.23.7
-      image_update_map[0]="syncthing/syncthing:1.23.7,syncthing/syncthing:1.27.2"
+      image_update_map[0]="syncthing/syncthing:1.23.7,syncthing/syncthing:1.27.4"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=syncthing/syncthing:1.27.1
-      image_update_map[0]="syncthing/syncthing:1.27.1,syncthing/syncthing:1.27.2"
+      image_update_map[0]="syncthing/syncthing:1.27.1,syncthing/syncthing:1.27.4"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=syncthing/syncthing:1.27.2
-      image_update_map[0]="syncthing/syncthing:1.27.2,syncthing/syncthing:1.27.2"
+      image_update_map[0]="syncthing/syncthing:1.27.2,syncthing/syncthing:1.27.4"
+    ;;
+    4)
+      newVer=v4
+      curImageList=syncthing/syncthing:1.27.4
+      image_update_map[0]="syncthing/syncthing:1.27.4,syncthing/syncthing:1.27.4"
     ;;
     *)
       is_upgrade_error=true
@@ -30778,25 +30952,30 @@ function performUpdateCodeServer()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=codercom/code-server:4.16.1
-      image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.20.1"
+      image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.22.1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=codercom/code-server:4.20.0
-      image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.20.1"
+      image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.22.1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=codercom/code-server:4.20.1
-      image_update_map[0]="codercom/code-server:4.20.1,codercom/code-server:4.20.1"
+      image_update_map[0]="codercom/code-server:4.20.1,codercom/code-server:4.22.1"
+    ;;
+    4)
+      newVer=v4
+      curImageList=codercom/code-server:4.22.1
+      image_update_map[0]="codercom/code-server:4.22.1,codercom/code-server:4.22.1"
     ;;
     *)
       is_upgrade_error=true
@@ -31025,7 +31204,7 @@ DEFAULT_DOMAIN=$SUB_SHLINK_APP.$HOMESERVER_DOMAIN
 IS_HTTPS_ENABLED=true
 INITIAL_API_KEY=$SHLINK_INITIAL_API_KEY
 SHLINK_REDIS_PASSWORD=$SHLINK_REDIS_PASSWORD
-REDIS_SERVERS=tcp://$SHLINK_REDIS_PASSWORD@shlink-redis:6379
+REDIS_SERVERS=tcp://:$SHLINK_REDIS_PASSWORD@shlink-redis:6379
 
 EOFST
 
@@ -31062,8 +31241,8 @@ function performUpdateShlink()
       newVer=v3
       curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.6.3,shlinkio/shlink-web-client:3.10.2,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="shlinkio/shlink:3.6.3,shlinkio/shlink:3.7.3"
-      image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.0"
+      image_update_map[1]="shlinkio/shlink:3.6.3,shlinkio/shlink:4.0.3"
+      image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
@@ -31073,19 +31252,38 @@ function performUpdateShlink()
       newVer=v3
       curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.7.2,shlinkio/shlink-web-client:3.10.2,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="shlinkio/shlink:3.7.2,shlinkio/shlink:3.7.3"
-      image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.0"
+      image_update_map[1]="shlinkio/shlink:3.7.2,shlinkio/shlink:4.0.3"
+      image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,shlinkio/shlink:3.7.3,shlinkio/shlink-web-client:4.0.0,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="shlinkio/shlink:3.7.3,shlinkio/shlink:3.7.3"
-      image_update_map[2]="shlinkio/shlink-web-client:4.0.0,shlinkio/shlink-web-client:4.0.0"
+      image_update_map[1]="shlinkio/shlink:3.7.3,shlinkio/shlink:4.0.3"
+      image_update_map[2]="shlinkio/shlink-web-client:4.0.0,shlinkio/shlink-web-client:4.0.1"
+      image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      if [ "$stackStatus" = "1" ];then
+        startStopStack shlink stop "$portainerToken"
+        sleep 3
+      fi
+      sudo rm -fr $HSHQ_NONBACKUP_DIR/shlink/redis/*
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfShlinkFixRedisUrl
+      if [ "$stackStatus" = "2" ];then
+        startStopStack shlink stop "$portainerToken"
+      fi
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,shlinkio/shlink:4.0.3,shlinkio/shlink-web-client:4.0.1,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:4.0.3,shlinkio/shlink:4.0.3"
+      image_update_map[2]="shlinkio/shlink-web-client:4.0.1,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
@@ -31115,6 +31313,30 @@ function mfUpdateShlinkInternalWebUIPort()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SHLINK_WEB $MANAGETLS_SHLINK_WEB true $NETDEFAULT_SHLINK_WEB "$inner_block"
   restartAllCaddyContainers
+}
+
+function mfShlinkFixRedisUrl()
+{
+  rm -f $HOME/shlink.env
+  cat <<EOFST > $HOME/shlink.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$SHLINK_DATABASE_NAME
+POSTGRES_USER=$SHLINK_DATABASE_USER
+POSTGRES_PASSWORD=$SHLINK_DATABASE_USER_PASSWORD
+DB_DRIVER=postgres
+DB_HOST=shlink-db
+DB_NAME=$SHLINK_DATABASE_NAME
+DB_USER=$SHLINK_DATABASE_USER
+DB_PASSWORD=$SHLINK_DATABASE_USER_PASSWORD
+DEFAULT_DOMAIN=$SUB_SHLINK_APP.$HOMESERVER_DOMAIN
+IS_HTTPS_ENABLED=true
+INITIAL_API_KEY=$SHLINK_INITIAL_API_KEY
+SHLINK_REDIS_PASSWORD=$SHLINK_REDIS_PASSWORD
+REDIS_SERVERS=tcp://:$SHLINK_REDIS_PASSWORD@shlink-redis:6379
+
+EOFST
 }
 
 # Firefly
@@ -31343,24 +31565,31 @@ function performUpdateFirefly()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.0.20,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="fireflyiii/core:version-6.0.20,fireflyiii/core:version-6.1.7"
+      image_update_map[1]="fireflyiii/core:version-6.0.20,fireflyiii/core:version-6.1.10"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.1.1,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="fireflyiii/core:version-6.1.1,fireflyiii/core:version-6.1.7"
+      image_update_map[1]="fireflyiii/core:version-6.1.1,fireflyiii/core:version-6.1.10"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.1.7,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="fireflyiii/core:version-6.1.7,fireflyiii/core:version-6.1.7"
+      image_update_map[1]="fireflyiii/core:version-6.1.7,fireflyiii/core:version-6.1.10"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.1.10,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="fireflyiii/core:version-6.1.10,fireflyiii/core:version-6.1.10"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
@@ -31767,16 +31996,23 @@ function performUpdateDrawIO()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=jgraph/drawio:21.0.2,jgraph/plantuml-server,jgraph/export-server
-      image_update_map[0]="jgraph/drawio:21.0.2,jgraph/drawio:23.1.0"
+      image_update_map[0]="jgraph/drawio:21.0.2,jgraph/drawio:24.0.7"
       image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
       image_update_map[2]="jgraph/export-server,jgraph/export-server"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=jgraph/drawio:23.1.0,jgraph/plantuml-server,jgraph/export-server
-      image_update_map[0]="jgraph/drawio:23.1.0,jgraph/drawio:23.1.0"
+      image_update_map[0]="jgraph/drawio:23.1.0,jgraph/drawio:24.0.7"
+      image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
+      image_update_map[2]="jgraph/export-server,jgraph/export-server"
+    ;;
+    3)
+      newVer=v3
+      curImageList=jgraph/drawio:24.0.7,jgraph/plantuml-server,jgraph/export-server
+      image_update_map[0]="jgraph/drawio:24.0.7,jgraph/drawio:24.0.7"
       image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
       image_update_map[2]="jgraph/export-server,jgraph/export-server"
     ;;
@@ -32385,22 +32621,28 @@ function performUpdateGitea()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.20.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitea/gitea:1.20.3,gitea/gitea:1.21.4"
+      image_update_map[1]="gitea/gitea:1.20.3,gitea/gitea:1.21.8"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.21.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitea/gitea:1.21.3,gitea/gitea:1.21.4"
+      image_update_map[1]="gitea/gitea:1.21.3,gitea/gitea:1.21.8"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.21.4
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitea/gitea:1.21.4,gitea/gitea:1.21.4"
+      image_update_map[1]="gitea/gitea:1.21.4,gitea/gitea:1.21.8"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,gitea/gitea:1.21.8
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gitea/gitea:1.21.8,gitea/gitea:1.21.8"
     ;;
     *)
       is_upgrade_error=true
@@ -32636,16 +32878,22 @@ function performUpdateMealie()
       return
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v1.0.0-RC2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.0.0-RC2,ghcr.io/mealie-recipes/mealie:v1.1.0"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.0.0-RC2,ghcr.io/mealie-recipes/mealie:v1.3.2"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v1.1.0
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.1.0,ghcr.io/mealie-recipes/mealie:v1.1.0"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.1.0,ghcr.io/mealie-recipes/mealie:v1.3.2"
+    ;;
+    4)
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v1.3.2
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.3.2,ghcr.io/mealie-recipes/mealie:v1.3.2"
     ;;
     *)
       is_upgrade_error=true
@@ -32786,14 +33034,19 @@ function performUpdateKasm()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=lscr.io/linuxserver/kasm:1.13.0
-      image_update_map[0]="lscr.io/linuxserver/kasm:1.13.0,lscr.io/linuxserver/kasm:1.14.0"
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.13.0,lscr.io/linuxserver/kasm:1.15.0"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=lscr.io/linuxserver/kasm:1.14.0
-      image_update_map[0]="lscr.io/linuxserver/kasm:1.14.0,lscr.io/linuxserver/kasm:1.14.0"
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.14.0,lscr.io/linuxserver/kasm:1.15.0"
+    ;;
+    3)
+      newVer=v3
+      curImageList=lscr.io/linuxserver/kasm:1.15.0
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.15.0,lscr.io/linuxserver/kasm:1.15.0"
     ;;
     *)
       is_upgrade_error=true
@@ -33278,14 +33531,19 @@ function performUpdateNTFY()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=binwiederhier/ntfy:v2.7.0
-      image_update_map[0]="binwiederhier/ntfy:v2.7.0,binwiederhier/ntfy:v2.8.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.7.0,binwiederhier/ntfy:v2.9.0"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=binwiederhier/ntfy:v2.8.0
-      image_update_map[0]="binwiederhier/ntfy:v2.8.0,binwiederhier/ntfy:v2.8.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.8.0,binwiederhier/ntfy:v2.9.0"
+    ;;
+    3)
+      newVer=v3
+      curImageList=binwiederhier/ntfy:v2.9.0
+      image_update_map[0]="binwiederhier/ntfy:v2.9.0,binwiederhier/ntfy:v2.9.0"
     ;;
     *)
       is_upgrade_error=true
@@ -33431,23 +33689,12 @@ function installRemotely()
     updateConfigVar REMOTELY_INIT_ENV $REMOTELY_INIT_ENV
   fi
   outputConfigRemotely
-  installStack remotely remotely "Starting Remotely server" $HOME/remotely.env
+  installStack remotely remotely "No XML encryptor configured" $HOME/remotely.env
   echo "Sleeping 10 seconds..."
   sleep 10
+
   startStopStack remotely stop
-
-  cat $HSHQ_STACKS_DIR/remotely/appsettings.json | jq '.ApplicationOptions.ForceClientHttps |= true' | \
-    jq --arg email_name "Remotely $HSHQ_ADMIN_NAME" '.ApplicationOptions.SmtpDisplayName |= $email_name' | \
-    jq --arg email_addr "$EMAIL_ADMIN_EMAIL_ADDRESS" '.ApplicationOptions.SmtpEmail |= $email_addr' | \
-    jq --arg smtp_host "$SMTP_HOSTNAME" '.ApplicationOptions.SmtpHost |= $smtp_host' | \
-    jq '.ApplicationOptions.SmtpPort |= 25' | \
-    jq '.ApplicationOptions.SmtpCheckCertificateRevocation |= false' \
-    > $HSHQ_STACKS_DIR/remotely/newsettings.json
-
-  sudo rm $HSHQ_STACKS_DIR/remotely/appsettings.json
-  sudo mv $HSHQ_STACKS_DIR/remotely/newsettings.json $HSHQ_STACKS_DIR/remotely/appsettings.json
-  sudo chown root:root $HSHQ_STACKS_DIR/remotely/appsettings.json
-  sudo chmod 644 $HSHQ_STACKS_DIR/remotely/appsettings.json
+  sudo sqlite3 $HSHQ_STACKS_DIR/remotely/Remotely.db "update KeyValueRecords set Value='{\"AllowApiLogin\":false,\"BannedDevices\":[],\"DataRetentionInDays\":90,\"DbProvider\":\"SQLite\",\"EnableRemoteControlRecording\":false,\"EnableWindowsEventLog\":false,\"EnforceAttendedAccess\":false,\"ForceClientHttps\":true,\"KnownProxies\":[],\"MaxConcurrentUpdates\":10,\"MaxOrganizationCount\":1,\"MessageOfTheDay\":\"\",\"RedirectToHttps\":true,\"RemoteControlNotifyUser\":true,\"RemoteControlRequiresAuthentication\":true,\"RemoteControlSessionLimit\":5,\"Require2FA\":false,\"ServerUrl\":\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN\",\"SmtpCheckCertificateRevocation\":false,\"SmtpDisplayName\":\"Remotely $HSHQ_ADMIN_NAME\",\"SmtpEmail\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"SmtpHost\":\"$SMTP_HOSTNAME\",\"SmtpLocalDomain\":\"\",\"SmtpPassword\":\"\",\"SmtpPort\":$SMTP_HOSTPORT,\"SmtpUserName\":\"\",\"Theme\":0,\"TrustedCorsOrigins\":[],\"UseHsts\":false,\"UseHttpLogging\":false}';"
   startStopStack remotely start
 
   inner_block=""
@@ -33495,7 +33742,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/remotely:/remotely-data
+      - \${HSHQ_STACKS_DIR}/remotely:/app/AppData
 
 networks:
   dock-proxy-net:
@@ -33511,6 +33758,10 @@ EOFRM
 
   cat <<EOFRM > $HOME/remotely.env
 TZ=\${TZ}
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_HTTP_PORTS=5000
+Remotely_ApplicationOptions__DbProvider=SQLite
+Remotely_ConnectionStrings__SQLite=Data Source=/app/AppData/Remotely.db
 EOFRM
 
 }
@@ -33537,6 +33788,14 @@ function performUpdateRemotely()
       newVer=v1
       curImageList=immybot/remotely:69
       image_update_map[0]="immybot/remotely:69,immybot/remotely:69"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Remotely cannot be upgraded to the next version. You must uninstall your current version and reinstall the new version."
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=immybot/remotely:88
+      image_update_map[0]="immybot/remotely:88,immybot/remotely:88"
     ;;
     *)
       is_upgrade_error=true
@@ -33750,16 +34009,22 @@ function performUpdateCalibre()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=linuxserver/calibre:7.3.0,linuxserver/calibre-web:0.6.21
-      image_update_map[0]="linuxserver/calibre:7.3.0,linuxserver/calibre:7.4.0"
-      image_update_map[1]="linuxserver/calibre-web:0.6.21,linuxserver/calibre-web:0.6.21"
+      image_update_map[0]="linuxserver/calibre:7.3.0,linuxserver/calibre:7.7.0"
+      image_update_map[1]="linuxserver/calibre-web:0.6.21,linuxserver/calibre-web:0.6.21-ls257"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=linuxserver/calibre:7.4.0,linuxserver/calibre-web:0.6.21
-      image_update_map[0]="linuxserver/calibre:7.4.0,linuxserver/calibre:7.4.0"
-      image_update_map[1]="linuxserver/calibre-web:0.6.21,linuxserver/calibre-web:0.6.21"
+      image_update_map[0]="linuxserver/calibre:7.4.0,linuxserver/calibre:7.7.0"
+      image_update_map[1]="linuxserver/calibre-web:0.6.21,linuxserver/calibre-web:0.6.21-ls257"
+    ;;
+    3)
+      newVer=v3
+      curImageList=linuxserver/calibre:7.7.0,linuxserver/calibre-web:0.6.21-ls257
+      image_update_map[0]="linuxserver/calibre:7.7.0,linuxserver/calibre:7.7.0"
+      image_update_map[1]="linuxserver/calibre-web:0.6.21-ls257,linuxserver/calibre-web:0.6.21-ls257"
     ;;
     *)
       is_upgrade_error=true
@@ -33913,9 +34178,14 @@ function performUpdateNetData()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=netdata/netdata:v1.44.1
-      image_update_map[0]="netdata/netdata:v1.44.1,netdata/netdata:v1.44.1"
+      image_update_map[0]="netdata/netdata:v1.44.1,netdata/netdata:v1.44.3"
+    ;;
+    2)
+      newVer=v2
+      curImageList=netdata/netdata:v1.44.3
+      image_update_map[0]="netdata/netdata:v1.44.3,netdata/netdata:v1.44.3"
     ;;
     *)
       is_upgrade_error=true
@@ -34103,16 +34373,22 @@ function performUpdateLinkwarden()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.4.8
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.8,ghcr.io/linkwarden/linkwarden:v2.4.9"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.8,ghcr.io/linkwarden/linkwarden:v2.5.1"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.4.9
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.9,ghcr.io/linkwarden/linkwarden:v2.4.9"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.4.9,ghcr.io/linkwarden/linkwarden:v2.5.1"
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.5.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.5.1,ghcr.io/linkwarden/linkwarden:v2.5.1"
     ;;
     *)
       is_upgrade_error=true
@@ -34229,14 +34505,19 @@ function performUpdateStirlingPDF()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=frooodle/s-pdf:0.19.0
-      image_update_map[0]="frooodle/s-pdf:0.19.0,frooodle/s-pdf:0.20.1"
+      image_update_map[0]="frooodle/s-pdf:0.19.0,frooodle/s-pdf:0.22.2"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=frooodle/s-pdf:0.20.1
-      image_update_map[0]="frooodle/s-pdf:0.20.1,frooodle/s-pdf:0.20.1"
+      image_update_map[0]="frooodle/s-pdf:0.20.1,frooodle/s-pdf:0.22.2"
+    ;;
+    3)
+      newVer=v3
+      curImageList=frooodle/s-pdf:0.22.2
+      image_update_map[0]="frooodle/s-pdf:0.22.2,frooodle/s-pdf:0.22.2"
     ;;
     *)
       is_upgrade_error=true
@@ -34554,17 +34835,26 @@ function performUpdateBarAssistant()
   unset image_update_map
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
-  # Meilisearch has a more recent version, v1.6. However, moving between versions requires manual migration.
-  # So, we'll use v1.4 until the migration process has been mapped out.
-  # See https://www.meilisearch.com/docs/learn/cookbooks/docker#generating-dumps-and-updating-meilisearch 
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      # Meilisearch has a more recent version, v1.6. However, moving between versions requires manual migration.
+      # So, we'll use v1.4 until the migration process has been mapped out.
+      # See https://www.meilisearch.com/docs/learn/cookbooks/docker#generating-dumps-and-updating-meilisearch 
+      newVer=v2
       curImageList=barassistant/server:v3,getmeili/meilisearch:v1.4,bitnami/redis:7.0.5,barassistant/salt-rim:v2,nginx:1.25.3-alpine
-      image_update_map[0]="barassistant/server:v3,barassistant/server:v3"
+      image_update_map[0]="barassistant/server:v3,barassistant/server:3.11.0"
       image_update_map[1]="getmeili/meilisearch:v1.4,getmeili/meilisearch:v1.6"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      image_update_map[3]="barassistant/salt-rim:v2,barassistant/salt-rim:v2"
+      image_update_map[3]="barassistant/salt-rim:v2,barassistant/salt-rim:2.11.0"
+      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+    ;;
+    2)
+      newVer=v2
+      curImageList=barassistant/server:3.11.0,getmeili/meilisearch:v1.6,bitnami/redis:7.0.5,barassistant/salt-rim:2.11.0,nginx:1.25.3-alpine
+      image_update_map[0]="barassistant/server:3.11.0,barassistant/server:3.11.0"
+      image_update_map[1]="getmeili/meilisearch:v1.6,getmeili/meilisearch:v1.6"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[3]="barassistant/salt-rim:2.11.0,barassistant/salt-rim:2.11.0"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
     ;;
     *)
@@ -34573,8 +34863,27 @@ function performUpdateBarAssistant()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function clearMeiliData()
+{
+  # This function assumes the BarAssistant stack/containers are NOT running.
+  echo -e "\nClearing BarAssistant Meilisearch data...\n"
+  sudo rm -fr ${HSHQ_STACKS_DIR}/bar-assistant/meilisearch/*
+  sleep 3
+}
+
+function mfClearMeiliData()
+{
+  if [ "$stackStatus" = "1" ];then
+    # Stack is running, stop it, then clear data
+    startStopStack bar-assistant stop "$portainerToken"
+    isStartStackFromStopped=true
+    sleep 3
+  fi
+  clearMeiliData
 }
 
 # FreshRSS
@@ -35416,9 +35725,14 @@ function performUpdateJupyter()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=continuumio/anaconda3:2023.09-0
-      image_update_map[0]="continuumio/anaconda3:2023.09-0,continuumio/anaconda3:2023.09-0"
+      image_update_map[0]="continuumio/anaconda3:2023.09-0,continuumio/anaconda3:2024.02-1"
+    ;;
+    2)
+      newVer=v2
+      curImageList=continuumio/anaconda3:2024.02-1
+      image_update_map[0]="continuumio/anaconda3:2024.02-1,continuumio/anaconda3:2024.02-1"
     ;;
     *)
       is_upgrade_error=true
@@ -35707,12 +36021,21 @@ function performUpdatePaperless()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=postgres:15.0-bullseye,gotenberg/gotenberg:7.10,ghcr.io/paperless-ngx/tika:2.9.1-minimal,ghcr.io/paperless-ngx/paperless-ngx:2.4.3,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gotenberg/gotenberg:7.10,gotenberg/gotenberg:7.10"
+      image_update_map[1]="gotenberg/gotenberg:7.10,gotenberg/gotenberg:8.2.2"
       image_update_map[2]="ghcr.io/paperless-ngx/tika:2.9.1-minimal,ghcr.io/paperless-ngx/tika:2.9.1-minimal"
-      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.4.3,ghcr.io/paperless-ngx/paperless-ngx:2.4.3"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.4.3,ghcr.io/paperless-ngx/paperless-ngx:2.6.2"
+      image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    2)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,gotenberg/gotenberg:8.2.2,ghcr.io/paperless-ngx/tika:2.9.1-minimal,ghcr.io/paperless-ngx/paperless-ngx:2.6.2,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="gotenberg/gotenberg:8.2.2,gotenberg/gotenberg:8.2.2"
+      image_update_map[2]="ghcr.io/paperless-ngx/tika:2.9.1-minimal,ghcr.io/paperless-ngx/tika:2.9.1-minimal"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.6.2,ghcr.io/paperless-ngx/paperless-ngx:2.6.2"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
@@ -35952,6 +36275,15 @@ function performUpdateSpeedtestTrackerLocal()
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.15.4
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="linuxserver/speedtest-tracker:0.15.4,linuxserver/speedtest-tracker:0.15.4"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Speedtest Tracker cannot be upgraded to the next version. You must uninstall your current version and reinstall the new version."
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.18.3
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:0.18.3,linuxserver/speedtest-tracker:0.18.3"
     ;;
     *)
       is_upgrade_error=true
@@ -36193,6 +36525,15 @@ function performUpdateSpeedtestTrackerVPN()
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.15.4
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="linuxserver/speedtest-tracker:0.15.4,linuxserver/speedtest-tracker:0.15.4"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Speedtest Tracker cannot be upgraded to the next version. You must uninstall your current version and reinstall the new version."
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.18.3
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:0.18.3,linuxserver/speedtest-tracker:0.18.3"
     ;;
     *)
       is_upgrade_error=true
@@ -36399,9 +36740,15 @@ function performUpdateChangeDetection()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=ghcr.io/dgtlmoon/changedetection.io:0.45.14,dgtlmoon/sockpuppetbrowser:latest
-      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.45.14,ghcr.io/dgtlmoon/changedetection.io:0.45.14"
+      newVer=v2
+      curImageList=ghcr.io/dgtlmoon/changedetection.io:0.45.14,dgtlmoon/sockpuppetbrowser
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.45.14,ghcr.io/dgtlmoon/changedetection.io:0.45.16"
+      image_update_map[1]="dgtlmoon/sockpuppetbrowser,dgtlmoon/sockpuppetbrowser:latest"
+    ;;
+    2)
+      newVer=v2
+      curImageList=ghcr.io/dgtlmoon/changedetection.io:0.45.16,dgtlmoon/sockpuppetbrowser:latest
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.45.16,ghcr.io/dgtlmoon/changedetection.io:0.45.16"
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     *)
@@ -38011,6 +38358,70 @@ EOFSC
         "script": "while read filename; do if [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/optionalStackList.txt",
         "shell": true
       },
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/refreshServicesLists.sh
+#!/bin/bash
+
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+set +e
+echo "Refreshing all services lists..."
+outputStackListsHSHQManager
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/refreshServicesLists.json
+{
+  "name": "06 Refresh Services Lists",
+  "script_path": "conf/scripts/refreshServicesLists.sh",
+  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within the UI, i.e. Add/Update/Remove lists. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.",
+  "group": "$group_id_services",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config encrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
       "pass_as": "argument"
     }
   ]
@@ -41768,19 +42179,24 @@ function performUpdateSQLPad()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=sqlpad/sqlpad:7.1.2
-      image_update_map[0]="sqlpad/sqlpad:7.1.2,sqlpad/sqlpad:7.3.1"
+      image_update_map[0]="sqlpad/sqlpad:7.1.2,sqlpad/sqlpad:7.4.1"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=sqlpad/sqlpad:7.2.0
-      image_update_map[0]="sqlpad/sqlpad:7.2.0,sqlpad/sqlpad:7.3.1"
+      image_update_map[0]="sqlpad/sqlpad:7.2.0,sqlpad/sqlpad:7.4.1"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=sqlpad/sqlpad:7.3.1
-      image_update_map[0]="sqlpad/sqlpad:7.3.1,sqlpad/sqlpad:7.3.1"
+      image_update_map[0]="sqlpad/sqlpad:7.3.1,sqlpad/sqlpad:7.4.1"
+    ;;
+    4)
+      newVer=v4
+      curImageList=sqlpad/sqlpad:7.4.1
+      image_update_map[0]="sqlpad/sqlpad:7.4.1,sqlpad/sqlpad:7.4.1"
     ;;
     *)
       is_upgrade_error=true
@@ -43442,14 +43858,19 @@ function performUpdateOfelia()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=mcuadros/ofelia:v0.3.7
-      image_update_map[0]="mcuadros/ofelia:v0.3.7,mcuadros/ofelia:v0.3.9"
+      image_update_map[0]="mcuadros/ofelia:v0.3.7,mcuadros/ofelia:0.3.10"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mcuadros/ofelia:v0.3.9
-      image_update_map[0]="mcuadros/ofelia:v0.3.9,mcuadros/ofelia:v0.3.9"
+      image_update_map[0]="mcuadros/ofelia:v0.3.9,mcuadros/ofelia:0.3.10"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mcuadros/ofelia:0.3.10
+      image_update_map[0]="mcuadros/ofelia:0.3.10,mcuadros/ofelia:0.3.10"
     ;;
     *)
       is_upgrade_error=true
