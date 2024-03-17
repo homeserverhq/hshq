@@ -605,6 +605,7 @@ function installDependencies()
 {
   set +e
   # Install utils
+  installHostNTPServer
   if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
     echo "Installing ssmtp, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt install -y ssmtp
@@ -12305,6 +12306,13 @@ function checkUpdateVersion()
     HSHQ_VERSION=41
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 43 ]; then
+    echo "Updating to Version 43..."
+    version43Update
+    is_update_stack_lists=true
+    HSHQ_VERSION=43
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     is_update_stack_lists=true
@@ -13265,6 +13273,12 @@ EOFWA
   fixAutheliaConfig
 }
 
+function version43Update()
+{
+  installHostNTPServer
+  outputIPTablesScripts
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -14060,6 +14074,23 @@ function setVersionOnStacks()
   done
 }
 
+function installHostNTPServer()
+{
+  if [[ "$(isProgramInstalled ntpq)" = "false" ]]; then
+    echo "Installing ntp server, please wait..."
+    sudo apt update > /dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt install ntp -y > /dev/null 2>&1
+  fi
+  set +e
+  grep "127.127.1.0" /etc/ntp.conf
+  if [ $? -ne 0 ]; then
+    echo "server  127.127.1.0" | sudo tee -a /etc/ntp.conf >/dev/null
+    echo "fudge   127.127.1.0 stratum 10" | sudo tee -a /etc/ntp.conf >/dev/null
+  fi
+  sudo systemctl enable ntp > /dev/null 2>&1
+  sudo systemctl restart ntp > /dev/null 2>&1
+}
+
 function checkAddServiceToConfig()
 {
   service_name="$1"
@@ -14214,6 +14245,39 @@ function getExposedPortsList()
 function outputBootScripts()
 {
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/bootscripts
+  outputIPTablesScripts
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
+#!/bin/bash
+
+chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
+run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
+EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
+[Unit]
+Description=HSHQ Startup Script(s) with root privileges
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=$HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+
+[Install]
+WantedBy=default.target
+EOFBS
+  sudo chmod 644 $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
+  sudo chown root:root $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
+  sudo rm -f /etc/systemd/system/runOnBootRoot.service
+  sudo ln -s $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable runOnBootRoot
+  outputHABandaidScript
+}
+
+function outputIPTablesScripts()
+{
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -14285,7 +14349,10 @@ done
   iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
 
   # Add UPNP
-  iptables -C INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -C INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+
+  # Allow NTP for docker networks
+  iptables -C INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
 
   # Policy drop for input and forward
   iptables -P INPUT DROP
@@ -14337,7 +14404,8 @@ done
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HSHQMANAGER_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
-  iptables -D INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -D INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -D INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
 
   iptables -P INPUT ACCEPT
 
@@ -14378,35 +14446,6 @@ EOFPT
     # Just in case
     sudo iptables -C INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT
   fi
-
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
-run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
-[Unit]
-Description=HSHQ Startup Script(s) with root privileges
-After=default.target
-
-[Service]
-Type=oneshot
-ExecStart=$HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
-
-[Install]
-WantedBy=default.target
-EOFBS
-  sudo chmod 644 $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
-  sudo rm -f /etc/systemd/system/runOnBootRoot.service
-  sudo ln -s $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
-  sudo systemctl daemon-reload
-  sudo systemctl enable runOnBootRoot
-  outputHABandaidScript
 }
 
 function outputHABandaidScript()
@@ -28036,6 +28075,7 @@ services:
     networks:
       - int-authelia-net
       - dock-proxy-net
+      - dock-privateip-net
       - dock-ldap-net
       - dock-internalmail-net
     depends_on:
@@ -28097,6 +28137,9 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
   dock-ldap-net:
     name: dock-ldap
     external: true
@@ -28133,14 +28176,6 @@ REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
 REDIS_TLS_AUTH_CLIENTS=no
 EOFAE
 
-  outputAutheliaConfigFile
-  set +e
-  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$(getAutheliaBlock)" $HSHQ_STACKS_DIR/authelia/config/configuration.yml true
-  set -e
-}
-
-function outputAutheliaConfigFile()
-{
   cat <<EOFAC > $HSHQ_STACKS_DIR/authelia/config/configuration.yml
 # yamllint disable rule:comments-indentation
 ---
@@ -28250,6 +28285,13 @@ storage:
   local:
     path: /config/db.sqlite3
 
+ntp:
+  address: udp://${NET_PRIVATEIP_SUBNET_PREFIX}.1:123
+  version: 3
+  max_desync: 3s
+  disable_startup_check: false
+  disable_failure: false
+
 notifier:
   disable_startup_check: true
   smtp:
@@ -28266,6 +28308,9 @@ notifier:
 ...
 EOFAC
 
+  set +e
+  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$(getAutheliaBlock)" $HSHQ_STACKS_DIR/authelia/config/configuration.yml true
+  set -e
 }
 
 function performUpdateAuthelia()
@@ -28318,7 +28363,7 @@ function mfUpdateAutheliaConfig()
 {
   configfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
   acblock="$(sed -n "/#AC_BEGIN/,/#AC_END/p" $configfile | sed '1d' | sed '$d')"
-  outputAutheliaConfigFile
+  outputConfigAuthelia
   replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$acblock" $configfile true
   rm -f $HOME/authelia.env
   cat <<EOFAE > $HOME/authelia.env
