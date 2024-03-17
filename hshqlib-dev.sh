@@ -9587,11 +9587,11 @@ function installStack()
     sleep $sleep_interval
     ((i=$i+$sleep_interval))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "$stack_name did not start up correctly..."
-    exit 1
+    return 1
   fi
+  set -e
   sleep 1
 
   rm -f $HOME/$stack_name-json.tmp
@@ -32859,7 +32859,9 @@ function installMealie()
     mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
     adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
     # Can't seem to get httpie to work, so switching to curl
-    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
+    #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
+    # API is broken in v1.3.2, so we'll go direct to DB
+    docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS' where id='$adminid';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
     curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
   fi
 }
@@ -35786,8 +35788,11 @@ function installJupyter()
   mkdir $HSHQ_STACKS_DIR/jupyter/notebooks
   initServicesCredentials
   outputConfigJupyter
-  installStack jupyter jupyter "Jupyter Notebook .* is running at" $HOME/jupyter.env 5
-
+  installStack jupyter jupyter "Jupyter .* is running at" $HOME/jupyter.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
   if ! [ "$JUPYTER_INIT_ENV" = "true" ]; then
     sendEmail -s "Jupyter Admin Login Info" -b "Jupyter Admin Password: $JUPYTER_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
     JUPYTER_INIT_ENV=true
@@ -37518,7 +37523,7 @@ EOFHS
     "destinations": [
       {
         "type": "email",
-        "from": "$EMAIL_SMTP_EMAIL_ADDRESS",
+        "from": "HSHQ Manager <$EMAIL_SMTP_EMAIL_ADDRESS>",
         "to": "$EMAIL_ADMIN_EMAIL_ADDRESS",
         "server": "$SUB_POSTFIX.$HOMESERVER_DOMAIN",
         "auth_enabled": false,
