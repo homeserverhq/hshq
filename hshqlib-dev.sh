@@ -14082,7 +14082,7 @@ function installHostNTPServer()
     sudo DEBIAN_FRONTEND=noninteractive apt install ntp -y > /dev/null 2>&1
   fi
   set +e
-  grep "127.127.1.0" /etc/ntp.conf
+  grep "127.127.1.0" /etc/ntp.conf > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "server  127.127.1.0" | sudo tee -a /etc/ntp.conf >/dev/null
     echo "fudge   127.127.1.0 stratum 10" | sudo tee -a /etc/ntp.conf >/dev/null
@@ -18822,13 +18822,43 @@ function installSysUtils()
     docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
     exit 1
   fi
-  sleep 3
-
+  sleep 5
   datasource_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false}')
-  echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
-
-  cat $HOME/gfdashboard.json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/dashboards/db > /dev/null 2>&1
-
+  num_tries=1
+  total_tries=5
+  isSuccess=false
+  while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
+  do
+    echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      isSuccess=true
+      break
+    fi
+    echo "ERROR: Grafana datasource import failed, retrying in 5 seconds..."
+    sleep 5
+    ((num_tries++))
+  done
+  if [ "$isSuccess" = "false" ]; then
+    echo "ERROR: Could not import datasource into Grafana."
+  else
+    sleep 3
+    isSuccess=false
+    num_tries=1
+    while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
+    do
+      cat $HOME/gfdashboard.json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/dashboards/db > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        isSuccess=true
+        break
+      fi
+      echo "ERROR: Grafana dashboard import failed, retrying in 5 seconds..."
+      sleep 5
+      ((num_tries++))
+    done
+    if [ "$isSuccess" = "false" ]; then
+      echo "ERROR: Could not import dashboard into Grafana."
+    fi
+  fi
   pref_string=$(jq -n --arg gfid "$gf_dashboard_uid" --arg tz "$TZ" '{theme: "dark", homeDashboardUID: $gfid, timezone: $tz}')
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
 
@@ -25902,8 +25932,8 @@ function installMastodon()
   updateConfigVar MASTODON_ADMIN_PASSWORD $MASTODON_ADMIN_PASSWORD
 
   sendEmail -s "Mastodon Login Info" -b "Mastodon Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nMastodon Admin Password: $MASTODON_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
-
   docker exec mastodon-app tootctl settings registrations close
+  docker exec mastodon-app tootctl accounts approve $MASTODON_ADMIN_USERNAME > /dev/null 2>&1
   rm -f $HOME/mastodon-compose-tmp.yml
 
   inner_block=""
@@ -28039,7 +28069,7 @@ function installAuthelia()
   generateCert authelia authelia
   generateCert authelia-redis authelia-redis
   outputConfigAuthelia
-  installStack authelia authelia "Initializing server for TLS connections on" $HOME/authelia.env
+  installStack authelia authelia "Listening for TLS connections on" $HOME/authelia.env
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN {\n"
@@ -37122,6 +37152,11 @@ function performUpdateHuginn()
 # Coturn
 function installCoturn()
 {
+  # Since we allow other stack install functions to install Coturn,
+  # we need to just return if already installed.
+  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    return
+  fi
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory coturn "$FMLNAME_COTURN"
   cdRes=$?
@@ -38145,7 +38180,7 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -38227,7 +38262,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
