@@ -1443,7 +1443,8 @@ EOF
 function installStacksFromList()
 {
   set +e
-  stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
+  sortedStackList=$(sortCSVList $HSHQ_OPTIONAL_STACKS)
+  stackListArr=($(echo $sortedStackList | tr "," "\n"))
   menu_items=""
   for curStack in "${stackListArr[@]}"
   do
@@ -1584,7 +1585,7 @@ function getStacksToUpdate()
   if ! [ -z "$stacks_to_update_list" ]; then
     stacks_to_update_list=${stacks_to_update_list%?}
   fi
-  echo "$stacks_to_update_list"
+  sortCSVList "$stacks_to_update_list"
 }
 
 function performStackUpdatesFromList()
@@ -1694,7 +1695,8 @@ function updateListOfStacks()
 
 function deleteStacksFromList()
 {
-  stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
+  sortedStackList=$(sortCSVList $HSHQ_OPTIONAL_STACKS)
+  stackListArr=($(echo $sortedStackList | tr "," "\n"))
   menu_items=""
   for curStack in "${stackListArr[@]}"
   do
@@ -9143,6 +9145,30 @@ function getCACertificateNameFromDomain()
   echo ${dom_name}-ca.crt
 }
 
+function sortCSVList()
+{
+  inCSVList="$1"
+  if [ -z "$inCSVList" ]; then
+    echo ""
+    return
+  fi
+  inCSVArr=($(echo $inCSVList | tr "," "\n"))
+  OIFS=$IFS
+  IFS=$'\n'
+  sortedCSVArr=($(sort <<< "${inCSVArr[*]}"))
+  IFS=$OIFS
+  sortedCSVList=""
+  for curItem in "${sortedCSVArr[@]}"
+  do
+    if [ -z "$curItem" ]; then continue; fi
+    sortedCSVList="${sortedCSVList}${curItem},"
+  done
+  if ! [ -z "$sortedCSVList" ]; then
+    sortedCSVList=${sortedCSVList%?}
+  fi
+  echo "$sortedCSVList"
+}
+
 function getPortainerToken()
 {
   local OPTIND opt u p
@@ -12279,12 +12305,6 @@ function checkUpdateVersion()
     HSHQ_VERSION=41
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 43 ]; then
-    echo "Updating to Version 43..."
-    version43Update
-    HSHQ_VERSION=43
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     is_update_stack_lists=true
@@ -13245,13 +13265,6 @@ EOFWA
   fixAutheliaConfig
 }
 
-function version43Update()
-{
-  set +e
-  updateAutheliaConfig
-  set -e
-}
-
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -13508,45 +13521,6 @@ function fixAutheliaConfig()
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
   fi
-}
-
-function updateAutheliaConfig()
-{
-  configfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
-  acblock="$(sed -n "/#AC_BEGIN/,/#AC_END/p" $configfile | sed '1d' | sed '$d')"
-  outputAutheliaConfigFile
-  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$acblock" $configfile true
-  updateStackEnv authelia mfOutputAutheliaEnv
-  set +e
-  docker ps | grep codeserver > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    docker container restart codeserver > /dev/null 2>&1
-  fi
-}
-
-function mfOutputAutheliaEnv()
-{
-  cat <<EOFAE > $HOME/authelia.env
-TZ=\${TZ}
-UID=$USERID
-GID=$GROUPID
-AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
-AUTHELIA_SESSION_SECRET_FILE=/run/secrets/authelia_session_secret
-AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE=/run/secrets/authelia_storage_encryption_key
-AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_password
-AUTHELIA_SESSION_REDIS_PASSWORD_FILE=/run/secrets/authelia_redis_password
-ALLOW_EMPTY_PASSWORD=no
-REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-REDIS_AOF_ENABLED=no
-REDIS_TLS_ENABLED=yes
-REDIS_TLS_PORT=6379
-REDIS_TLS_CERT_FILE=/tls/authelia-redis.crt
-REDIS_TLS_KEY_FILE=/tls/authelia-redis.key
-REDIS_TLS_CA_FILE=/tls/${CERTS_ROOT_CA_NAME}.crt
-REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
-REDIS_TLS_AUTH_CLIENTS=no
-EOFAE
-
 }
 
 function checkImageList()
@@ -15675,6 +15649,7 @@ function upgradeStack()
   stackModFunction=$8
   isReinstallStack=$9
   stackReinstallModFunction=${10}
+
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
@@ -15715,7 +15690,6 @@ function upgradeStack()
     startStopStack $comp_stack_name start "$portainerToken"
   else
     if [ "$isReinstallStack" = "true" ]; then
-      # This is still untested. It is not used by anything yet, but when it does, ensure to test.
       sudo cp $upgrade_compose_file $HOME/${comp_stack_name}-compose.yml
       sudo cp $HSHQ_STACKS_DIR/portainer/compose/$comp_stack_id/stack.env $HOME/${comp_stack_name}.env
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}-compose.yml
@@ -28317,12 +28291,18 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateAutheliaConfig
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     2)
       newVer=v2
       curImageList=authelia/authelia:4.38.2,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.38.2,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateAutheliaConfig
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -28332,6 +28312,40 @@ function performUpdateAuthelia()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfUpdateAutheliaConfig()
+{
+  configfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  acblock="$(sed -n "/#AC_BEGIN/,/#AC_END/p" $configfile | sed '1d' | sed '$d')"
+  outputAutheliaConfigFile
+  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$acblock" $configfile true
+  rm -f $HOME/authelia.env
+  cat <<EOFAE > $HOME/authelia.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
+AUTHELIA_SESSION_SECRET_FILE=/run/secrets/authelia_session_secret
+AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE=/run/secrets/authelia_storage_encryption_key
+AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_password
+AUTHELIA_SESSION_REDIS_PASSWORD_FILE=/run/secrets/authelia_redis_password
+ALLOW_EMPTY_PASSWORD=no
+REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+REDIS_AOF_ENABLED=no
+REDIS_TLS_ENABLED=yes
+REDIS_TLS_PORT=6379
+REDIS_TLS_CERT_FILE=/tls/authelia-redis.crt
+REDIS_TLS_KEY_FILE=/tls/authelia-redis.key
+REDIS_TLS_CA_FILE=/tls/${CERTS_ROOT_CA_NAME}.crt
+REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
+REDIS_TLS_AUTH_CLIENTS=no
+EOFAE
+  set +e
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
 }
 
 # WordPress
