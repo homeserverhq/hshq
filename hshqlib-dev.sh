@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=42
+HSHQ_SCRIPT_VERSION=43
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12279,6 +12279,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=41
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 43 ]; then
+    echo "Updating to Version 43..."
+    version43Update
+    HSHQ_VERSION=43
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     is_update_stack_lists=true
@@ -13239,6 +13245,13 @@ EOFWA
   fixAutheliaConfig
 }
 
+function version43Update()
+{
+  set +e
+  updateAutheliaConfig
+  set -e
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -13495,6 +13508,45 @@ function fixAutheliaConfig()
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
   fi
+}
+
+function updateAutheliaConfig()
+{
+  configfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  acblock="$(sed -n "/#AC_BEGIN/,/#AC_END/p" $configfile | sed '1d' | sed '$d')"
+  outputAutheliaConfigFile
+  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$acblock" $configfile true
+  updateStackEnv authelia mfOutputAutheliaEnv
+  set +e
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
+function mfOutputAutheliaEnv()
+{
+  cat <<EOFAE > $HOME/authelia.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
+AUTHELIA_SESSION_SECRET_FILE=/run/secrets/authelia_session_secret
+AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE=/run/secrets/authelia_storage_encryption_key
+AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_password
+AUTHELIA_SESSION_REDIS_PASSWORD_FILE=/run/secrets/authelia_redis_password
+ALLOW_EMPTY_PASSWORD=no
+REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+REDIS_AOF_ENABLED=no
+REDIS_TLS_ENABLED=yes
+REDIS_TLS_PORT=6379
+REDIS_TLS_CERT_FILE=/tls/authelia-redis.crt
+REDIS_TLS_KEY_FILE=/tls/authelia-redis.key
+REDIS_TLS_CA_FILE=/tls/${CERTS_ROOT_CA_NAME}.crt
+REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
+REDIS_TLS_AUTH_CLIENTS=no
+EOFAE
+
 }
 
 function checkImageList()
@@ -28090,7 +28142,7 @@ EOFAC
 TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
-AUTHELIA_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
+AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
 AUTHELIA_SESSION_SECRET_FILE=/run/secrets/authelia_session_secret
 AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE=/run/secrets/authelia_storage_encryption_key
 AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_password
@@ -28107,6 +28159,14 @@ REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
 REDIS_TLS_AUTH_CLIENTS=no
 EOFAE
 
+  outputAutheliaConfigFile
+  set +e
+  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$(getAutheliaBlock)" $HSHQ_STACKS_DIR/authelia/config/configuration.yml true
+  set -e
+}
+
+function outputAutheliaConfigFile()
+{
   cat <<EOFAC > $HSHQ_STACKS_DIR/authelia/config/configuration.yml
 # yamllint disable rule:comments-indentation
 ---
@@ -28116,20 +28176,17 @@ EOFAE
 
 theme: dark
 
-default_redirection_url: https://$AUTHELIA_REDIRECTION_URL
-
 certificates_directory: /config/cacerts/
 
 server:
-  host: 0.0.0.0
-  port: 9091
-  path: ""
-  enable_pprof: false
-  enable_expvars: false
+  address: 'tcp://:9091/'
   disable_healthcheck: true
   tls:
     key: /config/certs/authelia.key
     certificate: /config/certs/authelia.crt
+  endpoints:
+    enable_pprof: false
+    enable_expvars: false
 
 log:
   level: info
@@ -28156,8 +28213,8 @@ authentication_backend:
     disable: true
   refresh_interval: 5m
   ldap:
+    address: $LDAP_URI
     implementation: custom
-    url: $LDAP_URI
     timeout: 5s
     start_tls: true
     tls:
@@ -28165,25 +28222,42 @@ authentication_backend:
       skip_verify: false
       minimum_version: TLS1.2
     base_dn: $LDAP_BASE_DN
-    username_attribute: uid
     additional_users_dn: ou=people
     users_filter: (&(&({username_attribute}={input})(objectClass=person))(memberOf=cn=$LDAP_BASIC_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
     additional_groups_dn: ou=groups
     groups_filter: (&(uniquemember={dn})(objectClass=groupOfUniqueNames))
-    group_name_attribute: cn
-    mail_attribute: mail
-    display_name_attribute: displayName
+    group_search_mode: filter
+    permit_referrals: false
+    permit_unauthenticated_bind: false
     user: $LDAP_ADMIN_BIND_DN
+    attributes:
+      distinguished_name: cn
+      username: uid
+      display_name: cn
+      mail: mail
+      member_of: memberOf
+      group_name: cn
 
 #AC_BEGIN
 #AC_END
 
 session:
   name: authelia
-  expiration: 43200
+  same_site: lax
   inactivity: 21600
-  remember_me_duration: 21600
-  domain: $HOMESERVER_DOMAIN
+  expiration: 43200
+  remember_me: 21600
+  cookies:
+# Authelia session cookies BEGIN
+    - domain: $HOMESERVER_DOMAIN
+      authelia_url: https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
+      default_redirection_url: https://$AUTHELIA_REDIRECTION_URL
+      name: authelia
+      same_site: lax
+      inactivity: 21600
+      expiration: 43200
+      remember_me: 21600
+# Authelia session cookies END
   redis:
     host: authelia-redis
     port: 6379
@@ -28205,8 +28279,7 @@ storage:
 notifier:
   disable_startup_check: true
   smtp:
-    host: $SMTP_HOSTNAME
-    port: $SMTP_HOSTPORT
+    address: smtp://${SMTP_HOSTNAME}:${SMTP_HOSTPORT}
     sender: "Authelia $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     identifier: localhost
     subject: "[Authelia] {title}"
@@ -28219,9 +28292,6 @@ notifier:
 ...
 EOFAC
 
-  set +e
-  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$(getAutheliaBlock)" $HSHQ_STACKS_DIR/authelia/config/configuration.yml true
-  set -e
 }
 
 function performUpdateAuthelia()
@@ -38388,7 +38458,7 @@ EOFSC
 {
   "name": "06 Refresh Services Lists",
   "script_path": "conf/scripts/refreshServicesLists.sh",
-  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within the UI, i.e. Add/Update/Remove lists. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.",
+  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within this user interface, i.e. Install/Update/Remove. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.",
   "group": "$group_id_services",
   "parameters": [
     {
