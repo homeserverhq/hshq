@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=42
+HSHQ_SCRIPT_VERSION=43
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -605,6 +605,7 @@ function installDependencies()
 {
   set +e
   # Install utils
+  installHostNTPServer
   if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
     echo "Installing ssmtp, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt install -y ssmtp
@@ -1443,7 +1444,8 @@ EOF
 function installStacksFromList()
 {
   set +e
-  stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
+  sortedStackList=$(sortCSVList $HSHQ_OPTIONAL_STACKS)
+  stackListArr=($(echo $sortedStackList | tr "," "\n"))
   menu_items=""
   for curStack in "${stackListArr[@]}"
   do
@@ -1584,7 +1586,7 @@ function getStacksToUpdate()
   if ! [ -z "$stacks_to_update_list" ]; then
     stacks_to_update_list=${stacks_to_update_list%?}
   fi
-  echo "$stacks_to_update_list"
+  sortCSVList "$stacks_to_update_list"
 }
 
 function performStackUpdatesFromList()
@@ -1694,7 +1696,8 @@ function updateListOfStacks()
 
 function deleteStacksFromList()
 {
-  stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
+  sortedStackList=$(sortCSVList $HSHQ_OPTIONAL_STACKS)
+  stackListArr=($(echo $sortedStackList | tr "," "\n"))
   menu_items=""
   for curStack in "${stackListArr[@]}"
   do
@@ -9143,6 +9146,30 @@ function getCACertificateNameFromDomain()
   echo ${dom_name}-ca.crt
 }
 
+function sortCSVList()
+{
+  inCSVList="$1"
+  if [ -z "$inCSVList" ]; then
+    echo ""
+    return
+  fi
+  inCSVArr=($(echo $inCSVList | tr "," "\n"))
+  OIFS=$IFS
+  IFS=$'\n'
+  sortedCSVArr=($(sort <<< "${inCSVArr[*]}"))
+  IFS=$OIFS
+  sortedCSVList=""
+  for curItem in "${sortedCSVArr[@]}"
+  do
+    if [ -z "$curItem" ]; then continue; fi
+    sortedCSVList="${sortedCSVList}${curItem},"
+  done
+  if ! [ -z "$sortedCSVList" ]; then
+    sortedCSVList=${sortedCSVList%?}
+  fi
+  echo "$sortedCSVList"
+}
+
 function getPortainerToken()
 {
   local OPTIND opt u p
@@ -9560,11 +9587,11 @@ function installStack()
     sleep $sleep_interval
     ((i=$i+$sleep_interval))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "$stack_name did not start up correctly..."
-    exit 1
+    return 1
   fi
+  set -e
   sleep 1
 
   rm -f $HOME/$stack_name-json.tmp
@@ -12279,6 +12306,13 @@ function checkUpdateVersion()
     HSHQ_VERSION=41
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 43 ]; then
+    echo "Updating to Version 43..."
+    version43Update
+    is_update_stack_lists=true
+    HSHQ_VERSION=43
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     is_update_stack_lists=true
@@ -13239,6 +13273,12 @@ EOFWA
   fixAutheliaConfig
 }
 
+function version43Update()
+{
+  installHostNTPServer
+  outputIPTablesScripts
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -14034,6 +14074,23 @@ function setVersionOnStacks()
   done
 }
 
+function installHostNTPServer()
+{
+  if [[ "$(isProgramInstalled ntpq)" = "false" ]]; then
+    echo "Installing ntp server, please wait..."
+    sudo apt update > /dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt install ntp -y > /dev/null 2>&1
+  fi
+  set +e
+  grep "127.127.1.0" /etc/ntp.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "server  127.127.1.0" | sudo tee -a /etc/ntp.conf >/dev/null
+    echo "fudge   127.127.1.0 stratum 10" | sudo tee -a /etc/ntp.conf >/dev/null
+  fi
+  sudo systemctl enable ntp > /dev/null 2>&1
+  sudo systemctl restart ntp > /dev/null 2>&1
+}
+
 function checkAddServiceToConfig()
 {
   service_name="$1"
@@ -14188,6 +14245,39 @@ function getExposedPortsList()
 function outputBootScripts()
 {
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/bootscripts
+  outputIPTablesScripts
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
+#!/bin/bash
+
+chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
+run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
+EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
+[Unit]
+Description=HSHQ Startup Script(s) with root privileges
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=$HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+
+[Install]
+WantedBy=default.target
+EOFBS
+  sudo chmod 644 $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
+  sudo chown root:root $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
+  sudo rm -f /etc/systemd/system/runOnBootRoot.service
+  sudo ln -s $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable runOnBootRoot
+  outputHABandaidScript
+}
+
+function outputIPTablesScripts()
+{
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -14259,7 +14349,10 @@ done
   iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
 
   # Add UPNP
-  iptables -C INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -C INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+
+  # Allow NTP for docker networks
+  iptables -C INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
 
   # Policy drop for input and forward
   iptables -P INPUT DROP
@@ -14311,7 +14404,8 @@ done
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HSHQMANAGER_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
-  iptables -D INPUT -s 127.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -D INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -D INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
 
   iptables -P INPUT ACCEPT
 
@@ -14352,35 +14446,6 @@ EOFPT
     # Just in case
     sudo iptables -C INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT
   fi
-
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
-run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
-[Unit]
-Description=HSHQ Startup Script(s) with root privileges
-After=default.target
-
-[Service]
-Type=oneshot
-ExecStart=$HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
-
-[Install]
-WantedBy=default.target
-EOFBS
-  sudo chmod 644 $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service
-  sudo rm -f /etc/systemd/system/runOnBootRoot.service
-  sudo ln -s $HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
-  sudo systemctl daemon-reload
-  sudo systemctl enable runOnBootRoot
-  outputHABandaidScript
 }
 
 function outputHABandaidScript()
@@ -15623,6 +15688,7 @@ function upgradeStack()
   stackModFunction=$8
   isReinstallStack=$9
   stackReinstallModFunction=${10}
+
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
@@ -15663,7 +15729,6 @@ function upgradeStack()
     startStopStack $comp_stack_name start "$portainerToken"
   else
     if [ "$isReinstallStack" = "true" ]; then
-      # This is still untested. It is not used by anything yet, but when it does, ensure to test.
       sudo cp $upgrade_compose_file $HOME/${comp_stack_name}-compose.yml
       sudo cp $HSHQ_STACKS_DIR/portainer/compose/$comp_stack_id/stack.env $HOME/${comp_stack_name}.env
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}-compose.yml
@@ -18757,13 +18822,43 @@ function installSysUtils()
     docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
     exit 1
   fi
-  sleep 3
-
+  sleep 5
   datasource_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false}')
-  echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
-
-  cat $HOME/gfdashboard.json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/dashboards/db > /dev/null 2>&1
-
+  num_tries=1
+  total_tries=5
+  isSuccess=false
+  while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
+  do
+    echo $datasource_json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/datasources > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      isSuccess=true
+      break
+    fi
+    echo "ERROR: Grafana datasource import failed, retrying in 5 seconds..."
+    sleep 5
+    ((num_tries++))
+  done
+  if [ "$isSuccess" = "false" ]; then
+    echo "ERROR: Could not import datasource into Grafana."
+  else
+    sleep 3
+    isSuccess=false
+    num_tries=1
+    while [ "$isSuccess" = "false" ] && [ $num_tries -lt $total_tries ]
+    do
+      cat $HOME/gfdashboard.json | http POST http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/dashboards/db > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        isSuccess=true
+        break
+      fi
+      echo "ERROR: Grafana dashboard import failed, retrying in 5 seconds..."
+      sleep 5
+      ((num_tries++))
+    done
+    if [ "$isSuccess" = "false" ]; then
+      echo "ERROR: Could not import dashboard into Grafana."
+    fi
+  fi
   pref_string=$(jq -n --arg gfid "$gf_dashboard_uid" --arg tz "$TZ" '{theme: "dark", homeDashboardUID: $gfid, timezone: $tz}')
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
 
@@ -25837,8 +25932,8 @@ function installMastodon()
   updateConfigVar MASTODON_ADMIN_PASSWORD $MASTODON_ADMIN_PASSWORD
 
   sendEmail -s "Mastodon Login Info" -b "Mastodon Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nMastodon Admin Password: $MASTODON_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
-
   docker exec mastodon-app tootctl settings registrations close
+  docker exec mastodon-app tootctl accounts approve $MASTODON_ADMIN_USERNAME > /dev/null 2>&1
   rm -f $HOME/mastodon-compose-tmp.yml
 
   inner_block=""
@@ -27974,7 +28069,7 @@ function installAuthelia()
   generateCert authelia authelia
   generateCert authelia-redis authelia-redis
   outputConfigAuthelia
-  installStack authelia authelia "Initializing server for TLS connections on" $HOME/authelia.env
+  installStack authelia authelia "Listening for TLS connections on" $HOME/authelia.env
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN {\n"
@@ -28010,6 +28105,7 @@ services:
     networks:
       - int-authelia-net
       - dock-proxy-net
+      - dock-privateip-net
       - dock-ldap-net
       - dock-internalmail-net
     depends_on:
@@ -28071,6 +28167,9 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
   dock-ldap-net:
     name: dock-ldap
     external: true
@@ -28090,7 +28189,7 @@ EOFAC
 TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
-AUTHELIA_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
+AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
 AUTHELIA_SESSION_SECRET_FILE=/run/secrets/authelia_session_secret
 AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE=/run/secrets/authelia_storage_encryption_key
 AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_password
@@ -28116,20 +28215,17 @@ EOFAE
 
 theme: dark
 
-default_redirection_url: https://$AUTHELIA_REDIRECTION_URL
-
 certificates_directory: /config/cacerts/
 
 server:
-  host: 0.0.0.0
-  port: 9091
-  path: ""
-  enable_pprof: false
-  enable_expvars: false
+  address: 'tcp://:9091/'
   disable_healthcheck: true
   tls:
     key: /config/certs/authelia.key
     certificate: /config/certs/authelia.crt
+  endpoints:
+    enable_pprof: false
+    enable_expvars: false
 
 log:
   level: info
@@ -28156,8 +28252,8 @@ authentication_backend:
     disable: true
   refresh_interval: 5m
   ldap:
+    address: $LDAP_URI
     implementation: custom
-    url: $LDAP_URI
     timeout: 5s
     start_tls: true
     tls:
@@ -28165,25 +28261,42 @@ authentication_backend:
       skip_verify: false
       minimum_version: TLS1.2
     base_dn: $LDAP_BASE_DN
-    username_attribute: uid
     additional_users_dn: ou=people
     users_filter: (&(&({username_attribute}={input})(objectClass=person))(memberOf=cn=$LDAP_BASIC_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
     additional_groups_dn: ou=groups
     groups_filter: (&(uniquemember={dn})(objectClass=groupOfUniqueNames))
-    group_name_attribute: cn
-    mail_attribute: mail
-    display_name_attribute: displayName
+    group_search_mode: filter
+    permit_referrals: false
+    permit_unauthenticated_bind: false
     user: $LDAP_ADMIN_BIND_DN
+    attributes:
+      distinguished_name: cn
+      username: uid
+      display_name: cn
+      mail: mail
+      member_of: memberOf
+      group_name: cn
 
 #AC_BEGIN
 #AC_END
 
 session:
   name: authelia
-  expiration: 43200
+  same_site: lax
   inactivity: 21600
-  remember_me_duration: 21600
-  domain: $HOMESERVER_DOMAIN
+  expiration: 43200
+  remember_me: 21600
+  cookies:
+# Authelia session cookies BEGIN
+    - domain: $HOMESERVER_DOMAIN
+      authelia_url: https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
+      default_redirection_url: https://$AUTHELIA_REDIRECTION_URL
+      name: authelia
+      same_site: lax
+      inactivity: 21600
+      expiration: 43200
+      remember_me: 21600
+# Authelia session cookies END
   redis:
     host: authelia-redis
     port: 6379
@@ -28202,11 +28315,17 @@ storage:
   local:
     path: /config/db.sqlite3
 
+ntp:
+  address: udp://${NET_PRIVATEIP_SUBNET_PREFIX}.1:123
+  version: 3
+  max_desync: 3s
+  disable_startup_check: false
+  disable_failure: false
+
 notifier:
   disable_startup_check: true
   smtp:
-    host: $SMTP_HOSTNAME
-    port: $SMTP_HOSTPORT
+    address: smtp://${SMTP_HOSTNAME}:${SMTP_HOSTPORT}
     sender: "Authelia $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     identifier: localhost
     subject: "[Authelia] {title}"
@@ -28247,12 +28366,18 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateAutheliaConfig
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     2)
       newVer=v2
       curImageList=authelia/authelia:4.38.2,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.38.2,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateAutheliaConfig
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -28262,6 +28387,40 @@ function performUpdateAuthelia()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfUpdateAutheliaConfig()
+{
+  configfile=$HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  acblock="$(sed -n "/#AC_BEGIN/,/#AC_END/p" $configfile | sed '1d' | sed '$d')"
+  outputConfigAuthelia
+  replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$acblock" $configfile true
+  rm -f $HOME/authelia.env
+  cat <<EOFAE > $HOME/authelia.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
+AUTHELIA_SESSION_SECRET_FILE=/run/secrets/authelia_session_secret
+AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE=/run/secrets/authelia_storage_encryption_key
+AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_password
+AUTHELIA_SESSION_REDIS_PASSWORD_FILE=/run/secrets/authelia_redis_password
+ALLOW_EMPTY_PASSWORD=no
+REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+REDIS_AOF_ENABLED=no
+REDIS_TLS_ENABLED=yes
+REDIS_TLS_PORT=6379
+REDIS_TLS_CERT_FILE=/tls/authelia-redis.crt
+REDIS_TLS_KEY_FILE=/tls/authelia-redis.key
+REDIS_TLS_CA_FILE=/tls/${CERTS_ROOT_CA_NAME}.crt
+REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
+REDIS_TLS_AUTH_CLIENTS=no
+EOFAE
+  set +e
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
 }
 
 # WordPress
@@ -32700,7 +32859,9 @@ function installMealie()
     mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
     adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
     # Can't seem to get httpie to work, so switching to curl
-    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
+    #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
+    # API is broken in v1.3.2, so we'll go direct to DB
+    docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS' where id='$adminid';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
     curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
   fi
 }
@@ -35627,8 +35788,11 @@ function installJupyter()
   mkdir $HSHQ_STACKS_DIR/jupyter/notebooks
   initServicesCredentials
   outputConfigJupyter
-  installStack jupyter jupyter "Jupyter Notebook .* is running at" $HOME/jupyter.env 5
-
+  installStack jupyter jupyter "Jupyter .* is running at" $HOME/jupyter.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
   if ! [ "$JUPYTER_INIT_ENV" = "true" ]; then
     sendEmail -s "Jupyter Admin Login Info" -b "Jupyter Admin Password: $JUPYTER_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
     JUPYTER_INIT_ENV=true
@@ -36993,6 +37157,11 @@ function performUpdateHuginn()
 # Coturn
 function installCoturn()
 {
+  # Since we allow other stack install functions to install Coturn,
+  # we need to just return if already installed.
+  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    return
+  fi
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory coturn "$FMLNAME_COTURN"
   cdRes=$?
@@ -37354,7 +37523,7 @@ EOFHS
     "destinations": [
       {
         "type": "email",
-        "from": "$EMAIL_SMTP_EMAIL_ADDRESS",
+        "from": "HSHQ Manager <$EMAIL_SMTP_EMAIL_ADDRESS>",
         "to": "$EMAIL_ADMIN_EMAIL_ADDRESS",
         "server": "$SUB_POSTFIX.$HOMESERVER_DOMAIN",
         "auth_enabled": false,
@@ -38016,7 +38185,7 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -38098,7 +38267,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can view the full log of the installation process in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -38388,7 +38557,7 @@ EOFSC
 {
   "name": "06 Refresh Services Lists",
   "script_path": "conf/scripts/refreshServicesLists.sh",
-  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within the UI, i.e. Add/Update/Remove lists. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.",
+  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within this user interface, i.e. Install/Update/Remove. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.",
   "group": "$group_id_services",
   "parameters": [
     {
