@@ -1998,17 +1998,6 @@ function setupHostedVPN()
     return 1
   fi
 
-  pullImage $IMG_WIREGUARD
-  if [ $? -ne 0 ]; then
-    echo "ERROR: Could not obtain WireGuard docker image."
-    return 3
-  fi
-  pullImage $IMG_DNSMASQ
-  if [ $? -ne 0 ]; then
-    echo "ERROR: Could not obtain DNSMasq docker image."
-    return 4
-  fi
-
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
     updateConfigVar RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_USERNAME
@@ -6127,6 +6116,11 @@ EOF
 
     case $menures in
       1)
+        confirmHost=$(promptUserInputMenu "" "Confirmation" "This function will set up a hosted VPN. Ensure you have the RelayServer ready and you can readily log into it. Enter the word 'confirm' below:")
+        if ! [ "$confirmHost" = "confirm" ]; then
+          showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
+          return 0
+        fi
         PRIMARY_VPN_SETUP_TYPE=host
         setupHostedVPN
         if [ $? -ne 0 ]; then
@@ -6165,6 +6159,11 @@ EOF
         connectPrimaryVPN
         ;;
       2)
+        confirmJoin=$(promptUserInputMenu "" "Confirmation" "This function will prepare you server to join another hosted VPN as your primary. Enter the word 'confirm' below:")
+        if ! [ "$confirmJoin" = "confirm" ]; then
+          showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
+          return 0
+        fi
         PRIMARY_VPN_SETUP_TYPE=join
         setupJoinPrimaryVPN
         join_res=$?
@@ -16118,6 +16117,10 @@ function pullBaseServicesDockerImages()
     return 4
   fi
   pullImage $IMG_DNSMASQ
+  if [ $? -ne 0 ]; then
+    return 4
+  fi
+  pullImage $IMG_WIREGUARD
   if [ $? -ne 0 ]; then
     return 4
   fi
