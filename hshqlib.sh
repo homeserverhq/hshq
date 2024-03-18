@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=43
+HSHQ_SCRIPT_VERSION=44
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -8129,7 +8129,6 @@ function removeMyNetworkPrimaryVPN()
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
     echo "Removing ClientDNS instances..."
-    # Needs testing
     cdns_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
     for cur_cdns in "${cdns_arr[@]}"
     do
@@ -8165,12 +8164,10 @@ function removeMyNetworkPrimaryVPN()
     disableSvcAll relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     disableSvcAll relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     disableSvcAll relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    disableSvcAll relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    disableSvcAll relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     disableSvcHeimdall relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcUptimeKuma "https://${RELAYSERVER_CLIENTDNS_ADMIN_USERNAME}:${RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD}@$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcHeimdall relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcUptimeKuma "https://${RELAYSERVER_SYNCTHING_ADMIN_USERNAME}:${RELAYSERVER_SYNCTHING_ADMIN_PASSWORD}@$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     disableSvcHeimdall relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcUptimeKuma "https://${RELAYSERVER_CADDYDNS_ADMIN_USERNAME}:${RELAYSERVER_CADDYDNS_ADMIN_PASSWORD}@$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
   elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     sudo rm -f $HSHQ_SSL_DIR/"$(getCACertificateNameFromDomain $domain_name)"
     sudo rm -f /usr/local/share/ca-certificates/"$(getCACertificateNameFromDomain $domain_name)"
@@ -9989,7 +9986,7 @@ function addAdvertiseIP()
   echo $JITSI_ADVERTISE_IPS | grep $add_ip >/dev/null
   if [ $? -ne 0 ]; then
     if [ -z $JITSI_ADVERTISE_IPS ]; then
-      JITSI_ADVERTISE_IPS=","$add_ip
+      JITSI_ADVERTISE_IPS=$add_ip
     else
       JITSI_ADVERTISE_IPS=$JITSI_ADVERTISE_IPS","$add_ip
     fi
@@ -12158,8 +12155,8 @@ EOFCF
   tmp_pw2=2
   while ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Passphrase" "Enter a passphrase to encrypt the configuration file. Please ensure you remember this or you will be locked out of your configuration file: ")
-    tmp_pw2=$(promptPasswordMenu "Confirm Passphrase" "Enter the passphrase again to confirm: ")
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of your configuration file (unless you have a super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
+    tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
     if ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
       showMessageBox "Password Mismatch" "The passwords do not match, please try again."
     fi
@@ -12310,6 +12307,13 @@ function checkUpdateVersion()
     version43Update
     is_update_stack_lists=true
     HSHQ_VERSION=43
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 44 ]; then
+    echo "Updating to Version 44..."
+    version44Update
+    is_update_stack_lists=true
+    HSHQ_VERSION=44
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -13276,6 +13280,18 @@ function version43Update()
 {
   installHostNTPServer
   outputIPTablesScripts
+}
+
+function version44Update()
+{
+  if ! [ -z "$JITSI_ADVERTISE_IPS" ] && [ "${JITSI_ADVERTISE_IPS:0:1}" = "," ]; then
+    JITSI_ADVERTISE_IPS="${JITSI_ADVERTISE_IPS:1}"
+    updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
+  fi
+  set +e
+  clearAllHSHQManagerScripts
+  outputAllHSHQManagerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
@@ -14458,13 +14474,14 @@ function outputHABandaidScript()
 
 function main()
 {
+  PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
+  PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
+  PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
+
   sleep 60
   docker ps > /dev/null 2>&1
   sleep 30
   source $HSHQ_LIB_SCRIPT lib
-  PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
-  PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
-  PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
   set +e
   num_tries=1
   total_tries=10
@@ -14572,10 +14589,13 @@ EOFCS
   sudo tee $HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh >/dev/null <<EOFMS
 #!/bin/bash
 
-caddy_stack=\$1
 stacks_dir=$HSHQ_STACKS_DIR
-portainerToken=""
+PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
+PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
+PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
 
+caddy_stack=\$1
+portainerToken=""
 function main()
 {
   startStopStack \$caddy_stack stop
@@ -14592,12 +14612,12 @@ function startStopStack()
     portainerToken="\$(getPortainerToken)"
   fi
   stackID=\$(getStackID \$stackname "\$portainerToken")
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==1 > /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==1 > /dev/null
 }
 
 function getPortainerToken()
 {
-  echo \$(http --check-status --ignore-stdin --verify=no https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/auth username=$PORTAINER_ADMIN_USERNAME password=$PORTAINER_ADMIN_PASSWORD | jq -r .jwt)
+  echo \$(http --check-status --ignore-stdin --verify=no https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/auth username=\$PORTAINER_ADMIN_USERNAME password=\$PORTAINER_ADMIN_PASSWORD | jq -r .jwt)
 }
 
 function getStackID()
@@ -14606,7 +14626,7 @@ function getStackID()
   stackName=\$1
   stackName="\${stackName//.}"
   portainerToken=\$2
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -17429,7 +17449,7 @@ function getAutheliaBlock()
 function emailVaultwardenCredentials()
 {
   is_relay_only=$1
-  strOutput="=========================================================================\n\n"
+  strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
   if ! [ "$is_relay_only" = "true" ]; then
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
@@ -17499,9 +17519,10 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   fi
-  strInstructions="Vaultwarden Import Instructions\n_________________________________________________________________________\n\n"
-  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive an email invite. Accept the invite and create an account. \n\n3. After creating account, log in through web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For item 1 (Select format) select Bitwarden(csv) from the drop down.  For item 2, Copy the data after the ======== line below (including field headers) and paste it into the empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (Do not check the Auto-fill on page load option without knowing how it works and the risks)\n\n8. Ensure to delete this email once you have imported the passwords into Vaultwarden."
-  sendEmail -s "Vaultwarden Login Import" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+  strOutput=${strOutput}"\n\n\n\n"
+  strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
+  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within the HSHQ Manager or the console UI to send yourself another copy if need be (01 Misc Utils -> 07 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or HSHQ Manager web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 08 Email Root CA) just to ensure the configuration file is back to an encrypted state."
+  sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function insertServicesHeimdall()
@@ -24859,7 +24880,7 @@ EOFJT
   cat <<EOFJT > $HOME/jitsi.env
 JVB_COLIBRI_PORT=8020
 PUBLIC_URL=https://$SUB_JITSI.$HOMESERVER_DOMAIN
-JVB_ADVERTISE_IPS=\${HOMESERVER_HOST_IP}${JITSI_ADVERTISE_IPS}
+JVB_ADVERTISE_IPS=\${HOMESERVER_HOST_IP},${JITSI_ADVERTISE_IPS}
 DOCKER_HOST_ADDRESS=\${HOMESERVER_HOST_IP}
 ENABLE_LETSENCRYPT=0
 ENABLE_AUTH=0
@@ -37831,7 +37852,7 @@ EOFSC
   "group": "$group_id_misc",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -37970,7 +37991,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38031,7 +38052,7 @@ EOFSC
 {
   "name": "06 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all networks.\n3. Restarts the Docker daemon.\n4. Recreates all networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -38050,7 +38071,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38096,7 +38117,7 @@ EOFSC
   "group": "$group_id_misc",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38142,7 +38163,7 @@ EOFSC
   "group": "$group_id_misc",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38207,7 +38228,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38289,7 +38310,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38353,7 +38374,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38433,7 +38454,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38497,7 +38518,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38579,7 +38600,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38663,7 +38684,7 @@ EOFSC
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38709,7 +38730,7 @@ EOFSC
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38754,7 +38775,7 @@ EOFSC
   "group": "$group_id_hshq_manager",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -38976,7 +38997,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39192,7 +39213,7 @@ EOFSC
   "group": "$group_id_systemutils",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39299,11 +39320,11 @@ EOFSC
 {
   "name": "02 Decrypt Config Password Test",
   "script_path": "conf/scripts/decryptConfigPasswordTest.sh",
-  "description": "Checks if config encrypt password is correct. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Checks if config decrypt password is correct. [Need Help?](https://forum.homeserverhq.com/)",
   "group": "$group_id_testing",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39377,11 +39398,11 @@ EOFSC
 {
   "name": "04 Check for Network Collision",
   "script_path": "conf/scripts/checkIPAddress.sh",
-  "description": "Tests an IP address or subnet for network collisions. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided IP address or subnet intersects with any of the networks that this HomeServer is on. It does not perform any actions, just performs the tests.<br/><br/>Regarding Check all possible connections - with it set to No, it will only check the network connections directly on this HomeServer. With it set to Yes, it will check any and all connections that this HomeServer manages, i.e. if hosting a VPN, then it will check all User and/or HS Internet connections, which may be on behalf of another device in the network. If the explanation for this distinction is confusing, then ask on the [Forum](https://forum.homeserverhq.com/).<br/><br/>If you want to test a subnet range, then input its CIDR length. For a single IP address, leave it at the default of 32.",
+  "description": "Tests an IP address or subnet for network collisions. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided IP address or subnet intersects with any of the networks that this HomeServer is on. It does not assert any consequential actions, just performs the tests.<br/><br/>Regarding Check all possible connections - with it set to No, it will only check the network connections directly on this HomeServer. With it set to Yes, it will check any and all connections that this HomeServer manages, i.e. if hosting a VPN, then it will check all User and/or HS Internet connections, which may be on behalf of another device in the network. If the explanation for this distinction is confusing, then ask on the [Forum](https://forum.homeserverhq.com/).<br/><br/>If you want to test a subnet range, then input its CIDR length. For a single IP address, leave it at the default of 32.",
   "group": "$group_id_testing",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39530,11 +39551,11 @@ EOFSC
 {
   "name": "01 Invite to Network",
   "script_path": "conf/scripts/myNetworkInviteConnection.sh",
-  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or User to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User applications, for your your own internal reference. Names for other connection types will be automatically generated.",
+  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or User to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User applications, for your your own internal nomenclature (use the Description that the applicant provided in the email as reference). Names for other connection types will be automatically generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39622,7 +39643,7 @@ EOFSC
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39761,7 +39782,7 @@ EOFSC
 {
   "name": "03 Change Primary HS Int IP",
   "script_path": "conf/scripts/changeHSPrimaryInternetIP.sh",
-  "description": "Changes the interface IP address of the primary HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.",
+  "description": "Changes the interface IP address of the primary HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -39780,7 +39801,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39842,11 +39863,11 @@ EOFSC
 {
   "name": "04 Change User IP",
   "script_path": "conf/scripts/changeUserIP.sh",
-  "description": "Changes the interface IP address of a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address due to a collision. A new randomly selected value has been generated for you. No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value.<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection.",
+  "description": "Changes the interface IP address of a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address due to a collision. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection. If <ins>you</ins> are the one initiating the change, i.e. the user did not request the change, then ensure to confer with them beforehand, since changing it has potential cascading effects on their device's interface peers.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -39931,7 +39952,7 @@ EOFSC
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40011,7 +40032,7 @@ EOFSC
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40091,7 +40112,7 @@ EOFSC
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40168,7 +40189,7 @@ EOFSC
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40209,11 +40230,11 @@ EOFSC
 {
   "name": "09 Email Users DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
-  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this project).",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this ecosystem).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40258,7 +40279,7 @@ EOFSC
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40304,7 +40325,7 @@ EOFSC
   "group": "$group_id_mynetwork",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40381,7 +40402,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40460,7 +40481,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40542,7 +40563,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40602,7 +40623,7 @@ EOFSC
   "group": "$group_id_othernetworks",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40663,7 +40684,7 @@ EOFSC
   "group": "$group_id_othernetworks",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40733,7 +40754,7 @@ EOFSC
   "group": "$group_id_othernetworks",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40874,7 +40895,7 @@ EOFSC
   "group": "$group_id_othernetworks",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -40954,7 +40975,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41032,7 +41053,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41129,7 +41150,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41208,7 +41229,7 @@ EOFSC
   "group": "$group_id_othernetworks",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41266,7 +41287,7 @@ EOFSC
   "group": "$group_id_othernetworks",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41317,7 +41338,7 @@ EOFSC
   "group": "$group_id_relayserver",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41400,7 +41421,7 @@ EOFSC
   "group": "$group_id_relayserver",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41484,7 +41505,7 @@ EOFSC
   "group": "$group_id_relayserver",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41565,7 +41586,7 @@ EOFSC
   "group": "$group_id_relayserver",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41667,7 +41688,7 @@ EOFSC
   "group": "$group_id_relayserver",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41748,7 +41769,7 @@ EOFSC
   "group": "$group_id_relayserver",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41831,7 +41852,7 @@ EOFSC
   "group": "$group_id_relayserver",
   "parameters": [
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
@@ -41899,7 +41920,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter config encrypt password",
+      "name": "Enter config decrypt password",
       "required": true,
       "param": "-configpw=",
       "same_arg_param": true,
