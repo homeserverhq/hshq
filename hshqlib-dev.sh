@@ -9908,15 +9908,19 @@ function checkValidBaseDomain()
   check_domain=$1
   if [ $(checkValidString "$check_domain" ".-") = "false" ]; then
     echo "false"
+    return
   fi
   if ! [ -z "$(getSubDomain $check_domain)" ]; then
     echo "false"
+    return
   fi
   if [ -z "$(getDomainTLD $check_domain)" ]; then
     echo "false"
+    return
   fi
   if [ -z "$(getDomainNoTLD $check_domain)" ]; then
     echo "false"
+    return
   fi
   echo "true"
 }
@@ -11584,7 +11588,26 @@ function createInitialEnv()
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
   mkdir -p $HOME/.ssh
-
+  set +e
+  tmp_pw1=""
+  tmp_pw2=""
+  while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
+  do
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of your configuration file (unless you have a super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
+    if [ $? -ne 0 ]; then exit; fi
+    if [ -z "$tmp_pw1" ]; then
+      showMessageBox "Password Empty" "The password cannot be empty, please try again."
+      continue
+    fi
+    tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
+    if [ $? -ne 0 ]; then exit; fi
+    if [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
+      showMessageBox "Password Mismatch" "The passwords do not match, please try again."
+    fi
+  done
+  CONFIG_ENCRYPTION_PASSPHRASE=$tmp_pw1
+  tmp_pw1=""
+  tmp_pw2=""
   CONFIG_FILE=$HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
   cat <<EOFCF > $CONFIG_FILE
 # Configuration File
@@ -11708,7 +11731,7 @@ RELAYSERVER_SYNCTHING_FOLDER_ID=
 # RelayServer Services END
 
 # Config File Encryption Passphrase BEGIN
-CONFIG_ENCRYPTION_PASSPHRASE=
+CONFIG_ENCRYPTION_PASSPHRASE=$CONFIG_ENCRYPTION_PASSPHRASE
 # Config File Encryption Passphrase END
 
 # Docker Installation Info BEGIN
@@ -12171,21 +12194,6 @@ COTURN_STATIC_SECRET=
 
 # Service Details END
 EOFCF
-  set +e
-  tmp_pw1=1
-  tmp_pw2=2
-  while ! [ "$tmp_pw1" = "$tmp_pw2" ]
-  do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of your configuration file (unless you have a super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
-    tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
-    if ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
-      showMessageBox "Password Mismatch" "The passwords do not match, please try again."
-    fi
-  done
-  CONFIG_ENCRYPTION_PASSPHRASE=$tmp_pw1
-  tmp_pw1=""
-  tmp_pw2=""
-  updateConfigVar CONFIG_ENCRYPTION_PASSPHRASE $CONFIG_ENCRYPTION_PASSPHRASE
   set -e
 }
 
