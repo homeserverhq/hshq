@@ -1023,12 +1023,18 @@ function initConfig()
   done
 
   if [ -z "$LDAP_PRIMARY_USER_PASSWORD_HASH" ]; then
-    tmp_pw1=1
-    tmp_pw2=2
-    while ! [ "$tmp_pw1" = "$tmp_pw2" ]
+    tmp_pw1=""
+    tmp_pw2=""
+    set +e
+    while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
       tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your HomeServer user ($LDAP_PRIMARY_USER_USERNAME) account: ")
+      if [ $? -ne 0 ]; then exit; fi
+      if [ -z "$tmp_pw1" ]; then
+        showMessageBox "Password Empty" "The password cannot be empty, please try again."
+      fi
       tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
+      if [ $? -ne 0 ]; then exit; fi
       if ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
         showMessageBox "Password Mismatch" "The passwords do not match, please try again."
       fi
@@ -1037,6 +1043,7 @@ function initConfig()
     updateConfigVar LDAP_PRIMARY_USER_PASSWORD_HASH $LDAP_PRIMARY_USER_PASSWORD_HASH
     tmp_pw1=""
     tmp_pw2=""
+    set -e
   fi
 
   while [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]
@@ -5783,19 +5790,26 @@ function uploadVPNInstallScripts()
       showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the RelayServer."
       continue
     fi
-    tmp_pw1=1
-    tmp_pw2=2
-    while ! [ "$tmp_pw1" = "$tmp_pw2" ]
+
+    tmp_pw1=""
+    tmp_pw2=""
+    while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
       tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
+      if [ -z "$tmp_pw1" ]; then
+        showMessageBox "Password Empty" "The password cannot be empty, please try again."
+        continue
+      fi
       if ! [ -z "$nonroot_username" ]; then
+        if [ $(checkPasswordStrength "$tmp_pw1") = "false" ]; then
+          showMessageBox "Weak Password" "The password is too weak, please make a stronger one. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers."
+          tmp_pw1=""
+          tmp_pw2=""
+          continue
+        fi
         tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
         if ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
           showMessageBox "Password Mismatch" "The passwords do not match, please try again."
-        elif [ $(checkPasswordStrength "$tmp_pw1") = "false" ]; then
-          showMessageBox "Weak Password" "The password is too weak, please make a stronger one. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers."
-          tmp_pw1=1
-          tmp_pw2=2
         fi
       else
         tmp_pw2=$tmp_pw1
@@ -9751,7 +9765,9 @@ $2
 EOF
   )
   menures=$(whiptail --title "$1" --passwordbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH 3>&1 1>&2 2>&3)
+  retVal=$?
   echo "$menures"
+  return $retVal
 }
 
 function getDockerSubnet()
