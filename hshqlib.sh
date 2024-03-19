@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=44
+HSHQ_SCRIPT_VERSION=45
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -854,9 +854,9 @@ function initConfig()
 	if [ -z "$HOMESERVER_DOMAIN" ]; then
 	  showMessageBox "Domain Empty" "The domain cannot be empty"
     elif [ $(checkValidString "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
-      showMessageBox "Invalid Character(s)" "The domain contains invalid character(s). It must consist of a-z (lowercase), 0-9, -, and/or ."
+      showMessageBox "Invalid Character(s)" "The domain contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or -."
       HOMESERVER_DOMAIN=""
-    elif [ $(checkValidBaseDomain "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
+    elif [ $(checkValidBaseDomain "$HOMESERVER_DOMAIN") = "false" ]; then
       showMessageBox "Invalid Domain Name" "Invalid domain name. The base domain must be of the format 'example.com'. It cannot be a subdomain."
       HOMESERVER_DOMAIN=""
 	else
@@ -909,7 +909,7 @@ function initConfig()
 
   while [ -z "$HOMESERVER_NAME" ]
   do
-	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc. (No special characters) This will appear in window titles, certificates, among other things: ")
+	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc (No special characters except for commas, hyphens, or periods). This will appear in window titles, certificates, among other things: ")
 	if [ -z "$HOMESERVER_NAME" ]; then
 	  showMessageBox "HomeServer Name Empty" "The name cannot be empty"
     elif [ $(checkValidStringUpperLowerNumbers "$HOMESERVER_NAME" " ,.-") = "false" ]; then
@@ -1880,12 +1880,35 @@ function setupHostedVPN()
   resetRelayServerData
 
   if [ -z $RELAYSERVER_WG_VPN_NETNAME ]; then
-    # Need to check if above names exist (in case of duplicate abbreviation), but not an already existing hosted VPN
     RELAYSERVER_WG_VPN_NETNAME=${HOMESERVER_ABBREV:0:6}"-vpn"
-    RELAYSERVER_WG_INTERNET_NETNAME=${HOMESERVER_ABBREV:0:6}"-ext"
+    curNum=1
+    while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
+    do
+      RELAYSERVER_WG_VPN_NETNAME=${HOMESERVER_ABBREV:0:5}"${curNum}-vpn"
+      ((curNum++))
+    done
+    if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ]; then
+      showMessageBox "Too Many Connections" "You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!?"
+      return 1
+    fi
     updateConfigVar RELAYSERVER_WG_VPN_NETNAME "$RELAYSERVER_WG_VPN_NETNAME"
+  fi
+
+  if [ -z $RELAYSERVER_WG_INTERNET_NETNAME ]; then
+    RELAYSERVER_WG_INTERNET_NETNAME=${HOMESERVER_ABBREV:0:6}"-ext"
+    curNum=1
+    while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
+    do
+      RELAYSERVER_WG_INTERNET_NETNAME=${HOMESERVER_ABBREV:0:5}"${curNum}-ext"
+      ((curNum++))
+    done
+    if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ]; then
+      showMessageBox "Too Many Connections" "You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!?"
+      return 1
+    fi
     updateConfigVar RELAYSERVER_WG_INTERNET_NETNAME "$RELAYSERVER_WG_INTERNET_NETNAME"
   fi
+
   if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
     set +e
     showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
@@ -1950,6 +1973,7 @@ function setupHostedVPN()
   updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
   leCertsArr=($(echo $RELAYSERVER_LE_CERT_DOMAINS | tr "," "\n"))
   isReload=false
+  sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
   for leCert in "${leCertsArr[@]}"
   do
     sqlite3 $HSHQ_DB "insert or ignore into lecertdomains(Domain,BaseDomain) values('$leCert','$HOMESERVER_DOMAIN');"
@@ -2134,34 +2158,6 @@ function setupHostedVPN()
   SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   updateConfigVar SMTP_RELAY_PASSWORD $SMTP_RELAY_PASSWORD
 
-  if [ "$IS_INSTALLED" = "true" ]; then
-    startStopStack mailu stop
-    sleep 5
-    generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
-    startStopStack mailu start
-    docker container stop heimdall > /dev/null 2>&1
-    docker container stop uptimekuma > /dev/null 2>&1
-    insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false
-    insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false
-    insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false
-    insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
-    insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
-    insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
-    insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
-    checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
-    docker container start heimdall > /dev/null 2>&1
-    docker container start uptimekuma > /dev/null 2>&1
-    emailVaultwardenCredentials true
-  fi
-
-  # Update Advertise IPs for Jitsi
-  addAdvertiseIP $RELAYSERVER_WG_HS_IP
-
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf >/dev/null <<EOFCF
 [Interface]
@@ -2249,6 +2245,42 @@ Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVE
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
+  outputRelayServerInstallSetupScript
+  outputRelayServerInstallFreshScript
+  outputRelayServerInstallTransferScript
+  uploadVPNInstallScripts false
+  if [ $? -ne 0 ]; then
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
+    return 1
+  fi
+
+  if [ "$IS_INSTALLED" = "true" ]; then
+    startStopStack mailu stop
+    sleep 5
+    generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
+    startStopStack mailu start
+    docker container stop heimdall > /dev/null 2>&1
+    docker container stop uptimekuma > /dev/null 2>&1
+    insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false
+    insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false
+    insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false
+    insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
+    insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
+    insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
+    insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
+    checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
+    docker container start heimdall > /dev/null 2>&1
+    docker container start uptimekuma > /dev/null 2>&1
+    emailVaultwardenCredentials true
+  fi
+  # Update Advertise IPs for Jitsi
+  addAdvertiseIP $RELAYSERVER_WG_HS_IP
+
   curdt=$(getCurrentDate)
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_PRESHAREDKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
@@ -2258,11 +2290,8 @@ EOFCF
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'${RELAYSERVER_WG_VPN_NETNAME}-user1','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  outputRelayServerInstallSetupScript
-  outputRelayServerInstallFreshScript
-  outputRelayServerInstallTransferScript
-  uploadVPNInstallScripts false
+  sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+
   RELAYSERVER_IS_INIT=true
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
 }
@@ -7232,7 +7261,7 @@ function performNetworkInvite()
   case "$conn_type" in
     "HomeServer VPN")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
-      if [ -z "$domain_name" ] || [ $(checkValidBaseDomain "$domain_name" ".-") = "false" ]; then
+      if [ -z "$domain_name" ] || [ $(checkValidBaseDomain "$domain_name") = "false" ]; then
         echo "ERROR: Invalid domain name."
         return 7
       fi
@@ -7266,7 +7295,7 @@ function performNetworkInvite()
     ;;
     "HomeServer Internet")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
-      if [ -z "$domain_name" ] || [ $(checkValidBaseDomain "$domain_name" ".-") = "false" ]; then
+      if [ -z "$domain_name" ] || [ $(checkValidBaseDomain "$domain_name") = "false" ]; then
         echo "ERROR: Invalid domain name."
         return 7
       fi
@@ -7326,6 +7355,10 @@ function performNetworkInvite()
         echo "ERROR: There is already a connection with this domain ($domain_name)."
         return 7
       fi
+      if ! [ "$(isEmailMatchBaseDomain $email_address $domain_name)" = "true" ]; then
+        echo "ERROR: Requesting email is not from the same base domain. Email: $email_address, Domain: $domain_name"
+        return 7
+      fi
       new_ip=$(getRandomVPNIP)
       if [ -z "$new_ip" ]; then
         echo "ERROR: The VPN network is full."
@@ -7339,6 +7372,10 @@ function performNetworkInvite()
     "HomeServer Internet")
       if [ "$domain_name" = "$HOMESERVER_DOMAIN" ]; then
         echo "ERROR: This is your domain, dummy!"
+        return 7
+      fi
+      if ! [ "$(isEmailMatchBaseDomain $email_address $domain_name)" = "true" ]; then
+        echo "ERROR: Requesting email is not from the same base domain. Email: $email_address, Domain: $domain_name"
         return 7
       fi
       config_name="HS-Internet-$domain_name"
@@ -7708,7 +7745,7 @@ function performNetworkJoin()
     return 8
   fi
   domain_name=$(getValueFromConfig "DomainName" $join_base_config_file)
-  if [ -z "$domain_name" ] || [ $(checkValidString "$domain_name" ".-") = "false" ]; then
+  if [ -z "$domain_name" ] || [ $(checkValidBaseDomain "$domain_name") = "false" ]; then
     echo "ERROR: Invalid domain name."
     rm -f $join_base_config_file
     return 8
@@ -7886,8 +7923,11 @@ function performNetworkJoin()
     rm -f $join_base_config_file
     return 8
   fi
-  iface_db=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where InterfaceName='$interface_name';")
-  if ! [ -z "$iface_db" ]; then
+  if ! [ "$(isEmailMatchBaseDomain $email_address $domain_name)" = "true" ]; then
+    echo "ERROR: Join email is not from the same base domain. Email: $email_address, Domain: $domain_name"
+    return 8
+  fi
+  if [ "$(checkInterfaceNameExists $interface_name)" = "true" ]; then
     echo "ERROR: An interface with this name already exists. Change the InterfaceName value to something unique (using 10 characters or less)."
     rm -f $join_base_config_file
     return 8
@@ -8958,6 +8998,17 @@ function getWGNameFromPubkey()
   echo $(sqlite3 $HSHQ_DB "select Name from connections where PublicKey='$check_key';")
 }
 
+function checkInterfaceNameExists()
+{
+  check_iface="$1"
+  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where InterfaceName='$check_iface';")
+  if [ -z "$ifaceName" ]; then
+    echo "false"
+  else
+    echo "true"
+  fi
+}
+
 function checkValidWireGuardKey()
 {
   # Thank you gjoranv: https://stackoverflow.com/questions/74438436/how-to-validate-a-wireguard-public-key
@@ -10017,6 +10068,18 @@ function checkPasswordStrength()
     echo "false"
   else
     echo "true"
+  fi
+}
+
+function isEmailMatchBaseDomain()
+{
+  check_email_addr="$1"
+  check_base_domain="$2"
+  email_addr_domain=$(echo "$check_email_addr" | cut -d"@" -f2-)
+  if [ "$email_addr_domain" = "$check_base_domain" ]; then
+    echo "true"
+  else
+    echo "false"
   fi
 }
 
