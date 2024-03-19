@@ -856,6 +856,9 @@ function initConfig()
     elif [ $(checkValidString "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
       showMessageBox "Invalid Character(s)" "The domain contains invalid character(s). It must consist of a-z (lowercase), 0-9, -, and/or ."
       HOMESERVER_DOMAIN=""
+    elif [ $(checkValidBaseDomain "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
+      showMessageBox "Invalid Domain Name" "Invalid domain name. The base domain must be of the format 'example.com'. It cannot be a subdomain."
+      HOMESERVER_DOMAIN=""
 	else
 	  updateConfigVar HOMESERVER_DOMAIN $HOMESERVER_DOMAIN
 	fi
@@ -7215,7 +7218,7 @@ function performNetworkInvite()
   case "$conn_type" in
     "HomeServer VPN")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
-      if [ -z "$domain_name" ] || [ $(checkValidString "$domain_name" ".-") = "false" ]; then
+      if [ -z "$domain_name" ] || [ $(checkValidBaseDomain "$domain_name" ".-") = "false" ]; then
         echo "ERROR: Invalid domain name."
         return 7
       fi
@@ -7249,7 +7252,7 @@ function performNetworkInvite()
     ;;
     "HomeServer Internet")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
-      if [ -z "$domain_name" ] || [ $(checkValidString "$domain_name" ".-") = "false" ]; then
+      if [ -z "$domain_name" ] || [ $(checkValidBaseDomain "$domain_name" ".-") = "false" ]; then
         echo "ERROR: Invalid domain name."
         return 7
       fi
@@ -9898,6 +9901,24 @@ function checkValidString()
   else
     echo "false"
   fi
+}
+
+function checkValidBaseDomain()
+{
+  check_domain=$1
+  if [ $(checkValidString "$check_domain" ".-") = "false" ]; then
+    return "false"
+  fi
+  if ! [ -z "$(getSubDomain $check_domain)" ]; then
+    return "false"
+  fi
+  if [ -z "$(getDomainTLD $check_domain)" ]; then
+    return "false"
+  fi
+  if [ -z "$(getDomainNoTLD $check_domain)" ]; then
+    return "false"
+  fi
+  return "true"
 }
 
 function checkValidEmail()
@@ -41334,7 +41355,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer, and forward the mail sent to this domain to the selected mail subdomain. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
   "group": "$group_id_relayserver",
   "parameters": [
     {
