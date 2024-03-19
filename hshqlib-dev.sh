@@ -9907,18 +9907,18 @@ function checkValidBaseDomain()
 {
   check_domain=$1
   if [ $(checkValidString "$check_domain" ".-") = "false" ]; then
-    return "false"
+    echo "false"
   fi
   if ! [ -z "$(getSubDomain $check_domain)" ]; then
-    return "false"
+    echo "false"
   fi
   if [ -z "$(getDomainTLD $check_domain)" ]; then
-    return "false"
+    echo "false"
   fi
   if [ -z "$(getDomainNoTLD $check_domain)" ]; then
-    return "false"
+    echo "false"
   fi
-  return "true"
+  echo "true"
 }
 
 function checkValidEmail()
