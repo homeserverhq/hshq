@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=45
+HSHQ_SCRIPT_VERSION=46
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -36,9 +36,9 @@ function init()
   HSHQ_TIMESTAMP_LOG_NAME=hshqInstallTS.log
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
-  HSHQ_MANAGER_FULL_STACKLIST_FILENAME=fullStackList.txt
-  HSHQ_MANAGER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
-  HSHQ_MANAGER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
+  SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
+  SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
+  SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -1178,9 +1178,9 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}- HomeServer Portainer IP URL: https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT\n"
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Username: $PORTAINER_ADMIN_USERNAME\n"
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Password: $PORTAINER_ADMIN_PASSWORD\n"
-  strInstallConfig="${strInstallConfig}- HSHQ Manager URL: https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN\n"
-  strInstallConfig="${strInstallConfig}- HSHQ Manager Username: $HSHQMANAGER_ADMIN_USERNAME\n"
-  strInstallConfig="${strInstallConfig}- HSHQ Manager Password: $HSHQMANAGER_ADMIN_PASSWORD\n"
+  strInstallConfig="${strInstallConfig}- Script-server URL: https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
+  strInstallConfig="${strInstallConfig}- Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\n"
+  strInstallConfig="${strInstallConfig}- Script-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strInstallConfig="${strInstallConfig}- RelayServer IP Address: $RELAYSERVER_SERVER_IP\n"
     strInstallConfig="${strInstallConfig}- RelayServer Host Current SSH Port: $RELAYSERVER_CURRENT_SSH_PORT\n"
@@ -1496,7 +1496,7 @@ EOF
     installStackByName ${cur_svc//\"} $is_integrate
   done
   removeSudoTimeoutInstall
-  outputStackListsHSHQManager
+  outputStackListsScriptServer
 }
 
 function installListOfServices()
@@ -1509,7 +1509,7 @@ function installListOfServices()
     installStackByName $curStack true
   done
   removeSudoTimeoutInstall
-  outputStackListsHSHQManager
+  outputStackListsScriptServer
 }
 
 function installAllAvailableStacks()
@@ -1552,7 +1552,7 @@ function installAllAvailableStacks()
     installStackByName $cur_svc $is_integrate
   done
   removeSudoTimeoutInstall
-  outputStackListsHSHQManager
+  outputStackListsScriptServer
 }
 
 function getStacksToUpdate()
@@ -1701,7 +1701,7 @@ function updateListOfStacks()
   full_update_report_header="${full_update_report_header}  End Time: $report_end_time\n\n"
   sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Sending update results to email manager ($EMAIL_ADMIN_EMAIL_ADDRESS). Refer to this for further details."
-  outputStackListsHSHQManager
+  outputStackListsScriptServer
 }
 
 function deleteStacksFromList()
@@ -1770,7 +1770,7 @@ function deleteListOfStacks()
   docker container start heimdall >/dev/null
   removeSudoTimeoutInstall
   restartAllCaddyContainers
-  outputStackListsHSHQManager
+  outputStackListsScriptServer
 }
 
 # VPN Setup
@@ -1790,8 +1790,7 @@ EOF
 )
     menures=$(whiptail --title "Select an option for your PRIMARY VPN connection" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
     "1" "Host a VPN" \
-    "2" "Join a VPN" \
-    "3" "Setup Later" 3>&1 1>&2 2>&3)
+    "2" "Setup Later" 3>&1 1>&2 2>&3)
 
     case $menures in
       1)
@@ -1801,14 +1800,14 @@ EOF
           return 1
         fi
         ;;
+      #2)
+      #  setupJoinPrimaryVPN
+      #  join_res=$?
+      #  if [ $join_res -ne 0 ]; then
+      #    return 1
+      #  fi
+      #  ;;
       2)
-        setupJoinPrimaryVPN
-        join_res=$?
-        if [ $join_res -ne 0 ]; then
-          return 1
-        fi
-        ;;
-      3)
         PRIMARY_VPN_SETUP_TYPE=manual
         ;;
     esac
@@ -3232,6 +3231,22 @@ function getConnectingIPAddress()
   echo \$(echo \$SSH_CLIENT | xargs | cut -d" " -f1)
 }
 
+function checkIsIPPrivate()
+{
+  check_ip="\$1"
+  set +e
+  priv_arr=("10.0.0.0/8 172.16.0.0/12 192.168.0.0/16")
+  for subnet in "\${priv_arr[@]}"
+  do
+    is_in_subnet=\$(isIPInSubnet \$check_ip \$subnet)
+    if [ "\$is_in_subnet" = "true" ]; then
+      echo "true"
+      return
+    fi
+  done
+  echo "false"
+}
+
 function install()
 {
   echo "The installation process is ready to initiate."
@@ -3280,8 +3295,8 @@ function install()
   echo -e "\n\n########################################\n\n"
   rm -f $HSHQ_SCRIPT_OPEN
   # Successfull installation, clean up the logs
-  rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
-  rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME
+  #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
+  #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME
   sudo reboot
 }
 
@@ -3563,6 +3578,19 @@ done
   sysctl --system > /dev/null 2>&1
 
 EOFBS
+
+# Special case - if RelayServer is behind a firewall and using a private IP for default route,
+# then allow traffic from the gateway, since mangle table blocks all private ranges
+def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
+is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
+def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+if [ "\$is_def_priv" = "true" ]; then
+  echo "Default route is in private range, adding allowance to (mangle)iptables..."
+  sudo sed -i "s/# Block spoofed packets.*/a\  iptables -t mangle -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1 || iptables -t mangle -A PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
+else
+  echo "Default route is in public range."
+fi
+
   sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFBS
@@ -3614,6 +3642,9 @@ done
   ip6tables -P OUTPUT ACCEPT
 
 EOFBS
+if [ "\$is_def_priv" = "true" ]; then
+  echo "  iptables -t mangle -D PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1" | sudo tee -a \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
+fi
   sudo chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
 [Unit]
@@ -6999,7 +7030,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   else
     msg_header="HomeServer VPN Application from $HOMESERVER_NAME ($request_id)\n\n"
     msg_header=${msg_header}"For the receiving manager: \n"
-    msg_header=${msg_header}"1) Go to the HSHQ Manager app, and navigate to 06 My Network > 01 Invite to Network.\n"
+    msg_header=${msg_header}"1) Go to the Script-server app, and navigate to 06 My Network > 01 Invite to Network.\n"
     msg_header=${msg_header}"2) Copy everything BELOW the following line and paste the contents where appropriate.\n\n"
     msg_header=${msg_header}"_______________________________________________________________________\n\n"
     msg_body=${msg_header}"$msg_body"
@@ -7486,7 +7517,7 @@ function performNetworkInvite()
       if [ "$is_primary" = "true" ]; then
         mail_body=${mail_body}"$(getDNSRecordsInfo $domain_name)\n\n"
       fi
-      mail_body=$mail_body"1) Go to the HSHQ Manager app, and navigate to 07 Other Networks > 05 Join Network.\n"
+      mail_body=$mail_body"1) Go to the Script-server app, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"2) Copy everything BELOW the following line and paste the contents where appropriate.\n"
       mail_body=$mail_body"_______________________________________________________________________\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -7573,7 +7604,7 @@ function performNetworkInvite()
       mail_body=${mail_body}"HomeServer Internet Invitation from $HOMESERVER_NAME\n"
       mail_body=${mail_body}"================================================================\n\n"
       mail_body=$mail_body"1) Copy everything BELOW the following line.\n"
-      mail_body=$mail_body"2) Go to the HSHQ Manager app, and navigate to 07 Other Networks > 05 Join Network.\n"
+      mail_body=$mail_body"2) Go to the Script-server app, and navigate to 07 Other Networks > 05 Join Network.\n"
       mail_body=$mail_body"3) Paste the contents where appropriate. \n"
       mail_body=$mail_body"_______________________________________________________________________\n\n"
       mail_body=$mail_body"\n$INVITATION_FIRST_LINE\n"
@@ -8857,11 +8888,17 @@ function checkDefaultRouteIPIsPrivateIP()
     echo "Host IP is empty, exiting..."
     exit 5
   fi
+  checkIsIPPrivate "$HOMESERVER_HOST_IP"
+}
+
+function checkIsIPPrivate()
+{
+  check_ip="$1"
   set +e
-  private_ip_ranges="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
-  for subnet in $private_ip_ranges
+  priv_arr=("10.0.0.0/8 172.16.0.0/12 192.168.0.0/16")
+  for subnet in "${priv_arr[@]}"
   do
-    is_in_subnet=$(isIPInSubnet $HOMESERVER_HOST_IP $subnet)
+    is_in_subnet=$(isIPInSubnet $check_ip $subnet)
     if [ "$is_in_subnet" = "true" ]; then
       echo "true"
       return
@@ -11025,7 +11062,7 @@ function getMyNetworkHomeServersDNSUpdateEmailBody()
   fi
   email_body=${email_body}"1. Ensure this is the most recent version of this email with matching subject\n"
   email_body=${email_body}"line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n"
-  email_body=${email_body}"2. Go to the HSHQ Manager app, and navigate to 07 Other Networks > 07 Update HomeServer DNS\n"
+  email_body=${email_body}"2. Go to the Script-server app, and navigate to 07 Other Networks > 07 Update HomeServer DNS\n"
   email_body=${email_body}"and paste the ENTIRE list BELOW the following line where appropriate.\n\n"
   email_body=${email_body}"3. After applying the update, you may delete any prior emails with the matching\n"
   email_body=${email_body}"subject line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n\n"
@@ -11839,12 +11876,12 @@ ADGUARD_ADMIN_USERNAME=
 ADGUARD_ADMIN_PASSWORD=
 # Adguard (Service Details) END
 
-# HSHQ Manager (Service Details) BEGIN
-HSHQMANAGER_INIT_ENV=true
-HSHQMANAGER_LOCALHOST_PORT=8008
-HSHQMANAGER_ADMIN_USERNAME=
-HSHQMANAGER_ADMIN_PASSWORD=
-# HSHQ Manager (Service Details) END
+# Script-server (Service Details) BEGIN
+SCRIPTSERVER_INIT_ENV=true
+SCRIPTSERVER_LOCALHOST_PORT=8008
+SCRIPTSERVER_ADMIN_USERNAME=
+SCRIPTSERVER_ADMIN_PASSWORD=
+# Script-server (Service Details) END
 
 # Authelia (Service Details) BEGIN
 AUTHELIA_REDIRECTION_URL=
@@ -12278,116 +12315,103 @@ EOFCF
 
 function checkUpdateVersion()
 {
-  is_update_stack_lists=false
+  is_update_performed=false
+  if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
+    is_update_performed=true
+  fi
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
     setStaticIPToCurrent
-    is_update_stack_lists=true
     HSHQ_VERSION=11
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 14 ]; then
     echo "Updating to Version 14..."
     version14Update
-    is_update_stack_lists=true
     HSHQ_VERSION=14
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 22 ]; then
     echo "Updating to Version 22..."
     version22Update
-    is_update_stack_lists=true
     HSHQ_VERSION=22
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 23 ]; then
     echo "Updating to Version 23..."
     version23Update
-    is_update_stack_lists=true
     HSHQ_VERSION=23
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 24 ]; then
     echo "Updating to Version 24..."
     version24Update
-    is_update_stack_lists=true
     HSHQ_VERSION=24
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 25 ]; then
     echo "Updating to Version 25..."
     version25Update
-    is_update_stack_lists=true
     HSHQ_VERSION=25
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 26 ]; then
     echo "Updating to Version 26..."
     version26Update
-    is_update_stack_lists=true
     HSHQ_VERSION=26
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 27 ]; then
     echo "Updating to Version 27..."
     version27Update
-    is_update_stack_lists=true
     HSHQ_VERSION=27
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 29 ]; then
     echo "Updating to Version 29..."
     version29Update
-    is_update_stack_lists=true
     HSHQ_VERSION=29
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 30 ]; then
     echo "Updating to Version 30..."
     version30Update
-    is_update_stack_lists=true
     HSHQ_VERSION=30
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 31 ]; then
     echo "Updating to Version 31..."
     version31Update
-    is_update_stack_lists=true
     HSHQ_VERSION=31
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 32 ]; then
     echo "Updating to Version 32..."
     version32Update
-    is_update_stack_lists=true
     HSHQ_VERSION=32
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 34 ]; then
     echo "Updating to Version 34..."
     version34Update
-    is_update_stack_lists=true
     HSHQ_VERSION=34
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 35 ]; then
     echo "Updating to Version 35..."
     version35Update
-    is_update_stack_lists=true
     HSHQ_VERSION=35
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 37 ]; then
     echo "Updating to Version 37..."
     version37Update
-    is_update_stack_lists=true
     HSHQ_VERSION=37
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 38 ]; then
     echo "Updating to Version 38..."
     version38Update
-    is_update_stack_lists=true
     HSHQ_VERSION=38
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
@@ -12406,32 +12430,35 @@ function checkUpdateVersion()
   if [ $HSHQ_VERSION -lt 41 ]; then
     echo "Updating to Version 41..."
     version41Update
-    is_update_stack_lists=true
     HSHQ_VERSION=41
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 43 ]; then
     echo "Updating to Version 43..."
     version43Update
-    is_update_stack_lists=true
     HSHQ_VERSION=43
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 44 ]; then
     echo "Updating to Version 44..."
     version44Update
-    is_update_stack_lists=true
     HSHQ_VERSION=44
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 46 ]; then
+    echo "Updating to Version 46..."
+    version46Update
+    if [ $HSHQ_VERSION -lt 46 ]; then
+      return
+    fi
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
-    is_update_stack_lists=true
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ "$is_update_stack_lists" = "true" ]; then
-    outputStackListsHSHQManager
+  if [ "$is_update_performed" = "true" ]; then
+    outputStackListsScriptServer
   fi
 }
 
@@ -13088,9 +13115,9 @@ function version37Update()
   sed -i "s|Relay Server|RelayServer|g" $CONFIG_FILE
   checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD="
   CHANGEDETECTION_INIT_ENV=false
-  checkAddServiceToConfig "HSHQ Manager" "HSHQMANAGER_INIT_ENV=false,HSHQMANAGER_LOCALHOST_PORT=8008,HSHQMANAGER_ADMIN_USERNAME=,HSHQMANAGER_ADMIN_PASSWORD="
-  HSHQMANAGER_INIT_ENV=false
-  HSHQMANAGER_LOCALHOST_PORT=8008
+  checkAddServiceToConfig "Script-server" "SCRIPTSERVER_INIT_ENV=false,SCRIPTSERVER_LOCALHOST_PORT=8008,SCRIPTSERVER_ADMIN_USERNAME=,SCRIPTSERVER_ADMIN_PASSWORD="
+  SCRIPTSERVER_INIT_ENV=false
+  SCRIPTSERVER_LOCALHOST_PORT=8008
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing python, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y python3 > /dev/null 2>&1
@@ -13101,13 +13128,13 @@ function version37Update()
   getUpdateAssets
   set +e
   outputBootScripts
-  grep $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  grep $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    sed -i "/$SUB_ADGUARD.$HOMESERVER_DOMAIN/a\        - $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+    sed -i "/$SUB_ADGUARD.$HOMESERVER_DOMAIN/a\        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
     docker container restart authelia
   fi
-  if ! [ -d $HSHQ_STACKS_DIR/hshqmanager ]; then
-    installStackByName hshqmanager
+  if ! [ -d $HSHQ_STACKS_DIR/script-server ]; then
+    installStackByName script-server
   fi
   mkdir -p $HSHQ_WIREGUARD_DIR/requestkeys
   checkFixPortainerEnv
@@ -13120,7 +13147,7 @@ function version38Update()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
   fi
-  outputAllHSHQManagerScripts
+  outputAllScriptServerScripts
 
   # Fixes internal mailing issue
   startStopStack mailu stop
@@ -13155,8 +13182,8 @@ EOFRS
 function version39Update()
 {
   set +e
-  clearAllHSHQManagerScripts
-  outputAllHSHQManagerScripts
+  clearAllScriptServerScripts
+  outputAllScriptServerScripts
   set -e
   sqlite3 $HSHQ_DB "create table newconnections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
   sqlite3 $HSHQ_DB "insert into newconnections(ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated) select ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated from connections;"
@@ -13199,8 +13226,8 @@ function version39Update()
 function version40Update()
 {
   set +e
-  clearAllHSHQManagerScripts
-  outputAllHSHQManagerScripts
+  clearAllScriptServerScripts
+  outputAllScriptServerScripts
   set -e
 }
 
@@ -13397,9 +13424,58 @@ function version44Update()
     updateConfigVar JITSI_ADVERTISE_IPS $JITSI_ADVERTISE_IPS
   fi
   set +e
-  clearAllHSHQManagerScripts
-  outputAllHSHQManagerScripts
+  clearAllScriptServerScripts
+  outputAllScriptServerScripts
   set -e
+}
+
+function version46Update()
+{
+  if [ -d $HSHQ_STACKS_DIR/script-server ]; then
+    if [ -d $HSHQ_STACKS_DIR/hshqmanager ]; then
+      set +e
+      sudo rm -f /etc/systemd/system/runHSHQManager.service
+      sudo rm -f $HSHQ_SCRIPTS_DIR/root/runHSHQManager.service
+      rm -f $HSHQ_SSL_DIR/hshqmanager*
+      sudo rm -fr $HSHQ_STACKS_DIR/hshqmanager
+    fi
+    HSHQ_VERSION=46
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  else
+    echo -e "\n\n\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
+    echo -e "This is a 2-part update, as it is renaming HSHQ Manager to Script-server."
+    echo -e "If you are using HSHQ Manager to perform this update, then you will lose connection"
+    echo -e "as a result. Monitor your $EMAIL_ADMIN_EMAIL_ADDRESS account for the new creditials."
+    echo -e "As soon as you recieve this email, then log into https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN"
+    echo -e "with the new creditials and re-run the update process."
+    echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
+    is_continue=""
+    while ! [ "$is_continue" = "ok" ]
+    do
+      read -p "Enter 'ok' to continue: " is_continue
+    done
+    set -e
+    getUpdateAssets
+    set +e
+    sed -i "/SVCD_HSHQMANAGER/d" $CONFIG_FILE
+    source $CONFIG_FILE
+    SCRIPTSERVER_INIT_ENV=false
+    SCRIPTSERVER_ADMIN_USERNAME=""
+    updateConfigVar SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_USERNAME
+    sed -i "s/hshqmanager/script-server/g" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+    sed -i "s/hshqmanager/script-server/g" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
+    sed -i "s/hshqmanager/script-server/g" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary
+    sed -i "s/hshqmanager/script-server/g" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+    cp $HSHQ_ASSETS_DIR/images/script-server.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/
+    sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set title='Script-server', icon='icons/script-server.png', url='https://script-server.$HOMESERVER_DOMAIN' where title='HSHQ Manager';"
+    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set name='Script-server', url='https://script-server.$HOMESERVER_DOMAIN' where name='HSHQ Manager';"
+    docker container restart authelia > /dev/null 2>&1
+    installStackByName script-server
+    closeHSHQScript
+    sudo systemctl disable runHSHQManager
+    sudo systemctl stop runHSHQManager
+    exit
+  fi
 }
 
 function sendRSExposeScripts()
@@ -14314,9 +14390,9 @@ function nukeHSHQ()
   sudo systemctl stop runOnBootRoot
   sudo systemctl disable runOnBootRoot
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
-  sudo systemctl stop runHSHQManager
-  sudo systemctl disable runHSHQManager
-  sudo rm -f /etc/systemd/system/runHSHQManager.service
+  sudo systemctl stop runScriptServer
+  sudo systemctl disable runScriptServer
+  sudo rm -f /etc/systemd/system/runScriptServer.service
   sudo $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
@@ -14465,8 +14541,8 @@ done
   # Special case for HomeAssistant since it is using host networking
   iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT
 
-  # Special case for HSHQ Manager since it is using host networking
-  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HSHQMANAGER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HSHQMANAGER_LOCALHOST_PORT -j ACCEPT
+  # Special case for Script-server since it is using host networking
+  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
 
   # Special case for Docker metrics
   iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
@@ -14525,7 +14601,7 @@ done
   iptables -D INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp --dport 443 -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
-  iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HSHQMANAGER_LOCALHOST_PORT -j ACCEPT 2> /dev/null
+  iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
   iptables -D INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
@@ -16406,13 +16482,13 @@ function initServicesCredentials()
     ADGUARD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar ADGUARD_ADMIN_PASSWORD $ADGUARD_ADMIN_PASSWORD
   fi
-  if [ -z "$HSHQMANAGER_ADMIN_USERNAME" ]; then
-    HSHQMANAGER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_hshqmanager"
-    updateConfigVar HSHQMANAGER_ADMIN_USERNAME $HSHQMANAGER_ADMIN_USERNAME
+  if [ -z "$SCRIPTSERVER_ADMIN_USERNAME" ]; then
+    SCRIPTSERVER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_scriptserver"
+    updateConfigVar SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_USERNAME
   fi
-  if [ -z "$HSHQMANAGER_ADMIN_PASSWORD" ]; then
-    HSHQMANAGER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar HSHQMANAGER_ADMIN_PASSWORD $HSHQMANAGER_ADMIN_PASSWORD
+  if [ -z "$SCRIPTSERVER_ADMIN_PASSWORD" ]; then
+    SCRIPTSERVER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SCRIPTSERVER_ADMIN_PASSWORD $SCRIPTSERVER_ADMIN_PASSWORD
   fi
   if [ -z "$GRAFANA_ADMIN_USERNAME" ]; then
     GRAFANA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_grafana"
@@ -17094,7 +17170,7 @@ function installBaseStacks()
   installStackByName ofelia
   installCaddy home home $HOMESERVER_HOST_IP home na na na "$(getNonPrivateConnectingIP)"
   installStackByName uptimekuma
-  installStackByName hshqmanager
+  installStackByName script-server
 }
 
 function initServiceVars()
@@ -17134,7 +17210,7 @@ function initServiceVars()
   checkAddSvc "SVCD_HOMEASSISTANT_CONFIGURATOR=homeassistant,hass-configurator,primary,admin,HomeAssistant-Configurator,hass-configurator,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_NODERED=homeassistant,hass-nodered,primary,admin,HomeAssistant-NodeRed,hass-nodered,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_TASMOADMIN=homeassistant,hass-tasmoadmin,primary,admin,HomeAssistant-Tasmoadmin,hass-tasmoadmin,hshq"
-  checkAddSvc "SVCD_HSHQMANAGER=hshqmanager,hshqmanager,home,admin,HSHQ Manager,hshqmanager,hshq"
+  checkAddSvc "SVCD_SCRIPTSERVER=script-server,script-server,home,admin,Script-server,script-server,hshq"
   checkAddSvc "SVCD_HUGINN=huginn,huginn,primary,user,Huginn,huginn,hshq"
   checkAddSvc "SVCD_IMAGES=images,images,other,user,Images,images,hshq"
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
@@ -17305,8 +17381,8 @@ function installStackByName()
       installHeimdall $is_integrate ;;
     ofelia)
       installOfelia $is_integrate ;;
-    hshqmanager)
-      installHSHQManager $is_integrate ;;
+    script-server)
+      installScriptServer $is_integrate ;;
     sqlpad)
       installSQLPad $is_integrate ;;
     uptimekuma)
@@ -17435,8 +17511,8 @@ function performUpdateStackByName()
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
       performUpdateOfelia "$portainerToken" ;;
-    hshqmanager)
-      performUpdateHSHQManager "$portainerToken" ;;
+    script-server)
+      performUpdateScriptServer "$portainerToken" ;;
     sqlpad)
       performUpdateSQLPad "$portainerToken" ;;
     uptimekuma)
@@ -17519,7 +17595,7 @@ function getAutheliaBlock()
   retval="${retval}    - domain:\n"
   retval="${retval}# Authelia admins BEGIN\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - ${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CODESERVER.$HOMESERVER_DOMAIN\n"
@@ -17563,7 +17639,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}-IP" https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HSHQMANAGER" https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $HSHQMANAGER_ADMIN_USERNAME $HSHQMANAGER_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SCRIPTSERVER" https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
@@ -17629,7 +17705,7 @@ function emailVaultwardenCredentials()
   fi
   strOutput=${strOutput}"\n\n\n\n"
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
-  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within the HSHQ Manager or the console UI to send yourself another copy if need be (01 Misc Utils -> 07 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or HSHQ Manager web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 08 Email Root CA) just to ensure the configuration file is back to an encrypted state."
+  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within the Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 07 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 08 Email Root CA) just to ensure the configuration file is back to an encrypted state."
   sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
@@ -17638,7 +17714,7 @@ function insertServicesHeimdall()
   curdt=$(getCurrentDate)
   cur_id=1
   # Admin Tab
-  insertIntoHeimdallDB "$FMLNAME_HSHQMANAGER" $USERTYPE_HSHQMANAGER "https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN" 1 "homeserverhq.png"
+  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1 "homeserverhq.png"
   insertIntoHeimdallDB "$FMLNAME_PORTAINER" $USERTYPE_PORTAINER "https://$SUB_PORTAINER.$HOMESERVER_DOMAIN" 1 "portainer.png"
   insertIntoHeimdallDB "$FMLNAME_PORTAINER (IP)" $USERTYPE_PORTAINER "https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT" 1 "portainer.png"
   insertIntoHeimdallDB "$FMLNAME_ADGUARD" $USERTYPE_ADGUARD "https://$SUB_ADGUARD.$HOMESERVER_DOMAIN" 1 "adguardhome.png"
@@ -17733,7 +17809,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_OPENLDAP_MANAGER" $USERTYPE_OPENLDAP_MANAGER "https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN" 1
   insertServiceUptimeKuma "$FMLNAME_OPENLDAP_PHP" $USERTYPE_OPENLDAP_PHP "https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN" 1
   insertServiceUptimeKuma "$FMLNAME_MAILU" $USERTYPE_MAILU "https://$SUB_MAILU.$HOMESERVER_DOMAIN" 1
-  insertServiceUptimeKuma "$FMLNAME_HSHQMANAGER" $USERTYPE_HSHQMANAGER "https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN" 1
+  insertServiceUptimeKuma "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1
   insertServiceUptimeKuma "$FMLNAME_WAZUH" $USERTYPE_WAZUH "https://$SUB_WAZUH.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_COLLABORA" $USERTYPE_COLLABORA "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" 0
@@ -37552,74 +37628,69 @@ function performUpdateFileDrop()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-# HSHQ Manager
-function installHSHQManager()
+# Script-server
+function installScriptServer()
 {
-  if [ -d $HSHQ_STACKS_DIR/hshqmanager ]; then
+  if [ -d $HSHQ_STACKS_DIR/script-server ]; then
     return
   fi
-  mkdir $HSHQ_STACKS_DIR/hshqmanager
+  mkdir $HSHQ_STACKS_DIR/script-server
 
   wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
-  unzip $HOME/script-server.zip -d $HSHQ_STACKS_DIR/hshqmanager > /dev/null 2>&1
+  unzip $HOME/script-server.zip -d $HSHQ_STACKS_DIR/script-server > /dev/null 2>&1
   rm $HOME/script-server.zip
-  sudo chown -R $USERNAME:$USERNAME $HSHQ_STACKS_DIR/hshqmanager
-  mkdir -p $HSHQ_STACKS_DIR/hshqmanager/conf/scripts
-  mkdir -p $HSHQ_STACKS_DIR/hshqmanager/conf/theme
+  sudo chown -R $USERNAME:$USERNAME $HSHQ_STACKS_DIR/script-server
+  mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
+  mkdir -p $HSHQ_STACKS_DIR/script-server/conf/theme
 
   pip3 install tornado > /dev/null 2>&1
   initServicesCredentials
-  generateCert hshqmanager "hshqmanager,host.docker.internal"
-  outputConfigHSHQManager
-  htpasswd -bcBC 10 $HSHQ_STACKS_DIR/hshqmanager/users $HSHQMANAGER_ADMIN_USERNAME $HSHQMANAGER_ADMIN_PASSWORD > /dev/null 2>&1
-  cp $HSHQ_ASSETS_DIR/images/homeserverhq.ico $HSHQ_STACKS_DIR/hshqmanager/web/favicon.ico
-  cp $HSHQ_ASSETS_DIR/images/hshqManager_header.jpg $HSHQ_STACKS_DIR/hshqmanager/conf/theme/
-  cp $HSHQ_ASSETS_DIR/images/hshqManager_login.jpg $HSHQ_STACKS_DIR/hshqmanager/conf/theme/
-  cp $HSHQ_ASSETS_DIR/images/HSHQ-ApplyJoin.png $HSHQ_STACKS_DIR/hshqmanager/web/img/
-  cp $HSHQ_ASSETS_DIR/images/HSHQ-Invite.png $HSHQ_STACKS_DIR/hshqmanager/web/img/
+  generateCert script-server "script-server,host.docker.internal"
+  outputConfigScriptServer
+  htpasswd -bcBC 10 $HSHQ_STACKS_DIR/script-server/users $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD > /dev/null 2>&1
+  cp $HSHQ_ASSETS_DIR/images/script-server.ico $HSHQ_STACKS_DIR/script-server/web/favicon.ico
+  cp $HSHQ_ASSETS_DIR/images/script-server_header.jpg $HSHQ_STACKS_DIR/script-server/conf/theme/
+  cp $HSHQ_ASSETS_DIR/images/script-server_login.jpg $HSHQ_STACKS_DIR/script-server/conf/theme/
+  cp $HSHQ_ASSETS_DIR/images/HSHQ-ApplyJoin.png $HSHQ_STACKS_DIR/script-server/web/img/
+  cp $HSHQ_ASSETS_DIR/images/HSHQ-Invite.png $HSHQ_STACKS_DIR/script-server/web/img/
 
-  if ! [ "$HSHQMANAGER_INIT_ENV" = "true" ]; then
-    sendEmail -s "HSHQ Manager Login Info" -b "HSHQ Manager Username: $HSHQMANAGER_ADMIN_USERNAME\nHSHQ Manager Password: $HSHQMANAGER_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
-    HSHQMANAGER_INIT_ENV=true
-    updateConfigVar HSHQMANAGER_INIT_ENV $HSHQMANAGER_INIT_ENV
-  fi
-
-  sudo chmod 644 $HSHQ_SCRIPTS_DIR/root/runHSHQManager.service
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/runHSHQManager.service
-  sudo rm -f /etc/systemd/system/runHSHQManager.service
-  sudo ln -s $HSHQ_SCRIPTS_DIR/root/runHSHQManager.service /etc/systemd/system/runHSHQManager.service
-  sudo systemctl daemon-reload
-  sudo systemctl enable runHSHQManager
-  sudo systemctl start runHSHQManager
-  # There is nothing in the log (journalctl -u runHSHQManager) that we can use to detect a successful startup.
-  # So just do a simple sleep.
-  sleep 10
+  sudo chmod 644 $HSHQ_SCRIPTS_DIR/root/runScriptServer.service
+  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/runScriptServer.service
+  sudo rm -f /etc/systemd/system/runScriptServer.service
+  sudo ln -s $HSHQ_SCRIPTS_DIR/root/runScriptServer.service /etc/systemd/system/runScriptServer.service
   inner_block=""
-  inner_block=$inner_block">>https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$HSHQMANAGER_LOCALHOST_PORT {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://host.docker.internal:$SCRIPTSERVER_LOCALHOST_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_HSHQMANAGER $MANAGETLS_HSHQMANAGER "$is_integrate_hshq" $NETDEFAULT_HSHQMANAGER "$inner_block"
-  insertSubAuthelia $SUB_HSHQMANAGER.$HOMESERVER_DOMAIN admins
-
-  insertEnableSvcAll hshqmanager "$FMLNAME_HSHQMANAGER" $USERTYPE_HSHQMANAGER "https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN" "homeserverhq.png"
+  updateCaddyBlocks $SUB_SCRIPTSERVER $MANAGETLS_SCRIPTSERVER "$is_integrate_hshq" $NETDEFAULT_SCRIPTSERVER "$inner_block"
+  insertSubAuthelia $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN admins
+  insertEnableSvcAll script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png"
   restartAllCaddyContainers
-  sudo systemctl restart runHSHQManager
-  fullResetHSHQManager
+  sudo systemctl daemon-reload
+  sudo systemctl enable runScriptServer
+  sudo systemctl start runScriptServer
+  sleep 3
+  fullResetScriptServer
+  if ! [ "$SCRIPTSERVER_INIT_ENV" = "true" ]; then
+    sendEmail -s "Script-server Login Info" -b "Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\nScript-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    SCRIPTSERVER_INIT_ENV=true
+    updateConfigVar SCRIPTSERVER_INIT_ENV $SCRIPTSERVER_INIT_ENV
+  fi
 }
 
-function outputConfigHSHQManager()
+function outputConfigScriptServer()
 {
-  sudo tee $HSHQ_SCRIPTS_DIR/root/runHSHQManager.service >/dev/null <<EOFHS
+  sudo tee $HSHQ_SCRIPTS_DIR/root/runScriptServer.service >/dev/null <<EOFHS
 [Unit]
-Description=HSHQ Manager
+Description=Script-server
 After=network.target
 StartLimitIntervalSec=0
 
@@ -37627,47 +37698,47 @@ StartLimitIntervalSec=0
 Type=simple
 Restart=always
 RestartSec=1
-ExecStart=/usr/bin/python3 $HSHQ_STACKS_DIR/hshqmanager/launcher.py
+ExecStart=/usr/bin/python3 $HSHQ_STACKS_DIR/script-server/launcher.py
 User=$USERNAME
 
 [Install]
 WantedBy=multi-user.target
 EOFHS
 
-  cat <<EOFHS > $HSHQ_STACKS_DIR/hshqmanager/conf/conf.json
+  cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/conf.json
 {
-  "port": $HSHQMANAGER_LOCALHOST_PORT,
+  "port": $SCRIPTSERVER_LOCALHOST_PORT,
   "address": "0.0.0.0",
-  "title": "HSHQ Manager",
+  "title": "Script-server",
   "ssl": {
-    "key_path": "$HSHQ_SSL_DIR/hshqmanager.key",
-    "cert_path": "$HSHQ_SSL_DIR/hshqmanager.crt"
+    "key_path": "$HSHQ_SSL_DIR/script-server.key",
+    "cert_path": "$HSHQ_SSL_DIR/script-server.crt"
   },
   "auth": {
     "type": "htpasswd",
-    "htpasswd_path": "$HSHQ_STACKS_DIR/hshqmanager/users"
+    "htpasswd_path": "$HSHQ_STACKS_DIR/script-server/users"
   },
   "access": {
-	"allowed_users": [ "$HSHQMANAGER_ADMIN_USERNAME" ],
-	"admin_users": [ "$HSHQMANAGER_ADMIN_USERNAME" ]
+	"allowed_users": [ "$SCRIPTSERVER_ADMIN_USERNAME" ],
+	"admin_users": [ "$SCRIPTSERVER_ADMIN_USERNAME" ]
   },
   "alerts": {
     "destinations": [
       {
         "type": "email",
-        "from": "HSHQ Manager <$EMAIL_SMTP_EMAIL_ADDRESS>",
+        "from": "Script-server ${HSHQ_ADMIN_NAME}<$EMAIL_SMTP_EMAIL_ADDRESS>",
         "to": "$EMAIL_ADMIN_EMAIL_ADDRESS",
         "server": "$SUB_POSTFIX.$HOMESERVER_DOMAIN",
         "auth_enabled": false,
         "tls": true,
-        "url": "https://$SUB_HSHQMANAGER.$HOMESERVER_DOMAIN/test_alerts"
+        "url": "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/test_alerts"
       }
     ]
   }
 }
 EOFHS
 
-  cat <<EOFHS > $HSHQ_STACKS_DIR/hshqmanager/conf/theme/theme.css
+  cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/theme/theme.css
 html:root {
     --hover-color: rgba(255, 255, 255, 0.04);
     --focus-color: rgba(255, 255, 255, 0.12);
@@ -37703,8 +37774,8 @@ html:root {
     --background-color-level-16dp: rgba(255, 255, 255, 0.15);
     --background-color-disabled: rgba(255, 255, 255, 0.12);
 
-    --script-header-background: url('../theme/hshqManager_header.jpg') center / cover no-repeat;
-    --login-header-background: url('../theme/hshqManager_login.jpg') center / cover no-repeat;
+    --script-header-background: url('../theme/script-server_header.jpg') center / cover no-repeat;
+    --login-header-background: url('../theme/script-server_login.jpg') center / cover no-repeat;
 
     --separator-color: #424242;
 
@@ -37730,35 +37801,35 @@ html:root {
 
 EOFHS
 
-  outputAllHSHQManagerScripts
-  outputStackListsHSHQManager
+  outputAllScriptServerScripts
+  outputStackListsScriptServer
 }
 
-function performUpdateHSHQManager()
+function performUpdateScriptServer()
 {
   return
 }
 
-function clearAllHSHQManagerScripts()
+function clearAllScriptServerScripts()
 {
-  rm -fr $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/*
-  rm -fr $HSHQ_STACKS_DIR/hshqmanager/conf/runners/*
-  rm -fr $HSHQ_STACKS_DIR/hshqmanager/conf/deleted/*
+  rm -fr $HSHQ_STACKS_DIR/script-server/conf/scripts/*
+  rm -fr $HSHQ_STACKS_DIR/script-server/conf/runners/*
+  rm -fr $HSHQ_STACKS_DIR/script-server/conf/deleted/*
 }
 
-function fullResetHSHQManager()
+function fullResetScriptServer()
 {
-  clearAllHSHQManagerScripts
-  rm -f $HSHQ_STACKS_DIR/hshqmanager/logs/processes/*
-  rm -fr $HSHQ_STACKS_DIR/hshqmanager/temp/uploadFiles/*
-  outputAllHSHQManagerScripts
+  clearAllScriptServerScripts
+  rm -f $HSHQ_STACKS_DIR/script-server/logs/processes/*
+  rm -fr $HSHQ_STACKS_DIR/script-server/temp/uploadFiles/*
+  outputAllScriptServerScripts
 }
 
-function outputAllHSHQManagerScripts()
+function outputAllScriptServerScripts()
 {
   group_id_misc="01 Misc Utils"
   group_id_services="02 Services"
-  group_id_hshq_manager="03 HSHQ Manager Utils"
+  group_id_scriptserver="03 Script-server Utils"
   group_id_systemutils="04 System Utils"
   group_id_testing="05 Testing"
   group_id_mynetwork="06 My Network"
@@ -37766,7 +37837,7 @@ function outputAllHSHQManagerScripts()
   group_id_relayserver="08 RelayServer Utils"
 
   # Util scripts
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 #!/bin/bash
 
 function getArgumentValue()
@@ -37785,7 +37856,7 @@ function getArgumentValue()
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkConfirm.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh
 #!/bin/bash
 
 if ! [ "\$1" = "confirm" ]; then
@@ -37795,7 +37866,7 @@ fi
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 #!/bin/bash
 
 echo "\$1" | sudo -S -v -p "" > /dev/null 2>&1
@@ -37806,7 +37877,7 @@ fi
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 #!/bin/bash
 
 source $HSHQ_LIB_SCRIPT lib
@@ -37814,7 +37885,7 @@ checkDecryptConfigFile \$1
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 #!/bin/bash
 
 if [ "\$(checkHSHQScriptOpen)" = "true" ]; then
@@ -37824,7 +37895,7 @@ fi
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/generateRandomIP.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/generateRandomIP.sh
 #!/bin/bash
 
 echo 10.\$(( \$RANDOM % 256 )).\$(( \$RANDOM % 256 )).\$((\$((\$RANDOM%250))+1))
@@ -37832,7 +37903,7 @@ echo 10.\$(( \$RANDOM % 256 )).\$(( \$RANDOM % 256 )).\$((\$((\$RANDOM%250))+1))
 EOFSC
 
   # 01 Misc Utils
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/restartAuthelia.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartAuthelia.sh
 #!/bin/bash
 
 docker container restart authelia > /dev/null 2>&1
@@ -37840,7 +37911,7 @@ echo "Authelia successfully restarted."
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/restartAuthelia.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restartAuthelia.json
 {
   "name": "01 Restart Authelia",
   "script_path": "conf/scripts/restartAuthelia.sh",
@@ -37851,16 +37922,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/restartCaddyContainer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartCaddyContainer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 caddyinstance=\$(getArgumentValue caddyinstance "\$@")
 docker container restart "\$caddyinstance"
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/restartCaddyContainer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restartCaddyContainer.json
 {
   "name": "02 Restart Caddy Container",
   "script_path": "conf/scripts/restartCaddyContainer.sh",
@@ -37890,12 +37961,12 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/restartAllCaddyContainers.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartAllCaddyContainers.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkConfirm.sh "\$confirm"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
 
 source $HSHQ_LIB_SCRIPT lib
 restartAllCaddyContainers
@@ -37903,7 +37974,7 @@ echo "Caddy containers successfully restarted."
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/restartAllCaddyContainers.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restartAllCaddyContainers.json
 {
   "name": "03 Restart All Caddy Containers",
   "script_path": "conf/scripts/restartAllCaddyContainers.sh",
@@ -37929,14 +38000,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/generateSignedCertificate.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/generateSignedCertificate.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 certs_filename=\$(getArgumentValue filename "\$@")
@@ -37952,7 +38023,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/generateSignedCertificate.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/generateSignedCertificate.json
 {
   "name": "04 Generate Signed Certificate",
   "script_path": "conf/scripts/generateSignedCertificate.sh",
@@ -38054,16 +38125,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/resetCaddyData.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetCaddyData.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 caddyinstance=\$(getArgumentValue caddyinstance "\$@")
@@ -38076,7 +38147,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/resetCaddyData.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetCaddyData.json
 {
   "name": "05 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyData.sh",
@@ -38136,16 +38207,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/restartAllStacks.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartAllStacks.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -38156,7 +38227,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/restartAllStacks.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restartAllStacks.json
 {
   "name": "06 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
@@ -38198,15 +38269,15 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailCredentialsVaultwarden.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailCredentialsVaultwarden.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -38217,7 +38288,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailCredentialsVaultwarden.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailCredentialsVaultwarden.json
 {
   "name": "07 Email Vaultwarden Credentials",
   "script_path": "conf/scripts/emailCredentialsVaultwarden.sh",
@@ -38244,15 +38315,15 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailRootCA.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailRootCA.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -38263,7 +38334,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailRootCA.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailRootCA.json
 {
   "name": "08 Email Root CA",
   "script_path": "conf/scripts/emailRootCA.sh",
@@ -38291,16 +38362,16 @@ EOFSC
 EOFSC
 
   # 02 Services
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/installServicesFromList.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/installServicesFromList.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 services=\$(getArgumentValue services "\$@")
@@ -38313,11 +38384,11 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/installServicesFromList.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/installServicesFromList.json
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -38373,18 +38444,18 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/installAllAvailableServices.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/installAllAvailableServices.sh
 #!/bin/bash
 
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -38395,11 +38466,11 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/installAllAvailableServices.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/installAllAvailableServices.json
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this HSHQ Manager webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -38437,16 +38508,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/updateServicesFromList.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateServicesFromList.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 services=\$(getArgumentValue services "\$@")
@@ -38459,7 +38530,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/updateServicesFromList.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/updateServicesFromList.json
 {
   "name": "03 Update Service(s)",
   "script_path": "conf/scripts/updateServicesFromList.sh",
@@ -38519,16 +38590,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/updateAllAvailableServices.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateAllAvailableServices.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -38539,7 +38610,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/updateAllAvailableServices.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/updateAllAvailableServices.json
 {
   "name": "04 Update All Available Services",
   "script_path": "conf/scripts/updateAllAvailableServices.sh",
@@ -38581,16 +38652,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeServicesFromList.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeServicesFromList.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 services=\$(getArgumentValue services "\$@")
@@ -38603,7 +38674,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeServicesFromList.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeServicesFromList.json
 {
   "name": "05 Remove Service(s)",
   "script_path": "conf/scripts/removeServicesFromList.sh",
@@ -38663,29 +38734,29 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/refreshServicesLists.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/refreshServicesLists.sh
 #!/bin/bash
 
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
 echo "Refreshing all services lists..."
-outputStackListsHSHQManager
+outputStackListsScriptServer
 set -e
 performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/refreshServicesLists.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/refreshServicesLists.json
 {
   "name": "06 Refresh Services Lists",
   "script_path": "conf/scripts/refreshServicesLists.sh",
@@ -38727,25 +38798,25 @@ EOFSC
 
 EOFSC
 
-  # 03 HSHQ Manager Utils
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/clearHSHQManagerProcessLogs.sh
+  # 03 Script-server Utils
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearScriptServerProcessLogs.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkConfirm.sh "\$confirm"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
 
-rm -f $HSHQ_STACKS_DIR/hshqmanager/logs/processes/*
+rm -f $HSHQ_STACKS_DIR/script-server/logs/processes/*
 echo "Logs have been cleared."
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/clearHSHQManagerProcessLogs.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/clearScriptServerProcessLogs.json
 {
   "name": "01 Clear History",
-  "script_path": "conf/scripts/clearHSHQManagerProcessLogs.sh",
+  "script_path": "conf/scripts/clearScriptServerProcessLogs.sh",
   "description": "Clears out all of the process logs (history) in this app. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
-  "group": "$group_id_hshq_manager",
+  "group": "$group_id_scriptserver",
   "parameters": [
     {
       "name": "Enter 'confirm' to continue.",
@@ -38766,30 +38837,30 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/restoreHSHQManagerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-outputAllHSHQManagerScripts
-echo "HSHQ Manager scripts restored."
+outputAllScriptServerScripts
+echo "Script-server scripts restored."
 set -e
 performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/restoreHSHQManagerScripts.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restoreScriptServerScripts.json
 {
   "name": "02 Restore Scripts",
-  "script_path": "conf/scripts/restoreHSHQManagerScripts.sh",
-  "description": "Restores all HSHQ Manager scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Does not clear/remove any scripts, but will overwrite those with the same name.",
-  "group": "$group_id_hshq_manager",
+  "script_path": "conf/scripts/restoreScriptServerScripts.sh",
+  "description": "Restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Does not clear/remove any scripts, but will overwrite those with the same name.",
+  "group": "$group_id_scriptserver",
   "parameters": [
     {
       "name": "Enter config decrypt password",
@@ -38811,31 +38882,31 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/clearRestoreHSHQManagerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-clearAllHSHQManagerScripts
-outputAllHSHQManagerScripts
-echo "HSHQ Manager scripts cleared and restored."
+clearAllScriptServerScripts
+outputAllScriptServerScripts
+echo "Script-server scripts cleared and restored."
 set -e
 performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/clearRestoreHSHQManagerScripts.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/clearRestoreScriptServerScripts.json
 {
   "name": "03 Clear and Restore Scripts",
-  "script_path": "conf/scripts/clearRestoreHSHQManagerScripts.sh",
-  "description": "Clears and restores all HSHQ Manager scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you have added/modified any scripts, they will be deleted.",
-  "group": "$group_id_hshq_manager",
+  "script_path": "conf/scripts/clearRestoreScriptServerScripts.sh",
+  "description": "Clears and restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you have added/modified any scripts, they will be deleted.",
+  "group": "$group_id_scriptserver",
   "parameters": [
     {
       "name": "Enter config decrypt password",
@@ -38857,30 +38928,30 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/fullResetHSHQManagerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-fullResetHSHQManager
-echo "HSHQ Manager fully reset."
+fullResetScriptServer
+echo "Script-server fully reset."
 set -e
 performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/fullResetHSHQManagerScripts.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/fullResetScriptServerScripts.json
 {
-  "name": "04 Full HSHQ Manager Reset",
-  "script_path": "conf/scripts/fullResetHSHQManagerScripts.sh",
-  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the HSHQ Manager app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
-  "group": "$group_id_hshq_manager",
+  "name": "04 Full Script-server Reset",
+  "script_path": "conf/scripts/fullResetScriptServerScripts.sh",
+  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the Script-server app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
+  "group": "$group_id_scriptserver",
   "parameters": [
     {
       "name": "Enter config decrypt password",
@@ -38903,7 +38974,7 @@ EOFSC
 EOFSC
 
   # 04 System Utils
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkUpdateHSHQ.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkUpdateHSHQ.sh
 #!/bin/bash
 
 source $HSHQ_LIB_SCRIPT lib
@@ -38963,7 +39034,7 @@ fi
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/checkUpdateHSHQ.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkUpdateHSHQ.json
 {
   "name": "01 Check Update HSHQ",
   "script_path": "conf/scripts/checkUpdateHSHQ.sh",
@@ -38974,16 +39045,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/performUpdateHSHQ.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
 echo "Updating HSHQ..."
@@ -39065,10 +39136,13 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
   rm -f \$HSHQ_LIB_SCRIPT
   mv \$HSHQ_LIB_TMP \$HSHQ_LIB_SCRIPT
   echo "Lib script verified!"
-  source $HSHQ_LIB_SCRIPT lib
-  decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
-  is_any_updated=true
-  echo "Lib script verified and updated."
+fi
+
+source $HSHQ_LIB_SCRIPT lib
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+if ! [ "\$is_any_updated" = "true" ]; then
+  is_any_updated="\$is_update_performed"
 fi
 
 if [ "\$is_any_updated" = "true" ]; then
@@ -39082,7 +39156,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/performUpdateHSHQ.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/performUpdateHSHQ.json
 {
   "name": "02 Perform Update HSHQ",
   "script_path": "conf/scripts/performUpdateHSHQ.sh",
@@ -39124,14 +39198,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/updateHostAndReboot.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateHostAndReboot.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
 echo "Updating Linux and rebooting..."
@@ -39140,7 +39214,7 @@ set -e
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/updateHostAndReboot.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/updateHostAndReboot.json
 {
   "name": "03 Update Linux OS and Reboot",
   "script_path": "conf/scripts/updateHostAndReboot.sh",
@@ -39167,19 +39241,19 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/poweroffHomeServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/poweroffHomeServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
 
 echo "Powering down..."
 sudo poweroff
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/poweroffHomeServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/poweroffHomeServer.json
 {
   "name": "04 Power off HomeServer",
   "script_path": "conf/scripts/poweroffHomeServer.sh",
@@ -39206,19 +39280,19 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/downloadAllDockerImages.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/downloadAllDockerImages.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkConfirm.sh "\$confirm"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
 
 echo "Downloading all docker images..."
 pullDockerImages
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/downloadAllDockerImages.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/downloadAllDockerImages.json
 {
   "name": "05 Download All Docker Images",
   "script_path": "conf/scripts/downloadAllDockerImages.sh",
@@ -39244,19 +39318,19 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/resetHSHQOpenStatus.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetHSHQOpenStatus.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkConfirm.sh "\$confirm"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
 
 source $HSHQ_LIB_SCRIPT lib
 closeHSHQScript
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/resetHSHQOpenStatus.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetHSHQOpenStatus.json
 {
   "name": "06 Reset HSHQ Open Status",
   "script_path": "conf/scripts/resetHSHQOpenStatus.sh",
@@ -39282,14 +39356,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeConnectionEmail.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/changeConnectionEmail.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
@@ -39313,7 +39387,7 @@ if ! [ "\$is_changed" = "true" ]; then
 fi
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeConnectionEmail.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/changeConnectionEmail.json
 {
   "name": "07 Change Connection Email",
   "script_path": "conf/scripts/changeConnectionEmail.sh",
@@ -39375,18 +39449,18 @@ EOFSC
 EOFSC
 
   # 05 Testing
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/sudoPasswordTest.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/sudoPasswordTest.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
 
 echo "Sudo password is correct."
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/sudoPasswordTest.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/sudoPasswordTest.json
 {
   "name": "01 Sudo Password Test",
   "script_path": "conf/scripts/sudoPasswordTest.sh",
@@ -39413,18 +39487,18 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/decryptConfigPasswordTest.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/decryptConfigPasswordTest.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 
 echo "Config decrypt password is correct."
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/decryptConfigPasswordTest.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/decryptConfigPasswordTest.json
 {
   "name": "02 Decrypt Config Password Test",
   "script_path": "conf/scripts/decryptConfigPasswordTest.sh",
@@ -39451,17 +39525,17 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkOpenStatus.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkOpenStatus.sh
 #!/bin/bash
 
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 echo "The HSHQ script is not currently open in any other instance."
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/checkOpenStatus.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkOpenStatus.json
 {
   "name": "03 Check HSHQ Open Status",
   "script_path": "conf/scripts/checkOpenStatus.sh",
@@ -39472,14 +39546,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkIPAddress.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkIPAddress.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 ischeckall=\$(getArgumentValue ischeckall "\$@")
@@ -39502,7 +39576,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/checkIPAddress.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkIPAddress.json
 {
   "name": "04 Check for Network Collision",
   "script_path": "conf/scripts/checkIPAddress.sh",
@@ -39582,12 +39656,12 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkWireGuardKey.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkWireGuardKey.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 checkkey=\$(getArgumentValue checkkey "\$@")
 
@@ -39602,7 +39676,7 @@ set -e
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/checkWireGuardKey.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkWireGuardKey.json
 {
   "name": "05 Check WireGuard Key",
   "script_path": "conf/scripts/checkWireGuardKey.sh",
@@ -39630,14 +39704,14 @@ EOFSC
 EOFSC
 
   # 06 My Network
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/myNetworkInviteConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/myNetworkInviteConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 configname=\$(getArgumentValue configname "\$@")
@@ -39655,7 +39729,7 @@ performExitFunctions false
 exit \$retVal
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/myNetworkInviteConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/myNetworkInviteConnection.json
 {
   "name": "01 Invite to Network",
   "script_path": "conf/scripts/myNetworkInviteConnection.sh",
@@ -39710,14 +39784,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/myNetworkInviteUserConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/myNetworkInviteUserConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 configname=\$(getArgumentValue configname "\$@")
@@ -39743,7 +39817,7 @@ performExitFunctions false
 exit \$retVal
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/myNetworkInviteUserConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/myNetworkInviteUserConnection.json
 {
   "name": "02 Invite User to Network",
   "script_path": "conf/scripts/myNetworkInviteUserConnection.sh",
@@ -39865,16 +39939,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeHSPrimaryInternetIP.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/changeHSPrimaryInternetIP.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 ipaddr=\$(getArgumentValue ipaddr "\$@")
@@ -39886,7 +39960,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeHSPrimaryInternetIP.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/changeHSPrimaryInternetIP.json
 {
   "name": "03 Change Primary HS Int IP",
   "script_path": "conf/scripts/changeHSPrimaryInternetIP.sh",
@@ -39946,14 +40020,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/changeUserIP.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/changeUserIP.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
@@ -39967,7 +40041,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/changeUserIP.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/changeUserIP.json
 {
   "name": "04 Change User IP",
   "script_path": "conf/scripts/changeUserIP.sh",
@@ -40031,14 +40105,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeHSVPNConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeHSVPNConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
@@ -40052,7 +40126,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSVPNConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeHSVPNConnection.json
 {
   "name": "05 Remove HS VPN Connection",
   "script_path": "conf/scripts/removeHSVPNConnection.sh",
@@ -40111,14 +40185,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeHSInternetConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeHSInternetConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
@@ -40132,7 +40206,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeHSInternetConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeHSInternetConnection.json
 {
   "name": "06 Remove HS Int Connection",
   "script_path": "conf/scripts/removeHSInternetConnection.sh",
@@ -40191,14 +40265,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeUserConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeUserConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
@@ -40212,7 +40286,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeUserConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeUserConnection.json
 {
   "name": "07 Remove User Connection",
   "script_path": "conf/scripts/removeUserConnection.sh",
@@ -40271,14 +40345,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailHomeServersDNSList.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailHomeServersDNSList.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -40289,7 +40363,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailHomeServersDNSList.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailHomeServersDNSList.json
 {
   "name": "08 Email HomeServers DNS List",
   "script_path": "conf/scripts/emailHomeServersDNSList.sh",
@@ -40316,14 +40390,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailUsersDNSList.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailUsersDNSList.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -40334,7 +40408,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailUsersDNSList.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailUsersDNSList.json
 {
   "name": "09 Email Users DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
@@ -40361,14 +40435,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailMyNetworkUserDetails.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailMyNetworkUserDetails.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -40379,7 +40453,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailMyNetworkUserDetails.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailMyNetworkUserDetails.json
 {
   "name": "10 Email User Details",
   "script_path": "conf/scripts/emailMyNetworkUserDetails.sh",
@@ -40406,14 +40480,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/emailMyNetworkBroadcast.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailMyNetworkBroadcast.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 strMsg="\$2"
@@ -40425,7 +40499,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/emailMyNetworkBroadcast.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailMyNetworkBroadcast.json
 {
   "name": "11 Email All Broadcast",
   "script_path": "conf/scripts/emailMyNetworkBroadcast.sh",
@@ -40465,17 +40539,16 @@ EOFSC
 
 EOFSC
 
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/createClientDNSServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/createClientDNSServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 cdnsname=\$(getArgumentValue cdnsname "\$@")
@@ -40487,7 +40560,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/createClientDNSServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/createClientDNSServer.json
 {
   "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
@@ -40544,16 +40617,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeClientDNSServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeClientDNSServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selserver=\$(getArgumentValue selserver "\$@")
@@ -40566,7 +40639,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeClientDNSServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeClientDNSServer.json
 {
   "name": "13 Remove ClientDNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
@@ -40627,16 +40700,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removePrimaryVPNConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removePrimaryVPNConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 disconnectReason="\$3"
@@ -40648,7 +40721,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removePrimaryVPNConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removePrimaryVPNConnection.json
 {
   "name": "14 Remove Primary VPN",
   "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
@@ -40704,14 +40777,14 @@ EOFSC
 EOFSC
 
   # 07 Other Networks
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/applyHSVPNConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/applyHSVPNConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
@@ -40723,7 +40796,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/applyHSVPNConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/applyHSVPNConnection.json
 {
   "name": "01 HS VPN Application",
   "script_path": "conf/scripts/applyHSVPNConnection.sh",
@@ -40765,14 +40838,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/applyHSInternetConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/applyHSInternetConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
@@ -40784,7 +40857,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/applyHSInternetConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/applyHSInternetConnection.json
 {
   "name": "02 HS Internet Application",
   "script_path": "conf/scripts/applyHSInternetConnection.sh",
@@ -40826,14 +40899,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/applyUserConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/applyUserConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
@@ -40854,7 +40927,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/applyUserConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/applyUserConnection.json
 {
   "name": "03 User Connection Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
@@ -40976,14 +41049,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/applyHSVPNPrimaryConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/applyHSVPNPrimaryConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 lecertsubs=\$(getArgumentValue lecertsubs "\$@")
@@ -40995,7 +41068,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/applyHSVPNPrimaryConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/applyHSVPNPrimaryConnection.json
 {
   "name": "04 Primary VPN Application",
   "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
@@ -41038,16 +41111,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/joinNetwork.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/joinNetwork.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -41060,7 +41133,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/joinNetwork.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/joinNetwork.json
 {
   "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
@@ -41115,16 +41188,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/disconnectVPNConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/disconnectVPNConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
@@ -41138,7 +41211,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/disconnectVPNConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/disconnectVPNConnection.json
 {
   "name": "06 Disconnect VPN Connection",
   "script_path": "conf/scripts/disconnectVPNConnection.sh",
@@ -41212,16 +41285,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/disconnectInternetConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/disconnectInternetConnection.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
@@ -41235,7 +41308,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/disconnectInternetConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/disconnectInternetConnection.json
 {
   "name": "07 Disconnect Int Connection",
   "script_path": "conf/scripts/disconnectInternetConnection.sh",
@@ -41309,14 +41382,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/updateHomeServerDNS.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateHomeServerDNS.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -41329,7 +41402,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/updateHomeServerDNS.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/updateHomeServerDNS.json
 {
   "name": "08 Update HomeServer DNS",
   "script_path": "conf/scripts/updateHomeServerDNS.sh",
@@ -41369,14 +41442,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/syncAdguardDNS.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/syncAdguardDNS.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -41387,7 +41460,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/syncAdguardDNS.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/syncAdguardDNS.json
 {
   "name": "09 Sync Adguard DNS Server",
   "script_path": "conf/scripts/syncAdguardDNS.sh",
@@ -41415,14 +41488,14 @@ EOFSC
 EOFSC
 
   # 08 RelayServer Utils
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/addDomainToRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addDomainToRelayServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 adddomain=\$(getArgumentValue adddomain "\$@")
@@ -41438,7 +41511,7 @@ performExitFunctions false
 exit \$retVal
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/addDomainToRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addDomainToRelayServer.json
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
@@ -41499,14 +41572,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeDomainFromRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeDomainFromRelayServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 seldomain=\$(getArgumentValue seldomain "\$@")
@@ -41521,7 +41594,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeDomainFromRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeDomainFromRelayServer.json
 {
   "name": "02 Remove Secondary Domain",
   "script_path": "conf/scripts/removeDomainFromRelayServer.sh",
@@ -41567,14 +41640,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/addLEDomainToRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addLEDomainToRelayServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 adddomain=\$(getArgumentValue adddomain "\$@")
@@ -41605,7 +41678,7 @@ exit \$retVal
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/addLEDomainToRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addLEDomainToRelayServer.json
 {
   "name": "03 Add LE Subdomain",
   "script_path": "conf/scripts/addLEDomainToRelayServer.sh",
@@ -41666,14 +41739,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeLEDomainFromRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeLEDomainFromRelayServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 seldomain=\$(getArgumentValue seldomain "\$@")
@@ -41686,7 +41759,7 @@ performExitFunctions false
 exit \$retVal
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeLEDomainFromRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeLEDomainFromRelayServer.json
 {
   "name": "04 Remove LE Subdomain",
   "script_path": "conf/scripts/removeLEDomainFromRelayServer.sh",
@@ -41751,14 +41824,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/addExposeDomainToRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addExposeDomainToRelayServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 adddomain=\$(getArgumentValue adddomain "\$@")
@@ -41788,7 +41861,7 @@ performExitFunctions false
 exit \$retVal
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/addExposeDomainToRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addExposeDomainToRelayServer.json
 {
   "name": "05 Add Exposed Subdomain",
   "script_path": "conf/scripts/addExposeDomainToRelayServer.sh",
@@ -41849,14 +41922,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/removeExposeDomainFromRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeExposeDomainFromRelayServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 seldomain=\$(getArgumentValue seldomain "\$@")
@@ -41869,7 +41942,7 @@ performExitFunctions false
 exit \$retVal
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/removeExposeDomainFromRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeExposeDomainFromRelayServer.json
 {
   "name": "06 Remove Exposed Subdomain",
   "script_path": "conf/scripts/removeExposeDomainFromRelayServer.sh",
@@ -41934,14 +42007,14 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/resetCaddyDNSRelayServer.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetCaddyDNSRelayServer.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
@@ -41952,7 +42025,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/resetCaddyDNSRelayServer.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetCaddyDNSRelayServer.json
 {
   "name": "07 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyDNSRelayServer.sh",
@@ -41979,16 +42052,16 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/hostVPN.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/hostVPN.sh
 #!/bin/bash
 
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/checkHSHQOpenStatus.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 cursshport=\$(getArgumentValue cursshport "\$@")
@@ -42005,7 +42078,7 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/hshqmanager/conf/runners/hostVPN.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/hostVPN.json
 {
   "name": "05 Host VPN",
   "script_path": "conf/scripts/hostVPN.sh",
@@ -42138,23 +42211,23 @@ EOFSC
 EOFSC
 
   # Need to do a bit more work to migrate this function to web UI.
-  rm -f $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/hostVPN.sh
-  rm -f $HSHQ_STACKS_DIR/hshqmanager/conf/runners/hostVPN.json
+  rm -f $HSHQ_STACKS_DIR/script-server/conf/scripts/hostVPN.sh
+  rm -f $HSHQ_STACKS_DIR/script-server/conf/runners/hostVPN.json
   # Also need to add transfer primary VPN function
 
   # Set permissions
-  chmod 700 $HSHQ_STACKS_DIR/hshqmanager/conf/scripts/*
-  chmod 600 $HSHQ_STACKS_DIR/hshqmanager/conf/runners/*
+  chmod 700 $HSHQ_STACKS_DIR/script-server/conf/scripts/*
+  chmod 600 $HSHQ_STACKS_DIR/script-server/conf/runners/*
 }
 
-function outputStackListsHSHQManager()
+function outputStackListsScriptServer()
 {
-  echo ${HSHQ_REQUIRED_STACKS},${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_FULL_STACKLIST_FILENAME
-  sort -o $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_FULL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_FULL_STACKLIST_FILENAME
-  echo ${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_OPTIONAL_STACKLIST_FILENAME
-  sort -o $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_OPTIONAL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_OPTIONAL_STACKLIST_FILENAME
-  echo $(getStacksToUpdate) | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_UPDATE_STACKLIST_FILENAME
-  sort -o $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_UPDATE_STACKLIST_FILENAME $HSHQ_STACKS_DIR/hshqmanager/conf/$HSHQ_MANAGER_UPDATE_STACKLIST_FILENAME
+  echo ${HSHQ_REQUIRED_STACKS},${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_FULL_STACKLIST_FILENAME
+  sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_FULL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_FULL_STACKLIST_FILENAME
+  echo ${HSHQ_OPTIONAL_STACKS} | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME
+  sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME
+  echo $(getStacksToUpdate) | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
+  sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
 }
 
 # SQLPad
