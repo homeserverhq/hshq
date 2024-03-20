@@ -13458,6 +13458,8 @@ function version46Update()
     getUpdateAssets
     set +e
     sed -i "/SVCD_HSHQMANAGER/d" $CONFIG_FILE
+    sed -i "s/HSHQMANAGER/SCRIPTSERVER/g" $CONFIG_FILE
+    sed -i "s/HSHQ Manager/Script-server/g" $CONFIG_FILE
     source $CONFIG_FILE
     SCRIPTSERVER_INIT_ENV=false
     SCRIPTSERVER_ADMIN_USERNAME=""
