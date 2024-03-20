@@ -34424,7 +34424,7 @@ function installNetdata()
   mkdir $HSHQ_NONBACKUP_DIR/netdata
   mkdir $HSHQ_NONBACKUP_DIR/netdata/cache
 
-  outputConfigNetData
+  outputConfigNetdata
   installStack netdata netdata "" $HOME/netdata.env
   sleep 3
 
@@ -34450,7 +34450,7 @@ function installNetdata()
   fi
 }
 
-function outputConfigNetData()
+function outputConfigNetdata()
 {
   cat <<EOFDZ > $HOME/netdata-compose.yml
 $STACK_VERSION_PREFIX netdata $(getScriptStackVersion netdata)
@@ -34526,7 +34526,7 @@ EOFDZ
 
 }
 
-function performUpdateNetData()
+function performUpdateNetdata()
 {
   perform_stack_name=netdata
   # This function modifies the variable perform_update_report
