@@ -13445,9 +13445,9 @@ function version46Update()
     echo -e "\n\n\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++"
     echo -e "This is a 2-part update, as it is renaming HSHQ Manager to Script-server."
     echo -e "If you are using HSHQ Manager to perform this update, then you will lose connection"
-    echo -e "as a result. Monitor your $EMAIL_ADMIN_EMAIL_ADDRESS account for the new creditials."
+    echo -e "as a result. Monitor your $EMAIL_ADMIN_EMAIL_ADDRESS account for the new credentials."
     echo -e "As soon as you recieve this email, then log into https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN"
-    echo -e "with the new creditials and re-run the update process."
+    echo -e "with the new creditials and re-run the Perform Update HSHQ function."
     echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
     is_continue=""
     while ! [ "$is_continue" = "ok" ]
@@ -13476,6 +13476,7 @@ function version46Update()
     closeHSHQScript
     sudo systemctl disable runHSHQManager
     sudo systemctl stop runHSHQManager
+    echo -e "\n\nPlease restart the hshq.sh script to complete the update.\n"
     exit
   fi
 }
