@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=46
+HSHQ_SCRIPT_VERSION=47
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -1196,35 +1196,35 @@ function initInstallation()
     strInstallConfig="${strInstallConfig}""""$rs_wg_user_conf""""\n"
     strInstallConfig="${strInstallConfig}=======================================================\n\n"
   fi
-  strInstallConfig="${strInstallConfig}======================= Root CA =======================\n"
-  strInstallConfig="${strInstallConfig}""""$(cat "$HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt")""""\n"
-  strInstallConfig="${strInstallConfig}=======================================================\n"
+  #strInstallConfig="${strInstallConfig}======================= Root CA =======================\n"
+  #strInstallConfig="${strInstallConfig}""""$(cat "$HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt")""""\n"
+  #strInstallConfig="${strInstallConfig}=======================================================\n"
   strInstallConfig="${strInstallConfig}#######################################################\n\n"
-  strInstallConfig="${strInstallConfig}The system is prepped for installation.\n"
-  strInstallConfig="${strInstallConfig}It will take around 20 minutes to perform the base installation,\n"
-  strInstallConfig="${strInstallConfig}depending on hardward specs and download speeds.\n"
-  strInstallConfig="${strInstallConfig}Copy the above info before proceeding. (Ensure to scroll up and\n"
-  strInstallConfig="${strInstallConfig}retain everything between the ##### borders)\n"
- # strInstallConfig="${strInstallConfig}This install configuration is also stored in $HSHQ_INSTALL_CFG.\n"
+  strInstallConfig="${strInstallConfig}The system is prepped for installation. It will take around\n"
+  strInstallConfig="${strInstallConfig}15 minutes to perform the base installation, depending on\n"
+  strInstallConfig="${strInstallConfig}hardward specs and download speeds. Copy the above info\n"
+  strInstallConfig="${strInstallConfig}before proceeding. (Ensure to scroll up and retain everything\n"
+  strInstallConfig="${strInstallConfig}between the ##### borders)\n\n"
   strInstallConfig="${strInstallConfig}The process will run continuously uninterrupted in a 'screen'\n"
-  strInstallConfig="${strInstallConfig}If you lose connection, then enter 'screen -r hshqInstall' to resume\n"
-  strInstallConfig="${strInstallConfig}the screen if you want to continue to view the process.\n"
-  strInstallConfig="${strInstallConfig}To exit the screen, press CTRL-a, then release then press d.\n"
-  strInstallConfig="${strInstallConfig}Two log files of the installation process are generated and stored in $HSHQ_BASE_DIR.\n\n"
+  strInstallConfig="${strInstallConfig}If you lose connection, then enter 'screen -r hshqInstall' to\n"
+  strInstallConfig="${strInstallConfig}resume the screen if you want to continue to view the process.\n"
+  strInstallConfig="${strInstallConfig}To exit the screen, press CTRL-a, then release both keys,\n"
+  strInstallConfig="${strInstallConfig}then press d to detach.\n\n"
   strInstallConfig="${strInstallConfig}The system will automatically reboot upon completion.\n\n"
-  strInstallConfig="${strInstallConfig}If you want to completely remove everything, run the utility inside\n"
-  strInstallConfig="${strInstallConfig}this script(System Utils -> Uninstall and Remove Everything)\n"
-  strInstallConfig="${strInstallConfig}and follow the prompts.\n\n"
+  strInstallConfig="${strInstallConfig}If you want to completely remove everything, run the utility\n"
+  strInstallConfig="${strInstallConfig}inside this script (System Utils -> Uninstall and Remove\n"
+  strInstallConfig="${strInstallConfig}Everything) and follow the prompts.\n\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strInstallConfig="${strInstallConfig}The installation must also be performed on your RelayServer.\n"
-    strInstallConfig="${strInstallConfig}You have the option of initiating the installation of your RelayServer\n"
-    strInstallConfig="${strInstallConfig}directly within this session or creating a new SSH session\n"
-    strInstallConfig="${strInstallConfig}to start and monitor the process. If a separate session, you will\n"
-    strInstallConfig="${strInstallConfig}need to log into your RelayServer as your new user ($RELAYSERVER_REMOTE_USERNAME)\n"
-    strInstallConfig="${strInstallConfig}and initiate the installation process by entering: bash $RS_INSTALL_FRESH_SCRIPT_NAME.\n"
-    strInstallConfig="${strInstallConfig}The installation script has already be transferred to your RelayServer\n"
-    strInstallConfig="${strInstallConfig}in the user's home directory (/home/$RELAYSERVER_REMOTE_USERNAME). Start the installation\n"
-    strInstallConfig="${strInstallConfig}on your RelayServer first before starting the installation here.\n"
+    strInstallConfig="${strInstallConfig}You have the option of initiating the installation of your\n"
+    strInstallConfig="${strInstallConfig}RelayServer directly within this session or creating a new\n"
+    strInstallConfig="${strInstallConfig}SSH session to start and monitor the process. If a separate\n"
+    strInstallConfig="${strInstallConfig}session, you will need to log into your RelayServer as your\n"
+    strInstallConfig="${strInstallConfig}new user ($RELAYSERVER_REMOTE_USERNAME) and initiate the installation process by\n"
+    strInstallConfig="${strInstallConfig}entering: 'bash $RS_INSTALL_FRESH_SCRIPT_NAME'. The installation script has already\n"
+    strInstallConfig="${strInstallConfig}been transferred to your RelayServer in the user's home\n"
+    strInstallConfig="${strInstallConfig}directory (/home/$RELAYSERVER_REMOTE_USERNAME). Start the installation on your\n"
+    strInstallConfig="${strInstallConfig}RelayServer first before starting the installation here."
   fi
   #rm -f $HSHQ_INSTALL_CFG
   #echo -e "$strInstallConfig" > $HSHQ_INSTALL_CFG
@@ -1234,14 +1234,15 @@ function initInstallation()
   while true;
   do
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ "$isRelayInstallInit" = "false" ]; then
-      echo -e "If you want to initiate the installation on your RelayServer directly"
-      echo -e "within this session, enter 'relay' below and follow the subsequent"
-      echo -e "instructions. Enter 'install' to perform the HomeServer installation.\n"
+      echo -e "\nIf you want to initiate the installation on your RelayServer"
+      echo -e "directly within this session, enter 'relay' below and follow"
+      echo -e "the subsequent instructions. Enter 'install' to perform the"
+      echo -e "HomeServer installation."
       echo -e "________________________________________________________________________"
-      read -p "After reading/copying the above section, enter 'install', 'relay', or 'exit' (no quotes, all lowercase): " is_install
+      read -p "After reading/copying the above section, enter 'relay', 'install', or 'exit': " is_install
     else
       echo -e "________________________________________________________________________"
-      read -p "After reading/copying the above section, enter 'install' to start the HomeServer installation or 'exit' to exit. (no quotes, all lowercase): " is_install
+      read -p "After reading/copying the above section, enter 'install' or 'exit': " is_install
     fi
     if [ "$is_install" = "exit" ]; then
       echo "Exiting..."
@@ -1268,7 +1269,7 @@ function initInstallation()
       echo -e "\n\n\n________________________________________________________________________\n"
       echo -e "You're back!"
       echo -e "If the installation process on your RelayServer has been properly"
-      echo -e "initiated, then you can proceed with installation on the HomeServer side.\n"
+      echo -e "initiated, then you can proceed with HomeServer installation.\n"
       continue
     else
       echo "Unknown response, please try again."
@@ -2271,6 +2272,7 @@ EOFCF
     insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
     insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0
     checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
     checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
     docker container start heimdall > /dev/null 2>&1
@@ -12452,6 +12454,12 @@ function checkUpdateVersion()
       return
     fi
   fi
+  if [ $HSHQ_VERSION -lt 47 ]; then
+    echo "Updating to Version 47..."
+    version47Update
+    HSHQ_VERSION=47
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -13479,6 +13487,13 @@ function version46Update()
     echo -e "\n\nPlease restart the hshq.sh script to complete the update.\n"
     exit
   fi
+}
+
+function version47Update()
+{
+  set +e
+  outputAllScriptServerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
@@ -16425,6 +16440,12 @@ function pullBaseServicesDockerImages()
   fi
   pullImage $IMG_MYSQL
   if [ $? -ne 0 ]; then
+    return 4
+  fi
+  rm -f $HOME/script-server.zip
+  wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
+  retVal=$?
+  if [ $retVal -ne 0 ] || ! [ -f $HOME/script-server.zip ]; then
     return 4
   fi
 }
@@ -37637,10 +37658,21 @@ function installScriptServer()
   if [ -d $HSHQ_STACKS_DIR/script-server ]; then
     return
   fi
+  retVal=0
+  if ! [ -f $HOME/script-server.zip ]; then
+    wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
+    retVal=$?
+  fi
+  if [ $retVal -ne 0 ] || ! [ -f $HOME/script-server.zip ]; then
+    return 1
+  fi
   mkdir $HSHQ_STACKS_DIR/script-server
-
-  wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
   unzip $HOME/script-server.zip -d $HSHQ_STACKS_DIR/script-server > /dev/null 2>&1
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    sudo rm -fr $HSHQ_STACKS_DIR/script-server
+    return 1
+  fi
   rm $HOME/script-server.zip
   sudo chown -R $USERNAME:$USERNAME $HSHQ_STACKS_DIR/script-server
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
@@ -39041,7 +39073,7 @@ EOFSC
 {
   "name": "01 Check Update HSHQ",
   "script_path": "conf/scripts/checkUpdateHSHQ.sh",
-  "description": "Check for updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.",
+  "description": "Check for updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.<br/><br/>Github Releases: https://github.com/homeserverhq/hshq/releases<br/>Changelog: https://homeserverhq.com/changelog.txt",
   "group": "$group_id_systemutils",
   "parameters": []
 }
