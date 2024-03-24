@@ -17738,7 +17738,7 @@ function insertServicesHeimdall()
   curdt=$(getCurrentDate)
   cur_id=1
   # Admin Tab
-  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1 "homeserverhq.png"
+  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1 "script-server.png"
   insertIntoHeimdallDB "$FMLNAME_PORTAINER" $USERTYPE_PORTAINER "https://$SUB_PORTAINER.$HOMESERVER_DOMAIN" 1 "portainer.png"
   insertIntoHeimdallDB "$FMLNAME_PORTAINER (IP)" $USERTYPE_PORTAINER "https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT" 1 "portainer.png"
   insertIntoHeimdallDB "$FMLNAME_ADGUARD" $USERTYPE_ADGUARD "https://$SUB_ADGUARD.$HOMESERVER_DOMAIN" 1 "adguardhome.png"
@@ -35310,7 +35310,7 @@ function installFreshRSS()
   fi
 
   outputConfigFreshRSS
-  installStack freshrss freshrss-app "apache2 -D FOREGROUND" $HOME/freshrss.env
+  installStack freshrss freshrss-app "apache2 -D FOREGROUND" $HOME/freshrss.env 5
   sleep 5
 
   inner_block=""
