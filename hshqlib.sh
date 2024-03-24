@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=47
+HSHQ_SCRIPT_VERSION=48
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12079,6 +12079,8 @@ HOMEASSISTANT_DATABASE_USER=
 HOMEASSISTANT_DATABASE_USER_PASSWORD=
 HOMEASSISTANT_TASMOADMIN_USER=
 HOMEASSISTANT_TASMOADMIN_USER_PASSWORD=
+HOMEASSISTANT_CONFIGURATOR_USER=
+HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD=
 # HomeAssistant (Service Details) END
 
 # Gitlab (Service Details) BEGIN
@@ -12458,6 +12460,12 @@ function checkUpdateVersion()
     echo "Updating to Version 47..."
     version47Update
     HSHQ_VERSION=47
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 48 ]; then
+    echo "Updating to Version 48..."
+    version48Update
+    HSHQ_VERSION=48
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -13494,6 +13502,28 @@ function version47Update()
   set +e
   outputAllScriptServerScripts
   set -e
+}
+
+function version48Update()
+{
+  set +e
+  grep HOMEASSISTANT_CONFIGURATOR_USER $CONFIG_FILE >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
+    initServicesCredentials
+    # Email to user
+    sendEmail -s "HomeAssistant Configurator Login Info" -b "HomeAssistant Configurator Username: $HOMEASSISTANT_CONFIGURATOR_USER\nHomeAssistant Configurator Password: $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  fi
+  if [ -f $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf ]; then
+    grep "USERNAME" $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      hc_pw_hash=$(echo -n $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD | openssl dgst -sha256 | cut -d"=" -f2 | xargs)
+      sed -i "/BASEPATH.*/a\    \"HASS_API\": \"\",\n    \"USERNAME\": \"$HOMEASSISTANT_CONFIGURATOR_USER\",\n    \"PASSWORD\": \"{sha256}$hc_pw_hash\"," $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf
+      disableSvcUptimeKuma "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN" true
+    fi
+    echo "Restarting HomeAssistant stack (if running)..."
+    restartStackIfRunning homeassistant 10
+  fi
 }
 
 function sendRSExposeScripts()
@@ -16762,6 +16792,14 @@ function initServicesCredentials()
     HOMEASSISTANT_TASMOADMIN_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar HOMEASSISTANT_TASMOADMIN_USER_PASSWORD $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD
   fi
+  if [ -z "$HOMEASSISTANT_CONFIGURATOR_USER" ]; then
+    HOMEASSISTANT_CONFIGURATOR_USER=hass_configurator_user
+    updateConfigVar HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER
+  fi
+  if [ -z "$HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD" ]; then
+    HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD
+  fi
   if [ -z "$GITLAB_DATABASE_NAME" ]; then
     GITLAB_DATABASE_NAME=gitlabdb
     updateConfigVar GITLAB_DATABASE_NAME $GITLAB_DATABASE_NAME
@@ -17678,6 +17716,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SYNCTHING" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_CODESERVER" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_TASMOADMIN" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Admin" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Users" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-HomeServers" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD)"\n"
@@ -29397,7 +29436,6 @@ function installHomeAssistant()
   generateCert homeassistant-app "homeassistant-app,host.docker.internal"
   generateCert homeassistant-configurator homeassistant-configurator
   generateCert homeassistant-nodered homeassistant-nodered
-
   outputConfigHomeAssistant
 
   installStack homeassistant homeassistant-app "legacy-services successfully started" $HOME/homeassistant.env
@@ -29580,6 +29618,8 @@ services:
       - no-new-privileges:true
     depends_on:
       - homeassistant-app
+    extra_hosts:
+      - host.docker.internal:host-gateway
     networks:
       - dock-proxy-net
     volumes:
@@ -29639,6 +29679,9 @@ EOFHA
 {
     "PORT": 443,
     "BASEPATH": "/hass-config",
+    "HASS_API": "",
+    "USERNAME": "$HOMEASSISTANT_CONFIGURATOR_USER",
+    "PASSWORD": "{sha256}$(echo -n $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD | openssl dgst -sha256 | cut -d"=" -f2 | xargs)",
     "SSL_CERTIFICATE": "/certs/homeassistant-configurator.crt",
     "SSL_KEY": "/certs/homeassistant-configurator.key"
 }
