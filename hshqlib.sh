@@ -29507,7 +29507,6 @@ function installHomeAssistant()
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll homeassistant "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" "homeassistant.png"
-    insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" $USERTYPE_HOMEASSISTANT_CONFIGURATOR "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN" true
     insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_NODERED" $USERTYPE_HOMEASSISTANT_NODERED "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN" true
     insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
