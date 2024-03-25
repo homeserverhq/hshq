@@ -7708,6 +7708,8 @@ function performNetworkInvite()
         mail_attachments="-a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der"
       fi
       sendEmail -s "$mail_subj" -b "$mail_body" $mail_attachments -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
+      # Send ourself a copy
+      sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" $mail_attachments -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" 
       rm -f $HOME/${config_name}.conf
       rm -f $HOME/${config_name}-qr.png
     ;;
