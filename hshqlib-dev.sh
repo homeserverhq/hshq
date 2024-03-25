@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=48
+HSHQ_SCRIPT_VERSION=49
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -806,6 +806,26 @@ function initConfig()
     sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr > /dev/null 2>&1
   fi
   set -e
+
+  HOMESERVER_HOST_IP=$(getDefaultRouteIPAddress)
+  isInPrivateRange=$(checkDefaultRouteIPIsPrivateIP)
+  if [ "$isInPrivateRange" = "true" ]; then
+    if [[ "$HOMESERVER_HOST_IP" =~ ^10\. ]]; then
+      showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 10.0.0.0/8 range. This range is reserved for VPN networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road when connecting with other HomeServers. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
+      mbres=$?
+      if [ $mbres -ne 0 ]; then
+        exit 1
+      fi
+    elif [[ "$HOMESERVER_HOST_IP" =~ ^172\. ]]; then
+      showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/12 range. This range is reserved for Docker networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
+      mbres=$?
+      if [ $mbres -ne 0 ]; then
+        exit 1
+      fi
+    fi
+  fi
+  HOMESERVER_HOST_IP=""
+
   if [ -z "$USERID" ]; then
     USERID=$(id -u)
     updateConfigVar USERID $USERID
@@ -9663,18 +9683,32 @@ function installStack()
   fi
   echo "Creating stack: $stack_name"
   echo "$(createStackJson $stack_name $HOME/$stack_name-compose.yml "$envfile")" > $HOME/$stack_name-json.tmp
-  if [ "$IS_STACK_DEBUG" = "true" ]; then
-    http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
-  else
-    http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
-  fi
-  ret_val=$?
+  sleep 1
+  num_http_tries=1
+  total_http_tries=5
+  ret_val=1
+  while [ $ret_val -ne 0 ] && [ $num_http_tries -lt $total_http_tries ]
+  do
+    if [ "$IS_STACK_DEBUG" = "true" ]; then
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
+    else
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
+    fi
+    ret_val=$?
+    ((num_http_tries++))
+    if [ $ret_val ] -ne 0 ]; then
+      echo "ERROR: Stack installation via Portainer failed. Retrying ($num_http_tries of $total_http_tries)..."
+      sleep 3
+    fi
+  done
+
   if [ $ret_val -ne 0 ]; then
     installLogNotify "Error installing Stack ($stack_name)"
     echo -e "Error installing Stack ($stack_name): \n\n"
     #echo "$install_res"
     return $ret_val
   fi
+  sleep 1
   search=$stack_search_string
   isFound="F"
   i=0
@@ -17450,6 +17484,10 @@ function installStackByName()
     uptimekuma)
       installUptimeKuma $is_integrate ;;
   esac
+  stack_install_retval=$?
+  if [ $stack_install_retval -ne 0 ]; then
+    sendEmail -s "Stack Installation Failure" -b "$stack_name did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+  fi
 }
 
 function performUpdateStackByName()
@@ -24005,8 +24043,9 @@ function installNextcloud()
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
     installCoturn
-    if [ $? -ne 0 ]; then
-      return
+    retval=$?
+    if [ $retval -ne 0 ]; then
+      sendEmail -s "Stack Installation Failure" -b "coturn did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     fi
   fi
 
@@ -35003,7 +35042,7 @@ function installBarAssistant()
   fi
 
   outputConfigBarAssistant
-  installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 5
+  installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 10
   sleep 3
 
   inner_block=""
@@ -35926,10 +35965,6 @@ services:
     depends_on:
       - wallabag-db
       - wallabag-redis
-    healthcheck:
-      test: ["CMD", "wget" ,"--no-verbose", "--tries=1", "--spider", "http://localhost"]
-      interval: 1m
-      timeout: 3s
     networks:
       - dock-proxy-net
       - dock-ext-net
@@ -37453,6 +37488,10 @@ function installCoturn()
   outputConfigCoturn
   generateCert coturn "coturn,$SUB_COTURN.$HOMESERVER_DOMAIN"
   installStack coturn coturn "" $HOME/coturn.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 }
 
@@ -37580,8 +37619,9 @@ function installFileDrop()
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
     installCoturn
-    if [ $? -ne 0 ]; then
-      return
+    retval=$?
+    if [ $retval -ne 0 ]; then
+      sendEmail -s "Stack Installation Failure" -b "coturn did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     fi
   fi
   set -e
