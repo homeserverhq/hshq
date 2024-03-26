@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=48
+HSHQ_SCRIPT_VERSION=49
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -806,6 +806,26 @@ function initConfig()
     sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr > /dev/null 2>&1
   fi
   set -e
+
+  HOMESERVER_HOST_IP=$(getDefaultRouteIPAddress)
+  isInPrivateRange=$(checkDefaultRouteIPIsPrivateIP)
+  if [ "$isInPrivateRange" = "true" ]; then
+    if [[ "$HOMESERVER_HOST_IP" =~ ^10\. ]]; then
+      showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 10.0.0.0/8 range. This range is reserved for VPN networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road when connecting with other HomeServers. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
+      mbres=$?
+      if [ $mbres -ne 0 ]; then
+        exit 1
+      fi
+    elif [[ "$HOMESERVER_HOST_IP" =~ ^172\. ]]; then
+      showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/12 range. This range is reserved for Docker networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
+      mbres=$?
+      if [ $mbres -ne 0 ]; then
+        exit 1
+      fi
+    fi
+  fi
+  HOMESERVER_HOST_IP=""
+
   if [ -z "$USERID" ]; then
     USERID=$(id -u)
     updateConfigVar USERID $USERID
@@ -7688,6 +7708,8 @@ function performNetworkInvite()
         mail_attachments="-a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der"
       fi
       sendEmail -s "$mail_subj" -b "$mail_body" $mail_attachments -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
+      # Send ourself a copy
+      sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" $mail_attachments -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" 
       rm -f $HOME/${config_name}.conf
       rm -f $HOME/${config_name}-qr.png
     ;;
@@ -9663,18 +9685,32 @@ function installStack()
   fi
   echo "Creating stack: $stack_name"
   echo "$(createStackJson $stack_name $HOME/$stack_name-compose.yml "$envfile")" > $HOME/$stack_name-json.tmp
-  if [ "$IS_STACK_DEBUG" = "true" ]; then
-    http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
-  else
-    http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
-  fi
-  ret_val=$?
+  sleep 1
+  num_http_tries=1
+  total_http_tries=10
+  ret_val=1
+  while [ $ret_val -ne 0 ] && [ $num_http_tries -lt $total_http_tries ]
+  do
+    if [ "$IS_STACK_DEBUG" = "true" ]; then
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
+    else
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
+    fi
+    ret_val=$?
+    ((num_http_tries++))
+    if [ $ret_val -ne 0 ]; then
+      echo "ERROR: Stack installation via Portainer failed. Retrying ($num_http_tries of $total_http_tries)..."
+      sleep 3
+    fi
+  done
+
   if [ $ret_val -ne 0 ]; then
     installLogNotify "Error installing Stack ($stack_name)"
     echo -e "Error installing Stack ($stack_name): \n\n"
     #echo "$install_res"
     return $ret_val
   fi
+  sleep 1
   search=$stack_search_string
   isFound="F"
   i=0
@@ -17450,6 +17486,10 @@ function installStackByName()
     uptimekuma)
       installUptimeKuma $is_integrate ;;
   esac
+  stack_install_retval=$?
+  if [ $stack_install_retval -ne 0 ]; then
+    sendEmail -s "Stack Installation Failure" -b "$stack_name did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+  fi
 }
 
 function performUpdateStackByName()
@@ -24005,8 +24045,9 @@ function installNextcloud()
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
     installCoturn
-    if [ $? -ne 0 ]; then
-      return
+    retval=$?
+    if [ $retval -ne 0 ]; then
+      sendEmail -s "Stack Installation Failure" -b "coturn did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     fi
   fi
 
@@ -34678,6 +34719,7 @@ function installLinkwarden()
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
     restartAllCaddyContainers
     checkAddDBSqlPad linkwarden "$FMLNAME_LINKWARDEN" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -35003,7 +35045,7 @@ function installBarAssistant()
   fi
 
   outputConfigBarAssistant
-  installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 5
+  installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 10
   sleep 3
 
   inner_block=""
@@ -35375,6 +35417,7 @@ function installFreshRSS()
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
     restartAllCaddyContainers
     checkAddDBSqlPad freshrss "$FMLNAME_FRESHRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -35612,6 +35655,7 @@ function installKeila()
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
     restartAllCaddyContainers
     checkAddDBSqlPad keila "$FMLNAME_KEILA" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -35854,6 +35898,7 @@ function installWallabag()
     insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
     restartAllCaddyContainers
     checkAddDBSqlPad wallabag "$FMLNAME_WALLABAG" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -35926,10 +35971,6 @@ services:
     depends_on:
       - wallabag-db
       - wallabag-redis
-    healthcheck:
-      test: ["CMD", "wget" ,"--no-verbose", "--tries=1", "--spider", "http://localhost"]
-      interval: 1m
-      timeout: 3s
     networks:
       - dock-proxy-net
       - dock-ext-net
@@ -36252,6 +36293,7 @@ function installPaperless()
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
     restartAllCaddyContainers
     checkAddDBSqlPad paperless "$FMLNAME_PAPERLESS" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -36546,6 +36588,7 @@ function installSpeedtestTrackerLocal()
     insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
     checkAddDBSqlPad speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -36797,6 +36840,7 @@ function installSpeedtestTrackerVPN()
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
     checkAddDBSqlPad speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -37256,6 +37300,7 @@ function installHuginn()
     insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
     restartAllCaddyContainers
     checkAddDBSqlPad huginn "$FMLNAME_HUGINN" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -37453,6 +37498,10 @@ function installCoturn()
   outputConfigCoturn
   generateCert coturn "coturn,$SUB_COTURN.$HOMESERVER_DOMAIN"
   installStack coturn coturn "" $HOME/coturn.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 }
 
@@ -37580,8 +37629,9 @@ function installFileDrop()
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
     installCoturn
-    if [ $? -ne 0 ]; then
-      return
+    retval=$?
+    if [ $retval -ne 0 ]; then
+      sendEmail -s "Stack Installation Failure" -b "coturn did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     fi
   fi
   set -e
