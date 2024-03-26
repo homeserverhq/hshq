@@ -9687,7 +9687,7 @@ function installStack()
   echo "$(createStackJson $stack_name $HOME/$stack_name-compose.yml "$envfile")" > $HOME/$stack_name-json.tmp
   sleep 1
   num_http_tries=1
-  total_http_tries=5
+  total_http_tries=10
   ret_val=1
   while [ $ret_val -ne 0 ] && [ $num_http_tries -lt $total_http_tries ]
   do
@@ -9698,7 +9698,7 @@ function installStack()
     fi
     ret_val=$?
     ((num_http_tries++))
-    if [ $ret_val ] -ne 0 ]; then
+    if [ $ret_val -ne 0 ]; then
       echo "ERROR: Stack installation via Portainer failed. Retrying ($num_http_tries of $total_http_tries)..."
       sleep 3
     fi
@@ -34719,6 +34719,7 @@ function installLinkwarden()
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
     restartAllCaddyContainers
     checkAddDBSqlPad linkwarden "$FMLNAME_LINKWARDEN" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -35416,6 +35417,7 @@ function installFreshRSS()
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
     restartAllCaddyContainers
     checkAddDBSqlPad freshrss "$FMLNAME_FRESHRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -35653,6 +35655,7 @@ function installKeila()
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
     restartAllCaddyContainers
     checkAddDBSqlPad keila "$FMLNAME_KEILA" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -35895,6 +35898,7 @@ function installWallabag()
     insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
     restartAllCaddyContainers
     checkAddDBSqlPad wallabag "$FMLNAME_WALLABAG" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -36289,6 +36293,7 @@ function installPaperless()
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
     restartAllCaddyContainers
     checkAddDBSqlPad paperless "$FMLNAME_PAPERLESS" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -36583,6 +36588,7 @@ function installSpeedtestTrackerLocal()
     insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
     checkAddDBSqlPad speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -36834,6 +36840,7 @@ function installSpeedtestTrackerVPN()
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
     checkAddDBSqlPad speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -37293,6 +37300,7 @@ function installHuginn()
     insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
     restartAllCaddyContainers
     checkAddDBSqlPad huginn "$FMLNAME_HUGINN" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
