@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=49
+HSHQ_SCRIPT_VERSION=50
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12504,6 +12504,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=48
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 50 ]; then
+    echo "Updating to Version 50..."
+    version50Update
+    HSHQ_VERSION=50
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -13560,6 +13566,13 @@ function version48Update()
     echo "Restarting HomeAssistant stack (if running)..."
     restartStackIfRunning homeassistant 10
   fi
+}
+
+function version50Update()
+{
+  set +e
+  outputAllScriptServerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
@@ -39575,6 +39588,26 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllConnections.sh
+#!/bin/bash
+
+source $HSHQ_LIB_SCRIPT lib
+
+echo "  | Name | EmailAddress | NetworkType | PublicKey | IPAddress |"
+echo "---------------------------------------------------------------------------------------"
+sqlite3 -separator " | " \$HSHQ_DB "select ' ',Name,EmailAddress,NetworkType,PublicKey,IPAddress,' ' from connections;"
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/displayAllConnections.json
+{
+  "name": "08 Display All Connections",
+  "script_path": "conf/scripts/displayAllConnections.sh",
+  "description": "Display all network connections. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all network connections to the console. If you are hosting a VPN, the output will include all connections that you manage.",
+  "group": "$group_id_systemutils"
+}
+
+EOFSC
+
   # 05 Testing
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/sudoPasswordTest.sh
 #!/bin/bash
@@ -39948,7 +39981,7 @@ EOFSC
 {
   "name": "02 Invite User to Network",
   "script_path": "conf/scripts/myNetworkInviteUserConnection.sh",
-  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' function. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile, then take the proper precautions as this method will put the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
+  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' function. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
