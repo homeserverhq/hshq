@@ -37884,6 +37884,7 @@ function installPiped()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PIPED_FRONTEND $MANAGETLS_PIPED_FRONTEND "$is_integrate_hshq" $NETDEFAULT_PIPED_FRONTEND "$inner_block"
+  insertSubAuthelia $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN primaryusers
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PIPED_PROXY.$HOMESERVER_DOMAIN {\n"
@@ -37900,6 +37901,7 @@ function installPiped()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PIPED_PROXY $MANAGETLS_PIPED_PROXY "$is_integrate_hshq" $NETDEFAULT_PIPED_PROXY "$inner_block"
+  insertSubAuthelia $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN bypass
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PIPED_API.$HOMESERVER_DOMAIN {\n"
@@ -37915,10 +37917,12 @@ function installPiped()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PIPED_API $MANAGETLS_PIPED_API "$is_integrate_hshq" $NETDEFAULT_PIPED_API "$inner_block"
+  insertSubAuthelia $SUB_PIPED_API.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png"
     restartAllCaddyContainers
+    checkAddDBSqlPad piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
   fi
 }
 
