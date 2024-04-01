@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=50
+HSHQ_SCRIPT_VERSION=51
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12510,6 +12510,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=50
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 51 ]; then
+    echo "Updating to Version 51..."
+    version51Update
+    HSHQ_VERSION=51
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -13572,6 +13578,13 @@ function version50Update()
 {
   set +e
   outputAllScriptServerScripts
+  set -e
+}
+
+function version51Update()
+{
+  set +e
+  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
   set -e
 }
 
@@ -16140,6 +16153,11 @@ function loadPinnedDockerImages()
   IMG_PAPERLESS_TIKA=ghcr.io/paperless-ngx/tika:2.9.1-minimal
   IMG_PEERTUBE_APP=chocobozzz/peertube:v6.0.3-bookworm
   IMG_PHOTOPRISM_APP=photoprism/photoprism:220901-bullseye
+  IMG_PIPED_FRONTEND=1337kavin/piped-frontend:latest
+  IMG_PIPED_PROXY=1337kavin/piped-proxy:latest
+  IMG_PIPED_API=1337kavin/piped:latest
+  IMG_PIPED_CRON=barrypiccinni/psql-curl
+  IMG_PIPED_WEB=nginx:1.25.3-alpine
   IMG_PORTAINER=portainer/portainer-ce:2.19.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
   IMG_PROMETHEUS=prom/prometheus:v2.50.1
@@ -16285,6 +16303,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     filedrop)
       echo "v1" ;;
+    piped)
+      echo "v1" ;;
     ofelia)
       echo "v3" ;;
     sqlpad)
@@ -16405,6 +16425,10 @@ function pullDockerImages()
   pullImage $IMG_HUGINN_APP
   pullImage $IMG_COTURN
   pullImage $IMG_FILEDROP
+  pullImage $IMG_PIPED_FRONTEND
+  pullImage $IMG_PIPED_PROXY
+  pullImage $IMG_PIPED_API
+  pullImage $IMG_PIPED_CRON
 }
 
 function pullBaseServicesDockerImages()
@@ -17265,6 +17289,18 @@ function initServicesCredentials()
     COTURN_STATIC_SECRET=$(pwgen -c -n 64 1)
     updateConfigVar COTURN_STATIC_SECRET $COTURN_STATIC_SECRET
   fi
+  if [ -z "$PIPED_DATABASE_NAME" ]; then
+    PIPED_DATABASE_NAME=pipeddb
+    updateConfigVar PIPED_DATABASE_NAME $PIPED_DATABASE_NAME
+  fi
+  if [ -z "$PIPED_DATABASE_USER" ]; then
+    PIPED_DATABASE_USER=piped-user
+    updateConfigVar PIPED_DATABASE_USER $PIPED_DATABASE_USER
+  fi
+  if [ -z "$PIPED_DATABASE_USER_PASSWORD" ]; then
+    PIPED_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PIPED_DATABASE_USER_PASSWORD $PIPED_DATABASE_USER_PASSWORD
+  fi
 }
 
 function installBaseStacks()
@@ -17348,6 +17384,9 @@ function initServiceVars()
   checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
   checkAddSvc "SVCD_PHOTOPRISM=photoprism,photoprism,other,user,PhotoPrism,photoprism,hshq"
+  checkAddSvc "SVCD_PIPED_FRONTEND=piped,piped,primary,user,Piped,piped,hshq"
+  checkAddSvc "SVCD_PIPED_PROXY=piped,piped-proxy,primary,user,Piped,piped-proxy,hshq"
+  checkAddSvc "SVCD_PIPED_API=piped,piped-api,primary,user,Piped,piped-api,hshq"
   checkAddSvc "SVCD_PORTAINER=portainer,portainer,primary,admin,Portainer,portainer,hshq"
   checkAddSvc "SVCD_POSTFIX=mail-relay,mail,primary,admin,Mail,mail,hshq"
   checkAddSvc "SVCD_PROMETHEUS=sysutils,prometheus,primary,admin,Prometheus,prometheus,hshq"
@@ -17488,6 +17527,8 @@ function installStackByName()
       installCoturn $is_integrate ;;
     filedrop)
       installFileDrop $is_integrate ;;
+    piped)
+      installPiped $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -17622,6 +17663,8 @@ function performUpdateStackByName()
       performUpdateCoturn "$portainerToken" ;;
     filedrop)
       performUpdateFileDrop "$portainerToken" ;;
+    piped)
+      performUpdatePiped "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -17678,6 +17721,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PIPED_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
@@ -17701,6 +17746,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia primaryusers END\n"
@@ -17901,6 +17947,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0 "changedetection.png"
   insertIntoHeimdallDB "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0 "huginn.png"
   insertIntoHeimdallDB "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0 "filedrop.png"
+  insertIntoHeimdallDB "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0 "piped.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -17986,6 +18033,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -18004,12 +18052,12 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection
-  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,guacamole,kasm,stirlingpdf
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
+  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,guacamole,kasm,stirlingpdf,piped
   DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn
 }
 
@@ -18456,6 +18504,24 @@ function getScriptImageByContainerName()
       ;;
     "filedrop")
       container_image=$IMG_FILEDROP
+      ;;
+    "piped-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "piped-frontend")
+      container_image=$IMG_PIPED_FRONTEND
+      ;;
+    "piped-proxy")
+      container_image=$IMG_PIPED_PROXY
+      ;;
+    "piped-api")
+      container_image=$IMG_PIPED_API
+      ;;
+    "piped-cron")
+      container_image=$IMG_PIPED_CRON
+      ;;
+    "piped-web")
+      container_image=$IMG_PIPED_WEB
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -28156,6 +28222,7 @@ function installGuacamole()
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>@notGuac {\n"
   inner_block=$inner_block">>>>>>>>not path \"/guacamole/*\"\n"
@@ -30551,6 +30618,7 @@ function installVaultwarden()
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>@insecureadmin {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_NOTHOMESUBNET\n"
@@ -37746,6 +37814,461 @@ function performUpdateFileDrop()
       newVer=v1
       curImageList=filedrop/filedrop:1
       image_update_map[0]="filedrop/filedrop:1,filedrop/filedrop:1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Piped
+function installPiped()
+{
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory piped "Piped"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return
+  fi
+  set -e
+  pullImage $IMG_PIPED_FRONTEND
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  pullImage $IMG_PIPED_PROXY
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  pullImage $IMG_PIPED_API
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  pullImage $IMG_PIPED_CRON
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  pullImage $IMG_PIPED_WEB
+  if [ $? -ne 0 ]; then
+    return
+  fi
+
+  mkdir $HSHQ_STACKS_DIR/piped
+  mkdir $HSHQ_STACKS_DIR/piped/db
+  mkdir $HSHQ_STACKS_DIR/piped/dbexport
+  mkdir $HSHQ_STACKS_DIR/piped/config
+  mkdir $HSHQ_STACKS_DIR/piped/cron
+  mkdir $HSHQ_STACKS_DIR/piped/web
+  mkdir $HSHQ_NONBACKUP_DIR/piped
+  mkdir $HSHQ_NONBACKUP_DIR/piped/proxy
+  chmod 777 $HSHQ_STACKS_DIR/piped/dbexport
+
+  initServicesCredentials
+  outputConfigPiped
+  installStack piped piped-app " " $HOME/piped.env
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://piped-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PIPED_FRONTEND $MANAGETLS_PIPED_FRONTEND "$is_integrate_hshq" $NETDEFAULT_PIPED_FRONTEND "$inner_block"
+  insertSubAuthelia $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN primaryusers
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PIPED_PROXY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>uri replace \"&ump=1\" \"\"\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://piped-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PIPED_PROXY $MANAGETLS_PIPED_PROXY "$is_integrate_hshq" $NETDEFAULT_PIPED_PROXY "$inner_block"
+  insertSubAuthelia $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN bypass
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PIPED_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://piped-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PIPED_API $MANAGETLS_PIPED_API "$is_integrate_hshq" $NETDEFAULT_PIPED_API "$inner_block"
+  insertSubAuthelia $SUB_PIPED_API.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigPiped()
+{
+  cat <<EOFPI > $HOME/piped-compose.yml
+$STACK_VERSION_PREFIX piped $(getScriptStackVersion piped)
+version: '3.5'
+
+services:
+  piped-db:
+    image: $(getScriptImageByContainerName piped-db)
+    container_name: piped-db
+    hostname: piped-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-piped-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/piped/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/piped/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.piped-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.piped-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.piped-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.piped-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.piped-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.piped-hourly-db.email-from=Piped Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.piped-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.piped-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.piped-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.piped-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.piped-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.piped-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.piped-monthly-db.email-from=Piped Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.piped-monthly-db.mail-only-on-error=false"
+
+  piped-frontend:
+    image: $(getScriptImageByContainerName piped-frontend)
+    container_name: piped-frontend
+    hostname: piped-frontend
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    entrypoint: ash -c 'sed -i s/pipedapi.kavin.rocks/$SUB_PIPED_API.$HOMESERVER_DOMAIN/g /usr/share/nginx/html/assets/* && /docker-entrypoint.sh && nginx -g "daemon off;"'
+    depends_on:
+      - piped-api
+    networks:
+      - int-piped-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  piped-proxy:
+    image: $(getScriptImageByContainerName piped-proxy)
+    container_name: piped-proxy
+    hostname: piped-proxy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-piped-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-piped-proxy:/app/socket
+
+  piped-api:
+    image: $(getScriptImageByContainerName piped-api)
+    container_name: piped-api
+    hostname: piped-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-piped-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - piped-db
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/piped/config/config.properties:/app/config.properties:ro
+
+  piped-cron:
+    image: $(getScriptImageByContainerName piped-cron)
+    container_name: piped-cron
+    hostname: piped-cron
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    tty: true
+    networks:
+      - int-piped-net
+      - dock-ext-net
+    depends_on:
+      - piped-web
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/piped/cron/updateSubs.sh:/updateSubs.sh
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.piped-subs.schedule=@every 15m"
+      - "ofelia.job-exec.piped-subs.command=/updateSubs.sh"
+
+  piped-web:
+    image: $(getScriptImageByContainerName piped-web)
+    container_name: piped-web
+    hostname: piped-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-piped-net
+      - dock-proxy-net
+    depends_on:
+      - piped-frontend
+      - piped-proxy
+      - piped-api
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/piped/web/nginx.conf:/etc/nginx/nginx.conf:ro
+      - \${HSHQ_STACKS_DIR}/piped/web/pipedapi.conf:/etc/nginx/conf.d/pipedapi.conf:ro
+      - \${HSHQ_STACKS_DIR}/piped/web/pipedproxy.conf:/etc/nginx/conf.d/pipedproxy.conf:ro
+      - \${HSHQ_STACKS_DIR}/piped/web/pipedfrontend.conf:/etc/nginx/conf.d/pipedfrontend.conf:ro
+      - \${HSHQ_STACKS_DIR}/piped/web/ytproxy.conf:/etc/nginx/snippets/ytproxy.conf:ro
+      - v-piped-proxy:/var/run/ytproxy
+
+volumes:
+  v-piped-proxy:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/piped/proxy
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-piped-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFPI
+
+  cat <<EOFPI > $HOME/piped.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+POSTGRES_DB=$PIPED_DATABASE_NAME
+POSTGRES_USER=$PIPED_DATABASE_USER
+POSTGRES_PASSWORD=$PIPED_DATABASE_USER_PASSWORD
+POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
+UDS=1
+EOFPI
+
+  cat <<EOFPI > $HSHQ_STACKS_DIR/piped/config/config.properties
+PORT: 8080
+HTTP_WORKERS: 2
+PROXY_PART: https://$SUB_PIPED_PROXY.$HOMESERVER_DOMAIN
+CAPTCHA_BASE_URL: 
+CAPTCHA_API_KEY: 
+API_URL: https://$SUB_PIPED_API.$HOMESERVER_DOMAIN
+FRONTEND_URL: https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN
+COMPROMISED_PASSWORD_CHECK: false
+DISABLE_REGISTRATION: false
+FEED_RETENTION: 30
+hibernate.connection.url: jdbc:postgresql://piped-db:5432/$PIPED_DATABASE_NAME
+hibernate.connection.driver_class: org.postgresql.Driver
+hibernate.dialect: org.hibernate.dialect.PostgreSQLDialect
+hibernate.connection.username: $PIPED_DATABASE_USER
+hibernate.connection.password: $PIPED_DATABASE_USER_PASSWORD
+EOFPI
+
+  cat <<EOFPI > $HSHQ_STACKS_DIR/piped/web/nginx.conf
+user root;
+worker_processes auto;
+
+error_log /var/log/nginx/error.log notice;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    server_names_hash_bucket_size 128;
+    log_format main '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+    '\$status \$body_bytes_sent "\$http_referer" '
+    '"\$http_user_agent" "\$http_x_forwarded_for"';
+    access_log /var/log/nginx/access.log main;
+    sendfile on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    resolver 127.0.0.11 ipv6=off valid=10s;
+    include /etc/nginx/conf.d/*.conf;
+}
+
+EOFPI
+
+  cat <<EOFPI > $HSHQ_STACKS_DIR/piped/web/pipedapi.conf
+proxy_cache_path /tmp/pipedapi_cache levels=1:2 keys_zone=pipedapi:4m max_size=2g inactive=60m use_temp_path=off;
+
+server {
+    listen 80;
+    server_name $SUB_PIPED_API.$HOMESERVER_DOMAIN;
+
+    set \$backend "http://piped-api:8080";
+
+    location / {
+        proxy_cache pipedapi;
+        proxy_pass \$backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "keep-alive";
+    }
+}
+
+EOFPI
+
+  cat <<EOFPI > $HSHQ_STACKS_DIR/piped/web/pipedfrontend.conf
+server {
+    listen 80;
+    server_name $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN;
+
+    set \$backend "http://piped-frontend:80";
+
+    location / {
+        proxy_pass \$backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "keep-alive";
+    }
+}
+
+EOFPI
+
+  cat <<EOFPI > $HSHQ_STACKS_DIR/piped/web/pipedproxy.conf
+server {
+    listen 80;
+    server_name $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN;
+
+    location ~ (/videoplayback|/api/v4/|/api/manifest/) {
+        include snippets/ytproxy.conf;
+        add_header Cache-Control private always;
+    }
+
+    location / {
+        include snippets/ytproxy.conf;
+        add_header Cache-Control "public, max-age=604800";
+    }
+}
+
+EOFPI
+
+  cat <<EOFPI > $HSHQ_STACKS_DIR/piped/web/ytproxy.conf
+proxy_buffering on;
+proxy_buffers 1024 16k;
+proxy_set_header X-Forwarded-For "";
+proxy_set_header CF-Connecting-IP "";
+proxy_hide_header "alt-svc";
+sendfile on;
+sendfile_max_chunk 512k;
+tcp_nopush on;
+aio threads=default;
+aio_write on;
+directio 16m;
+proxy_hide_header Cache-Control;
+proxy_hide_header etag;
+proxy_http_version 1.1;
+proxy_set_header Connection keep-alive;
+proxy_max_temp_file_size 32m;
+access_log off;
+proxy_pass http://unix:/var/run/ytproxy/actix.sock;
+
+EOFPI
+
+  cat <<EOFPI > $HSHQ_STACKS_DIR/piped/cron/updateSubs.sh
+#!/bin/bash
+
+sqlcmd="SELECT DISTINCT(channel) FROM users_subscribed;"
+echo "\$sqlcmd" | PGPASSWORD=\$POSTGRES_PASSWORD psql -qtA -h piped-db -U \$POSTGRES_USER \$POSTGRES_DB | xargs -I\\{} curl -sk -o /dev/null "https://$SUB_PIPED_API.$HOMESERVER_DOMAIN/channel/{}"
+
+EOFPI
+
+  chmod 751 $HSHQ_STACKS_DIR/piped/cron/updateSubs.sh
+
+}
+
+function performUpdatePiped()
+{
+  perform_stack_name=piped
+  # This function modifies the variable perform_update_report
+  # with the results of the update process. It is up to the 
+  # caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  # Stack status: 1=running, 2=stopped
+  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,1337kavin/piped-frontend:latest,1337kavin/piped-proxy:latest,1337kavin/piped:latest,barrypiccinni/psql-curl,nginx:1.25.3-alpine
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="1337kavin/piped-frontend:latest,1337kavin/piped-frontend:latest"
+      image_update_map[2]="1337kavin/piped-proxy:latest,1337kavin/piped-proxy:latest"
+      image_update_map[2]="1337kavin/piped:latest,1337kavin/piped:latest"
+      image_update_map[2]="barrypiccinni/psql-curl,barrypiccinni/psql-curl"
+      image_update_map[2]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
     ;;
     *)
       is_upgrade_error=true
