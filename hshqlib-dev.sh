@@ -496,10 +496,6 @@ net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
 
   sudo sysctl --system > /dev/null 2>&1
-
-  # Disable ipv6 in GRUB
-  sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"ipv6.disable=1\"|g" /etc/default/grub > /dev/null 2>&1
-  sudo update-grub > /dev/null 2>&1
 }
 
 function updateMOTD()
@@ -28790,7 +28786,6 @@ networks:
   int-authelia-net:
     driver: bridge
     internal: true
-    enable_ipv6: false
     ipam:
       driver: default
 
