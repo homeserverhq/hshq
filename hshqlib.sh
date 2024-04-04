@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=51
+HSHQ_SCRIPT_VERSION=52
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -463,93 +463,39 @@ function checkWrapperVersion()
 function updateSysctl()
 {
   set +e
-  # See https://javapipe.com/blog/iptables-ddos-protection/
   sudo tee /etc/sysctl.d/88-hshq.conf >/dev/null <<EOFSC
-kernel.printk = 4 4 1 7
 kernel.panic = 10
-kernel.sysrq = 0
-kernel.shmmax = 4294967296
-kernel.shmall = 4194304
-kernel.core_uses_pid = 1
-kernel.msgmnb = 65536
-kernel.msgmax = 65536
-vm.swappiness = 20
-vm.dirty_ratio = 80
-vm.dirty_background_ratio = 5
 fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
-net.core.netdev_max_backlog = 262144
-net.core.rmem_max = 33554432
-net.core.wmem_max = 33554432
-net.core.somaxconn = 100000
-net.core.optmem_max = 33554432
-net.ipv4.neigh.default.gc_thresh1 = 4096
-net.ipv4.neigh.default.gc_thresh2 = 8192
-net.ipv4.neigh.default.gc_thresh3 = 16384
-net.ipv4.neigh.default.gc_interval = 5
-net.ipv4.neigh.default.gc_stale_time = 120
-net.netfilter.nf_conntrack_max = 10485760
-net.netfilter.nf_conntrack_tcp_loose = 0
-net.netfilter.nf_conntrack_tcp_timeout_established = 1800
-net.netfilter.nf_conntrack_tcp_timeout_close = 10
-net.netfilter.nf_conntrack_tcp_timeout_close_wait = 10
-net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 20
-net.netfilter.nf_conntrack_tcp_timeout_last_ack = 20
-net.netfilter.nf_conntrack_tcp_timeout_syn_recv = 20
-net.netfilter.nf_conntrack_tcp_timeout_syn_sent = 20
-net.netfilter.nf_conntrack_tcp_timeout_time_wait = 10
-net.ipv4.ip_local_port_range = 1024 65535
-net.ipv4.ip_nonlocal_bind = 1
-net.ipv4.ip_no_pmtu_disc = 1
+net.core.rmem_max = 4194304
+net.core.wmem_max = 4194304
 net.ipv4.route.flush = 1
-net.ipv4.route.max_size = 8048576
+net.ipv4.tcp_rfc1337 = 1
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_max_syn_backlog = 4096
+net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_syn_retries = 5
+net.ipv4.tcp_timestamps = 1
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 net.ipv4.icmp_ignore_bogus_error_responses = 1
-net.ipv4.tcp_congestion_control = htcp
-net.ipv4.tcp_max_orphans = 400000
-net.ipv4.tcp_max_tw_buckets = 1440000
-net.ipv4.tcp_mem = 65536 131072 262144
-net.ipv4.tcp_rmem = 4096 87380 33554432
-net.ipv4.tcp_wmem = 4096 65536 33554432
-net.ipv4.tcp_reordering = 3
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_rfc1337 = 1
-net.ipv4.tcp_slow_start_after_idle = 0
-net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_synack_retries = 3
-net.ipv4.tcp_syn_retries = 3
-net.ipv4.tcp_max_syn_backlog = 16384
-net.ipv4.tcp_timestamps = 1
-net.ipv4.tcp_sack = 1
-net.ipv4.tcp_fack = 1
-net.ipv4.tcp_ecn = 2
-net.ipv4.tcp_fin_timeout = 10
-net.ipv4.tcp_keepalive_time = 600
-net.ipv4.tcp_keepalive_intvl = 60
-net.ipv4.tcp_keepalive_probes = 10
-net.ipv4.tcp_no_metrics_save = 1
-net.ipv4.tcp_window_scaling = 1
-net.ipv4.udp_mem = 65536 131072 262144
-net.ipv4.udp_rmem_min = 16384
-net.ipv4.udp_wmem_min = 16384
 net.ipv4.ip_forward = 1
-net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.accept_redirects = 0
 net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
 net.ipv4.conf.all.send_redirects = 0
 net.ipv4.conf.all.accept_source_route = 0
-net.ipv4.conf.all.rp_filter = 2
-net.ipv4.conf.default.rp_filter = 2
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
 
   sudo sysctl --system > /dev/null 2>&1
-
-  # Disable ipv6 in GRUB
-  sudo sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"ipv6.disable=0\"|g" /etc/default/grub > /dev/null 2>&1
-  sudo update-grub > /dev/null 2>&1
 }
 
 function updateMOTD()
@@ -816,6 +762,9 @@ function initConfig()
       if [ $mbres -ne 0 ]; then
         exit 1
       fi
+    elif [[ "$HOMESERVER_HOST_IP" =~ ^172\.16\. ]]; then
+      showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/24 range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range. Exiting..."
+      exit 1
     elif [[ "$HOMESERVER_HOST_IP" =~ ^172\. ]]; then
       showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/12 range. This range is reserved for Docker networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
       mbres=$?
@@ -983,12 +932,33 @@ function initConfig()
       if [ "$(checkValidIPAddress $HOMESERVER_HOST_IP)" = "false" ]; then
         showMessageBox "Invalid IP Address" "The IP address is invalid. Please enter a valid IP address."
         HOMESERVER_HOST_IP=""
-      else
-        updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
-        HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
-        updateConfigVar HOMESERVER_HOST_ISPRIVATE $HOMESERVER_HOST_ISPRIVATE
-        setHomeServerPrivateRange
+        continue
       fi
+      if [[ "$HOMESERVER_HOST_IP" =~ ^10\. ]]; then
+        showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 10.0.0.0/8 range. This range is reserved for VPN networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road when connecting with other HomeServers. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
+        mbres=$?
+        if [ $mbres -ne 0 ]; then
+          HOMESERVER_HOST_IP=""
+          continue
+        fi
+      fi
+      if [[ "$HOMESERVER_HOST_IP" =~ ^172\.16\. ]]; then
+        showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/24 range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
+        HOMESERVER_HOST_IP=""
+        continue
+      fi
+      if [[ "$HOMESERVER_HOST_IP" =~ ^172\. ]]; then
+        showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/12 range. This range is reserved for Docker networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
+        mbres=$?
+        if [ $mbres -ne 0 ]; then
+          HOMESERVER_HOST_IP=""
+          continue
+        fi
+      fi
+      updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
+      HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
+      updateConfigVar HOMESERVER_HOST_ISPRIVATE $HOMESERVER_HOST_ISPRIVATE
+      setHomeServerPrivateRange
     fi
   done
 
@@ -2467,84 +2437,34 @@ function main()
 function updateSysctl()
 {
   set +e
-  # See https://javapipe.com/blog/iptables-ddos-protection/
   sudo tee /etc/sysctl.d/88-hshq.conf >/dev/null <<EOFSC
-kernel.printk = 4 4 1 7
 kernel.panic = 10
-kernel.sysrq = 0
-kernel.shmmax = 4294967296
-kernel.shmall = 4194304
-kernel.core_uses_pid = 1
-kernel.msgmnb = 65536
-kernel.msgmax = 65536
-vm.swappiness = 1
-vm.dirty_ratio = 80
-vm.dirty_background_ratio = 5
 fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
-net.core.netdev_max_backlog = 262144
-net.core.rmem_max = 33554432
-net.core.wmem_max = 33554432
-net.core.somaxconn = 100000
-net.core.optmem_max = 33554432
-net.ipv4.neigh.default.gc_thresh1 = 4096
-net.ipv4.neigh.default.gc_thresh2 = 8192
-net.ipv4.neigh.default.gc_thresh3 = 16384
-net.ipv4.neigh.default.gc_interval = 5
-net.ipv4.neigh.default.gc_stale_time = 120
-net.netfilter.nf_conntrack_max = 10485760
-net.netfilter.nf_conntrack_tcp_loose = 0
-net.netfilter.nf_conntrack_tcp_timeout_established = 1800
-net.netfilter.nf_conntrack_tcp_timeout_close = 10
-net.netfilter.nf_conntrack_tcp_timeout_close_wait = 10
-net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 20
-net.netfilter.nf_conntrack_tcp_timeout_last_ack = 20
-net.netfilter.nf_conntrack_tcp_timeout_syn_recv = 20
-net.netfilter.nf_conntrack_tcp_timeout_syn_sent = 20
-net.netfilter.nf_conntrack_tcp_timeout_time_wait = 10
-net.ipv4.ip_local_port_range = 1024 65535
-net.ipv4.ip_nonlocal_bind = 1
-net.ipv4.ip_no_pmtu_disc = 1
+net.core.rmem_max = 4194304
+net.core.wmem_max = 4194304
 net.ipv4.route.flush = 1
-net.ipv4.route.max_size = 8048576
+net.ipv4.tcp_rfc1337 = 1
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_max_syn_backlog = 4096
+net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_syn_retries = 5
+net.ipv4.tcp_timestamps = 1
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 net.ipv4.icmp_ignore_bogus_error_responses = 1
-net.ipv4.tcp_congestion_control = htcp
-net.ipv4.tcp_max_orphans = 400000
-net.ipv4.tcp_max_tw_buckets = 1440000
-net.ipv4.tcp_mem = 65536 131072 262144
-net.ipv4.tcp_rmem = 4096 87380 33554432
-net.ipv4.tcp_wmem = 4096 65536 33554432
-net.ipv4.tcp_reordering = 3
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_rfc1337 = 1
-net.ipv4.tcp_slow_start_after_idle = 0
-net.ipv4.tcp_syncookies = 1
-net.ipv4.tcp_synack_retries = 3
-net.ipv4.tcp_syn_retries = 3
-net.ipv4.tcp_max_syn_backlog = 16384
-net.ipv4.tcp_timestamps = 1
-net.ipv4.tcp_sack = 1
-net.ipv4.tcp_fack = 1
-net.ipv4.tcp_ecn = 2
-net.ipv4.tcp_fin_timeout = 10
-net.ipv4.tcp_keepalive_time = 600
-net.ipv4.tcp_keepalive_intvl = 60
-net.ipv4.tcp_keepalive_probes = 10
-net.ipv4.tcp_no_metrics_save = 1
-net.ipv4.tcp_window_scaling = 1
-net.ipv4.udp_mem = 65536 131072 262144
-net.ipv4.udp_rmem_min = 16384
-net.ipv4.udp_wmem_min = 16384
 net.ipv4.ip_forward = 1
-net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.accept_redirects = 0
 net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
 net.ipv4.conf.all.send_redirects = 0
 net.ipv4.conf.all.accept_source_route = 0
-net.ipv4.conf.all.rp_filter = 1
-net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
@@ -2670,7 +2590,10 @@ EOFSM
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo DEBIAN_FRONTEND=noninteractive apt update
     echo "Installing docker, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce=5:25.0.5-1~ubuntu.22.04~jammy docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
+    # See https://www.portainer.io/blog/portainer-and-docker-26
+    sudo apt-mark hold docker-ce
+    sudo apt-mark hold docker-ce-cli
   fi
 
   sudo usermod -aG docker \$USERNAME
@@ -3519,74 +3442,101 @@ EOFBS
   default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
-set +e
-ports_list=\$exposedPortsList
-portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
-for cur_port in "\\\${portsArr[@]}"
-do
-  iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
-  iptables -I DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP
-  iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT
-done
+  set +e
 
-  # Drop invalid packets
-  iptables -t mangle -C PREROUTING -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 ||  iptables -t mangle -A PREROUTING -m conntrack --ctstate INVALID -j DROP
+  SSH_PORT=$RELAYSERVER_SSH_PORT
+  WG_CON_PORT=$RELAYSERVER_WG_PORT
+  WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
+  DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
 
-  # Drop TCP packets that are new and are not SYN
-  iptables -t mangle -C PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP
+  portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
+  for cur_port in "\\\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
+    iptables -I DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP
+    iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT
+  done
+
+  # See https://gist.github.com/mattia-beta/bd5b1c68e3d51db933181d8a3dc0ba64?permalink_comment_id=3728715#gistcomment-3728715
+  iptables -t raw -F PREROUTING
+  iptables -t raw -F chain-icmp > /dev/null 2>&1
+  iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -X chain-icmp > /dev/null 2>&1
+  iptables -t raw -X chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -N chain-icmp > /dev/null 2>&1
+  iptables -t raw -N chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -A PREROUTING -s 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
+  iptables -t raw -A PREROUTING -d 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
+  iptables -t raw -A PREROUTING -d 0.0.0.0/8 -j DROP
+  iptables -t raw -A PREROUTING -s 0.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4,198.18.0.0/15,100.64.0.0/10,192.88.99.0/24 -i \$default_iface -j DROP
+  iptables -t raw -A PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP
+  iptables -t raw -A PREROUTING -p udp -m udp -m multiport --ports 0 -j DROP
+  iptables -t raw -A PREROUTING -p icmp -j chain-icmp
+  iptables -t raw -A PREROUTING -p tcp -m tcp -j chain-bad_tcp
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-reply -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type network-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type host-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type protocol-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type port-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type fragmentation-needed -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -i \$default_iface -j DROP
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type time-exceeded -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type parameter-problem -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type any -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,SYN,RST,PSH,ACK,URG NONE -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags SYN,FIN SYN,FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,ACK FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,URG URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,FIN FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,PSH PSH -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL ALL -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL NONE -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL SYN,FIN,PSH,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp -m tcp -m multiport --ports 0 -j DROP
+  iptables -t raw -P PREROUTING ACCEPT
+
+  # Drop fragments
+  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -I INPUT -f -j DROP
 
   # Drop SYN packets with suspicious MSS value
-  iptables -t mangle -C PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
-
-  # Block packets with bogus TCP flags
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL NONE -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL ALL -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL ALL -j DROP
-
-  # Block spoofed packets
-  iptables -t mangle -C PREROUTING -s 224.0.0.0/3 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 224.0.0.0/3 -j DROP
-  iptables -t mangle -C PREROUTING -s 169.254.0.0/16 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 169.254.0.0/16 -j DROP
-  iptables -t mangle -C PREROUTING -s 192.0.2.0/24 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 192.0.2.0/24 -j DROP
-  iptables -t mangle -C PREROUTING -s 192.168.0.0/16 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 192.168.0.0/16 -j DROP
-  iptables -t mangle -C PREROUTING -s 10.0.0.0/8 -i \$default_iface -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 10.0.0.0/8 -i \$default_iface -j DROP
-  iptables -t mangle -C PREROUTING -s 0.0.0.0/8 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 0.0.0.0/8 -j DROP
-  iptables -t mangle -C PREROUTING -s 240.0.0.0/5 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 240.0.0.0/5 -j DROP
-  iptables -t mangle -C PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP
-  iptables -t mangle -C PREROUTING -s 172.16.0.0/12 -i \$default_iface -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -s 172.16.0.0/12 -i \$default_iface -j DROP
-
-  # Drop ICMP on external interface
-  iptables -t mangle -C PREROUTING -p icmp -i \$default_iface -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p icmp -i \$default_iface -j DROP
-
-  # Drop fragments in all chains
-  iptables -t mangle -C PREROUTING -f -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -f -j DROP
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Limit connections per source IP
-  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -I INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
+
+  # Drop invalid packets
+  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+
+  # Allow established connections
+  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   # Configure loopback
   iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
   iptables -C INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1 || iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
 
-  # Allow ICMP for internal (mangle table drops requests to external IP)
-  iptables -C INPUT -p icmp --icmp-type 8 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p icmp --icmp-type 8 -j ACCEPT
-
-  # Allow established connections
-  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  # Allow ICMP
+  iptables -C INPUT -p icmp -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p icmp -j ACCEPT
 
   # Allow SSH
-  iptables -C INPUT -p tcp -m tcp --dport $RELAYSERVER_SSH_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport $RELAYSERVER_SSH_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp --dport \\\$SSH_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport \\\$SSH_PORT -j ACCEPT
 
   # Allow WireGuard
-  iptables -C INPUT -p udp --dport $RELAYSERVER_WG_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p udp --dport $RELAYSERVER_WG_PORT -j ACCEPT
+  iptables -C INPUT -p udp --dport \\\$WG_CON_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p udp --dport \\\$WG_CON_PORT -j ACCEPT
 
   # Special case for WG Portal from reverse proxy
-  iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $RELAYSERVER_WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $RELAYSERVER_WG_PORTAL_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i brdockext -s \\\$DOCK_EXT_NET --dport \\\$WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i brdockext -s \\\$DOCK_EXT_NET --dport \\\$WG_PORTAL_PORT -j ACCEPT
+  iptables -D DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j DROP 2> /dev/null
+  iptables -I DOCKER-USER -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j DROP
+  iptables -I DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j ACCEPT
 
   # Policy drop for input and forward
   iptables -P INPUT DROP
@@ -3617,48 +3567,42 @@ fi
   sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
-set +e
-ports_list=\$exposedPortsList
-portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
-for cur_port in "\\\${portsArr[@]}"
-do
-  iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
-done
+  set +e
 
-  iptables -t mangle -D PREROUTING -m conntrack --ctstate INVALID -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ALL NONE -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ALL ALL -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p icmp -i \$default_iface -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -f -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 224.0.0.0/3 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 169.254.0.0/16 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 192.0.2.0/24 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 192.168.0.0/16 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 10.0.0.0/8 -i \$default_iface -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 0.0.0.0/8 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 240.0.0.0/5 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -s 172.16.0.0/12 -i \$default_iface -j DROP 2> /dev/null
+  SSH_PORT=$RELAYSERVER_SSH_PORT
+  WG_CON_PORT=$RELAYSERVER_WG_PORT
+  WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
+  DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
 
-  iptables -D INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset 2> /dev/null
-  iptables -D INPUT -i lo -j ACCEPT 2> /dev/null
-  iptables -D INPUT ! -i lo -s 127.0.0.0/8 -j DROP 2> /dev/null
-  iptables -D INPUT -p icmp --icmp-type 8 -j ACCEPT 2> /dev/null
-  iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2> /dev/null
-  iptables -D INPUT -p tcp -m tcp --dport $RELAYSERVER_SSH_PORT -j ACCEPT 2> /dev/null
-  iptables -D INPUT -p udp --dport $RELAYSERVER_WG_PORT -j ACCEPT 2> /dev/null
-  iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $RELAYSERVER_WG_PORTAL_PORT -j ACCEPT 2> /dev/null
+  portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
+  for cur_port in "\\\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
+  done
+
+  iptables -D INPUT -f -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1
+  iptables -D INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1
+  iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -i lo -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p icmp -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m tcp --dport \\\$SSH_PORT -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -p udp --dport \\\$WG_CON_PORT -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m tcp -i brdockext -s \\\$DOCK_EXT_NET --dport \\\$WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1
+  iptables -D DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j DROP 2> /dev/null
+
+  iptables -t raw -F PREROUTING
+  iptables -t raw -F chain-icmp > /dev/null 2>&1
+  iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -X chain-icmp > /dev/null 2>&1
+  iptables -t raw -X chain-bad_tcp > /dev/null 2>&1
+
   iptables -P INPUT ACCEPT
-
   ip6tables -P INPUT ACCEPT
   ip6tables -P FORWARD ACCEPT
   ip6tables -P OUTPUT ACCEPT
@@ -8919,7 +8863,7 @@ function checkIsIPPrivate()
 {
   check_ip="$1"
   set +e
-  priv_arr=("10.0.0.0/8 172.16.0.0/12 192.168.0.0/16")
+  priv_arr=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
   for subnet in "${priv_arr[@]}"
   do
     is_in_subnet=$(isIPInSubnet $check_ip $subnet)
@@ -12348,6 +12292,12 @@ HUGINN_DATABASE_USER_PASSWORD=
 COTURN_STATIC_SECRET=
 # Coturn (Service Details) END
 
+# Piped (Service Details) BEGIN
+PIPED_DATABASE_NAME=
+PIPED_DATABASE_USER=
+PIPED_DATABASE_USER_PASSWORD=
+# Piped (Service Details) END
+
 # Service Details END
 EOFCF
   set -e
@@ -12514,6 +12464,12 @@ function checkUpdateVersion()
     echo "Updating to Version 51..."
     version51Update
     HSHQ_VERSION=51
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 52 ]; then
+    echo "Updating to Version 52..."
+    version52Update
+    HSHQ_VERSION=52
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -13588,6 +13544,219 @@ function version51Update()
   set -e
 }
 
+function version52Update()
+{
+  set +e
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    read -p "Press enter to continue."
+    loadSSHKey
+    set +e
+    rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+    tee $HOME/88-hshq.conf >/dev/null <<EOFSC
+# Some minor tuning
+kernel.panic = 10
+fs.file-max = 10000000
+fs.nr_open = 10000000
+fs.inotify.max_user_instances = 8192
+fs.inotify.max_user_watches = 524288
+net.core.rmem_max = 4194304
+net.core.wmem_max = 4194304
+net.ipv4.route.flush = 1
+net.ipv4.tcp_rfc1337 = 1
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_max_syn_backlog = 4096
+net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_syn_retries = 5
+net.ipv4.tcp_timestamps = 1
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+net.ipv4.ip_forward = 1
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+net.ipv4.conf.all.secure_redirects = 0
+net.ipv4.conf.default.secure_redirects = 0
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+EOFSC
+    chmod 644 $HOME/88-hshq.conf
+
+    tee $HOME/setupDockerUserIPTables.sh >/dev/null <<EOFSC
+#!/bin/bash
+  set +e
+
+  default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+  SSH_PORT=$RELAYSERVER_SSH_PORT
+  WG_CON_PORT=$RELAYSERVER_WG_PORT
+  WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
+  DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
+
+  portsArr=(\$(echo \$ports_list | tr "," "\n"))
+  for cur_port in "\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
+    iptables -I DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP
+    iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+  done
+
+  # See https://gist.github.com/mattia-beta/bd5b1c68e3d51db933181d8a3dc0ba64?permalink_comment_id=3728715#gistcomment-3728715
+  iptables -t raw -F PREROUTING
+  iptables -t raw -F chain-icmp > /dev/null 2>&1
+  iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -X chain-icmp > /dev/null 2>&1
+  iptables -t raw -X chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -N chain-icmp > /dev/null 2>&1
+  iptables -t raw -N chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -A PREROUTING -s 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
+  iptables -t raw -A PREROUTING -d 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
+  iptables -t raw -A PREROUTING -d 0.0.0.0/8 -j DROP
+  iptables -t raw -A PREROUTING -s 0.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4,198.18.0.0/15,100.64.0.0/10,192.88.99.0/24 -i \$default_iface -j DROP
+  iptables -t raw -A PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP
+  iptables -t raw -A PREROUTING -p udp -m udp -m multiport --ports 0 -j DROP
+  iptables -t raw -A PREROUTING -p icmp -j chain-icmp
+  iptables -t raw -A PREROUTING -p tcp -m tcp -j chain-bad_tcp
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-reply -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type network-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type host-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type protocol-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type port-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type fragmentation-needed -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -i \$default_iface -j DROP
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type time-exceeded -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type parameter-problem -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type any -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,SYN,RST,PSH,ACK,URG NONE -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags SYN,FIN SYN,FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,ACK FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,URG URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,FIN FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,PSH PSH -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL ALL -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL NONE -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL SYN,FIN,PSH,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp -m tcp -m multiport --ports 0 -j DROP
+  iptables -t raw -P PREROUTING ACCEPT
+
+  # Drop fragments
+  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -I INPUT -f -j DROP
+
+  # Drop SYN packets with suspicious MSS value
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
+
+  # Limit connections per source IP
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -I INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
+
+  # Drop invalid packets
+  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+
+  # Allow established connections
+  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+  # Configure loopback
+  iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
+  iptables -C INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1 || iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
+
+  # Allow ICMP
+  iptables -C INPUT -p icmp -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p icmp -j ACCEPT
+
+  # Allow SSH
+  iptables -C INPUT -p tcp -m tcp --dport \$SSH_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport \$SSH_PORT -j ACCEPT
+
+  # Allow WireGuard
+  iptables -C INPUT -p udp --dport \$WG_CON_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p udp --dport \$WG_CON_PORT -j ACCEPT
+
+  # Special case for WG Portal from reverse proxy
+  iptables -C INPUT -p tcp -m tcp -i brdockext -s \$DOCK_EXT_NET --dport \$WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i brdockext -s \$DOCK_EXT_NET --dport \$WG_PORTAL_PORT -j ACCEPT
+
+  # Policy drop for input and forward
+  iptables -P INPUT DROP
+  iptables -P FORWARD DROP
+
+  # Policy drop all ipv6 traffic
+  ip6tables -P INPUT DROP
+  ip6tables -P FORWARD DROP
+  ip6tables -P OUTPUT DROP
+
+  sysctl --system > /dev/null 2>&1
+
+EOFSC
+    chmod 744 $HOME/setupDockerUserIPTables.sh
+
+    tee $HOME/clearDockerUserIPTables.sh >/dev/null <<EOFSC
+#!/bin/bash
+  set +e
+
+  SSH_PORT=$RELAYSERVER_SSH_PORT
+  WG_CON_PORT=$RELAYSERVER_WG_PORT
+  WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
+  DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
+
+  portsArr=(\$(echo \$ports_list | tr "," "\n"))
+  for cur_port in "\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
+  done
+
+  iptables -D INPUT -f -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1
+  iptables -D INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1
+  iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -i lo -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p icmp -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m tcp --dport \$SSH_PORT -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -p udp --dport \$WG_CON_PORT -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m tcp -i brdockext -s \$DOCK_EXT_NET --dport \$WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1
+
+  iptables -t raw -F PREROUTING
+  iptables -t raw -F chain-icmp > /dev/null 2>&1
+  iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -X chain-icmp > /dev/null 2>&1
+  iptables -t raw -X chain-bad_tcp > /dev/null 2>&1
+
+  iptables -P INPUT ACCEPT
+  ip6tables -P INPUT ACCEPT
+  ip6tables -P FORWARD ACCEPT
+  ip6tables -P OUTPUT ACCEPT
+
+EOFSC
+    chmod 744 $HOME/clearDockerUserIPTables.sh
+
+    scp -P $RELAYSERVER_SSH_PORT $HOME/88-hshq.conf $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/setupDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/clearDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli; sleep 5; sudo reboot"
+    unloadSSHKey
+    rm -f $HOME/88-hshq.conf
+    rm -f $HOME/setupDockerUserIPTables.sh
+    rm -f $HOME/clearDockerUserIPTables.sh
+  fi
+  set -e
+  updateSysctl
+  sudo $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
+  outputIPTablesScripts
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -14587,19 +14756,20 @@ EOFBS
 
 function outputIPTablesScripts()
 {
+  default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
-set +e
-ports_list=$(getExposedPortsList)
-portsArr=(\$(echo \$ports_list | tr "," "\n"))
-for cur_port in "\${portsArr[@]}"
-do
-  iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -D DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
-  iptables -I DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP
-  iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
-done
+  set +e
+  ports_list=$(getExposedPortsList)
+  portsArr=(\$(echo \$ports_list | tr "," "\n"))
+  for cur_port in "\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
+    iptables -I DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP
+    iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+  done
 
   # Special case for HomeAssistant DB localhost
   iptables -D DOCKER-USER -s 127.0.0.0/8,$NET_DBS_SUBNET -m conntrack --ctorigdstport $HOMEASSISTANT_DB_LOCALHOST_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
@@ -14607,40 +14777,70 @@ done
   iptables -I DOCKER-USER -m conntrack --ctorigdstport $HOMEASSISTANT_DB_LOCALHOST_PORT --ctdir ORIGINAL -j DROP
   iptables -I DOCKER-USER -s 127.0.0.0/8,$NET_DBS_SUBNET -m conntrack --ctorigdstport $HOMEASSISTANT_DB_LOCALHOST_PORT --ctdir ORIGINAL -j ACCEPT
 
-  # Drop invalid packets
-  iptables -t mangle -C PREROUTING -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -m conntrack --ctstate INVALID -j DROP
+  # See https://gist.github.com/mattia-beta/bd5b1c68e3d51db933181d8a3dc0ba64?permalink_comment_id=3728715#gistcomment-3728715
+  iptables -t raw -F PREROUTING
+  iptables -t raw -F chain-icmp > /dev/null 2>&1
+  iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -X chain-icmp > /dev/null 2>&1
+  iptables -t raw -X chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -N chain-icmp > /dev/null 2>&1
+  iptables -t raw -N chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -A PREROUTING -s 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
+  iptables -t raw -A PREROUTING -d 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
+  iptables -t raw -A PREROUTING -d 0.0.0.0/8 -j DROP
+  iptables -t raw -A PREROUTING -s 0.0.0.0/8,198.18.0.0/15,100.64.0.0/10,192.88.99.0/24 -i $default_iface -j DROP
+  iptables -t raw -A PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP
+  iptables -t raw -A PREROUTING -p udp -m udp -m multiport --ports 0 -j DROP
+  iptables -t raw -A PREROUTING -p icmp -j chain-icmp
+  iptables -t raw -A PREROUTING -p tcp -m tcp -j chain-bad_tcp
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-reply -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type network-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type host-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type protocol-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type port-unreachable -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type fragmentation-needed -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type time-exceeded -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type parameter-problem -j ACCEPT
+  iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type any -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,SYN,RST,PSH,ACK,URG NONE -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags SYN,FIN SYN,FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags FIN,ACK FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,URG URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,FIN FIN -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ACK,PSH PSH -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL ALL -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL NONE -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL SYN,FIN,PSH,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
+  iptables -t raw -A chain-bad_tcp -p tcp -m tcp -m multiport --ports 0 -j DROP
+  iptables -t raw -P PREROUTING ACCEPT
 
-  # Drop TCP packets that are new and are not SYN
-  iptables -t mangle -C PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP
+  # Drop fragments
+  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -I INPUT -f -j DROP
 
   # Drop SYN packets with suspicious MSS value
-  iptables -t mangle -C PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
-
-  # Block packets with bogus TCP flags
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL NONE -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
-  iptables -t mangle -C PREROUTING -p tcp --tcp-flags ALL ALL -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -p tcp --tcp-flags ALL NONE -j DROP
-
-  # Drop fragments in all chains
-  iptables -t mangle -C PREROUTING -f -j DROP > /dev/null 2>&1 || iptables -t mangle -A PREROUTING -f -j DROP
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Limit connections per source IP
-  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -I INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
+
+  # Drop invalid packets
+  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+
+  # Allow established connections
+  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
   # Configure loopback
   iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
   iptables -C INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1 || iptables -A INPUT ! -i lo -s 127.0.0.0/8 -j DROP
 
   # Allow ICMP
-  iptables -C INPUT -p icmp --icmp-type 8 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p icmp --icmp-type 8 -j ACCEPT
-
-  # Allow established connections
-  iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  iptables -C INPUT -p icmp -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p icmp -j ACCEPT
 
   # Allow SSH
   iptables -C INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT
@@ -14658,7 +14858,7 @@ done
   iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
 
   # Add UPNP
-  iptables -C INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -C INPUT -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
 
   # Allow NTP for docker networks
   iptables -C INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
@@ -14678,42 +14878,38 @@ EOFBS
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo tee $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
-set +e
-ports_list=$(getExposedPortsList)
-portsArr=(\$(echo \$ports_list | tr "," "\n"))
-for cur_port in "\${portsArr[@]}"
-do
-  iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -D DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
-done
+  set +e
+  ports_list=$(getExposedPortsList)
+  portsArr=(\$(echo \$ports_list | tr "," "\n"))
+  for cur_port in "\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
+  done
 
   iptables -D DOCKER-USER -s 127.0.0.0/8,$NET_DBS_SUBNET -m conntrack --ctorigdstport $HOMEASSISTANT_DB_LOCALHOST_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
   iptables -D DOCKER-USER -m conntrack --ctorigdstport $HOMEASSISTANT_DB_LOCALHOST_PORT --ctdir ORIGINAL -j DROP 2> /dev/null
 
-  iptables -t mangle -D PREROUTING -m conntrack --ctstate INVALID -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp ! --syn -m conntrack --ctstate NEW -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags SYN,RST SYN,RST -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags FIN,RST FIN,RST -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags FIN,ACK FIN -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ACK,URG URG -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ACK,PSH PSH -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ALL NONE -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -p tcp --tcp-flags ALL ALL -j DROP 2> /dev/null
-  iptables -t mangle -D PREROUTING -f -j DROP 2> /dev/null
+  iptables -t raw -F PREROUTING
+  iptables -t raw -F chain-icmp > /dev/null 2>&1
+  iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
+  iptables -t raw -X chain-icmp > /dev/null 2>&1
+  iptables -t raw -X chain-bad_tcp > /dev/null 2>&1
 
-  iptables -D INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset 2> /dev/null
-  iptables -D INPUT -i lo -j ACCEPT 2> /dev/null
-  iptables -D INPUT ! -i lo -s 127.0.0.0/8 -j DROP 2> /dev/null
-  iptables -D INPUT -p icmp --icmp-type 8 -j ACCEPT 2> /dev/null
-  iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2> /dev/null
+  iptables -D INPUT -f -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1
+  iptables -D INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1
+  iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT -i lo -j ACCEPT > /dev/null 2>&1
+  iptables -D INPUT ! -i lo -s 127.0.0.0/8 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p icmp -j ACCEPT > /dev/null 2>&1
   iptables -D INPUT -p tcp -m tcp --dport $SSH_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp --dport 443 -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
-  iptables -D INPUT -s 172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
+  iptables -D INPUT -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
   iptables -D INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
 
   iptables -P INPUT ACCEPT
@@ -14731,20 +14927,20 @@ EOFBS
       add_ips="${add_ips},${RELAYSERVER_SERVER_IP}/32"
     fi
     sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFPO
-# Special case when HomeServer is on non-private network
-for cur_port in "\${portsArr[@]}"
-do
-  iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-  iptables -I DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
-done
+  # Special case when HomeServer is on non-private network
+  for cur_port in "\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -I DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+  done
 
 EOFPO
     sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
   # Special case when HomeServer is on non-private network
-for cur_port in "\${portsArr[@]}"
-do
-  iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-done
+  for cur_port in "\${portsArr[@]}"
+  do
+    iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  done
 EOFPT
   fi
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
@@ -14753,7 +14949,13 @@ EOFPT
   if ! [ "$(isProgramInstalled $util)" = "false" ]; then
     sudo $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
     # Just in case
-    sudo iptables -C INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -j ACCEPT
+    cur_ssh_port=$(grep "^Port" /etc/ssh/sshd_config)
+    if [ $? -ne 0 ]; then
+      cur_ssh_port=22
+    else
+      cur_ssh_port=$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
+    fi
+    sudo iptables -C INPUT -p tcp -m tcp --dport $cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport $cur_ssh_port -j ACCEPT
   fi
 }
 
@@ -15561,7 +15763,10 @@ function installDockerUbuntu2004Rooted()
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce docker-ce-cli containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce=5:25.0.5-1~ubuntu.22.04~jammy docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
   sudo systemctl restart rsyslog
   sudo systemctl restart docker
 }
@@ -15941,6 +16146,12 @@ function removeDockerNetworks()
   docker network rm dock-ldap > /dev/null 2>&1
   docker network rm dock-mailu-ext > /dev/null 2>&1
   docker network rm dock-mailu-int > /dev/null 2>&1
+}
+
+function notifyStackInstallFailure()
+{
+  sf_stack_name=$1
+  sendEmail -s "Stack Installation Failure ($sf_stack_name)" -b "$sf_stack_name did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
 function checkStackHSHQManaged()
@@ -24126,7 +24337,7 @@ function installNextcloud()
     installCoturn
     retval=$?
     if [ $retval -ne 0 ]; then
-      sendEmail -s "Stack Installation Failure" -b "coturn did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      notifyStackInstallFailure Coturn
     fi
   fi
 
@@ -24192,8 +24403,9 @@ function installNextcloud()
   done
   set -e
   if [ $isFound == "F" ]; then
-    echo "Nextcloud did not start up correctly, exiting..."
-    exit 1
+    echo "ERROR: Nextcloud did not start up correctly, exiting..."
+    notifyStackInstallFailure Nextcloud
+    return
   fi
   echo "Sleeping 10 seconds..."
   sleep 10
@@ -24209,8 +24421,9 @@ function installNextcloud()
   # Sometimes there are issues with apps, check the first one to see if there is an error.
   if [ $? -ne 0 ]; then
     docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
-    echo "Nextcloud did not start up correctly, exiting..."
-    exit 1
+    echo "ERROR: Nextcloud did not start up correctly, exiting..."
+    notifyStackInstallFailure Nextcloud
+    return
   fi
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings email "$NEXTCLOUD_ADMIN_EMAIL_ADDRESS"
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings display_name "${HOMESERVER_ABBREV^^} Nextcloud Admin"
@@ -24312,8 +24525,9 @@ function installNextcloud()
       docker container rm $curcont
     done
     docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
-    echo "Nextcloud did not start up correctly, exiting..."
-    exit 1
+    echo "ERROR: Nextcloud did not start up correctly, exiting..."
+    notifyStackInstallFailure Nextcloud
+    return
   fi
 
   inner_block=""
@@ -27860,9 +28074,10 @@ function installPhotoPrism()
   done
   set -e
   if [ $isFound == "F" ]; then
-    echo "PhotoPrism did not start up correctly..."
     docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
-    exit 1
+    echo "ERROR: PhotoPrism did not start up correctly..."
+    notifyStackInstallFailure PhotoPrism
+    return
   fi
   sleep 5
   docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
@@ -28571,7 +28786,6 @@ networks:
   int-authelia-net:
     driver: bridge
     internal: true
-    enable_ipv6: false
     ipam:
       driver: default
 
