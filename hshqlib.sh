@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=52
+HSHQ_SCRIPT_VERSION=53
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -421,7 +421,7 @@ $hshqlogo
 Select the Caddy instances that you wish to reset:
 EOF
   )
-  caddy_arr=($(docker ps --filter name=caddy- --format "{{.Names}}"))
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
   menu_items=""
   for curcaddy in "${caddy_arr[@]}"
   do
@@ -470,8 +470,6 @@ fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
-net.core.rmem_max = 4194304
-net.core.wmem_max = 4194304
 net.ipv4.route.flush = 1
 net.ipv4.tcp_rfc1337 = 1
 net.ipv4.tcp_syncookies = 1
@@ -494,6 +492,28 @@ net.ipv4.conf.all.rp_filter = 1
 net.ipv4.conf.default.rp_filter = 1
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
+
+# Reserve for Coturn and any other ports above 10000
+net.ipv4.ip_local_reserved_ports = 10000,14100-14200,22000,21027,55000
+
+# See https://community.home-assistant.io/t/zeroconf-error/153883
+
+# Bigger buffers (to make 40Gb more practical). These are maximums, but the default is unaffected.
+net.core.wmem_max=268435456
+net.core.rmem_max=268435456
+net.core.netdev_max_backlog=10000
+
+# Force IGMP v2 (required by CBF switch)
+net.ipv4.conf.all.force_igmp_version=2
+net.ipv4.conf.default.force_igmp_version=2
+
+# Increase the ARP cache table
+net.ipv4.neigh.default.gc_thresh3=4096
+net.ipv4.neigh.default.gc_thresh2=2048
+net.ipv4.neigh.default.gc_thresh1=1024
+
+# Increase number of multicast groups permitted
+net.ipv4.igmp_max_memberships=1024
 EOFSC
   if ! [ "$isPerfUpdate" = "false" ]; then
     sudo sysctl --system > /dev/null 2>&1
@@ -2192,14 +2212,14 @@ PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
 
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh >/dev/null <<EOFPO
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/20-restartWG.sh >/dev/null <<EOFPO
 #!/bin/bash
 
 systemctl restart wg-quick@${RELAYSERVER_WG_VPN_NETNAME}
 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf restart
 
 EOFPO
-  sudo chmod 0500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh
+  sudo chmod 0500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/20-restartWG.sh
 
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf >/dev/null <<EOFCF
@@ -2941,7 +2961,7 @@ function pullDockerImages()
 
 function restoreScripts()
 {
-  sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
+  sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
 
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
   sudo ln -s \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
@@ -3435,6 +3455,7 @@ function outputBootScripts()
   exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,22000,21027
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
+set +e
 
 chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
 run-parts --regex '.*sh\$' \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
@@ -3442,7 +3463,7 @@ EOFBS
   sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
 
   default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
-  sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
+  sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
   set +e
 
@@ -3554,19 +3575,19 @@ EOFBS
 EOFBS
 
 # Special case - if RelayServer is behind a firewall and using a private IP for default route,
-# then allow traffic from the gateway, since mangle table blocks all private ranges
+# then allow traffic from the gateway, since raw table blocks all private ranges
 def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
 is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
 def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
 if [ "\$is_def_priv" = "true" ]; then
-  echo "Default route is in private range, adding allowance to (mangle)iptables..."
-  sudo sed -i "s/# Block spoofed packets.*/a\  iptables -t mangle -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1 || iptables -t mangle -A PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
+  echo "Default route is in private range, adding allowance to (raw)iptables..."
+  sudo sed -i "s/# Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
 else
   echo "Default route is in public range."
 fi
 
-  sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
-  sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
+  sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
   set +e
@@ -3611,7 +3632,7 @@ fi
 
 EOFBS
 if [ "\$is_def_priv" = "true" ]; then
-  echo "  iptables -t mangle -D PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1" | sudo tee -a \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
+  echo "  iptables -t raw -D PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1" | sudo tee -a \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
 fi
   sudo chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
@@ -8965,7 +8986,7 @@ function changeHostStaticIP()
   echo "Updating Adguard..."
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
   echo "Restarting Caddy stacks..."
-  caddy_arr=($(docker ps --filter name=caddy- --format "{{.Names}}"))
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
   do
     startStopStack $curcaddy stop
@@ -12474,6 +12495,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=52
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 53 ]; then
+    echo "Updating to Version 53..."
+    version53Update
+    HSHQ_VERSION=53
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -13755,17 +13782,85 @@ EOFSC
     rm -f $HOME/clearDockerUserIPTables.sh
   fi
   set -e
+
+  updateSysctl false
+  outputIPTablesScripts false
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+
+}
+
+function version53Update()
+{
+  set +e
+  outputAllScriptServerScripts
+  outputMaintenanceScripts
+  outputDockerWireGuardCaddyScript
+  deleteFromRootCron "restartHomeAssistantStack.sh"
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
+#!/bin/bash
+set +e
+
+chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
+run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
+EOFBS
+  sudo chmod 744 $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
+  if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then
+    sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  fi
+  if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh ]; then
+    sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/20-restartWG.sh
+  fi
+  if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/dockerWireGuardCaddyFix.sh ]; then
+    sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/dockerWireGuardCaddyFix.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/50-dockerWireGuardCaddyFix.sh
+  fi
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartHomeAssistantStack.sh
+  outputHABandaidScript
+  outputStackListsScriptServer
+  updateSysctl false
+  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    grep 14100 $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      # Reinstall coturn with new ports
+      deleteListOfStacks true coturn
+      installListOfServices coturn
+    fi
+  fi
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    is_continue=""
+    while ! [ "$is_continue" = "ok" ]
+    do
+      read -p "Enter 'ok' to continue: " is_continue
+    done
+    loadSSHKey
+    set +e
+    tee $HOME/onBootRoot.sh >/dev/null <<EOFBS
+#!/bin/bash
+set +e
+
+chmod 744 $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
+run-parts --regex '.*sh\$' $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
+EOFBS
+    chmod 744 $HOME/onBootRoot.sh
+    scp -P $RELAYSERVER_SSH_PORT $HOME/onBootRoot.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi"
+    unloadSSHKey
+    rm -f $HOME/onBootRoot.sh
+    sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/transfer.sh
+  fi
+
+  HSHQ_VERSION=53
+  updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   echo -e "\n\n\nThis update requires a reboot of the HomeServer.\n"
   is_continue=""
   while ! [ "$is_continue" = "ok" ]
   do
     read -p "Enter 'ok' to continue: " is_continue
   done
-  updateSysctl false
-  outputIPTablesScripts false
-  # See https://www.portainer.io/blog/portainer-and-docker-26
-  sudo apt-mark hold docker-ce
-  sudo apt-mark hold docker-ce-cli
   performExitFunctions false
   sudo reboot
 }
@@ -14740,6 +14835,7 @@ function outputBootScripts()
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
+set +e
 
 chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
 run-parts --regex '.*sh\$' $HSHQ_SCRIPTS_DIR/boot/bootscripts
@@ -14765,14 +14861,15 @@ EOFBS
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRoot
   outputHABandaidScript
+  outputDockerWireGuardCaddyScript
 }
 
 function outputIPTablesScripts()
 {
   isRunUpdate=$1
   default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
   set +e
   ports_list=$(getExposedPortsList)
@@ -14940,7 +15037,7 @@ EOFBS
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
       add_ips="${add_ips},${RELAYSERVER_SERVER_IP}/32"
     fi
-    sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFPO
+    sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFPO
   # Special case when HomeServer is on non-private network
   for cur_port in "\${portsArr[@]}"
   do
@@ -14958,11 +15055,11 @@ EOFPO
   done
 EOFPT
   fi
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   util="docker|docker"
   if ! [ "$isRunUpdate" = "false" ] && ! [ "$(isProgramInstalled $util)" = "false" ]; then
-    sudo $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
+    sudo $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
     # Just in case
     cur_ssh_port=$(grep "^Port" /etc/ssh/sshd_config)
     if [ $? -ne 0 ]; then
@@ -14976,45 +15073,112 @@ EOFPT
 
 function outputHABandaidScript()
 {
-  sudo tee $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null <<EOFBS
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 # This script is a bandaid solution to fix the startup
 # issues with HomeAssistant after a reboot. At some
 # point, need to find the real problem and fix it.
-
 function main()
 {
   PORTAINER_ADMIN_USERNAME=$PORTAINER_ADMIN_USERNAME
   PORTAINER_ADMIN_PASSWORD=$PORTAINER_ADMIN_PASSWORD
   PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
-
-  sleep 60
+  echo "Starting restartHomeAssistantStack.sh..."
+  sleep 10
   docker ps > /dev/null 2>&1
-  sleep 30
+  sleep 10
   source $HSHQ_LIB_SCRIPT lib
   set +e
   num_tries=1
-  total_tries=10
+  total_tries=20
+  echo "Getting Portainer token..."
   portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
   retVal=\$?
   while [ \$retVal -ne 0 ] && [ \$num_tries -lt \$total_tries ]
   do
-    sleep 5
+    sleep 10
     ((num_tries++))
     portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
     retVal=\$?
   done
+  echo "Restarting stack..."
   if [ \$retVal -ne 0 ]; then
     echo "Error restarting HomeAssistant stack, exiting..."
     exit 1
   fi
   restartStackIfRunning homeassistant 15 \$portainerToken > /dev/null
+  echo "End restartHomeAssistantStack.sh"
 }
 main
 EOFBS
 
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh
+}
+
+function outputDockerWireGuardCaddyScript()
+{
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/50-dockerWireGuardCaddyFix.sh >/dev/null <<EOFWC
+#!/bin/bash
+set +e
+
+# This script handles the chicken/egg paradox between Docker and WireGuard during boot.
+# Each Caddy instance is bound to a specific interface - in most cases, a WireGuard interface.
+# Each WireGuard VPN interface uses a domain name as opposed to an IP address for the endpoint.
+# The domain name requires a DNS lookup, which is handled by AdguardHome - in a Docker container.
+# Thus, given this setup, the WireGuard interfaces will not come up until the AdGuard container is up.
+# Unfortunately, this causes a race condition with the Caddy containers that are bound to 
+# specific WireGuard interfaces - they will fail to start if the interface doesn't exist.
+# Attempts were made within the systemd service files to start one after the other, but it still results
+# in a circular reference problem. Even manually starting the VPN interfaces before docker.service with 
+# wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
+# at boot, will wait until the interfaces are up, then restart the Caddy containers.
+
+host_ip=$HOMESERVER_HOST_IP
+hshq_db=$HSHQ_DB
+
+function main()
+{
+  ips_arr=(\$(sqlite3 \$hshq_db "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
+  ips_arr+=(\$host_ip)
+
+  ns_sleep=5
+  ping_timeout=5
+  max_tries=100
+  is_error=false
+
+  for cur_ip in "\${ips_arr[@]}"
+  do
+    is_up=false
+    cur_tries=1
+    while [ \$cur_tries -le \$max_tries ] && [ "\$is_up" = "false" ]
+    do
+      timeout \$ping_timeout ping -c 1 \$cur_ip > /dev/null 2>&1
+      if [ \$? -eq 0 ]; then
+        is_up=true
+      else
+        ((cur_tries++))
+        sleep \$ns_sleep
+      fi
+    done
+  done
+
+  caddy_arr=(\$(docker ps -a --filter name=caddy- --format "{{.Names}}"))
+  for curcaddy in "\${caddy_arr[@]}"
+  do
+    docker container restart \$curcaddy
+  done
+
+  docker ps -a --filter name=coturn --format "{{.Names}}" > /dev/null 2>&1
+  if [ \$? -eq 0 ]; then
+    docker container restart coturn
+  fi
+}
+main "\$@"
+
+EOFWC
+
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/50-dockerWireGuardCaddyFix.sh
 }
 
 function outputDBExportScripts()
@@ -15165,7 +15329,7 @@ EOFMS
 
 stacks_dir=$HSHQ_STACKS_DIR
 err_search="The request message was malformed"
-caddy_arr=(\$(docker ps --filter name=caddy- --format "{{.Names}}"))
+caddy_arr=(\$(docker ps -a --filter name=caddy- --format "{{.Names}}"))
 for curcaddy in "\${caddy_arr[@]}"
 do
   find_err=\$(docker logs \$curcaddy 2>&1 | grep "\$err_search")
@@ -15273,7 +15437,6 @@ function initCronJobs()
   echo "*/$LECERTS_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "*/$WIREGUARD_DNS_REFRESH_RATE * * * * bash $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   sudo crontab $HOME/rootcron
   sudo rm $HOME/rootcron
 }
@@ -15301,8 +15464,8 @@ function deleteFromRootCron()
   if [ $? -eq 0 ]; then
     sudo sed -i "/$cr_string/d" $HOME/rootcron
     sudo crontab $HOME/rootcron
-    sudo rm $HOME/rootcron
   fi
+  sudo rm $HOME/rootcron
   set -e
 }
 
@@ -17768,7 +17931,7 @@ function installStackByName()
   esac
   stack_install_retval=$?
   if [ $stack_install_retval -ne 0 ]; then
-    sendEmail -s "Stack Installation Failure" -b "$stack_name did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+    notifyStackInstallFailure "$stack_name"
   fi
 }
 
@@ -30146,6 +30309,9 @@ influxdb:
   organization: "$INFLUXDB_ORG"
   bucket: "$INFLUXDB_HA_BUCKET"
 
+zeroconf:
+  default_interface: true
+
 EOFHC
 
 }
@@ -34475,7 +34641,7 @@ function installRemotely()
   sleep 10
 
   startStopStack remotely stop
-  sudo sqlite3 $HSHQ_STACKS_DIR/remotely/Remotely.db "update KeyValueRecords set Value='{\"AllowApiLogin\":false,\"BannedDevices\":[],\"DataRetentionInDays\":90,\"DbProvider\":\"SQLite\",\"EnableRemoteControlRecording\":false,\"EnableWindowsEventLog\":false,\"EnforceAttendedAccess\":false,\"ForceClientHttps\":true,\"KnownProxies\":[],\"MaxConcurrentUpdates\":10,\"MaxOrganizationCount\":1,\"MessageOfTheDay\":\"\",\"RedirectToHttps\":true,\"RemoteControlNotifyUser\":true,\"RemoteControlRequiresAuthentication\":true,\"RemoteControlSessionLimit\":5,\"Require2FA\":false,\"ServerUrl\":\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN\",\"SmtpCheckCertificateRevocation\":false,\"SmtpDisplayName\":\"Remotely $HSHQ_ADMIN_NAME\",\"SmtpEmail\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"SmtpHost\":\"$SMTP_HOSTNAME\",\"SmtpLocalDomain\":\"\",\"SmtpPassword\":\"\",\"SmtpPort\":$SMTP_HOSTPORT,\"SmtpUserName\":\"\",\"Theme\":0,\"TrustedCorsOrigins\":[],\"UseHsts\":false,\"UseHttpLogging\":false}';"
+  sudo sqlite3 $HSHQ_STACKS_DIR/remotely/Remotely.db "update KeyValueRecords set Value='{\"AllowApiLogin\":false,\"BannedDevices\":[],\"DataRetentionInDays\":90,\"DbProvider\":\"SQLite\",\"EnableRemoteControlRecording\":false,\"EnableWindowsEventLog\":false,\"EnforceAttendedAccess\":false,\"ForceClientHttps\":true,\"KnownProxies\":[],\"MaxConcurrentUpdates\":10,\"MaxOrganizationCount\":1,\"MessageOfTheDay\":\"\",\"RedirectToHttps\":false,\"RemoteControlNotifyUser\":true,\"RemoteControlRequiresAuthentication\":true,\"RemoteControlSessionLimit\":5,\"Require2FA\":false,\"ServerUrl\":\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN\",\"SmtpCheckCertificateRevocation\":false,\"SmtpDisplayName\":\"Remotely $HSHQ_ADMIN_NAME\",\"SmtpEmail\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"SmtpHost\":\"$SMTP_HOSTNAME\",\"SmtpLocalDomain\":\"\",\"SmtpPassword\":\"\",\"SmtpPort\":$SMTP_HOSTPORT,\"SmtpUserName\":\"\",\"Theme\":0,\"TrustedCorsOrigins\":[],\"UseHsts\":false,\"UseHttpLogging\":false}';"
   startStopStack remotely start
 
   inner_block=""
@@ -37838,7 +38004,7 @@ services:
       - "3478:3478/udp"
       - "5349:5349"
       - "5349:5349/udp"
-      - "49100-49200:49100-49200/udp"
+      - "14100-14200:14100-14200/udp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -37866,8 +38032,8 @@ EOFRM
   cat <<EOFRM > $HSHQ_STACKS_DIR/coturn/turnserver.conf
 listening-port=3478
 tls-listening-port=5349
-min-port=49100
-max-port=49200
+min-port=14100
+max-port=14200
 fingerprint
 use-auth-secret
 static-auth-secret=$COTURN_STATIC_SECRET
@@ -37934,6 +38100,7 @@ function installFileDrop()
   retVal=$?
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
   if [ $retVal -ne 0 ]; then
+    notifyStackInstallFailure Filedrop
     return
   fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
@@ -37941,7 +38108,7 @@ function installFileDrop()
     installCoturn
     retval=$?
     if [ $retval -ne 0 ]; then
-      sendEmail -s "Stack Installation Failure" -b "coturn did not install correctly. Please uninstall this stack and reinstall. If the error persists, then create a topic on the forum (https://forum.homeserverhq.com)." -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      notifyStackInstallFailure Coturn
     fi
   fi
   set -e
@@ -38843,7 +39010,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "docker ps --filter name=caddy- --format \"{{.Names}}\"",
+        "script": "docker ps -a --filter name=caddy- --format \"{{.Names}}\"",
         "shell": true
       },
       "pass_as": "argument"
@@ -39089,7 +39256,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "docker ps --filter name=caddy- --format \"{{.Names}}\"",
+        "script": "docker ps -a --filter name=caddy- --format \"{{.Names}}\"",
         "shell": true
       },
       "pass_as": "argument"
@@ -44888,7 +45055,7 @@ function removeCaddySnippetImport()
 
 function restartAllCaddyContainers()
 {
-  caddy_arr=($(docker ps --filter name=caddy- --format "{{.Names}}"))
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
   do
     docker container restart $curcaddy
