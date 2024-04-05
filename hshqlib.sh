@@ -462,6 +462,7 @@ function checkWrapperVersion()
 
 function updateSysctl()
 {
+  isPerfUpdate=$1
   set +e
   sudo tee /etc/sysctl.d/88-hshq.conf >/dev/null <<EOFSC
 kernel.panic = 10
@@ -494,8 +495,9 @@ net.ipv4.conf.default.rp_filter = 1
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
-
-  sudo sysctl --system > /dev/null 2>&1
+  if ! [ "$isPerfUpdate" = "false" ]; then
+    sudo sysctl --system > /dev/null 2>&1
+  fi
 }
 
 function updateMOTD()
@@ -606,7 +608,7 @@ EOFSM
   fi
 
   # Some host tuning
-  updateSysctl
+  updateSysctl true
   sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 60m|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
   
@@ -12997,7 +12999,7 @@ function version23Update()
   outputBootScripts
   deleteFromRootCron "restartHomeAssistantStack.sh"
   appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh >/dev/null 2>&1"
-  updateSysctl
+  updateSysctl true
 }
 
 function version24Update()
@@ -13434,7 +13436,7 @@ EOFWA
 function version43Update()
 {
   installHostNTPServer
-  outputIPTablesScripts
+  outputIPTablesScripts true
 }
 
 function version44Update()
@@ -13549,7 +13551,11 @@ function version52Update()
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
-    read -p "Press enter to continue."
+    is_continue=""
+    while ! [ "$is_continue" = "ok" ]
+    do
+      read -p "Enter 'ok' to continue: " is_continue
+    done
     loadSSHKey
     set +e
     rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
@@ -13749,12 +13755,19 @@ EOFSC
     rm -f $HOME/clearDockerUserIPTables.sh
   fi
   set -e
-  updateSysctl
-  sudo $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
-  outputIPTablesScripts
+  echo -e "\n\n\nThis update requires a reboot of the HomeServer.\n"
+  is_continue=""
+  while ! [ "$is_continue" = "ok" ]
+  do
+    read -p "Enter 'ok' to continue: " is_continue
+  done
+  updateSysctl false
+  outputIPTablesScripts false
   # See https://www.portainer.io/blog/portainer-and-docker-26
   sudo apt-mark hold docker-ce
   sudo apt-mark hold docker-ce-cli
+  performExitFunctions false
+  sudo reboot
 }
 
 function sendRSExposeScripts()
@@ -14723,7 +14736,7 @@ function getExposedPortsList()
 function outputBootScripts()
 {
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/bootscripts
-  outputIPTablesScripts
+  outputIPTablesScripts true
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -14756,6 +14769,7 @@ EOFBS
 
 function outputIPTablesScripts()
 {
+  isRunUpdate=$1
   default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh >/dev/null <<EOFBS
@@ -14933,6 +14947,7 @@ EOFBS
     iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
     iptables -I DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
   done
+  iptables -t raw -I PREROUTING -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4 -i $default_iface -j DROP
 
 EOFPO
     sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
@@ -14946,7 +14961,7 @@ EOFPT
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   util="docker|docker"
-  if ! [ "$(isProgramInstalled $util)" = "false" ]; then
+  if ! [ "$isRunUpdate" = "false" ] && ! [ "$(isProgramInstalled $util)" = "false" ]; then
     sudo $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh
     # Just in case
     cur_ssh_port=$(grep "^Port" /etc/ssh/sshd_config)
@@ -41461,7 +41476,7 @@ EOFSC
 {
   "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
-  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer's AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
