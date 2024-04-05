@@ -13821,10 +13821,16 @@ EOFBS
   outputHABandaidScript
   outputStackListsScriptServer
   updateSysctl false
-  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+  if [ -f $HSHQ_STACKS_DIR/coturn/turnserver.conf ]; then
     grep 14100 $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       # Reinstall coturn with new ports
+      echo -e "\n\n\nCoturn must be reinstalled due to a change in the port range.\nThis will result in the reverse proxy (Caddy) being restarted,\nand this web page will desync as a result. Ensure to refresh \nthe web page when this occurs, in order to continue the update."
+      is_continue=""
+      while ! [ "$is_continue" = "ok" ]
+      do
+        read -p "Enter 'ok' to continue: " is_continue
+      done
       deleteListOfStacks true coturn
       installListOfServices coturn
     fi
@@ -15132,7 +15138,7 @@ set +e
 # Attempts were made within the systemd service files to start one after the other, but it still results
 # in a circular reference problem. Even manually starting the VPN interfaces before docker.service with 
 # wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
-# at boot, will wait until the interfaces are up, then restart the Caddy containers.
+# at boot, will wait until the interfaces are up, then start/restart the Caddy containers.
 
 host_ip=$HOMESERVER_HOST_IP
 hshq_db=$HSHQ_DB
