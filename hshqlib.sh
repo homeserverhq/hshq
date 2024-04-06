@@ -13577,7 +13577,7 @@ function version52Update()
 {
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
     is_continue=""
     while ! [ "$is_continue" = "ok" ]
     do
@@ -13775,7 +13775,7 @@ EOFSC
     scp -P $RELAYSERVER_SSH_PORT $HOME/88-hshq.conf $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
     scp -P $RELAYSERVER_SSH_PORT $HOME/setupDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
     scp -P $RELAYSERVER_SSH_PORT $HOME/clearDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli; sleep 5; sudo reboot"
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli"
     unloadSSHKey
     rm -f $HOME/88-hshq.conf
     rm -f $HOME/setupDockerUserIPTables.sh
@@ -13853,7 +13853,7 @@ run-parts --regex '.*sh\$' $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 EOFBS
     chmod 744 $HOME/onBootRoot.sh
     scp -P $RELAYSERVER_SSH_PORT $HOME/onBootRoot.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi"
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi; sleep 5; sudo reboot"
     unloadSSHKey
     rm -f $HOME/onBootRoot.sh
     sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/transfer.sh
