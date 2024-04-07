@@ -8977,7 +8977,7 @@ function changeHostStaticIP()
     return
   fi
   sudo -v
-  checkChange=$(promptUserInputMenu "" "Confirm Change IP" "You must be physically logged directly into the host machine to change the IP. Enter 'change' to continue.")
+  checkChange=$(promptUserInputMenu "" "Confirm Change IP" "You MUST be physically logged directly into the host machine to change the IP. Enter 'change' to continue.")
   if ! [ "$checkChange" = "change" ]; then
     showMessageBox "Error" "Text does not match, returning..."
     return
@@ -9007,7 +9007,8 @@ function changeHostStaticIP()
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   sudo systemctl restart runScriptServer
   echo "Restarting Heimdall..."
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$curHostIP%';"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$curHostIP:$PORTAINER_LOCAL_HTTPS_PORT%';"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT' where url like '%$curHostIP:$SCRIPTSERVER_LOCALHOST_PORT%';"
   docker container restart heimdall > /dev/null 2>&1
   echo "Updating Adguard..."
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
@@ -9024,6 +9025,7 @@ function changeHostStaticIP()
   sleep 2
   startStopStack jitsi start
   echo "Change Static IP Complete!"
+  sendEmail -s "Static IP Succesfully Changed" -b "Static IP Succesfully Changed\n\nThe static IP address for the host machine has been updated from $curHostIP to ${HOMESERVER_HOST_IP}.\nYou will need to update your Vaultwarden password IP URLs for both Portainer and ScriptServer to the new IP address."
 }
 
 function initWireGuardDB()
