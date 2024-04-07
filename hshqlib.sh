@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=53
+HSHQ_SCRIPT_VERSION=54
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -1514,6 +1514,7 @@ EOF
 
 function installListOfServices()
 {
+  echo "Installing list of services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
   stackListArr=($(echo "$1" | tr "," "\n"))
   setSudoTimeoutInstall
   getUpdateAssets
@@ -1523,6 +1524,7 @@ function installListOfServices()
   done
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  echo "Installing list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 function installAllAvailableStacks()
@@ -1558,6 +1560,7 @@ function installAllAvailableStacks()
       return
     fi
   fi
+  echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
   setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
@@ -1566,6 +1569,7 @@ function installAllAvailableStacks()
   done
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  echo "Installing all services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 function getStacksToUpdate()
@@ -1676,6 +1680,7 @@ function performAllAvailableStackUpdates()
 
 function updateListOfStacks()
 {
+  echo "Updating list of services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
   stackListArr=($(echo "$1" | tr "," "\n"))
   stacks_need_update_list="$(getStacksToUpdate)"
   setSudoTimeoutInstall
@@ -1715,6 +1720,7 @@ function updateListOfStacks()
   sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Sending update results to email manager ($EMAIL_ADMIN_EMAIL_ADDRESS). Refer to this for further details."
   outputStackListsScriptServer
+  echo "Updating list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 function deleteStacksFromList()
@@ -3202,7 +3208,7 @@ function checkIsIPPrivate()
 {
   check_ip="\$1"
   set +e
-  priv_arr=("10.0.0.0/8 172.16.0.0/12 192.168.0.0/16")
+  priv_arr=(10.0.0.0/8 172.16.0.0/12 192.168.0.0/16)
   for subnet in "\${priv_arr[@]}"
   do
     is_in_subnet=\$(isIPInSubnet \$check_ip \$subnet)
@@ -3212,6 +3218,24 @@ function checkIsIPPrivate()
     fi
   done
   echo "false"
+}
+
+function isIPInSubnet()
+{
+  iiis_curE=\${-//[^e]/}
+  check_ipaddr=\$1
+  check_subnet=\$2
+  set +e
+  grepcidr \${check_subnet} <(echo \${check_ipaddr}) > /dev/null 2>&1
+  if [ \$? -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+  set +e
+  if ! [ -z \$iiis_curE ]; then
+    set -e
+  fi
 }
 
 function install()
@@ -3493,6 +3517,7 @@ EOFBS
   iptables -t raw -A PREROUTING -s 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
   iptables -t raw -A PREROUTING -d 192.0.0.0/24,192.0.2.0/24,198.51.100.0/24,203.0.113.0/24 -j DROP
   iptables -t raw -A PREROUTING -d 0.0.0.0/8 -j DROP
+  # Block spoofed packets
   iptables -t raw -A PREROUTING -s 0.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4,198.18.0.0/15,100.64.0.0/10,192.88.99.0/24 -i \$default_iface -j DROP
   iptables -t raw -A PREROUTING -s 127.0.0.0/8 ! -i lo -j DROP
   iptables -t raw -A PREROUTING -p udp -m udp -m multiport --ports 0 -j DROP
@@ -3581,7 +3606,7 @@ is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
 def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
 if [ "\$is_def_priv" = "true" ]; then
   echo "Default route is in private range, adding allowance to (raw)iptables..."
-  sudo sed -i "s/# Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
 else
   echo "Default route is in public range."
 fi
@@ -3631,9 +3656,6 @@ fi
   ip6tables -P OUTPUT ACCEPT
 
 EOFBS
-if [ "\$is_def_priv" = "true" ]; then
-  echo "  iptables -t raw -D PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -j ACCEPT > \/dev\/null 2>&1" | sudo tee -a \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
-fi
   sudo chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service >/dev/null <<EOFBS
 [Unit]
@@ -9631,6 +9653,7 @@ function createStackJson()
 
 function installStack()
 {
+  set +e
   stack_name=$1
   container_name=$2
   stack_search_string=$3
@@ -9681,7 +9704,6 @@ function installStack()
   search=$stack_search_string
   isFound="F"
   i=0
-  set +e
   while [ $i -le $max_interval ]
   do
     findtext=$(docker logs $container_name 2>&1 | grep "$search")
@@ -12501,6 +12523,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=53
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 54 ]; then
+    echo "Updating to Version 54..."
+    version54Update
+    HSHQ_VERSION=54
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -13869,6 +13897,13 @@ EOFBS
   done
   performExitFunctions false
   sudo reboot
+}
+
+function version54Update()
+{
+  set +e
+  outputAllScriptServerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
@@ -18941,6 +18976,7 @@ function getScriptImageByContainerName()
 # Portainer
 function installPortainer()
 {
+  set +e
   is_containers=$(docker ps -q)
   if [ ${#is_containers} -gt 0 ]; then
     showMessageBox "Docker Containers Running" "There are docker containers running. Please stop these containers before continuing. Exiting..."
@@ -18950,7 +18986,7 @@ function installPortainer()
   checkDeleteStackAndDirectory portainer "Portainer" false
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
   set -e
   createDockerNetworks
@@ -19151,12 +19187,19 @@ function performUpdatePortainer()
 # Adguard
 function installAdGuard()
 {
+  set +e
   is_integrate_hshq=$1
   # Remove directory if it exists
   checkDeleteStackAndDirectory adguard "Adguard"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: AdGuard directory exists"
+    exit 1
+  fi
+  pullImage $IMG_ADGUARD
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain AdGuard docker image"
+    exit 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/adguard
@@ -19183,6 +19226,11 @@ EOFR
   sudo netplan apply > /dev/null 2>&1
 
   installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing AdGuard"
+    exit $retval
+  fi
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -19523,31 +19571,31 @@ function performUpdateAdGuard()
 # SysUtils
 function installSysUtils()
 {
+  set +e
   is_integrate_hshq=$1
   # Don't install if directory exists
   checkDeleteStackAndDirectory sysutils "SystemUtils"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_GRAFANA
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_PROMETHEUS
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_NODE_EXPORTER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_INFLUXDB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
-
+  set -e
   mkdir $HSHQ_STACKS_DIR/sysutils
   mkdir $HSHQ_STACKS_DIR/sysutils/grafana
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb
@@ -19579,17 +19627,15 @@ function installSysUtils()
     sleep 5
     i=$((i+5))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "System Utils did not start up correctly..."
     docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
-    exit 1
+    return 1
   fi
 
   search="service=tcp-listener transport=https"
   isFound="F"
   i=0
-  set +e
   while [ $i -le 60 ]
   do
     findtext=$(docker logs influxdb 2>&1 | grep "$search")
@@ -19601,11 +19647,10 @@ function installSysUtils()
     sleep 1
     i=$((i+1))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "System Utils did not start up correctly..."
     docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
-    exit 1
+    return 1
   fi
   sleep 5
   datasource_json=$(jq -n --arg gfid "$gf_dataset_uid" '{name: "Prometheus", uid: $gfid, type: "prometheus", url: "http://prometheus:9090", access: "proxy", basicAuth: false}')
@@ -19644,6 +19689,7 @@ function installSysUtils()
       echo "ERROR: Could not import dashboard into Grafana."
     fi
   fi
+  set -e
   pref_string=$(jq -n --arg gfid "$gf_dashboard_uid" --arg tz "$TZ" '{theme: "dark", homeDashboardUID: $gfid, timezone: $tz}')
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
 
@@ -19651,6 +19697,10 @@ function installSysUtils()
   docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
   sleep 2
   installStack sysutils grafana "HTTP Server Listen" $HOME/sysutils.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   rm -f $HOME/sysutils-compose-tmp.yml
   rm -f $HOME/gfdashboard.json
@@ -22497,12 +22547,29 @@ EOFGF
 # OpenLDAP
 function installOpenLDAP()
 {
+  set +e
   is_integrate_hshq=$1
   # Only install if directory does not exist
   checkDeleteStackAndDirectory openldap "OpenLDAP"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: OpenLDAP directory exists"
+    exit 1
+  fi
+  pullImage $IMG_OPENLDAP_SERVER
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain OpenLDAP Server docker image"
+    exit 1
+  fi
+  pullImage $IMG_OPENLDAP_MANAGER
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain OpenLDAP Manager docker image"
+    exit 1
+  fi
+  pullImage $IMG_OPENLDAP_PHP
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain OpenLDAP PHP docker image"
+    exit 1
   fi
   set -e
 
@@ -22562,6 +22629,11 @@ function installOpenLDAP()
   cp $HSHQ_SSL_DIR/dhparam.pem $HSHQ_STACKS_DIR/openldap/certs/dhparam.pem
   cp $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt $HSHQ_STACKS_DIR/openldap/certs/${CERTS_ROOT_CA_NAME}.crt
   installStack openldap ldapserver "slapd starting" $HOME/openldap.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing OpenLDAP"
+    exit $retval
+  fi
 
   docker exec ldapserver chmod +x /tmp/initconfig/initdbscript.sh
   docker exec ldapserver sh /tmp/initconfig/initdbscript.sh > /dev/null 2>&1
@@ -22932,15 +23004,16 @@ function performUpdateOpenLDAP()
 # Mailu
 function installMailu()
 {
+  set +e
   is_integrate_hshq=$1
   # Unless directory doesn't exist, don't proceed
   checkDeleteStackAndDirectory mailu "Mailu"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: Mailu directory exists"
+    exit 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/mailu
   mkdir $HSHQ_STACKS_DIR/mailu/certs
   mkdir $HSHQ_STACKS_DIR/mailu/redis
@@ -22957,6 +23030,11 @@ function installMailu()
   fi
   outputConfigMailu
   installStack mailu mailu-admin "Listening at: http://0.0.0.0:8080" $HOME/mailu.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Mailu"
+    exit $retval
+  fi
   echo "Installed Mailu stack, sleeping 5 seconds..."
   sleep 5
   # Since the upgrade from 1.9 to 2.0, the following commands occasionally error out and halt the installation.
@@ -23514,27 +23592,27 @@ function addUserMailu()
 # Wazuh
 function installWazuh()
 {
+  set +e
   is_integrate_hshq=$1
   # Get/check contents of wazuh directory
   checkDeleteStackAndDirectory wazuh "Wazuh"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_WAZUH_DASHBOARD
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_WAZUH_INDEXER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_WAZUH_MANAGER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
-
+  set -e
   mkdir $HSHQ_STACKS_DIR/wazuh
   mkdir $HSHQ_STACKS_DIR/wazuh/wazuh-cluster
   mkdir $HSHQ_STACKS_DIR/wazuh/wazuh-indexer
@@ -23596,6 +23674,10 @@ function installWazuh()
   generateCert wazuh.dashboard "wazuh.dashboard"
 
   installStack wazuh wazuh.manager " " $HOME/wazuh.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Wazuh installed, sleeping 5 seconds..."
   sleep 5
 
@@ -24363,24 +24445,27 @@ function performUpdateWazuh()
 # Collabora
 function installCollabora()
 {
+  set +e
   is_integrate_hshq=$1
   # And don't forget to check if directory exists
   checkDeleteStackAndDirectory collabora "Collabora"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
   mkdir $HSHQ_STACKS_DIR/collabora
-  set -e
   pullImage $IMG_COLLABORA
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
-
+  set -e
   initServicesCredentials
   outputConfigCollabora
   installStack collabora collabora " " $HOME/collabora.env
-  
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   inner_block=""
   inner_block=$inner_block">>https://$SUB_COLLABORA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -24496,25 +24581,25 @@ function performUpdateCollabora()
 # Nextcloud
 function installNextcloud()
 {
+  set +e
   is_integrate_hshq=$1
   # With great power comes great responsibility
   checkDeleteStackAndDirectory nextcloud "Nextcloud"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_NEXTCLOUD_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_NEXTCLOUD_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_NEXTCLOUD_IMAGINARY
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
@@ -24524,13 +24609,12 @@ function installNextcloud()
       notifyStackInstallFailure Coturn
     fi
   fi
-
+  set -e
   initServicesCredentials
   if [ -z "$NEXTCLOUD_REDIS_PASSWORD" ]; then
     NEXTCLOUD_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar NEXTCLOUD_REDIS_PASSWORD $NEXTCLOUD_REDIS_PASSWORD
   fi
-
   set +e
   docker exec mailu-admin flask mailu alias-delete $NEXTCLOUD_ADMIN_EMAIL_ADDRESS
   sleep 5
@@ -24585,16 +24669,13 @@ function installNextcloud()
     sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
     ((curTries++))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
-    notifyStackInstallFailure Nextcloud
-    return
+    return 1
   fi
   echo "Sleeping 10 seconds..."
   sleep 10
   set +e
-
   ls /usr/local/share/ca-certificates/ | while read cert
   do
     docker exec -u www-data nextcloud-app php occ --no-warnings security:certificates:import /usr/local/share/ca-certificates/$cert
@@ -24606,8 +24687,7 @@ function installNextcloud()
   if [ $? -ne 0 ]; then
     docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
-    notifyStackInstallFailure Nextcloud
-    return
+    return 1
   fi
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings email "$NEXTCLOUD_ADMIN_EMAIL_ADDRESS"
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings display_name "${HOMESERVER_ABBREV^^} Nextcloud Admin"
@@ -24710,10 +24790,9 @@ function installNextcloud()
     done
     docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
-    notifyStackInstallFailure Nextcloud
-    return
+    return 1
   fi
-
+  set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -25494,35 +25573,39 @@ function performUpdateNextcloud()
 # Jitsi
 function installJitsi()
 {
+  set +e
   is_integrate_hshq=$1
   # Remember to check if directory exists
   checkDeleteStackAndDirectory jitsi "Jitsi"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_JITSI_JICOFO
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_JITSI_JVB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_JITSI_PROSODY
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_JITSI_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
-
+  set -e
   mkdir $HSHQ_STACKS_DIR/jitsi
   outputConfigJitsi
   generateCert jitsi-web jitsi-web
   installStack jitsi jitsi-web "starting services" $HOME/jitsi.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Jitsi installed, sleeping 5 seconds..."
   sleep 5
 
@@ -25724,22 +25807,23 @@ function performUpdateJitsi()
 # Matrix
 function installMatrix()
 {
+  set +e
   is_integrate_hshq=$1
   # Only install if directory does not exist
   checkDeleteStackAndDirectory matrix "Matrix"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_MATRIX_ELEMENT
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_MATRIX_SYNAPSE
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/matrix
   mkdir $HSHQ_STACKS_DIR/matrix/db
@@ -25769,6 +25853,10 @@ function installMatrix()
   outputConfigMatrix
   generateCert matrix-synapse matrix-synapse
   installStack matrix matrix-synapse "Starting synapse with args" $HOME/matrix.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Matrix installed, sleeping 5 seconds..."
   sleep 5
 
@@ -26305,19 +26393,19 @@ EOFEL
 # Wikijs
 function installWikijs()
 {
+  set +e
   is_integrate_hshq=$1
   # Test if directory exists
   checkDeleteStackAndDirectory wikijs "Wikijs"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_WIKIJS
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
-
+  set -e
   mkdir $HSHQ_STACKS_DIR/wikijs
   mkdir $HSHQ_STACKS_DIR/wikijs/db
   mkdir $HSHQ_STACKS_DIR/wikijs/dbexport
@@ -26327,10 +26415,15 @@ function installWikijs()
   outputConfigWikijs
   generateCert wikijs-web wikijs-web
   installStack wikijs wikijs-web "HTTP Server on port" $HOME/wikijs.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sudo mv $HSHQ_STACKS_DIR/wikijs/config.yml $HSHQ_STACKS_DIR/wikijs/web/config.yml
+  sleep 3
   docker container restart wikijs-web
-  echo "Wikijs installed, sleeping 5 seconds..."
-  sleep 5
+  echo "Wikijs installed, sleeping 3 seconds..."
+  sleep 3
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WIKIJS.$HOMESERVER_DOMAIN {\n"
@@ -26525,19 +26618,21 @@ function performUpdateWikijs()
 # Duplicati
 function installDuplicati()
 {
+  set +e
   is_integrate_hshq=$1
   # Evaluate whether directory exists
   checkDeleteStackAndDirectory duplicati "Duplicati"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: Duplicati directory exists"
+    exit 1
   fi
-  set -e
   pullImage $IMG_DUPLICATI
   if [ $? -ne 0 ]; then
-    return
+    echo "ERROR: Could not obtain Duplicati docker image"
+    exit 1
   fi
-
+  set -e
   domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
   mkdir $HSHQ_STACKS_DIR/duplicati
   mkdir $HSHQ_STACKS_DIR/duplicati/config
@@ -26548,6 +26643,11 @@ function installDuplicati()
   outputConfigDuplicati
   generateCert duplicati duplicati
   installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Duplicati"
+    exit $retval
+  fi
   echo "Duplicati installed, sleeping 5 seconds..."
   sleep 5
   db_name=$HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite
@@ -26654,22 +26754,24 @@ function performUpdateDuplicati()
 # Mastodon
 function installMastodon()
 {
+  set +e
   is_integrate_hshq=$1
   # Test if directory exists
   checkDeleteStackAndDirectory mastodon "Mastodon"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
   set -e
   pullImage $IMG_MASTODON_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_MASTODON_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/mastodon
   mkdir $HSHQ_STACKS_DIR/mastodon/db
@@ -26710,6 +26812,10 @@ function installMastodon()
   cp $HOME/mastodon.env $HSHQ_STACKS_DIR/mastodon/stack.env
   migrateMastodon
   installStack mastodon mastodon-app "Listening on http" $HOME/mastodon.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Mastodon installed, sleeping 3 seconds..."
   sleep 3
   set +e
@@ -27434,23 +27540,29 @@ function mfClearStaticAssetsMastodon()
 # Dozzle
 function installDozzle()
 {
+  set +e
   is_integrate_hshq=$1
   # Have to check if stack/container exists
   checkDeleteStackAndDirectory dozzle "Dozzle"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
   set -e
   pullImage $IMG_DOZZLE
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/dozzle
   initServicesCredentials
   outputConfigDozzle
   installStack dozzle dozzle "Accepting connections on" $HOME/dozzle.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Dozzle installed, sleeping 3 seconds..."
   sleep 3
 
@@ -27568,19 +27680,19 @@ function performUpdateDozzle()
 # SearxNG
 function installSearxNG()
 {
+  set +e
   is_integrate_hshq=$1
   # If directory exists, then delete it
   checkDeleteStackAndDirectory searxng "SearxNG"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_SEARXNG
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
-
+  set -e
   mkdir $HSHQ_STACKS_DIR/searxng
   mkdir $HSHQ_STACKS_DIR/searxng/caddy
   mkdir $HSHQ_STACKS_DIR/searxng/web
@@ -27599,6 +27711,10 @@ function installSearxNG()
   generateCert searxng-caddy searxng-caddy
   outputConfigSearxNG
   installStack searxng searxng-app "Listen on 0.0.0.0" $HOME/searxng.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SEARXNG.$HOMESERVER_DOMAIN {\n"
@@ -27901,18 +28017,19 @@ function performUpdateSearxNG()
 # Jellyfin
 function installJellyfin()
 {
+  set +e
   is_integrate_hshq=$1
   # Should check if directory exists
   checkDeleteStackAndDirectory jellyfin "Jellyfin"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_JELLYFIN
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/jellyfin
   mkdir $HSHQ_STACKS_DIR/jellyfin/config
@@ -27923,7 +28040,11 @@ function installJellyfin()
 
   outputConfigJellyfin
   installStack jellyfin jellyfin "Startup complete" $HOME/jellyfin.env
-
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
+  sleep 5
   sed -i 's/^.*EncodingThreadCount.*$/  <EncodingThreadCount>1<\/EncodingThreadCount>/' $HSHQ_STACKS_DIR/jellyfin/config/config/encoding.xml
   mv $HOME/jellyfin-ldap.xml $HSHQ_STACKS_DIR/jellyfin/config/plugins/configurations/LDAP-Auth.xml
   docker container restart jellyfin
@@ -28070,18 +28191,19 @@ function performUpdateJellyfin()
 # FileBrowser
 function installFileBrowser()
 {
+  set +e
   is_integrate_hshq=$1
   # Check if directory exists
   checkDeleteStackAndDirectory filebrowser "FileBrowser"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_FILEBROWSER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set +e
 
   mkdir $HSHQ_STACKS_DIR/filebrowser
   mkdir $HSHQ_STACKS_DIR/filebrowser/db
@@ -28091,6 +28213,10 @@ function installFileBrowser()
 
   outputConfigFileBrowser
   installStack filebrowser filebrowser "Listening on" $HOME/filebrowser.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN {\n"
@@ -28210,18 +28336,19 @@ function performUpdateFileBrowser()
 # PhotoPrism
 function installPhotoPrism()
 {
+  set +e
   is_integrate_hshq=$1
   # Only install if directory does not exist
   checkDeleteStackAndDirectory photoprism "PhotoPrism"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_PHOTOPRISM_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/photoprism
   mkdir $HSHQ_STACKS_DIR/photoprism/db
@@ -28260,12 +28387,15 @@ function installPhotoPrism()
   if [ $isFound == "F" ]; then
     docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
     echo "ERROR: PhotoPrism did not start up correctly..."
-    notifyStackInstallFailure PhotoPrism
-    return
+    return 1
   fi
   sleep 5
   docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
   installStack photoprism photoprism-app "listening at 0.0.0.0" $HOME/photoprism.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   rm -f $HOME/photoprism-compose-tmp.yml
 
   inner_block=""
@@ -28555,22 +28685,23 @@ function performUpdatePhotoPrism()
 # Guacamole
 function installGuacamole()
 {
+  set +e
   is_integrate_hshq=$1
   # Don't proceed if directory exists
   checkDeleteStackAndDirectory guacamole "Guacamole"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_GUACAMOLE_GUACD
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_GUACAMOLE_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/guacamole
   mkdir $HSHQ_STACKS_DIR/guacamole/db
@@ -28614,6 +28745,10 @@ function installGuacamole()
 
   docker-compose -f $HOME/guacamole-compose-tmp.yml down -v
   installStack guacamole guacamole-web "Server startup in" $HOME/guacamole.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   rm -f $HOME/guacamole-compose-tmp.yml
 
   inner_block=""
@@ -28822,12 +28957,19 @@ function performUpdateGuacamole()
 # Authelia
 function installAuthelia()
 {
+  set +e
   is_integrate_hshq=$1
   # Exit if directory exists
   checkDeleteStackAndDirectory authelia "Authelia"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: Authelia directory exists"
+    exit 1
+  fi
+  pullImage $IMG_AUTHELIA
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Authelia docker image"
+    exit 1
   fi
   set -e
 
@@ -28861,6 +29003,11 @@ function installAuthelia()
   generateCert authelia-redis authelia-redis
   outputConfigAuthelia
   installStack authelia authelia "Listening for TLS connections on" $HOME/authelia.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Authelia"
+    exit $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN {\n"
@@ -29216,18 +29363,19 @@ EOFAE
 # WordPress
 function installWordPress()
 {
+  set +e
   is_integrate_hshq=$1
   # Check if directory exists
   checkDeleteStackAndDirectory wordpress "WordPress"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_WORDPRESS
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/wordpress
   mkdir $HSHQ_STACKS_DIR/wordpress/db
@@ -29242,6 +29390,10 @@ function installWordPress()
   fi
   outputConfigWordPress
   installStack wordpress wordpress-web "WordPress" $HOME/wordpress.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN {\n"
@@ -29416,18 +29568,19 @@ function performUpdateWordPress()
 # Ghost
 function installGhost()
 {
+  set +e
   is_integrate_hshq=$1
   # Have to check if directory exits
   checkDeleteStackAndDirectory ghost "Ghost"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_GHOST
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/ghost
   mkdir $HSHQ_STACKS_DIR/ghost/db
@@ -29442,6 +29595,10 @@ function installGhost()
 
   outputConfigGhost
   installStack ghost ghost-web "Ghost booted in" $HOME/ghost.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GHOST.$HOMESERVER_DOMAIN {\n"
@@ -29632,18 +29789,19 @@ function performUpdateGhost()
 # PeerTube
 function installPeerTube()
 {
+  set +e
   is_integrate_hshq=$1
   # Evaulate whether directory exists
   checkDeleteStackAndDirectory peertube "PeerTube"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_PEERTUBE_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/peertube
   mkdir $HSHQ_STACKS_DIR/peertube/config
@@ -29664,6 +29822,10 @@ function installPeerTube()
   addUserMailu alias $ADMIN_USERNAME_BASE"_peertube" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigPeerTube
   installStack peertube peertube-app "HTTP server listening on 0.0.0.0" $HOME/peertube.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   docker exec peertube-app bash -c "echo $PEERTUBE_ADMIN_PASSWORD | npm run reset-password -- -u root" > /dev/null
   docker exec -u 999 peertube-app bash -c "npm run plugin:install -- --npm-name peertube-plugin-auth-ldap" > /dev/null
   docker exec -u 999 peertube-app bash -c "npm run plugin:install -- --npm-name peertube-plugin-livechat" > /dev/null
@@ -29913,30 +30075,31 @@ function performUpdatePeerTube()
 # HomeAssistant
 function installHomeAssistant()
 {
+  set +e
   is_integrate_hshq=$1
   # Evaulate whether directory exists
   checkDeleteStackAndDirectory homeassistant "HomeAssistant"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_HOMEASSISTANT_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_HOMEASSISTANT_CONFIGURATOR
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_HOMEASSISTANT_NODERED
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_HOMEASSISTANT_TASMOADMIN
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/homeassistant
   mkdir $HSHQ_STACKS_DIR/homeassistant/config
@@ -29958,6 +30121,10 @@ function installHomeAssistant()
   outputConfigHomeAssistant
 
   installStack homeassistant homeassistant-app "legacy-services successfully started" $HOME/homeassistant.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Waiting 10 seconds for HomeAssistant to load"
   sleep 10
   docker container stop homeassistant-app
@@ -30645,18 +30812,19 @@ EOFHA
 # Gitlab
 function installGitlab()
 {
+  set +e
   is_integrate_hshq=$1
   # Remember to check if exists
   checkDeleteStackAndDirectory gitlab "Gitlab"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_GITLAB_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/gitlab
   mkdir $HSHQ_STACKS_DIR/gitlab/app
@@ -30680,7 +30848,11 @@ function installGitlab()
   fi
   outputConfigGitlab
   generateCert gitlab-app gitlab-app
-  installStack gitlab gitlab-app " " $HOME/gitlab.env
+  installStack gitlab gitlab-app "" $HOME/gitlab.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 1
   startStopStack gitlab stop
   sudo rm -fr $HSHQ_STACKS_DIR/gitlab
@@ -30985,22 +31157,23 @@ function performUpdateGitlab()
 # Vaultwarden
 function installVaultwarden()
 {
+  set +e
   is_integrate_hshq=$1
   # Same as before, check if directory exists
   checkDeleteStackAndDirectory vaultwarden "Vaultwarden"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_VAULTWARDEN_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_VAULTWARDEN_LDAP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/vaultwarden
   mkdir $HSHQ_STACKS_DIR/vaultwarden/app
@@ -31013,6 +31186,10 @@ function installVaultwarden()
   outputConfigVaultwarden
   generateCert vaultwarden-app vaultwarden-app
   installStack vaultwarden vaultwarden-app " " $HOME/vaultwarden.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN {\n"
@@ -31241,18 +31418,19 @@ function performUpdateVaultwarden()
 # Discourse
 function installDiscourse()
 {
+  set +e
   is_integrate_hshq=$1
   # !Check if directory exists
   checkDeleteStackAndDirectory discourse "Discourse"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_DISCOURSE
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/discourse
   mkdir $HSHQ_STACKS_DIR/discourse/db
@@ -31278,6 +31456,10 @@ function installDiscourse()
   #generateCert discourse-app discourse-app
   outputConfigDiscourse
   installStack discourse discourse-app "" $HOME/discourse.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN {\n"
@@ -31534,12 +31716,19 @@ function performUpdateDiscourse()
 # Syncthing
 function installSyncthing()
 {
+  set +e
   is_integrate_hshq=$1
   # !Check if directory exists
   checkDeleteStackAndDirectory syncthing "Syncthing"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: Syncthing directory exists"
+    exit 1
+  fi
+  pullImage $IMG_SYNCTHING
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Syncthing docker image"
+    exit 1
   fi
   set -e
 
@@ -31554,6 +31743,11 @@ function installSyncthing()
   generateCert syncthing syncthing
   outputConfigSyncthing
   installStack syncthing syncthing "Access the GUI via the following URL" $HOME/syncthing.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Syncthing"
+    exit $retval
+  fi
   sleep 3
   startStopStack syncthing stop
   alltext=$(sudo cat $HSHQ_STACKS_DIR/syncthing/config/config.xml)
@@ -31699,18 +31893,19 @@ function performUpdateSyncthing()
 # CodeServer
 function installCodeServer()
 {
+  set +e
   is_integrate_hshq=$1
   # !Check if directory exists
   checkDeleteStackAndDirectory codeserver "CodeServer"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_CODESERVER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/codeserver
   mkdir $HSHQ_STACKS_DIR/codeserver/.config
@@ -31751,6 +31946,10 @@ function installCodeServer()
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   mv $HOME/settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   installStack codeserver codeserver "HTTPS server listening on https" $HOME/codeserver.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CODESERVER.$HOMESERVER_DOMAIN {\n"
@@ -31950,21 +32149,22 @@ function mfAddConfigsMountCodeServer()
 # Shlink
 function installShlink()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory shlink "Shlink"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_SHLINK_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_SHLINK_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/shlink
   mkdir $HSHQ_STACKS_DIR/shlink/db
@@ -31986,6 +32186,10 @@ function installShlink()
 
   outputConfigShlink
   installStack shlink shlink "shlink" $HOME/shlink.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN {\n"
@@ -32293,17 +32497,18 @@ EOFST
 # Firefly
 function installFirefly()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory firefly "Firefly"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_FIREFLY
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/firefly
   mkdir $HSHQ_STACKS_DIR/firefly/db
@@ -32324,7 +32529,11 @@ function installFirefly()
   fi
 
   outputConfigFirefly
-  installStack firefly firefly " " $HOME/firefly.env
+  installStack firefly firefly "" $HOME/firefly.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Firefly installed, sleeping 10 seconds..."
   sleep 10
 
@@ -32556,25 +32765,26 @@ function performUpdateFirefly()
 # Excalidraw
 function installExcalidraw()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory excalidraw "Excalidraw"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_EXCALIDRAW_SERVER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_EXCALIDRAW_STORAGE
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_EXCALIDRAW_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/excalidraw
   mkdir $HSHQ_STACKS_DIR/excalidraw/redis
@@ -32584,7 +32794,11 @@ function installExcalidraw()
   fi
 
   outputConfigExcalidraw
-  installStack excalidraw excalidraw-web " " $HOME/excalidraw.env
+  installStack excalidraw excalidraw-web "" $HOME/excalidraw.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Excalidraw installed, sleeping 10 seconds..."
   sleep 10
 
@@ -32790,30 +33004,35 @@ function performUpdateExcalidraw()
 # DrawIO
 function installDrawIO()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory drawio "Draw.io"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_DRAWIO_PLANTUML
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_DRAWIO_EXPORT
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_DRAWIO_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/drawio
   mkdir $HSHQ_STACKS_DIR/drawio/fonts
   outputConfigDrawIO
-  installStack drawio drawio-web " " $HOME/drawio.env
+  installStack drawio drawio-web "" $HOME/drawio.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Draw.io installed, sleeping 10 seconds..."
   sleep 10
 
@@ -32980,17 +33199,18 @@ function performUpdateDrawIO()
 # Invidious
 function installInvidious()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory invidious "Invidious"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_INVIDIOUS
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/invidious
   mkdir $HSHQ_STACKS_DIR/invidious/db
@@ -33003,6 +33223,10 @@ function installInvidious()
 
   outputConfigInvidious
   installStack invidious invidious-web "Invidious is ready to lead at" $HOME/invidious.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Invidious installed, sleeping 10 seconds..."
   sleep 10
 
@@ -33383,17 +33607,18 @@ function performUpdateInvidious()
 # Gitea
 function installGitea()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory gitea "Gitea"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_GITEA_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/gitea
   mkdir $HSHQ_STACKS_DIR/gitea/app
@@ -33404,6 +33629,10 @@ function installGitea()
   initServicesCredentials
   outputConfigGitea
   installStack gitea gitea-app "Starting new Web server:" $HOME/gitea.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Gitea installed, sleeping 10 seconds..."
   sleep 10
   set +e
@@ -33608,17 +33837,18 @@ function performUpdateGitea()
 # Mealie
 function installMealie()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory mealie "Mealie"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_MEALIE
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/mealie
   mkdir $HSHQ_STACKS_DIR/mealie/app
@@ -33634,6 +33864,10 @@ function installMealie()
   addUserMailu alias $MEALIE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigMealie
   installStack mealie mealie-app "Application startup complete" $HOME/mealie.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MEALIE.$HOMESERVER_DOMAIN {\n"
@@ -33861,17 +34095,18 @@ function performUpdateMealie()
 # Kasm
 function installKasm()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory kasm "Kasm"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_KASM
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/kasm
   mkdir $HSHQ_STACKS_DIR/kasm/profiles
@@ -33880,6 +34115,10 @@ function installKasm()
 
   outputConfigKasm
   installStack kasm kasm "" $HOME/kasm.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KASM.$HOMESERVER_DOMAIN {\n"
@@ -34014,23 +34253,28 @@ function performUpdateKasm()
 # NTFY
 function installNTFY()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory ntfy "NTFY"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_NTFY
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/ntfy
   mkdir $HSHQ_STACKS_DIR/ntfy/cache
   mkdir $HSHQ_STACKS_DIR/ntfy/etc
   outputConfigNTFY
   installStack ntfy ntfy "" $HOME/ntfy.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NTFY.$HOMESERVER_DOMAIN {\n"
@@ -34511,21 +34755,26 @@ function performUpdateNTFY()
 # ITTools
 function installITTools()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory ittools "ITTools"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_ITTOOLS
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/ittools
   outputConfigITTools
-  installStack ittools ittools " " $HOME/ittools.env
+  installStack ittools ittools "" $HOME/ittools.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN {\n"
@@ -34618,17 +34867,18 @@ function performUpdateITTools()
 # Remotely
 function installRemotely()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory remotely "Remotely"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_REMOTELY
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/remotely
   initServicesCredentials
@@ -34643,6 +34893,10 @@ function installRemotely()
   fi
   outputConfigRemotely
   installStack remotely remotely "No XML encryptor configured" $HOME/remotely.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Sleeping 10 seconds..."
   sleep 10
 
@@ -34763,21 +35017,22 @@ function performUpdateRemotely()
 # Calibre
 function installCalibre()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory calibre "Calibre"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_CALIBRE_SERVER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_CALIBRE_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/calibre
   mkdir $HSHQ_STACKS_DIR/calibre/server
@@ -34800,6 +35055,10 @@ function installCalibre()
   outputConfigCalibre
   generateCert calibre-web calibre-web
   installStack calibre calibre-web "done." $HOME/calibre.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Calibre stack installed, sleeping 10 seconds..."
   sleep 10
 
@@ -34992,17 +35251,18 @@ function performUpdateCalibre()
 # Netdata
 function installNetdata()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory netdata "Netdata"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_NETDATA
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/netdata
   mkdir $HSHQ_STACKS_DIR/netdata/config
@@ -35012,6 +35272,10 @@ function installNetdata()
 
   outputConfigNetdata
   installStack netdata netdata "" $HOME/netdata.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35153,17 +35417,18 @@ function performUpdateNetdata()
 # Linkwarden
 function installLinkwarden()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory linkwarden "$FMLNAME_LINKWARDEN"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_LINKWARDEN
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/linkwarden
   mkdir $HSHQ_STACKS_DIR/linkwarden/db
@@ -35179,6 +35444,10 @@ function installLinkwarden()
 
   outputConfigLinkwarden
   installStack linkwarden linkwarden "" $HOME/linkwarden.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35357,17 +35626,18 @@ function performUpdateLinkwarden()
 # StirlingPDF
 function installStirlingPDF()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory stirlingpdf "StirlingPDF"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_STIRLINGPDF
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/stirlingpdf
   mkdir $HSHQ_STACKS_DIR/stirlingpdf/configs
@@ -35377,6 +35647,10 @@ function installStirlingPDF()
 
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35486,29 +35760,30 @@ function performUpdateStirlingPDF()
 # BarAssistant
 function installBarAssistant()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory bar-assistant "Bar Assistant"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_BARASSISTANT_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_BARASSISTANT_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_MEILISEARCH
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_SALTRIM
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/bar-assistant
   mkdir $HSHQ_STACKS_DIR/bar-assistant/app
@@ -35528,6 +35803,10 @@ function installBarAssistant()
 
   outputConfigBarAssistant
   installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 10
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35843,17 +36122,18 @@ function mfClearMeiliData()
 # FreshRSS
 function installFreshRSS()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory freshrss "FreshRSS"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_FRESHRSS
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/freshrss
   mkdir $HSHQ_STACKS_DIR/freshrss/db
@@ -35877,6 +36157,10 @@ function installFreshRSS()
 
   outputConfigFreshRSS
   installStack freshrss freshrss-app "apache2 -D FOREGROUND" $HOME/freshrss.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   inner_block=""
@@ -36081,17 +36365,18 @@ function performUpdateFreshRSS()
 # Keila
 function installKeila()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory keila "Keila"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_KEILA
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/keila
   mkdir $HSHQ_STACKS_DIR/keila/db
@@ -36115,6 +36400,10 @@ function installKeila()
 
   outputConfigKeila
   installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   inner_block=""
@@ -36305,17 +36594,18 @@ function performUpdateKeila()
 # Wallabag
 function installWallabag()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory wallabag "Wallabag"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_WALLABAG
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/wallabag
   mkdir $HSHQ_STACKS_DIR/wallabag/db
@@ -36347,6 +36637,10 @@ function installWallabag()
 
   outputConfigWallabag
   installStack wallabag wallabag-app "wallabag is ready" $HOME/wallabag.env 3
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   docker exec -t wallabag-app /var/www/wallabag/bin/console wallabag:install --env=prod --no-interaction > /dev/null 2>&1
@@ -36569,27 +36863,30 @@ function performUpdateWallabag()
 # Jupyter
 function installJupyter()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory jupyter "Jupyter"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_JUPYTER
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/jupyter
   mkdir $HSHQ_STACKS_DIR/jupyter/notebooks
   initServicesCredentials
   outputConfigJupyter
+  set +e
   installStack jupyter jupyter "Jupyter .* is running at" $HOME/jupyter.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
+  set -e
   if ! [ "$JUPYTER_INIT_ENV" = "true" ]; then
     sendEmail -s "Jupyter Admin Login Info" -b "Jupyter Admin Password: $JUPYTER_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
     JUPYTER_INIT_ENV=true
@@ -36703,25 +37000,26 @@ function performUpdateJupyter()
 # Paperless
 function installPaperless()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory paperless "Paperless"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_PAPERLESS_GOTENBERG
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_PAPERLESS_TIKA
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_PAPERLESS_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/paperless
   mkdir $HSHQ_STACKS_DIR/paperless/db
@@ -36754,6 +37052,10 @@ function installPaperless()
   fi
   outputConfigPaperless
   installStack paperless paperless-app "celery@paperless-app ready" $HOME/paperless.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN {\n"
@@ -37008,17 +37310,18 @@ function performUpdatePaperless()
 # Speedtest Tracker Local
 function installSpeedtestTrackerLocal()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory speedtest-tracker-local "SpeedtestTrackerLocal"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_SPEEDTEST_TRACKER_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local/db
@@ -37041,6 +37344,10 @@ function installSpeedtestTrackerLocal()
 
   outputConfigSpeedtestTrackerLocal
   installStack speedtest-tracker-local speedtest-tracker-local-app "\[ls.io-init\] done" $HOME/speedtest-tracker-local.env 3
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   docker exec speedtest-tracker-local-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
@@ -37257,6 +37564,7 @@ function performUpdateSpeedtestTrackerLocal()
 # Speedtest Tracker VPN
 function installSpeedtestTrackerVPN()
 {
+  set +e
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     return
   fi
@@ -37264,13 +37572,13 @@ function installSpeedtestTrackerVPN()
   checkDeleteStackAndDirectory speedtest-tracker-vpn "SpeedtestTrackerVPN"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_SPEEDTEST_TRACKER_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn/db
@@ -37293,6 +37601,10 @@ function installSpeedtestTrackerVPN()
 
   outputConfigSpeedtestTrackerVPN
   installStack speedtest-tracker-vpn speedtest-tracker-vpn-app "\[ls.io-init\] done" $HOME/speedtest-tracker-vpn.env 3
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   docker exec speedtest-tracker-vpn-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
@@ -37509,21 +37821,22 @@ function performUpdateSpeedtestTrackerVPN()
 # Change Detection
 function installChangeDetection()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory changedetection "$FMLNAME_CHANGEDETECTION"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_CHANGEDETECTION_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/changedetection
   mkdir $HSHQ_STACKS_DIR/changedetection/data
@@ -37538,6 +37851,10 @@ function installChangeDetection()
 
   outputConfigChangeDetection
   installStack changedetection changedetection-app "wsgi starting up on" $HOME/changedetection.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   pass_hash=$(docker exec -it changedetection-app python3 /datastore/genpass.py)
   startStopStack changedetection stop
@@ -37725,17 +38042,18 @@ function performUpdateChangeDetection()
 # Huginn
 function installHuginn()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory huginn "$FMLNAME_HUGINN"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_HUGINN_APP
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/huginn
   mkdir $HSHQ_STACKS_DIR/huginn/db
@@ -37760,6 +38078,10 @@ function installHuginn()
 
   outputConfigHuginn
   installStack huginn huginn-app "" $HOME/huginn.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -37963,22 +38285,25 @@ function installCoturn()
   if [ -d $HSHQ_STACKS_DIR/coturn ]; then
     return
   fi
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory coturn "$FMLNAME_COTURN"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_COTURN
   retVal=$?
   if [ $retVal -ne 0 ]; then
-    return $retVal
+    return 1 $retVal
   fi
+  set -e
+
   mkdir $HSHQ_STACKS_DIR/coturn
   initServicesCredentials
   outputConfigCoturn
   generateCert coturn "coturn,$SUB_COTURN.$HOMESERVER_DOMAIN"
+  set +e
   installStack coturn coturn "" $HOME/coturn.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -38094,20 +38419,19 @@ function performUpdateCoturn()
 # FileDrop
 function installFileDrop()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory filedrop "FileDrop"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set +e
   git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
   docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
   retVal=$?
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
   if [ $retVal -ne 0 ]; then
-    notifyStackInstallFailure Filedrop
-    return
+    return 1
   fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
@@ -38121,6 +38445,10 @@ function installFileDrop()
   mkdir $HSHQ_STACKS_DIR/filedrop
   outputConfigFileDrop
   installStack filedrop filedrop "" $HOME/filedrop.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FILEDROP.$HOMESERVER_DOMAIN {\n"
@@ -38230,33 +38558,34 @@ function performUpdateFileDrop()
 # Piped
 function installPiped()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory piped "Piped"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_PIPED_FRONTEND
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_PIPED_PROXY
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_PIPED_API
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_PIPED_CRON
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_PIPED_WEB
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/piped
   mkdir $HSHQ_STACKS_DIR/piped/db
@@ -38270,7 +38599,11 @@ function installPiped()
 
   initServicesCredentials
   outputConfigPiped
-  installStack piped piped-app " " $HOME/piped.env
+  installStack piped piped-app "" $HOME/piped.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN {\n"
@@ -38688,21 +39021,25 @@ function installScriptServer()
   if [ -d $HSHQ_STACKS_DIR/script-server ]; then
     return
   fi
+  set +e
   retVal=0
   if ! [ -f $HOME/script-server.zip ]; then
     wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
     retVal=$?
   fi
   if [ $retVal -ne 0 ] || ! [ -f $HOME/script-server.zip ]; then
-    return 1
+    echo "ERROR: Could not obtain Script-server zip file"
+    exit 1
   fi
   mkdir $HSHQ_STACKS_DIR/script-server
   unzip $HOME/script-server.zip -d $HSHQ_STACKS_DIR/script-server > /dev/null 2>&1
   retVal=$?
   if [ $retVal -ne 0 ]; then
     sudo rm -fr $HSHQ_STACKS_DIR/script-server
-    return 1
+    echo "ERROR: There was a problem extracting the Script-server zip file"
+    exit 1
   fi
+  set -e
   rm $HOME/script-server.zip
   sudo chown -R $USERNAME:$USERNAME $HSHQ_STACKS_DIR/script-server
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
@@ -39442,7 +39779,6 @@ decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 services=\$(getArgumentValue services "\$@")
 
 set +e
-echo "Installing services: \$services"
 installListOfServices "\$services"
 set -e
 performExitFunctions false
@@ -39453,7 +39789,7 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -39524,7 +39860,6 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-echo "Installing all available services..."
 installAllAvailableStacks false
 set -e
 performExitFunctions false
@@ -39535,7 +39870,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -39588,7 +39923,6 @@ decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 services=\$(getArgumentValue services "\$@")
 
 set +e
-echo "Updating services: \$services"
 updateListOfStacks "\$services"
 set -e
 performExitFunctions false
@@ -39668,7 +40002,6 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-echo "Updating all available services..."
 performAllAvailableStackUpdates false
 set -e
 performExitFunctions false
@@ -43318,17 +43651,18 @@ function outputStackListsScriptServer()
 # SQLPad
 function installSQLPad()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory sqlpad "SQLPad"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_SQLPAD
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/sqlpad
   initServicesCredentials
@@ -43336,6 +43670,10 @@ function installSQLPad()
   generateCert sqlpad sqlpad
   outputConfigSQLPad
   installStack sqlpad sqlpad "Welcome to SQLPad" $HOME/sqlpad.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SQLPAD.$HOMESERVER_DOMAIN {\n"
@@ -43696,11 +44034,18 @@ function checkAddDBSqlPad()
 # Heimdall
 function installHeimdall()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory heimdall "Heimdall"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: Heimdall directory exists"
+    exit 1
+  fi
+  pullImage $IMG_HEIMDALL
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Heimdall docker image"
+    exit 1
   fi
   set -e
 
@@ -43796,6 +44141,11 @@ function installHeimdall()
 
   insertServicesHeimdall
   installStack heimdall heimdall "$stack_loaded_text" $HOME/heimdall.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Heimdall"
+    exit $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN {\n"
@@ -44512,6 +44862,7 @@ EOFCF
 
 function installCaddy()
 {
+  set +e
   net_name=$1
   net_type=$2
   bind_ip=$3
@@ -44525,7 +44876,7 @@ function installCaddy()
   checkDeleteStackAndDirectory $caddy_net_name "Caddy"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
   set -e
 
@@ -44534,6 +44885,10 @@ function installCaddy()
   mkdir $HSHQ_STACKS_DIR/$caddy_net_name/data
   outputConfigCaddy $net_name $caddy_net_name $net_type $bind_ip $ca_name $ca_url $ca_subdomain $ca_ip "$add_rip"
   installStack $caddy_net_name $caddy_net_name "serving initial configuration" $HOME/$caddy_net_name.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 }
 
 function outputConfigCaddy()
@@ -45072,6 +45427,7 @@ function restartAllCaddyContainers()
 # ClientDNS
 function installClientDNS()
 {
+  set +e
   cdns_stack_name=$1
   cdns_ip_address=$2
   CUR_CLIENTDNS_ADMIN_USERNAME=$3
@@ -45079,17 +45435,17 @@ function installClientDNS()
   checkDeleteStackAndDirectory clientdns-${cdns_stack_name} "ClientDNS-${cdns_stack_name}"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    return 1
   fi
-  set -e
   pullImage $IMG_WIREGUARD
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
   pullImage $IMG_DNSMASQ
   if [ $? -ne 0 ]; then
-    return
+    return 1
   fi
+  set -e
 
   mkdir -p $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}
   cdns_stack_name_upper=$(echo $cdns_stack_name | tr '[:lower:]' '[:upper:]')
@@ -45102,6 +45458,10 @@ function installClientDNS()
   outputConfigClientDNS $cdns_stack_name
   sudo mv $HSHQ_WIREGUARD_DIR/users/clientdns-${cdns_stack_name}.conf $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf
   installStack clientdns-${cdns_stack_name} clientdns-${cdns_stack_name}-wireguard "\[ls.io-init\] done" $HOME/clientdns-${cdns_stack_name}.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "ClientDNS-${cdns_stack_name} installed, sleeping 5 seconds..."
   sleep 5
 
@@ -45251,8 +45611,28 @@ function performUpdateClientDNS()
 # Ofelia
 function installOfelia()
 {
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ofelia "Ofelia"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    echo "ERROR: Ofelia directory exists"
+    exit 1
+  fi
+  pullImage $IMG_OFELIA
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Ofelia docker image"
+    exit 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/ofelia
   outputConfigOfelia
-  installStack ofelia ofelia " " $HOME/ofelia.env
+  installStack ofelia ofelia "" $HOME/ofelia.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Ofelia"
+    exit $retval
+  fi
 }
 
 function outputConfigOfelia()
@@ -45341,11 +45721,18 @@ function performUpdateOfelia()
 # UptimeKuma
 function installUptimeKuma()
 {
+  set +e
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory uptimekuma "Uptimekuma"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return
+    echo "ERROR: Uptimekuma directory exists"
+    exit 1
+  fi
+  pullImage $IMG_UPTIMEKUMA
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Uptimekuma docker image"
+    exit 1
   fi
   set -e
 
@@ -45356,6 +45743,11 @@ function installUptimeKuma()
   UPTIMEKUMA_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $UPTIMEKUMA_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   outputConfigUptimeKuma
   installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Uptimekuma"
+    exit $retval
+  fi
   startStopStack uptimekuma stop
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO user(id,username,password,active,timezone,twofa_secret,twofa_status,twofa_last_token) VALUES(1,'$UPTIMEKUMA_USERNAME','$UPTIMEKUMA_PASSWORD_HASH',1,'$TZ',NULL,0,NULL);"
   curdt=$(getCurrentDate)
