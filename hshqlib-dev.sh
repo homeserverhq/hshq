@@ -1514,6 +1514,7 @@ EOF
 
 function installListOfServices()
 {
+  echo "Installing list of services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
   stackListArr=($(echo "$1" | tr "," "\n"))
   setSudoTimeoutInstall
   getUpdateAssets
@@ -1523,6 +1524,7 @@ function installListOfServices()
   done
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  echo "Installing list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 function installAllAvailableStacks()
@@ -1558,6 +1560,7 @@ function installAllAvailableStacks()
       return
     fi
   fi
+  echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
   setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
@@ -1566,6 +1569,7 @@ function installAllAvailableStacks()
   done
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  echo "Installing all services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 function getStacksToUpdate()
@@ -1676,6 +1680,7 @@ function performAllAvailableStackUpdates()
 
 function updateListOfStacks()
 {
+  echo "Updating list of services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
   stackListArr=($(echo "$1" | tr "," "\n"))
   stacks_need_update_list="$(getStacksToUpdate)"
   setSudoTimeoutInstall
@@ -1715,6 +1720,7 @@ function updateListOfStacks()
   sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Sending update results to email manager ($EMAIL_ADMIN_EMAIL_ADDRESS). Refer to this for further details."
   outputStackListsScriptServer
+  echo "Updating list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
 function deleteStacksFromList()
@@ -12517,6 +12523,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=53
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 54 ]; then
+    echo "Updating to Version 54..."
+    version54Update
+    HSHQ_VERSION=54
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -13885,6 +13897,13 @@ EOFBS
   done
   performExitFunctions false
   sudo reboot
+}
+
+function version54Update()
+{
+  set +e
+  outputAllScriptServerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
@@ -39760,7 +39779,6 @@ decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 services=\$(getArgumentValue services "\$@")
 
 set +e
-echo "Installing services: \$services"
 installListOfServices "\$services"
 set -e
 performExitFunctions false
@@ -39771,7 +39789,7 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -39842,7 +39860,6 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-echo "Installing all available services..."
 installAllAvailableStacks false
 set -e
 performExitFunctions false
@@ -39853,7 +39870,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh the webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -39906,7 +39923,6 @@ decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 services=\$(getArgumentValue services "\$@")
 
 set +e
-echo "Updating services: \$services"
 updateListOfStacks "\$services"
 set -e
 performExitFunctions false
@@ -39986,7 +40002,6 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-echo "Updating all available services..."
 performAllAvailableStackUpdates false
 set -e
 performExitFunctions false
