@@ -1191,6 +1191,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Username: $PORTAINER_ADMIN_USERNAME\n"
   strInstallConfig="${strInstallConfig}- HomeServer Portainer Password: $PORTAINER_ADMIN_PASSWORD\n"
   strInstallConfig="${strInstallConfig}- Script-server URL: https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
+  strInstallConfig="${strInstallConfig}- Script-server IP URL: https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT\n"
   strInstallConfig="${strInstallConfig}- Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\n"
   strInstallConfig="${strInstallConfig}- Script-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
