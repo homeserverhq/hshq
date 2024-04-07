@@ -8983,10 +8983,12 @@ function changeHostStaticIP()
     return
   fi
   curHostIP=$HOMESERVER_HOST_IP
+  curHostRange=$HOMESERVER_HOST_RANGE
   newHostIPCIDR=$(promptUserInputMenu "${HOMESERVER_HOST_IP}/24" "New Static IP" "Enter the static IP address with the CIDR of the network:")
   gwGuess=$(sipcalc $newHostIPCIDR | grep "^Usable range" | xargs | cut -d"-" -f2 | xargs)
   newHostGateway=$(promptUserInputMenu "$gwGuess" "New Gateway" "Enter the gateway IP address. This is typically the IP address of your router, the first IP in the range:")
   newHSHostIP=$(echo $newHostIPCIDR | cut -d"/" -f1)
+  default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
   set +e
   echo "Setting new static IP on host..."
   setStaticIP $newHostIPCIDR $newHostGateway
@@ -9024,6 +9026,10 @@ function changeHostStaticIP()
   startStopStack jitsi stop
   sleep 2
   startStopStack jitsi start
+  sudo sed -i "s|$curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT|$HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT|g" $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo sed -i "s|$curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT|$HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT|g" $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
+  sudo iptables -D INPUT -p tcp -m tcp -i $default_iface -s $curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
+  sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
   echo "Change Static IP Complete!"
   sendEmail -s "Static IP Succesfully Changed" -b "Static IP Succesfully Changed\n\nThe static IP address for the host machine has been updated from $curHostIP to ${HOMESERVER_HOST_IP}.\nYou will need to update your Vaultwarden password IP URLs for both Portainer and ScriptServer to the new IP address."
 }
