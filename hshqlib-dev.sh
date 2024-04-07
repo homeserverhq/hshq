@@ -13902,8 +13902,23 @@ EOFBS
 function version54Update()
 {
   set +e
+  echo -e "\n\n\nThis update requires restarting Script-server, which will exit the\nscript and halt any subsequent updates. You may have to re-run the\nupdate process after it has completed.\n"
+  is_continue=""
+  while ! [ "$is_continue" = "ok" ]
+  do
+    read -p "Enter 'ok' to continue: " is_continue
+  done
   outputAllScriptServerScripts
-  set -e
+  outputIPTablesScripts false
+  default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+  sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
+  generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
+  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true
+  HSHQ_VERSION=54
+  updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  performExitFunctions
+  sudo systemctl restart runScriptServer
+  exit
 }
 
 function sendRSExposeScripts()
@@ -15005,6 +15020,7 @@ function outputIPTablesScripts()
 
   # Special case for Script-server since it is using host networking
   iptables -C INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
 
   # Special case for Docker metrics
   iptables -C INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT
@@ -15060,6 +15076,7 @@ EOFBS
   iptables -D INPUT -p tcp -m tcp --dport 443 -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $HOMEASSISTANT_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_EXTERNAL_BRIDGE_NAME -s $NET_EXTERNAL_SUBNET --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT 2> /dev/null
+  iptables -D INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -p tcp -m tcp -i $NET_PRIVATEIP_BRIDGE_NAME -s $NET_PRIVATEIP_SUBNET --dport $DOCKER_METRICS_PORT -j ACCEPT 2> /dev/null
   iptables -D INPUT -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -p udp --dport 1900 -j ACCEPT
   iptables -D INPUT -s 172.16.0.0/12 -p udp --dport 123 -j ACCEPT
@@ -17787,7 +17804,7 @@ function initServiceVars()
   checkAddSvc "SVCD_HOMEASSISTANT_CONFIGURATOR=homeassistant,hass-configurator,primary,admin,HomeAssistant-Configurator,hass-configurator,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_NODERED=homeassistant,hass-nodered,primary,admin,HomeAssistant-NodeRed,hass-nodered,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_TASMOADMIN=homeassistant,hass-tasmoadmin,primary,admin,HomeAssistant-Tasmoadmin,hass-tasmoadmin,hshq"
-  checkAddSvc "SVCD_SCRIPTSERVER=script-server,script-server,home,admin,Script-server,script-server,hshq"
+  checkAddSvc "SVCD_SCRIPTSERVER=script-server,script-server,primary,admin,Script-server,script-server,hshq"
   checkAddSvc "SVCD_HUGINN=huginn,huginn,primary,user,Huginn,huginn,hshq"
   checkAddSvc "SVCD_IMAGES=images,images,other,user,Images,images,hshq"
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
@@ -18227,10 +18244,9 @@ function emailVaultwardenCredentials()
   strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
   if ! [ "$is_relay_only" = "true" ]; then
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}-IP" https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SCRIPTSERVER" https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
@@ -18307,6 +18323,7 @@ function insertServicesHeimdall()
   cur_id=1
   # Admin Tab
   insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1 "script-server.png"
+  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" 1 "script-server.png"
   insertIntoHeimdallDB "$FMLNAME_PORTAINER" $USERTYPE_PORTAINER "https://$SUB_PORTAINER.$HOMESERVER_DOMAIN" 1 "portainer.png"
   insertIntoHeimdallDB "$FMLNAME_PORTAINER (IP)" $USERTYPE_PORTAINER "https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT" 1 "portainer.png"
   insertIntoHeimdallDB "$FMLNAME_ADGUARD" $USERTYPE_ADGUARD "https://$SUB_ADGUARD.$HOMESERVER_DOMAIN" 1 "adguardhome.png"
@@ -39047,7 +39064,7 @@ function installScriptServer()
 
   pip3 install tornado > /dev/null 2>&1
   initServicesCredentials
-  generateCert script-server "script-server,host.docker.internal"
+  generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   outputConfigScriptServer
   htpasswd -bcBC 10 $HSHQ_STACKS_DIR/script-server/users $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD > /dev/null 2>&1
   cp $HSHQ_ASSETS_DIR/images/script-server.ico $HSHQ_STACKS_DIR/script-server/web/favicon.ico
@@ -39075,6 +39092,7 @@ function installScriptServer()
   updateCaddyBlocks $SUB_SCRIPTSERVER $MANAGETLS_SCRIPTSERVER "$is_integrate_hshq" $NETDEFAULT_SCRIPTSERVER "$inner_block"
   insertSubAuthelia $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN admins
   insertEnableSvcAll script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png"
+  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png"
   restartAllCaddyContainers
   sudo systemctl daemon-reload
   sudo systemctl enable runScriptServer
@@ -39789,7 +39807,7 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -39870,7 +39888,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins>, so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
