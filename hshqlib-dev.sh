@@ -19174,7 +19174,13 @@ function installAdGuard()
   checkDeleteStackAndDirectory adguard "Adguard"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: AdGuard directory exists"
+    exit 1
+  fi
+  pullImage $IMG_ADGUARD
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain AdGuard docker image"
+    exit 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/adguard
@@ -19201,6 +19207,11 @@ EOFR
   sudo netplan apply > /dev/null 2>&1
 
   installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing AdGuard"
+    exit $retval
+  fi
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -19667,6 +19678,10 @@ function installSysUtils()
   docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
   sleep 2
   installStack sysutils grafana "HTTP Server Listen" $HOME/sysutils.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   rm -f $HOME/sysutils-compose-tmp.yml
   rm -f $HOME/gfdashboard.json
@@ -22519,7 +22534,23 @@ function installOpenLDAP()
   checkDeleteStackAndDirectory openldap "OpenLDAP"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: OpenLDAP directory exists"
+    exit 1
+  fi
+  pullImage $IMG_OPENLDAP_SERVER
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain OpenLDAP Server docker image"
+    exit 1
+  fi
+  pullImage $IMG_OPENLDAP_MANAGER
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain OpenLDAP Manager docker image"
+    exit 1
+  fi
+  pullImage $IMG_OPENLDAP_PHP
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain OpenLDAP PHP docker image"
+    exit 1
   fi
   set -e
 
@@ -22579,6 +22610,11 @@ function installOpenLDAP()
   cp $HSHQ_SSL_DIR/dhparam.pem $HSHQ_STACKS_DIR/openldap/certs/dhparam.pem
   cp $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt $HSHQ_STACKS_DIR/openldap/certs/${CERTS_ROOT_CA_NAME}.crt
   installStack openldap ldapserver "slapd starting" $HOME/openldap.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing OpenLDAP"
+    exit $retval
+  fi
 
   docker exec ldapserver chmod +x /tmp/initconfig/initdbscript.sh
   docker exec ldapserver sh /tmp/initconfig/initdbscript.sh > /dev/null 2>&1
@@ -22955,7 +22991,8 @@ function installMailu()
   checkDeleteStackAndDirectory mailu "Mailu"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: Mailu directory exists"
+    exit 1
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/mailu
@@ -22974,6 +23011,11 @@ function installMailu()
   fi
   outputConfigMailu
   installStack mailu mailu-admin "Listening at: http://0.0.0.0:8080" $HOME/mailu.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Mailu"
+    exit $retval
+  fi
   echo "Installed Mailu stack, sleeping 5 seconds..."
   sleep 5
   # Since the upgrade from 1.9 to 2.0, the following commands occasionally error out and halt the installation.
@@ -23613,6 +23655,10 @@ function installWazuh()
   generateCert wazuh.dashboard "wazuh.dashboard"
 
   installStack wazuh wazuh.manager " " $HOME/wazuh.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Wazuh installed, sleeping 5 seconds..."
   sleep 5
 
@@ -24397,7 +24443,10 @@ function installCollabora()
   initServicesCredentials
   outputConfigCollabora
   installStack collabora collabora " " $HOME/collabora.env
-  
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   inner_block=""
   inner_block=$inner_block">>https://$SUB_COLLABORA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -25534,6 +25583,10 @@ function installJitsi()
   outputConfigJitsi
   generateCert jitsi-web jitsi-web
   installStack jitsi jitsi-web "starting services" $HOME/jitsi.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Jitsi installed, sleeping 5 seconds..."
   sleep 5
 
@@ -25781,6 +25834,10 @@ function installMatrix()
   outputConfigMatrix
   generateCert matrix-synapse matrix-synapse
   installStack matrix matrix-synapse "Starting synapse with args" $HOME/matrix.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Matrix installed, sleeping 5 seconds..."
   sleep 5
 
@@ -26339,10 +26396,15 @@ function installWikijs()
   outputConfigWikijs
   generateCert wikijs-web wikijs-web
   installStack wikijs wikijs-web "HTTP Server on port" $HOME/wikijs.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sudo mv $HSHQ_STACKS_DIR/wikijs/config.yml $HSHQ_STACKS_DIR/wikijs/web/config.yml
+  sleep 3
   docker container restart wikijs-web
-  echo "Wikijs installed, sleeping 5 seconds..."
-  sleep 5
+  echo "Wikijs installed, sleeping 3 seconds..."
+  sleep 3
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WIKIJS.$HOMESERVER_DOMAIN {\n"
@@ -26543,11 +26605,13 @@ function installDuplicati()
   checkDeleteStackAndDirectory duplicati "Duplicati"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: Duplicati directory exists"
+    exit 1
   fi
   pullImage $IMG_DUPLICATI
   if [ $? -ne 0 ]; then
-    return 1
+    echo "ERROR: Could not obtain Duplicati docker image"
+    exit 1
   fi
   set -e
   domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
@@ -26560,6 +26624,11 @@ function installDuplicati()
   outputConfigDuplicati
   generateCert duplicati duplicati
   installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Duplicati"
+    exit $retval
+  fi
   echo "Duplicati installed, sleeping 5 seconds..."
   sleep 5
   db_name=$HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite
@@ -26724,6 +26793,10 @@ function installMastodon()
   cp $HOME/mastodon.env $HSHQ_STACKS_DIR/mastodon/stack.env
   migrateMastodon
   installStack mastodon mastodon-app "Listening on http" $HOME/mastodon.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Mastodon installed, sleeping 3 seconds..."
   sleep 3
   set +e
@@ -27467,6 +27540,10 @@ function installDozzle()
   initServicesCredentials
   outputConfigDozzle
   installStack dozzle dozzle "Accepting connections on" $HOME/dozzle.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Dozzle installed, sleeping 3 seconds..."
   sleep 3
 
@@ -27615,6 +27692,10 @@ function installSearxNG()
   generateCert searxng-caddy searxng-caddy
   outputConfigSearxNG
   installStack searxng searxng-app "Listen on 0.0.0.0" $HOME/searxng.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SEARXNG.$HOMESERVER_DOMAIN {\n"
@@ -27940,7 +28021,11 @@ function installJellyfin()
 
   outputConfigJellyfin
   installStack jellyfin jellyfin "Startup complete" $HOME/jellyfin.env
-
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
+  sleep 5
   sed -i 's/^.*EncodingThreadCount.*$/  <EncodingThreadCount>1<\/EncodingThreadCount>/' $HSHQ_STACKS_DIR/jellyfin/config/config/encoding.xml
   mv $HOME/jellyfin-ldap.xml $HSHQ_STACKS_DIR/jellyfin/config/plugins/configurations/LDAP-Auth.xml
   docker container restart jellyfin
@@ -28109,6 +28194,10 @@ function installFileBrowser()
 
   outputConfigFileBrowser
   installStack filebrowser filebrowser "Listening on" $HOME/filebrowser.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN {\n"
@@ -28284,6 +28373,10 @@ function installPhotoPrism()
   sleep 5
   docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
   installStack photoprism photoprism-app "listening at 0.0.0.0" $HOME/photoprism.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   rm -f $HOME/photoprism-compose-tmp.yml
 
   inner_block=""
@@ -28633,6 +28726,10 @@ function installGuacamole()
 
   docker-compose -f $HOME/guacamole-compose-tmp.yml down -v
   installStack guacamole guacamole-web "Server startup in" $HOME/guacamole.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   rm -f $HOME/guacamole-compose-tmp.yml
 
   inner_block=""
@@ -28841,15 +28938,21 @@ function performUpdateGuacamole()
 # Authelia
 function installAuthelia()
 {
-  set -e
+  set +e
   is_integrate_hshq=$1
   # Exit if directory exists
   checkDeleteStackAndDirectory authelia "Authelia"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: Authelia directory exists"
+    exit 1
   fi
-  set +e
+  pullImage $IMG_AUTHELIA
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Authelia docker image"
+    exit 1
+  fi
+  set -e
 
   mkdir $HSHQ_STACKS_DIR/authelia
   mkdir $HSHQ_STACKS_DIR/authelia/config
@@ -28881,6 +28984,11 @@ function installAuthelia()
   generateCert authelia-redis authelia-redis
   outputConfigAuthelia
   installStack authelia authelia "Listening for TLS connections on" $HOME/authelia.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Authelia"
+    exit $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN {\n"
@@ -29263,6 +29371,10 @@ function installWordPress()
   fi
   outputConfigWordPress
   installStack wordpress wordpress-web "WordPress" $HOME/wordpress.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN {\n"
@@ -29464,6 +29576,10 @@ function installGhost()
 
   outputConfigGhost
   installStack ghost ghost-web "Ghost booted in" $HOME/ghost.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GHOST.$HOMESERVER_DOMAIN {\n"
@@ -29687,6 +29803,10 @@ function installPeerTube()
   addUserMailu alias $ADMIN_USERNAME_BASE"_peertube" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigPeerTube
   installStack peertube peertube-app "HTTP server listening on 0.0.0.0" $HOME/peertube.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   docker exec peertube-app bash -c "echo $PEERTUBE_ADMIN_PASSWORD | npm run reset-password -- -u root" > /dev/null
   docker exec -u 999 peertube-app bash -c "npm run plugin:install -- --npm-name peertube-plugin-auth-ldap" > /dev/null
   docker exec -u 999 peertube-app bash -c "npm run plugin:install -- --npm-name peertube-plugin-livechat" > /dev/null
@@ -29982,6 +30102,10 @@ function installHomeAssistant()
   outputConfigHomeAssistant
 
   installStack homeassistant homeassistant-app "legacy-services successfully started" $HOME/homeassistant.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Waiting 10 seconds for HomeAssistant to load"
   sleep 10
   docker container stop homeassistant-app
@@ -30705,7 +30829,11 @@ function installGitlab()
   fi
   outputConfigGitlab
   generateCert gitlab-app gitlab-app
-  installStack gitlab gitlab-app " " $HOME/gitlab.env
+  installStack gitlab gitlab-app "" $HOME/gitlab.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 1
   startStopStack gitlab stop
   sudo rm -fr $HSHQ_STACKS_DIR/gitlab
@@ -31039,6 +31167,10 @@ function installVaultwarden()
   outputConfigVaultwarden
   generateCert vaultwarden-app vaultwarden-app
   installStack vaultwarden vaultwarden-app " " $HOME/vaultwarden.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN {\n"
@@ -31305,6 +31437,10 @@ function installDiscourse()
   #generateCert discourse-app discourse-app
   outputConfigDiscourse
   installStack discourse discourse-app "" $HOME/discourse.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN {\n"
@@ -31567,7 +31703,13 @@ function installSyncthing()
   checkDeleteStackAndDirectory syncthing "Syncthing"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: Syncthing directory exists"
+    exit 1
+  fi
+  pullImage $IMG_SYNCTHING
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Syncthing docker image"
+    exit 1
   fi
   set -e
 
@@ -31582,6 +31724,11 @@ function installSyncthing()
   generateCert syncthing syncthing
   outputConfigSyncthing
   installStack syncthing syncthing "Access the GUI via the following URL" $HOME/syncthing.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Syncthing"
+    exit $retval
+  fi
   sleep 3
   startStopStack syncthing stop
   alltext=$(sudo cat $HSHQ_STACKS_DIR/syncthing/config/config.xml)
@@ -31780,6 +31927,10 @@ function installCodeServer()
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   mv $HOME/settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   installStack codeserver codeserver "HTTPS server listening on https" $HOME/codeserver.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CODESERVER.$HOMESERVER_DOMAIN {\n"
@@ -32016,6 +32167,10 @@ function installShlink()
 
   outputConfigShlink
   installStack shlink shlink "shlink" $HOME/shlink.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN {\n"
@@ -32355,7 +32510,11 @@ function installFirefly()
   fi
 
   outputConfigFirefly
-  installStack firefly firefly " " $HOME/firefly.env
+  installStack firefly firefly "" $HOME/firefly.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Firefly installed, sleeping 10 seconds..."
   sleep 10
 
@@ -32616,7 +32775,11 @@ function installExcalidraw()
   fi
 
   outputConfigExcalidraw
-  installStack excalidraw excalidraw-web " " $HOME/excalidraw.env
+  installStack excalidraw excalidraw-web "" $HOME/excalidraw.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Excalidraw installed, sleeping 10 seconds..."
   sleep 10
 
@@ -32846,7 +33009,11 @@ function installDrawIO()
   mkdir $HSHQ_STACKS_DIR/drawio
   mkdir $HSHQ_STACKS_DIR/drawio/fonts
   outputConfigDrawIO
-  installStack drawio drawio-web " " $HOME/drawio.env
+  installStack drawio drawio-web "" $HOME/drawio.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Draw.io installed, sleeping 10 seconds..."
   sleep 10
 
@@ -33037,6 +33204,10 @@ function installInvidious()
 
   outputConfigInvidious
   installStack invidious invidious-web "Invidious is ready to lead at" $HOME/invidious.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Invidious installed, sleeping 10 seconds..."
   sleep 10
 
@@ -33439,6 +33610,10 @@ function installGitea()
   initServicesCredentials
   outputConfigGitea
   installStack gitea gitea-app "Starting new Web server:" $HOME/gitea.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Gitea installed, sleeping 10 seconds..."
   sleep 10
   set +e
@@ -33670,6 +33845,10 @@ function installMealie()
   addUserMailu alias $MEALIE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigMealie
   installStack mealie mealie-app "Application startup complete" $HOME/mealie.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MEALIE.$HOMESERVER_DOMAIN {\n"
@@ -33917,6 +34096,10 @@ function installKasm()
 
   outputConfigKasm
   installStack kasm kasm "" $HOME/kasm.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KASM.$HOMESERVER_DOMAIN {\n"
@@ -34069,6 +34252,10 @@ function installNTFY()
   mkdir $HSHQ_STACKS_DIR/ntfy/etc
   outputConfigNTFY
   installStack ntfy ntfy "" $HOME/ntfy.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NTFY.$HOMESERVER_DOMAIN {\n"
@@ -34564,7 +34751,11 @@ function installITTools()
 
   mkdir $HSHQ_STACKS_DIR/ittools
   outputConfigITTools
-  installStack ittools ittools " " $HOME/ittools.env
+  installStack ittools ittools "" $HOME/ittools.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN {\n"
@@ -34683,6 +34874,10 @@ function installRemotely()
   fi
   outputConfigRemotely
   installStack remotely remotely "No XML encryptor configured" $HOME/remotely.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Sleeping 10 seconds..."
   sleep 10
 
@@ -34841,6 +35036,10 @@ function installCalibre()
   outputConfigCalibre
   generateCert calibre-web calibre-web
   installStack calibre calibre-web "done." $HOME/calibre.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "Calibre stack installed, sleeping 10 seconds..."
   sleep 10
 
@@ -35054,6 +35253,10 @@ function installNetdata()
 
   outputConfigNetdata
   installStack netdata netdata "" $HOME/netdata.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35222,6 +35425,10 @@ function installLinkwarden()
 
   outputConfigLinkwarden
   installStack linkwarden linkwarden "" $HOME/linkwarden.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35421,6 +35628,10 @@ function installStirlingPDF()
 
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35573,6 +35784,10 @@ function installBarAssistant()
 
   outputConfigBarAssistant
   installStack bar-assistant bar-assistant-app "ready to handle connections" $HOME/bar-assistant.env 10
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -35923,6 +36138,10 @@ function installFreshRSS()
 
   outputConfigFreshRSS
   installStack freshrss freshrss-app "apache2 -D FOREGROUND" $HOME/freshrss.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   inner_block=""
@@ -36162,6 +36381,10 @@ function installKeila()
 
   outputConfigKeila
   installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   inner_block=""
@@ -36395,6 +36618,10 @@ function installWallabag()
 
   outputConfigWallabag
   installStack wallabag wallabag-app "wallabag is ready" $HOME/wallabag.env 3
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   docker exec -t wallabag-app /var/www/wallabag/bin/console wallabag:install --env=prod --no-interaction > /dev/null 2>&1
@@ -36806,6 +37033,10 @@ function installPaperless()
   fi
   outputConfigPaperless
   installStack paperless paperless-app "celery@paperless-app ready" $HOME/paperless.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN {\n"
@@ -37094,6 +37325,10 @@ function installSpeedtestTrackerLocal()
 
   outputConfigSpeedtestTrackerLocal
   installStack speedtest-tracker-local speedtest-tracker-local-app "\[ls.io-init\] done" $HOME/speedtest-tracker-local.env 3
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   docker exec speedtest-tracker-local-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
@@ -37347,6 +37582,10 @@ function installSpeedtestTrackerVPN()
 
   outputConfigSpeedtestTrackerVPN
   installStack speedtest-tracker-vpn speedtest-tracker-vpn-app "\[ls.io-init\] done" $HOME/speedtest-tracker-vpn.env 3
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 5
 
   docker exec speedtest-tracker-vpn-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
@@ -37593,6 +37832,10 @@ function installChangeDetection()
 
   outputConfigChangeDetection
   installStack changedetection changedetection-app "wsgi starting up on" $HOME/changedetection.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   pass_hash=$(docker exec -it changedetection-app python3 /datastore/genpass.py)
   startStopStack changedetection stop
@@ -37816,6 +38059,10 @@ function installHuginn()
 
   outputConfigHuginn
   installStack huginn huginn-app "" $HOME/huginn.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
 
   inner_block=""
@@ -38179,6 +38426,10 @@ function installFileDrop()
   mkdir $HSHQ_STACKS_DIR/filedrop
   outputConfigFileDrop
   installStack filedrop filedrop "" $HOME/filedrop.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   sleep 3
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FILEDROP.$HOMESERVER_DOMAIN {\n"
@@ -38329,7 +38580,11 @@ function installPiped()
 
   initServicesCredentials
   outputConfigPiped
-  installStack piped piped-app " " $HOME/piped.env
+  installStack piped piped-app "" $HOME/piped.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN {\n"
@@ -38754,14 +39009,16 @@ function installScriptServer()
     retVal=$?
   fi
   if [ $retVal -ne 0 ] || ! [ -f $HOME/script-server.zip ]; then
-    return 1
+    echo "ERROR: Could not obtain Script-server zip file"
+    exit 1
   fi
   mkdir $HSHQ_STACKS_DIR/script-server
   unzip $HOME/script-server.zip -d $HSHQ_STACKS_DIR/script-server > /dev/null 2>&1
   retVal=$?
   if [ $retVal -ne 0 ]; then
     sudo rm -fr $HSHQ_STACKS_DIR/script-server
-    return 1
+    echo "ERROR: There was a problem extracting the Script-server zip file"
+    exit 1
   fi
   set -e
   rm $HOME/script-server.zip
@@ -43398,6 +43655,10 @@ function installSQLPad()
   generateCert sqlpad sqlpad
   outputConfigSQLPad
   installStack sqlpad sqlpad "Welcome to SQLPad" $HOME/sqlpad.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SQLPAD.$HOMESERVER_DOMAIN {\n"
@@ -43763,7 +44024,13 @@ function installHeimdall()
   checkDeleteStackAndDirectory heimdall "Heimdall"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: Heimdall directory exists"
+    exit 1
+  fi
+  pullImage $IMG_HEIMDALL
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Heimdall docker image"
+    exit 1
   fi
   set -e
 
@@ -43859,6 +44126,11 @@ function installHeimdall()
 
   insertServicesHeimdall
   installStack heimdall heimdall "$stack_loaded_text" $HOME/heimdall.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Heimdall"
+    exit $retval
+  fi
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN {\n"
@@ -44598,6 +44870,10 @@ function installCaddy()
   mkdir $HSHQ_STACKS_DIR/$caddy_net_name/data
   outputConfigCaddy $net_name $caddy_net_name $net_type $bind_ip $ca_name $ca_url $ca_subdomain $ca_ip "$add_rip"
   installStack $caddy_net_name $caddy_net_name "serving initial configuration" $HOME/$caddy_net_name.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
 }
 
 function outputConfigCaddy()
@@ -45167,6 +45443,10 @@ function installClientDNS()
   outputConfigClientDNS $cdns_stack_name
   sudo mv $HSHQ_WIREGUARD_DIR/users/clientdns-${cdns_stack_name}.conf $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf
   installStack clientdns-${cdns_stack_name} clientdns-${cdns_stack_name}-wireguard "\[ls.io-init\] done" $HOME/clientdns-${cdns_stack_name}.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
   echo "ClientDNS-${cdns_stack_name} installed, sleeping 5 seconds..."
   sleep 5
 
@@ -45316,8 +45596,28 @@ function performUpdateClientDNS()
 # Ofelia
 function installOfelia()
 {
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ofelia "Ofelia"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    echo "ERROR: Ofelia directory exists"
+    exit 1
+  fi
+  pullImage $IMG_OFELIA
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Ofelia docker image"
+    exit 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/ofelia
   outputConfigOfelia
-  installStack ofelia ofelia " " $HOME/ofelia.env
+  installStack ofelia ofelia "" $HOME/ofelia.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Ofelia"
+    exit $retval
+  fi
 }
 
 function outputConfigOfelia()
@@ -45411,7 +45711,13 @@ function installUptimeKuma()
   checkDeleteStackAndDirectory uptimekuma "Uptimekuma"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
-    return 1
+    echo "ERROR: Uptimekuma directory exists"
+    exit 1
+  fi
+  pullImage $IMG_UPTIMEKUMA
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Uptimekuma docker image"
+    exit 1
   fi
   set -e
 
@@ -45422,6 +45728,11 @@ function installUptimeKuma()
   UPTIMEKUMA_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $UPTIMEKUMA_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   outputConfigUptimeKuma
   installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    echo "ERROR: There was a problem installing Uptimekuma"
+    exit $retval
+  fi
   startStopStack uptimekuma stop
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO user(id,username,password,active,timezone,twofa_secret,twofa_status,twofa_last_token) VALUES(1,'$UPTIMEKUMA_USERNAME','$UPTIMEKUMA_PASSWORD_HASH',1,'$TZ',NULL,0,NULL);"
   curdt=$(getCurrentDate)
