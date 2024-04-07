@@ -8976,6 +8976,7 @@ function changeHostStaticIP()
     showMessageBox "Error" "The current static IP is a public IP, you likely do not have the ability to change this."
     return
   fi
+  sudo -v
   checkChange=$(promptUserInputMenu "" "Confirm Change IP" "You must be physically logged directly into the host machine to change the IP. Enter 'change' to continue.")
   if ! [ "$checkChange" = "change" ]; then
     showMessageBox "Error" "Text does not match, returning..."
@@ -9003,6 +9004,8 @@ function changeHostStaticIP()
   outputConfigPortainer
   generateCert portainer portainer $HOMESERVER_HOST_IP
   docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
+  sudo systemctl restart runScriptServer
   echo "Restarting Heimdall..."
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$curHostIP%';"
   docker container restart heimdall > /dev/null 2>&1
