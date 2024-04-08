@@ -1532,7 +1532,7 @@ function installListOfServices()
     installStackByName $curStack true
   done
   sudo systemctl restart ntp
-  docker container restart Authelia > /dev/null 2>&1
+  docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
   echo "Installing list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -1579,7 +1579,7 @@ function installAllAvailableStacks()
     installStackByName $cur_svc $is_integrate
   done
   sudo systemctl restart ntp
-  docker container restart Authelia > /dev/null 2>&1
+  docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
   echo "Installing all services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -13276,7 +13276,7 @@ function version37Update()
   grep $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     sed -i "/$SUB_ADGUARD.$HOMESERVER_DOMAIN/a\        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
-    docker container restart authelia
+    docker container restart authelia > /dev/null 2>&1
   fi
   if ! [ -d $HSHQ_STACKS_DIR/script-server ]; then
     installStackByName script-server
