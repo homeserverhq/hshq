@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=54
+HSHQ_SCRIPT_VERSION=55
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -984,6 +984,14 @@ function initConfig()
     fi
   done
 
+  if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
+    if [ -z $CONNECTING_IP ]; then
+      echo "Could not determine connecting IP, exiting..."
+      exit 1
+    else
+      addHomeNetIP ${CONNECTING_IP}/32 false
+    fi
+  fi
   set +e
   CURRENT_SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config)
   if [ $? -eq 0 ]; then
@@ -5911,6 +5919,7 @@ function uploadVPNInstallScripts()
       resetRSInit
     done
     updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
+    addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
 
     if [ "$IS_INSTALLED" = "true" ]; then
       addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
@@ -8168,7 +8177,7 @@ function performNetworkJoin()
       echo -e "AllowedIPs = $allowed_ips" >> $join_wireguard_config_file
       echo -e "Endpoint = ${endpoint_hostname}:${endpoint_port}" >> $join_wireguard_config_file
       echo -e "PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE" >> $join_wireguard_config_file
-      chmod 400 $join_wireguard_config_file
+      chmod 0400 $join_wireguard_config_file
       sudo chown root:root $join_wireguard_config_file
       sudo mv $join_wireguard_config_file $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
       rm -f $join_config_file
@@ -8225,6 +8234,7 @@ function removeMyNetworkPrimaryVPN()
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
   checkDeleteStackAndDirectory caddy-$ifaceName "Caddy" true true
   removeAdvertiseIP $client_ip
+  removeHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
   docker container stop uptimekuma >/dev/null
   docker container stop heimdall >/dev/null
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -10186,6 +10196,41 @@ function removeAdvertiseIP()
   fi
 }
 
+function addHomeNetIP()
+{
+  add_ip=$1
+  is_update_iptables=$2
+  set +e
+  echo $HOMENET_ADDITIONAL_IPS | grep $add_ip >/dev/null
+  if [ $? -ne 0 ]; then
+    if [ -z $HOMENET_ADDITIONAL_IPS ]; then
+      HOMENET_ADDITIONAL_IPS=$add_ip
+    else
+      HOMENET_ADDITIONAL_IPS=$HOMENET_ADDITIONAL_IPS","$add_ip
+    fi
+    updateConfigVar HOMENET_ADDITIONAL_IPS $HOMENET_ADDITIONAL_IPS
+    if [ "$is_update_iptables" = "true" ] && [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
+      outputIPTablesScripts false
+    fi
+  fi
+}
+
+function removeHomeNetIP()
+{
+  remove_ip=$1
+  is_update_iptables=$2
+  set +e
+  echo $HOMENET_ADDITIONAL_IPS | grep $remove_ip >/dev/null
+  if [ $? -eq 0 ]; then
+    echo $HOMENET_ADDITIONAL_IPS | sed "s|$remove_ip","||g" >/dev/null
+    echo $HOMENET_ADDITIONAL_IPS | sed "s|","$remove_ip||g" >/dev/null
+    updateConfigVar HOMENET_ADDITIONAL_IPS $HOMENET_ADDITIONAL_IPS
+    if [ "$is_update_iptables" = "true" ] && [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
+      outputIPTablesScripts false
+    fi
+  fi
+}
+
 function isServiceDisabled()
 {
   check_svc_disabled="$1"
@@ -11776,6 +11821,7 @@ HOMESERVER_ABBREV=
 HOMESERVER_HOST_IP=
 HOMESERVER_HOST_ISPRIVATE=
 HOMESERVER_HOST_RANGE=
+HOMENET_ADDITIONAL_IPS=
 EXT_DOMAIN_PREFIX=
 INT_DOMAIN_PREFIX=
 TZ=
@@ -12539,6 +12585,12 @@ function checkUpdateVersion()
     echo "Updating to Version 54..."
     version54Update
     HSHQ_VERSION=54
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 55 ]; then
+    echo "Updating to Version 55..."
+    version55Update
+    HSHQ_VERSION=55
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -13933,6 +13985,32 @@ function version54Update()
   exit
 }
 
+function version55Update()
+{
+  set +e
+  outputWireGuardScripts
+  grep "HOMENET_ADDITIONAL_IPS" $CONFIG_FILE > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i "s|^HOMESERVER_HOST_RANGE=.*|HOMESERVER_HOST_RANGE=$HOMESERVER_HOST_RANGE\nHOMENET_ADDITIONAL_IPS=|g" $CONFIG_FILE
+  fi
+  if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ] && ! [ -z $CONNECTING_IP ]; then
+    addHomeNetIP ${CONNECTING_IP}/32 false
+  fi
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 false
+  fi
+  if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
+    outputIPTablesScripts false
+    # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
+    if ! [ -z $HOMENET_ADDITIONAL_IPS ]; then
+      default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+      sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
+    fi
+  fi
+  outputAllScriptServerScripts
+  set -e
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -15102,28 +15180,31 @@ EOFBS
 EOFBS
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
     # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
-    # Need to add both Connecting IP and RelayServer IP
-    add_ips=${CONNECTING_IP}/32
-    if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-      add_ips="${add_ips},${RELAYSERVER_SERVER_IP}/32"
-    fi
-    sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFPO
+    if [ -z $HOMENET_ADDITIONAL_IPS ]; then
+      sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFPO
+  # Special case when HomeServer is on non-private network
+  iptables -t raw -I PREROUTING -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4 -i $default_iface -j DROP
+EOFPO
+    else
+      sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFPO
   # Special case when HomeServer is on non-private network
   for cur_port in "\${portsArr[@]}"
   do
-    iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-    iptables -I DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+    iptables -D DOCKER-USER -s $HOMENET_ADDITIONAL_IPS -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -I DOCKER-USER -s $HOMENET_ADDITIONAL_IPS -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
   done
   iptables -t raw -I PREROUTING -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4 -i $default_iface -j DROP
-
+  iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
 EOFPO
-    sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
+      sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
   # Special case when HomeServer is on non-private network
   for cur_port in "\${portsArr[@]}"
   do
-    iptables -D DOCKER-USER -s $add_ips -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -s $HOMENET_ADDITIONAL_IPS -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
   done
+  iptables -D INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
 EOFPT
+    fi
   fi
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
@@ -15661,13 +15742,38 @@ function status()
   while_check "\$CMD" "\$CHECK"
   VPNIP=\$(docker run -ti --rm --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 -fsSL --max-time 5 https://api.ipify.org)
   IP=\$(curl --silent https://api.ipify.org)
-  rsip=\$(getIPFromHostname ip.\$EXT_DOMAIN)
-  if [[ "\$VPNIP" = "\$rsip" ]]; then
+  if [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
+    rsip=\$EXT_DOMAIN
+  else
+    rsip=\$(getIPFromHostname \$EXT_DOMAIN)
+  fi
+  if [ -z "\$rsip" ]; then
+    echo "ERROR: Could not determine IP from \$EXT_DOMAIN"
+  elif [[ "\$VPNIP" = "\$rsip" ]]; then
     echo "Connected to \$rsip: Blackhole active"
   elif [[ "\$VPNIP" = "\$IP" ]]; then
     echo "Not connected to Endpoint: Blackhole NOT active!"
   else
     echo "Connected to \$VPNIP: Blackhole active"
+  fi
+}
+
+function checkValidIPAddress()
+{
+  ip=\$(echo \$1 | cut -d "/" -f1)
+  stat=1
+  if [[ \$ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\$ ]]; then
+    OIFS=\$IFS
+    IFS='./'
+    ip=(\$ip)
+    IFS=\$OIFS
+    [[ \${ip[0]} -le 255 && \${ip[1]} -le 255 && \${ip[2]} -le 255 && \${ip[3]} -le 255 ]]
+    stat=\$?
+  fi
+  if [ \$stat -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
   fi
 }
 
@@ -39663,7 +39769,7 @@ EOFSC
 {
   "name": "06 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient. If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. The most prevalent case is when you run an update on the host system and docker is updated to a new version. The docker daemon is restarted as a result, but sometimes not everything comes back up correctly. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient (unless you are accessing this utility via IP on your home network, which is preferred). If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
   "group": "$group_id_misc",
   "parameters": [
     {
