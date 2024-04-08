@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=55
+HSHQ_SCRIPT_VERSION=56
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -566,6 +566,33 @@ EOFMD
   sudo mv $HOME/88-hshq /etc/update-motd.d/
   if [ -f /etc/motd ]; then
     sudo mv /etc/motd /etc/motd.old
+  fi
+}
+
+function performSuggestedSecUpdates()
+{
+  disa_curE=${-//[^e]/}
+  set +e
+  # This function continues the process of reducing the failed checks in the Wazuh SCA scan
+  # It's mostly low hanging fruit, but reducing the list of exceptions will help to focus
+  # on the more important ones.
+  grep "enabled=1" /etc/default/apport > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    sudo sed -i "s/enabled=1/enabled=0/" /etc/default/apport
+    sudo systemctl stop apport
+    sudo systemctl disable apport
+  fi
+  echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
+  echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
+  sudo apt purge telnet > /dev/null 2>&1
+  # Assume the caller will restart sshd - don't want to risk breaking the installation process
+  sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#MaxStartups.*/MaxStartups 10:30:60/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#LoginGraceTime.*/LoginGraceTime 60/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#AllowTcpForwarding yes.*/AllowTcpForwarding no/" /etc/ssh/sshd_config
+  if ! [ -z $disa_curE ]; then
+    set -e
   fi
 }
 
@@ -1331,6 +1358,7 @@ function performBaseInstallation()
   setStaticIPToCurrent
   echo "Setting MOTD..."
   updateMOTD
+  performSuggestedSecUpdates
   installLogNotify "Install Dependencies"
   installDependencies
   pullBaseServicesDockerImages
@@ -2557,6 +2585,30 @@ EOFMD
   fi
 }
 
+function performSuggestedSecUpdates()
+{
+  disa_curE=\${-//[^e]/}
+  set +e
+  grep "enabled=1" /etc/default/apport > /dev/null 2>&1
+  if [ \$? -eq 0 ]; then
+    sudo sed -i "s/enabled=1/enabled=0/g" /etc/default/apport
+    sudo systemctl stop apport
+    sudo systemctl disable apport
+  fi
+  echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
+  echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
+  sudo apt purge telnet > /dev/null 2>&1
+  # Assume the caller will restart sshd - don't want to risk breaking the installation process
+  sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#MaxStartups.*/MaxStartups 10:30:60/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#LoginGraceTime.*/LoginGraceTime 60/" /etc/ssh/sshd_config
+  sudo sed -i "s/^#AllowTcpForwarding yes.*/AllowTcpForwarding no/" /etc/ssh/sshd_config
+  if ! [ -z \$disa_curE ]; then
+    set -e
+  fi
+}
+
 function installDependencies()
 {
   UTILS_LIST="$RELAYSERVER_UTILS_LIST"
@@ -2617,6 +2669,7 @@ EOFSM
 
   updateSysctl
   updateMOTD
+  performSuggestedSecUpdates
 
   util="docker|docker"
   if ! [ "\$(isProgramInstalled \$util)" = "true" ]; then
@@ -12597,6 +12650,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=55
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 56 ]; then
+    echo "Updating to Version 56..."
+    version56Update
+    HSHQ_VERSION=56
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14013,6 +14072,12 @@ function version55Update()
   fi
   outputAllScriptServerScripts
   set -e
+}
+
+function version56Update()
+{
+  performSuggestedSecUpdates
+  sudo systemctl restart sshd
 }
 
 function sendRSExposeScripts()
