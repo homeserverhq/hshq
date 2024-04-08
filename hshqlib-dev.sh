@@ -14000,8 +14000,8 @@ function version55Update()
     addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 false
   fi
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
-    outputIPTablesScripts false
     # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
+    outputIPTablesScripts false
     if ! [ -z $HOMENET_ADDITIONAL_IPS ]; then
       default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
       sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
