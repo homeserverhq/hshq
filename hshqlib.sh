@@ -1531,6 +1531,8 @@ function installListOfServices()
   do
     installStackByName $curStack true
   done
+  sudo systemctl restart ntp
+  docker container restart Authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
   echo "Installing list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -1576,6 +1578,8 @@ function installAllAvailableStacks()
   do
     installStackByName $cur_svc $is_integrate
   done
+  sudo systemctl restart ntp
+  docker container restart Authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
   echo "Installing all services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -13966,7 +13970,7 @@ EOFBS
 function version54Update()
 {
   set +e
-  echo -e "\n\n\nThis update requires restarting Script-server, which will exit the\nscript and halt any subsequent updates. You may have to re-run the\nupdate process after it has completed.\n"
+  echo -e "\n\n\nThis update requires restarting Script-server, which will exit the\nscript and halt any subsequent updates. Please ensure to re-run the\nupdate process after it has completed.\n"
   is_continue=""
   while ! [ "$is_continue" = "ok" ]
   do
