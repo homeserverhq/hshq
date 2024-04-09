@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=56
+HSHQ_SCRIPT_VERSION=57
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -584,7 +584,7 @@ function performSuggestedSecUpdates()
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
-  sudo apt purge telnet > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt purge -y telnet > /dev/null 2>&1
   # Assume the caller will restart sshd - don't want to risk breaking the installation process
   sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
   sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
@@ -2597,7 +2597,7 @@ function performSuggestedSecUpdates()
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
-  sudo apt purge telnet > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt purge -y telnet > /dev/null 2>&1
   # Assume the caller will restart sshd - don't want to risk breaking the installation process
   sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
   sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
@@ -11579,7 +11579,6 @@ function checkUpdateHomeServerDNSVars()
 }
 
 # Adguard Utils
-
 function getAdguardCredentialsHS()
 {
   echo -n $ADGUARD_ADMIN_USERNAME:$ADGUARD_ADMIN_PASSWORD | base64
@@ -16834,7 +16833,7 @@ function getScriptStackVersion()
     mailu)
       echo "v3" ;;
     wazuh)
-      echo "v4" ;;
+      echo "v5" ;;
     collabora)
       echo "v4" ;;
     nextcloud)
@@ -24127,7 +24126,7 @@ SSL_CERTIFICATE=/etc/ssl/filebeat.pem
 SSL_KEY=/etc/ssl/filebeat.key
 API_USERNAME=$WAZUH_API_USERNAME
 API_PASSWORD=$WAZUH_API_PASSWORD
-OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g
 WAZUH_API_URL=https://wazuh.manager
 DASHBOARD_USERNAME=$WAZUH_USERS_DASHBOARD_USERNAME
 DASHBOARD_PASSWORD=$WAZUH_USERS_DASHBOARD_PASSWORD
@@ -24630,7 +24629,18 @@ function performUpdateWazuh()
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.2,wazuh/wazuh-dashboard:4.7.3"
     ;;
     4)
-      newVer=v4
+      # The only purpose of this stack upgrade is to implement the increased Java memory fix
+      newVer=v5
+      curImageList=wazuh/wazuh-manager:4.7.3,wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-dashboard:4.7.3
+      image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.7.3"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateWazuhStackJavaMem
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    5)
+      newVer=v5
       curImageList=wazuh/wazuh-manager:4.7.3,wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-dashboard:4.7.3
       image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
       image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
@@ -24644,6 +24654,11 @@ function performUpdateWazuh()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfUpdateWazuhStackJavaMem()
+{
+  sed -i "s|OPENSEARCH_JAVA_OPTS=.*|OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g|" $HOME/wazuh.env
 }
 
 # Collabora
@@ -40812,7 +40827,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
 echo "Updating Linux and rebooting..."
-sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y && sudo reboot
+sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y && sudo reboot
 set -e
 
 EOFSC
