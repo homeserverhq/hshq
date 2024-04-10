@@ -2335,6 +2335,7 @@ EOFCF
     insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false
     insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false
+    checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0
     insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false
     insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
@@ -2343,7 +2344,6 @@ EOFCF
     insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
     checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
     insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0
     checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
     checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
     docker container start heimdall > /dev/null 2>&1
@@ -15290,6 +15290,7 @@ function outputIPTablesScripts()
   iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type protocol-unreachable -j ACCEPT
   iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type port-unreachable -j ACCEPT
   iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type fragmentation-needed -j ACCEPT
+  # Block echo-request with non-private IP
   iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -j ACCEPT
   iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type time-exceeded -j ACCEPT
   iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type parameter-problem -j ACCEPT
@@ -15428,7 +15429,7 @@ EOFPO
     iptables -I DOCKER-USER -s $HOMENET_ADDITIONAL_IPS -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
   done
   iptables -t raw -I PREROUTING -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4 -i $default_iface -j DROP
-  iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
+  iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
 EOFPO
       sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
   # Special case when HomeServer is on non-private network
@@ -15439,6 +15440,9 @@ EOFPO
   iptables -D INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
 EOFPT
     fi
+    add_rule="iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -i $default_iface -j DROP"
+    search_txt="# Block echo-request with non-private IP"
+    sudo sed -i "/$search_txt/a\  $add_rule" $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   fi
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
@@ -18775,6 +18779,7 @@ function insertServicesHeimdall()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertIntoHeimdallDB "$FMLNAME_ADGUARD" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "adguardhome.png"
     insertIntoHeimdallDB "$FMLNAME_CLIENTDNS" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "dnsmasq.png"
+    insertIntoHeimdallDB "$FMLNAME_CADDYDNS" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "dnsmasq.png"
     insertIntoHeimdallDB "$FMLNAME_PORTAINER" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "portainer.png"
     insertIntoHeimdallDB "$FMLNAME_RSPAMD" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "rspamd.png"
     insertIntoHeimdallDB "$FMLNAME_SYNCTHING" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "syncthing.png"
@@ -40674,7 +40679,7 @@ source $HSHQ_LIB_SCRIPT lib
 
 echo "  | Name | EmailAddress | NetworkType | PublicKey | IPAddress |"
 echo "---------------------------------------------------------------------------------------"
-sqlite3 -separator " | " \$HSHQ_DB "select ' ',Name,EmailAddress,NetworkType,PublicKey,IPAddress,' ' from connections;"
+sqlite3 -separator " | " \$HSHQ_DB "select ' ',Name,EmailAddress,NetworkType,PublicKey,IPAddress,' ' from connections order by ID;"
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/displayAllConnections.json
@@ -40955,10 +40960,21 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-echo "Testing Portainer..."
+echo "Testing Portainer"
+echo "Getting auth token..."
 portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
-echo "Token: \$portainerToken"
-tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+if [ \$? -eq 0 ]; then
+  echo "Querying stacks..."
+  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+  if [ \$? -eq 0 ]; then
+    echo "Succesfully executed query, connection is good!"
+  else
+    echo "ERROR: There was a problem running a query on the stacks"
+  fi
+else
+  echo "ERROR: Could not get auth token - either there is a problem with the service or bad credentials"
+fi
+
 echo "End Test"
 set -e
 performExitFunctions false
@@ -40969,7 +40985,7 @@ EOFSC
 {
   "name": "06 Test Portainer Connnection",
   "script_path": "conf/scripts/testPortainer.sh",
-  "description": "Tests Portainer Connnection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>",
+  "description": "Tests Portainer Connnection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function tests the connectivity with the Portainer API. It acquires an auth token, then runs a simple query. If you change the admin password (in both Portainer and the config file), then use this function to test it before running any other utilities.",
   "group": "$group_id_testing",
   "parameters": [
     {
