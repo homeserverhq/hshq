@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=57
+HSHQ_SCRIPT_VERSION=58
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -470,7 +470,19 @@ fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
+net.core.somaxconn = 65536
+net.netfilter.nf_conntrack_max = 10485760
+net.netfilter.nf_conntrack_tcp_loose = 0
+net.netfilter.nf_conntrack_tcp_timeout_established = 1800
+net.netfilter.nf_conntrack_tcp_timeout_close = 10
+net.netfilter.nf_conntrack_tcp_timeout_close_wait = 10
+net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 20
+net.netfilter.nf_conntrack_tcp_timeout_last_ack = 20
+net.netfilter.nf_conntrack_tcp_timeout_syn_recv = 20
+net.netfilter.nf_conntrack_tcp_timeout_syn_sent = 20
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 10
 net.ipv4.route.flush = 1
+net.ipv4.tcp_keepalive_time = 600
 net.ipv4.tcp_rfc1337 = 1
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_max_syn_backlog = 4096
@@ -1738,7 +1750,7 @@ function updateListOfStacks()
   do
     if [ -z "$cur_svc" ]; then continue; fi
     unset is_upgrade_error
-    echo "Updating ${cur_svc}..."
+    echo -e "\n\nUpdating ${cur_svc}..."
     if ! [ "$(isItemInCSVList $cur_svc $stacks_need_update_list)" = "true" ]; then
       continue
     fi
@@ -2514,7 +2526,19 @@ fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
 net.core.rmem_max = 4194304
 net.core.wmem_max = 4194304
+net.core.somaxconn = 65536
+net.netfilter.nf_conntrack_max = 10485760
+net.netfilter.nf_conntrack_tcp_loose = 0
+net.netfilter.nf_conntrack_tcp_timeout_established = 1800
+net.netfilter.nf_conntrack_tcp_timeout_close = 10
+net.netfilter.nf_conntrack_tcp_timeout_close_wait = 10
+net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 20
+net.netfilter.nf_conntrack_tcp_timeout_last_ack = 20
+net.netfilter.nf_conntrack_tcp_timeout_syn_recv = 20
+net.netfilter.nf_conntrack_tcp_timeout_syn_sent = 20
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 10
 net.ipv4.route.flush = 1
+net.ipv4.tcp_keepalive_time = 600
 net.ipv4.tcp_rfc1337 = 1
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_max_syn_backlog = 4096
@@ -3617,20 +3641,20 @@ EOFBS
   iptables -t raw -A chain-bad_tcp -p tcp -m tcp -m multiport --ports 0 -j DROP
   iptables -t raw -P PREROUTING ACCEPT
 
-  # Drop fragments
-  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -I INPUT -f -j DROP
-
-  # Drop SYN packets with suspicious MSS value
-  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
-
   # Limit connections per source IP
-  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -I INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
-
-  # Drop invalid packets
-  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
 
   # Allow established connections
   iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+  # Drop invalid packets
+  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+
+  # Drop fragments
+  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -A INPUT -f -j DROP
+
+  # Drop SYN packets with suspicious MSS value
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Configure loopback
   iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
@@ -6815,7 +6839,13 @@ function performMyNetworkCreateClientDNS()
     echo "ERROR: Invalid ClientDNS stack name - must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters."
     return
   fi
-  # Check if stack exists
+  # Check if name exists in DB
+  cdns_stack_name=$(sqlite3 $HSHQ_DB "select Name from connections where Name='clientdns-$clientdns_stack_name';")
+  if ! [ -z $cdns_stack_name ]; then
+    echo "ERROR: A stack with this name already exists."
+    return
+  fi
+  # Check if stack exists in Portainer
   checkID=$(getStackID clientdns-${clientdns_stack_name})
   if ! [ -z $checkID ]; then
     echo "ERROR: A stack with this name already exists."
@@ -9373,12 +9403,38 @@ function getPortainerToken()
       p)
         port_password="$OPTARG" ;;
       ?|h)
-        echo "Usage: getPortainerToken [-u arg] [-p arg]"
-        return ;;
+        return 1;;
     esac
   done
   shift "$(($OPTIND -1))"
-  echo $(http --check-status --ignore-stdin --verify=no https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/auth username=$port_username password=$port_password | jq -r .jwt)
+  set +e
+  # Portainer sometimes exhibits issues with API, so we'll add some error handling and restart capabilities.
+  cur_timeout=5
+  ptok_retVal=1
+  ptok_numTries=1
+  while [ $cur_timeout -le 30 ]
+  do
+    ptok_full=$(http --check-status --ignore-stdin --timeout=$cur_timeout --verify=no https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/auth username=$port_username password=$port_password)
+    ptok_retVal=$?
+    if [ $ptok_retVal -eq 0 ] && ! [ -z "$ptok_full" ]; then
+      # Do a sample query
+      ptok=$(echo $ptok_full | jq -r .jwt)
+      qry=$(http --check-status --ignore-stdin --verify=no --timeout=$cur_timeout --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $ptok" endpointId==1)
+      if [ $? -eq 0 ]; then
+        break
+      fi
+      ptok_retVal=1
+    fi
+    echo "Could not obtain Portainer token, restarting stack ($ptok_numTries of 6)..." 1>&2
+    restartPortainer 1>&2
+    cur_timeout=$((cur_timeout+5))
+    ((ptok_numTries++))
+  done
+  # Probably going to need to implement full error handling for this type of issue.
+  if [ $ptok_retVal -ne 0 ]; then
+    return 1
+  fi
+  echo $ptok
 }
 
 function getStackID()
@@ -9390,7 +9446,23 @@ function getStackID()
   if [ -z "$portainerToken" ]; then
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+  gsid_numTries=1
+  gsid_totalTries=5
+  gsid_retVal=1
+  qry=""
+  while [ $gsid_numTries -le $gsid_totalTries ]
+  do
+    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    gsid_retVal=$?
+    if [ $gsid_retVal -eq 0 ]; then
+      break
+    fi
+    ((gsid_numTries++))
+  done
+  if [ $gsid_retVal -ne 0 ]; then
+    echo "ERROR: Could not obtain stack ID from Portainer..." 1>&2
+    return
+  fi
   for row in $(echo "${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -9404,6 +9476,34 @@ function getStackID()
   if ! [ $stackID = "NA" ]; then
     echo $stackID
   fi
+}
+
+function updateStackByID()
+{
+  update_stack_name=$1
+  update_stack_id=$2
+  update_compose_file=$3
+  update_env_file=$4
+  portainerToken=$5
+
+  echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
+  usid_numTries=1
+  usid_totalTries=5
+  usid_retVal=1
+  while [ $usid_numTries -le $usid_totalTries ]
+  do
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
+    usid_retVal=$?
+    if [ $usid_retVal -eq 0 ]; then
+      break
+    fi
+    ((usid_numTries++))
+  done
+  if [ $usid_retVal -ne 0 ]; then
+    echo "ERROR: Could not get update stack in Portainer..." 1>&2
+    return
+  fi
+  rm -f $update_compose_file $update_env_file $HOME/${update_stack_name}-json.tmp
 }
 
 function restartAllStacksDialog()
@@ -9422,8 +9522,45 @@ function restartAllStacks()
 {
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   startStopStack uptimekuma stop "$portainerToken"
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
+
+  rsi_numTries=1
+  rsi_totalTries=5
+  rsi_retVal=1
+  rstackIDsQry=""
+  while [ $rsi_numTries -le $rsi_totalTries ]
+  do
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rsi_retVal=$?
+    if [ $rsi_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsi_numTries++))
+  done
+  if [ $rsi_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    return
+  fi
+  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
+
+  rsn_numTries=1
+  rsn_totalTries=5
+  rsn_retVal=1
+  rstackNamesQry=""
+  while [ $rsn_numTries -le $rsn_totalTries ]
+  do
+    rstackNamesQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rsn_retVal=$?
+    if [ $rsn_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsn_numTries++))
+  done
+  if [ $rsn_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack names in Portainer..." 1>&2
+    return
+  fi
+  rstackNames=($(echo $rstackNamesQry | jq -r '.[] | select(.Status == 1) | .Name'))
+
   numItems=$((${#rstackIDs[@]} - 1))
   for curID in $(seq 0 $numItems);
   do
@@ -9514,19 +9651,6 @@ function extractStackToHome()
   sudo cp $HSHQ_STACKS_DIR/portainer/compose/$extract_stack_id/docker-compose.yml $HOME/${extract_stack_name}-compose.yml
   sudo chown $USERNAME:$USERNAME $HOME/${extract_stack_name}.env
   sudo chown $USERNAME:$USERNAME $HOME/${extract_stack_name}-compose.yml
-}
-
-function updateStackByID()
-{
-  update_stack_name=$1
-  update_stack_id=$2
-  update_compose_file=$3
-  update_env_file=$4
-  portainerToken=$5
-
-  echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
-  rm -f $update_compose_file $update_env_file $HOME/${update_stack_name}-json.tmp
 }
 
 function updateStackEnv()
@@ -9755,29 +9879,26 @@ function installStack()
   echo "Creating stack: $stack_name"
   echo "$(createStackJson $stack_name $HOME/$stack_name-compose.yml "$envfile")" > $HOME/$stack_name-json.tmp
   sleep 1
-  num_http_tries=1
-  total_http_tries=10
-  ret_val=1
-  while [ $ret_val -ne 0 ] && [ $num_http_tries -lt $total_http_tries ]
+  ins_numTries=1
+  ins_totalTries=5
+  ins_retVal=1
+  while [ $ins_numTries -le $ins_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ]; then
       http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
     else
       http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
     fi
-    ret_val=$?
-    ((num_http_tries++))
-    if [ $ret_val -ne 0 ]; then
-      echo "ERROR: Stack installation via Portainer failed. Retrying ($num_http_tries of $total_http_tries)..."
-      sleep 3
+    ins_retVal=$?
+    if [ $ins_retVal -eq 0 ]; then
+      break
     fi
+    ((ins_numTries++))
   done
-
-  if [ $ret_val -ne 0 ]; then
-    installLogNotify "Error installing Stack ($stack_name)"
-    echo -e "Error installing Stack ($stack_name): \n\n"
-    #echo "$install_res"
-    return $ret_val
+  if [ $ins_retVal -ne 0 ]; then
+    installLogNotify "Error installing stack ($stack_name)"
+    echo "ERROR: Could not install stack ($stack_name) in Portainer..." 1>&2
+    return $ins_retVal
   fi
   sleep 1
   search=$stack_search_string
@@ -9829,17 +9950,22 @@ function startStopStackByID()
   if [ -z "$portainerToken" ]; then
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  numSStries=1
-  maxSStries=6
-  while [ $numSStries -lt $maxSStries ]
+  sss_numTries=1
+  sss_totalTries=5
+  sss_retVal=1
+  while [ $sss_numTries -le $sss_totalTries ]
   do
     http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
-    if [ $? -eq 0 ]; then
+    sss_retVal=$?
+    if [ $sss_retVal -eq 0 ]; then
       break
     fi
-    ((numSStries++))
-    echo "Error starting/stopping stack, retrying ($numSStries of $maxSStries)..."
+    ((sss_numTries++))
   done
+  if [ $sss_retVal -ne 0 ]; then
+    echo "ERROR: Could not get $startStop stack in Portainer..." 1>&2
+    return
+  fi
 }
 
 function restartStackIfRunning()
@@ -9849,9 +9975,7 @@ function restartStackIfRunning()
   portainerToken=$3
   if [ "$stackName" = "portainer" ]; then
     # Special case for portainer
-    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
-    sleep $waitTime
-    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+    restartPortainer
     return
   fi
   if [ -z "$portainerToken" ]; then
@@ -9876,8 +10000,24 @@ function getStackStatusByID()
   if [ -z "$portainerToken" ]; then
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.Status')
-  echo $stackStatus
+  gss_numTries=1
+  gss_totalTries=5
+  gss_retVal=1
+  stackStatus=""
+  while [ $gss_numTries -le $gss_totalTries ]
+  do
+    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1)
+    gss_retVal=$?
+    if [ $gss_retVal -eq 0 ]; then
+      break
+    fi
+    ((gss_numTries++))
+  done
+  if [ $gss_retVal -ne 0 ]; then
+    echo "ERROR: Could not get stack status from Portainer..." 1>&2
+    return
+  fi
+  echo $stackStatus | jq -r '.Status'
 }
 
 function getStackStatusByName()
@@ -9906,7 +10046,22 @@ function deleteStack()
   if [ -z $stackID ]; then
     return
   fi
-  http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+  ds_numTries=1
+  ds_totalTries=5
+  ds_retVal=1
+  while [ $ds_numTries -le $ds_totalTries ]
+  do
+    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+    ds_retVal=$?
+    if [ $ds_retVal -eq 0 ]; then
+      break
+    fi
+    ((ds_numTries++))
+  done
+  if [ $ds_retVal -ne 0 ]; then
+    echo "ERROR: Could not delete stack from Portainer..." 1>&2
+    return
+  fi
 }
 
 function showMessageBox()
@@ -13749,7 +13904,19 @@ fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
 net.core.rmem_max = 4194304
 net.core.wmem_max = 4194304
+net.core.somaxconn = 65536
+net.netfilter.nf_conntrack_max = 10485760
+net.netfilter.nf_conntrack_tcp_loose = 0
+net.netfilter.nf_conntrack_tcp_timeout_established = 1800
+net.netfilter.nf_conntrack_tcp_timeout_close = 10
+net.netfilter.nf_conntrack_tcp_timeout_close_wait = 10
+net.netfilter.nf_conntrack_tcp_timeout_fin_wait = 20
+net.netfilter.nf_conntrack_tcp_timeout_last_ack = 20
+net.netfilter.nf_conntrack_tcp_timeout_syn_recv = 20
+net.netfilter.nf_conntrack_tcp_timeout_syn_sent = 20
+net.netfilter.nf_conntrack_tcp_timeout_time_wait = 10
 net.ipv4.route.flush = 1
+net.ipv4.tcp_keepalive_time = 600
 net.ipv4.tcp_rfc1337 = 1
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_max_syn_backlog = 4096
@@ -13774,7 +13941,7 @@ net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
     chmod 644 $HOME/88-hshq.conf
 
-    tee $HOME/setupDockerUserIPTables.sh >/dev/null <<EOFSC
+    tee $HOME/10-setupDockerUserIPTables.sh >/dev/null <<EOFSC
 #!/bin/bash
   set +e
 
@@ -13838,20 +14005,20 @@ EOFSC
   iptables -t raw -A chain-bad_tcp -p tcp -m tcp -m multiport --ports 0 -j DROP
   iptables -t raw -P PREROUTING ACCEPT
 
-  # Drop fragments
-  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -I INPUT -f -j DROP
-
-  # Drop SYN packets with suspicious MSS value
-  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
-
   # Limit connections per source IP
-  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -I INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
-
-  # Drop invalid packets
-  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
 
   # Allow established connections
   iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+  # Drop invalid packets
+  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+
+  # Drop fragments
+  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -A INPUT -f -j DROP
+
+  # Drop SYN packets with suspicious MSS value
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Configure loopback
   iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
@@ -13881,7 +14048,7 @@ EOFSC
   sysctl --system > /dev/null 2>&1
 
 EOFSC
-    chmod 744 $HOME/setupDockerUserIPTables.sh
+    chmod 744 $HOME/10-setupDockerUserIPTables.sh
 
     tee $HOME/clearDockerUserIPTables.sh >/dev/null <<EOFSC
 #!/bin/bash
@@ -13927,12 +14094,12 @@ EOFSC
     chmod 744 $HOME/clearDockerUserIPTables.sh
 
     scp -P $RELAYSERVER_SSH_PORT $HOME/88-hshq.conf $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    scp -P $RELAYSERVER_SSH_PORT $HOME/setupDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/10-setupDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
     scp -P $RELAYSERVER_SSH_PORT $HOME/clearDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli"
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/10-setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/10-setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; sudo rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli; sudo reboot"
     unloadSSHKey
     rm -f $HOME/88-hshq.conf
-    rm -f $HOME/setupDockerUserIPTables.sh
+    rm -f $HOME/10-setupDockerUserIPTables.sh
     rm -f $HOME/clearDockerUserIPTables.sh
   fi
   set -e
@@ -13942,7 +14109,6 @@ EOFSC
   # See https://www.portainer.io/blog/portainer-and-docker-26
   sudo apt-mark hold docker-ce
   sudo apt-mark hold docker-ce-cli
-
 }
 
 function version53Update()
@@ -15145,20 +15311,20 @@ function outputIPTablesScripts()
   iptables -t raw -A chain-bad_tcp -p tcp -m tcp -m multiport --ports 0 -j DROP
   iptables -t raw -P PREROUTING ACCEPT
 
-  # Drop fragments
-  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -I INPUT -f -j DROP
-
-  # Drop SYN packets with suspicious MSS value
-  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
-
   # Limit connections per source IP
-  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -I INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
-
-  # Drop invalid packets
-  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -I INPUT -m conntrack --ctstate INVALID -j DROP
+  iptables -C INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1 || iptables -A INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset
 
   # Allow established connections
   iptables -C INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+  # Drop invalid packets
+  iptables -C INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1 || iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+
+  # Drop fragments
+  iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -A INPUT -f -j DROP
+
+  # Drop SYN packets with suspicious MSS value
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Configure loopback
   iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
@@ -15353,13 +15519,11 @@ set +e
 # wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
 # at boot, will wait until the interfaces are up, then start/restart the Caddy containers.
 
-host_ip=$HOMESERVER_HOST_IP
 hshq_db=$HSHQ_DB
 
 function main()
 {
   ips_arr=(\$(sqlite3 \$hshq_db "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
-  ips_arr+=(\$host_ip)
 
   ns_sleep=5
   ping_timeout=5
@@ -16612,6 +16776,29 @@ function removeImageCSVList()
       docker image rm $rm_img > /dev/null 2>&1
     fi
   done
+}
+
+function prepPerformUpdate()
+{
+  # This function is a drop-in replacement for all repetetive
+  # code at the beginning of each of the performUpdate functions.
+
+  # The underlying performUpdate function modifies the variable
+  # perform_update_report with the results of the update process.
+  # It is up to the caller to do something with it.
+  perform_update_report=""
+  portainerToken="$1"
+  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  if [ -z $perform_stack_id ]; then
+    is_upgrade_error=true
+    perform_update_report="ERROR($perform_stack_name): There was a problem with the Portainer API. If this error persists, try restarting Portainer."
+    return 1
+  fi
+  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
+  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
+  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  unset image_update_map
+  oldVer=v"$perform_stack_ver"
 }
 
 function upgradeStack()
@@ -19350,19 +19537,15 @@ EOFPC
 function performUpdatePortainer()
 {
   # This is a special case and has not been tested. Ensure to test on next image release.
-
   perform_stack_name=portainer
   # This function modifies the variable perform_update_report
   # with the results of the update process. It is up to the 
   # caller to do something with it.
   perform_update_report=""
   portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
   perform_compose=$HSHQ_STACKS_DIR/portainer/docker-compose.yml
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
   unset image_update_map
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
@@ -19383,8 +19566,35 @@ function performUpdatePortainer()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "0" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function restartPortainer()
+{
+  resp_curE=${-//[^e]/}
+  set +e
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  sleep 3
+  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  search="starting HTTPS server"
+  isFound="F"
+  i=0
+  while [ $i -le 300 ]
+  do
+    findtext=$(docker logs portainer 2>&1 | grep "$search")
+    if ! [ -z "$findtext" ]; then
+      isFound="T"
+      break
+    fi
+    echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
+    sleep 1
+    i=$((i+1))
+  done
+  if ! [ -z $resp_curE ]; then
+    set -e
+  fi
+  sleep 3
 }
 
 # Adguard
@@ -19731,19 +19941,8 @@ EOFAD
 function performUpdateAdGuard()
 {
   perform_stack_name=adguard
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -22525,19 +22724,8 @@ EOFJS
 function performUpdateSysUtils()
 {
   perform_stack_name=sysutils
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -23172,19 +23360,8 @@ EOFLB
 function performUpdateOpenLDAP()
 {
   perform_stack_name=openldap
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -23687,19 +23864,8 @@ EOFRS
 function performUpdateMailu()
 {
   perform_stack_name=mailu
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -24592,19 +24758,8 @@ EOFWZ
 function performUpdateWazuh()
 {
   perform_stack_name=wazuh
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -24752,19 +24907,8 @@ EOFCO
 function performUpdateCollabora()
 {
   perform_stack_name=collabora
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -25728,19 +25872,8 @@ EOFNC
 function performUpdateNextcloud()
 {
   perform_stack_name=nextcloud
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -25966,19 +26099,8 @@ EOFJT
 function performUpdateJitsi()
 {
   perform_stack_name=jitsi
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -26457,19 +26579,8 @@ EOFJT
 function performUpdateMatrix()
 {
   perform_stack_name=matrix
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -26797,19 +26908,8 @@ EOFWJ
 function performUpdateWikijs()
 {
   perform_stack_name=wikijs
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -26940,19 +27040,8 @@ EOFDP
 function performUpdateDuplicati()
 {
   perform_stack_name=duplicati
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -27528,19 +27617,15 @@ EOFMD
 function performUpdateMastodon()
 {
   perform_stack_name=mastodon
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # Stack status: 1=running, 2=stopped
   stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  if [ -z "$stackStatus" ]; then
+    is_upgrade_error=true
+    perform_update_report="ERROR ($perform_stack_name): Could not get stack status"
+    return
+  fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -27851,19 +27936,8 @@ EOFDZ
 function performUpdateDozzle()
 {
   perform_stack_name=dozzle
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -28193,19 +28267,8 @@ EOFSE
 function performUpdateSearxNG()
 {
   perform_stack_name=searxng
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -28372,19 +28435,8 @@ EOFLD
 function performUpdateJellyfin()
 {
   perform_stack_name=jellyfin
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -28512,19 +28564,8 @@ EOFJF
 function performUpdateFileBrowser()
 {
   perform_stack_name=filebrowser
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -28870,19 +28911,8 @@ EOFPP
 function performUpdatePhotoPrism()
 {
   perform_stack_name=photoprism
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -29136,19 +29166,8 @@ EOFGC
 function performUpdateGuacamole()
 {
   perform_stack_name=guacamole
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -29306,7 +29325,7 @@ services:
       - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
       - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
     environment:
-      - REDIS_PASSWORD=$AUTHELIA_REDIS_PASSWORD
+      - REDIS_PASSWORD=$(cat $HSHQ_SECRETS_DIR/authelia_redis_password.txt)
 
 secrets:
   authelia_jwt_secret:
@@ -29502,19 +29521,8 @@ EOFAC
 function performUpdateAuthelia()
 {
   perform_stack_name=authelia
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -29747,19 +29755,8 @@ EOFWP
 function performUpdateWordPress()
 {
   perform_stack_name=wordpress
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -29956,19 +29953,8 @@ EOFGW
 function performUpdateGhost()
 {
   perform_stack_name=ghost
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -30245,19 +30231,8 @@ EOFPT
 function performUpdatePeerTube()
 {
   perform_stack_name=peertube
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -30711,19 +30686,8 @@ EOFHC
 function performUpdateHomeAssistant()
 {
   perform_stack_name=homeassistant
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -31320,19 +31284,8 @@ EOFGL
 function performUpdateGitlab()
 {
   perform_stack_name=gitlab
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -31581,19 +31534,8 @@ EOFVW
 function performUpdateVaultwarden()
 {
   perform_stack_name=vaultwarden
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -31875,19 +31817,8 @@ EOFDC
 function performUpdateDiscourse()
 {
   perform_stack_name=discourse
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -32064,19 +31995,8 @@ EOFST
 function performUpdateSyncthing()
 {
   perform_stack_name=syncthing
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -32305,19 +32225,8 @@ EOFCS
 function performUpdateCodeServer()
 {
   perform_stack_name=codeserver
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -32596,19 +32505,8 @@ EOFST
 function performUpdateShlink()
 {
   perform_stack_name=shlink
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -32928,19 +32826,8 @@ EOFFF
 function performUpdateFirefly()
 {
   perform_stack_name=firefly
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -33188,19 +33075,8 @@ EOFEX
 function performUpdateExcalidraw()
 {
   perform_stack_name=excalidraw
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -33369,19 +33245,8 @@ EOFDI
 function performUpdateDrawIO()
 {
   perform_stack_name=drawio
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -33792,19 +33657,8 @@ EOFIV
 function performUpdateInvidious()
 {
   perform_stack_name=invidious
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -34004,19 +33858,8 @@ EOFGL
 function performUpdateGitea()
 {
   perform_stack_name=gitea
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -34260,19 +34103,8 @@ EOFGL
 function performUpdateMealie()
 {
   perform_stack_name=mealie
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -34429,19 +34261,8 @@ EOFGL
 function performUpdateKasm()
 {
   perform_stack_name=kasm
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -34931,19 +34752,8 @@ EOFNT
 function performUpdateNTFY()
 {
   perform_stack_name=ntfy
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -35053,19 +34863,8 @@ EOFNT
 function performUpdateITTools()
 {
   perform_stack_name=ittools
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -35195,19 +34994,8 @@ EOFRM
 function performUpdateRemotely()
 {
   perform_stack_name=remotely
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -35424,19 +35212,8 @@ EOFPY
 function performUpdateCalibre()
 {
   perform_stack_name=calibre
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -35598,19 +35375,8 @@ EOFDZ
 function performUpdateNetdata()
 {
   perform_stack_name=netdata
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -35799,19 +35565,8 @@ EOFDZ
 function performUpdateLinkwarden()
 {
   perform_stack_name=linkwarden
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -35936,19 +35691,8 @@ EOFDZ
 function performUpdateStirlingPDF()
 {
   perform_stack_name=stirlingpdf
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -36273,19 +36017,8 @@ EOFBA
 function performUpdateBarAssistant()
 {
   perform_stack_name=bar-assistant
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -36550,19 +36283,8 @@ EOFBA
 function performUpdateFreshRSS()
 {
   perform_stack_name=freshrss
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -36773,19 +36495,8 @@ EOFBA
 function performUpdateKeila()
 {
   perform_stack_name=keila
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -37047,19 +36758,8 @@ EOFPT
 function performUpdateWallabag()
 {
   perform_stack_name=wallabag
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -37181,19 +36881,8 @@ EOFDZ
 function performUpdateJupyter()
 {
   perform_stack_name=jupyter
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -37483,19 +37172,8 @@ EOFJT
 function performUpdatePaperless()
 {
   perform_stack_name=paperless
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -37734,19 +37412,8 @@ EOFDS
 function performUpdateSpeedtestTrackerLocal()
 {
   perform_stack_name=speedtest-tracker-local
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -37991,19 +37658,8 @@ EOFDS
 function performUpdateSpeedtestTrackerVPN()
 {
   perform_stack_name=speedtest-tracker-vpn
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -38221,19 +37877,8 @@ EOFCD
 function performUpdateChangeDetection()
 {
   perform_stack_name=changedetection
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -38465,19 +38110,8 @@ EOFDZ
 function performUpdateHuginn()
 {
   perform_stack_name=huginn
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -38605,19 +38239,8 @@ EOFRM
 function performUpdateCoturn()
 {
   perform_stack_name=coturn
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -38744,19 +38367,8 @@ EOFDZ
 function performUpdateFileDrop()
 {
   perform_stack_name=filedrop
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -39199,19 +38811,8 @@ EOFPI
 function performUpdatePiped()
 {
   perform_stack_name=piped
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -40945,7 +40546,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
 
 source $HSHQ_LIB_SCRIPT lib
 closeHSHQScript
-
+echo "HSHQ status successfully reset."
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetHSHQOpenStatus.json
@@ -41334,6 +40935,71 @@ EOFSC
         }
       },
       "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/testPortainer.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+set +e
+echo "Testing Portainer..."
+portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
+echo "Token: \$portainerToken"
+tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+echo "End Test"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/testPortainer.json
+{
+  "name": "06 Test Portainer Connnection",
+  "script_path": "conf/scripts/testPortainer.sh",
+  "description": "Tests Portainer Connnection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>",
+  "group": "$group_id_testing",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
       "pass_as": "argument"
     }
   ]
@@ -44177,19 +43843,8 @@ EOFSP
 function performUpdateSQLPad()
 {
   perform_stack_name=sqlpad
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -44734,19 +44389,8 @@ EOFHL
 function performUpdateHeimdall()
 {
   perform_stack_name=heimdall
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -45487,19 +45131,8 @@ EOFCE
 function performUpdateCaddy()
 {
   perform_stack_name=$2
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -45797,19 +45430,8 @@ EOFCF
 function performUpdateClientDNS()
 {
   perform_stack_name=$2
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -45898,19 +45520,8 @@ EOFRM
 function performUpdateOfelia()
 {
   perform_stack_name=ofelia
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
@@ -46046,19 +45657,8 @@ EOFUK
 function performUpdateUptimeKuma()
 {
   perform_stack_name=uptimekuma
-  # This function modifies the variable perform_update_report
-  # with the results of the update process. It is up to the 
-  # caller to do something with it.
-  perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
-  perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
-  perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
-  # Stack status: 1=running, 2=stopped
-  #stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
-  unset image_update_map
-  oldVer=v"$perform_stack_ver"
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
