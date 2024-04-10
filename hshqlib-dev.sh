@@ -29325,7 +29325,7 @@ services:
       - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
       - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
     environment:
-      - REDIS_PASSWORD=$AUTHELIA_REDIS_PASSWORD
+      - REDIS_PASSWORD=$(cat $HSHQ_SECRETS_DIR/authelia_redis_password.txt)
 
 secrets:
   authelia_jwt_secret:
