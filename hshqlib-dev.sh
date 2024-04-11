@@ -2359,7 +2359,7 @@ EOFCF
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
   mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
-  sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP,HomeServerLogoURL) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_VPN_SUBNET','$RELAYSERVER_WG_SV_IP','https://$SUB_IMAGES.$HOMESERVER_DOMAIN/$HOMESERVER_DOMAIN.png');"
+  sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_VPN_SUBNET','$RELAYSERVER_WG_SV_IP');"
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
@@ -7094,7 +7094,6 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   msg_body=$msg_body"DomainName = $domain_name\n"
   msg_body=$msg_body"HomeServerName = $HOMESERVER_NAME\n"
   msg_body=$msg_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
-  msg_body=$msg_body"HomeServerLogoURL = https://$SUB_IMAGES.$HOMESERVER_DOMAIN/$HOMESERVER_DOMAIN.png\n"
   if [ "$is_primary" = "true" ]; then
     RELAYSERVER_LE_CERT_DOMAINS="$le_cert_domains"
     updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
@@ -7436,7 +7435,6 @@ function performNetworkInvite()
           return 7
         fi
       fi
-      homeserver_logo_url=$(getValueFromConfig "HomeServerLogoURL" $apply_file)
     ;;
     "HomeServer Internet")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
@@ -7566,7 +7564,7 @@ function performNetworkInvite()
       if [ "$is_primary" = "true" ]; then
         mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$mail_subdomain');select last_insert_rowid();")
       fi
-      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,MailHostID,HomeServerLogoURL) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$external_prefix',$mail_host_id,'$homeserver_logo_url');"
+      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,MailHostID) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$external_prefix',$mail_host_id);"
       echo "Adding DNS entries to AdguardHome..."
       addDomainAndWildcardAdguardHS "$domain_name" "$new_ip"
       addDomainAndWildcardAdguardRS "$domain_name" "$new_ip"
@@ -9142,7 +9140,7 @@ function initWireGuardDB()
   rm -f $HSHQ_DB
   sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
   sqlite3 $HSHQ_DB "create table mailhosts(ID integer not null primary key autoincrement,MailHost text not null);"
-  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,VPN_Subnet text default null,RS_VPN_IP text default null,HomeServerLogoURL text);"
+  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,VPN_Subnet text default null,RS_VPN_IP text default null);"
   sqlite3 $HSHQ_DB "create table hsvpn_dns(ID integer not null primary key autoincrement,HostDomain text not null,PeerDomain text not null,PeerDomainExtPrefix text not null,IPAddress text not null,DateAdded datetime,IsActive boolean);"
   sqlite3 $HSHQ_DB "create unique index hpdns on hsvpn_dns(HostDomain,PeerDomain);"
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
@@ -15925,7 +15923,7 @@ function updateHomeServerLogoImages()
   do
     curDomain=$(getBaseDomain $(echo "$curHS" | cut -d "/" -f3))
     curURL="https://images.${curDomain}/${curDomain}.png"
-    echo "Getting image for ${curDomain}..."
+    echo -e "\nGetting image for ${curDomain}..."
     wget -q -O /tmp/tmpimage.png $curURL > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       echo "ERROR: Could not obtain image for $curDomain"
@@ -15962,6 +15960,7 @@ function updateHomeServerLogoImages()
       rm -f /tmp/tmpimage.png
     fi
   done
+  echo ""
   if [ "$isAnyNew" = "true" ]; then
     echo "Restarting Heimdall..."
     docker container restart heimdall > /dev/null 2>&1
