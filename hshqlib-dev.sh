@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=58
+HSHQ_SCRIPT_VERSION=59
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -592,7 +592,8 @@ function performSuggestedSecUpdates()
   if [ $? -eq 0 ]; then
     sudo sed -i "s/enabled=1/enabled=0/" /etc/default/apport
     sudo systemctl stop apport
-    sudo systemctl disable apport
+    sudo systemctl --now disable apport
+    sudo systemctl daemon-reload
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
@@ -2358,7 +2359,7 @@ EOFCF
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
   mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
-  sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_VPN_SUBNET','$RELAYSERVER_WG_SV_IP');"
+  sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP,HomeServerLogoURL) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_VPN_SUBNET','$RELAYSERVER_WG_SV_IP','https://$SUB_IMAGES.$HOMESERVER_DOMAIN/$HOMESERVER_DOMAIN.png');"
   sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
@@ -2617,7 +2618,8 @@ function performSuggestedSecUpdates()
   if [ \$? -eq 0 ]; then
     sudo sed -i "s/enabled=1/enabled=0/g" /etc/default/apport
     sudo systemctl stop apport
-    sudo systemctl disable apport
+    sudo systemctl --now disable apport
+    sudo systemctl daemon-reload
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
@@ -4778,9 +4780,11 @@ SUBNET_PREFIX=\$mail_relay_net_prefix
 EOFPF
 
   cat <<EOFHC > \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf/groups.conf
-symbols {
-  "DMARC_POLICY_REJECT" {
-    weight=100.0;
+group "policies" {
+  symbols = {
+    "DMARC_POLICY_REJECT" = {
+      weight = 100.0;
+    }
   }
 }
 
@@ -7090,6 +7094,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   msg_body=$msg_body"DomainName = $domain_name\n"
   msg_body=$msg_body"HomeServerName = $HOMESERVER_NAME\n"
   msg_body=$msg_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
+  msg_body=$msg_body"HomeServerLogoURL = https://$SUB_IMAGES.$HOMESERVER_DOMAIN/$HOMESERVER_DOMAIN.png\n"
   if [ "$is_primary" = "true" ]; then
     RELAYSERVER_LE_CERT_DOMAINS="$le_cert_domains"
     updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
@@ -7431,6 +7436,7 @@ function performNetworkInvite()
           return 7
         fi
       fi
+      homeserver_logo_url=$(getValueFromConfig "HomeServerLogoURL" $apply_file)
     ;;
     "HomeServer Internet")
       domain_name=$(getValueFromConfig "DomainName" $apply_file)
@@ -7560,7 +7566,7 @@ function performNetworkInvite()
       if [ "$is_primary" = "true" ]; then
         mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$mail_subdomain');select last_insert_rowid();")
       fi
-      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,MailHostID) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$external_prefix',$mail_host_id);"
+      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,MailHostID,HomeServerLogoURL) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$external_prefix',$mail_host_id,'$homeserver_logo_url');"
       echo "Adding DNS entries to AdguardHome..."
       addDomainAndWildcardAdguardHS "$domain_name" "$new_ip"
       addDomainAndWildcardAdguardRS "$domain_name" "$new_ip"
@@ -9136,7 +9142,7 @@ function initWireGuardDB()
   rm -f $HSHQ_DB
   sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
   sqlite3 $HSHQ_DB "create table mailhosts(ID integer not null primary key autoincrement,MailHost text not null);"
-  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,VPN_Subnet text default null,RS_VPN_IP text default null);"
+  sqlite3 $HSHQ_DB "create table hsvpn_connections(ID integer not null primary key references connections(ID) on delete cascade,HomeServerName text,IsPrimary boolean,DomainName text default null,ExternalPrefix text default null,InternalPrefix text default null,MailHostID integer references mailhosts(ID) on delete cascade,CA_Abbrev text default null,CA_IP text default null,CA_Subdomain text default null,CA_URL text default null,VPN_Subnet text default null,RS_VPN_IP text default null,HomeServerLogoURL text);"
   sqlite3 $HSHQ_DB "create table hsvpn_dns(ID integer not null primary key autoincrement,HostDomain text not null,PeerDomain text not null,PeerDomainExtPrefix text not null,IPAddress text not null,DateAdded datetime,IsActive boolean);"
   sqlite3 $HSHQ_DB "create unique index hpdns on hsvpn_dns(HostDomain,PeerDomain);"
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
@@ -12810,6 +12816,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=56
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 59 ]; then
+    echo "Updating to Version 59..."
+    version59Update
+    HSHQ_VERSION=59
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14243,6 +14255,58 @@ function version56Update()
 {
   performSuggestedSecUpdates
   sudo systemctl restart sshd
+}
+
+function version59Update()
+{
+  # This helps with sending internal emails within a primary network.
+  cat <<EOFRS > $HOME/mailu-groups.conf
+group "dkim" {
+  symbols = {
+    "R_DKIM_ALLOW" = {
+      weight = -6.0;
+    }
+  }
+}
+
+EOFRS
+  chmod 664 $HOME/mailu-groups.conf
+  sudo chown 101:101 $HOME/mailu-groups.conf
+  sudo mv $HOME/mailu-groups.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/groups.conf
+  docker container restart mailu-antispam > /dev/null 2>&1
+  outputAllScriptServerScripts
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    is_continue=""
+    while ! [ "$is_continue" = "ok" ]
+    do
+      read -p "Enter 'ok' to continue: " is_continue
+    done
+    loadSSHKey
+    set +e
+    cat <<EOFHC > $HOME/groups.conf
+group "policies" {
+  symbols = {
+    "DMARC_POLICY_REJECT" = {
+      weight = 100.0;
+    }
+  }
+}
+
+EOFHC
+    chmod 644 $HOME/groups.conf
+    scp -P $RELAYSERVER_SSH_PORT $HOME/groups.conf $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/groups.conf; sudo mv ~/groups.conf $RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf/groups.conf; docker container restart mail-relay-rspamd > /dev/null 2>&1"
+    unloadSSHKey
+    rm -f $HOME/groups.conf
+  fi
+  set +e
+  sqlite3 $HSHQ_DB "pragma table_info('hsvpn_connections');" | grep HomeServerLogoURL > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sqlite3 $HSHQ_DB "alter table hsvpn_connections add column HomeServerLogoURL text;"
+    sqlite3 $HSHQ_DB "update hsvpn_connections set HomeServerLogoURL='https://images.' || DomainName || '/' || DomainName || '.png' where ID in (select ID from connections where NetworkType='mynetwork');"
+    cp $HSHQ_ASSETS_DIR/images/hslogo.png $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png
+  fi
 }
 
 function sendRSExposeScripts()
@@ -15854,6 +15918,94 @@ function deleteFromRootCron()
   fi
   sudo rm $HOME/rootcron
   set -e
+}
+
+function updateHomeServerLogoImages()
+{
+  set +e
+  hs_list=($(sqlite3 $HSHQ_DB "select hs.DomainName,hs.HomeServerLogoURL from hsvpn_connections hs join connections cn on hs.ID=cn.ID where cn.NetworkType='mynetwork';"))
+  isAnyNew=false
+  for curHS in "${hs_list[@]}"
+  do
+    curDomain=$(echo "$curHS" | cut -d "|" -f1)
+    curURL=$(echo "$curHS" | cut -d "|" -f2)
+    if [ "$curDomain" = "$my_hs_dom" ]; then
+      continue
+    fi
+    echo "Getting image for ${curDomain}..."
+    wget -q -O /tmp/tmpimage.png $curURL > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      echo "ERROR: Could not obtain image for $curDomain"
+      rm -f /tmp/tmpimage.png
+      continue
+    fi
+    curImgSize=$(du -s /tmp/tmpimage.png | xargs | cut -d" " -f1)
+    if [ $curImgSize -lt 1 ] || [ $curImgSize -gt 1024 ]; then
+      echo "ERROR: There was a problem with the image size for $curDomain"
+      rm -f /tmp/tmpimage.png
+      continue
+    fi
+    isNewImage=false
+    if ! [ -f $HSHQ_ASSETS_DIR/images/${curDomain}.png ]; then
+      echo "No existing image found for ${curDomain}, adding..."
+      isNewImage=true
+    else
+      diff $HSHQ_ASSETS_DIR/images/${curDomain}.png /tmp/tmpimage.png > /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        echo "New image detected for ${curDomain}, updating..."
+        isNewImage=true
+      else
+        echo "Same image for ${curDomain}, skipping..."
+      fi
+    fi
+    if [ "$isNewImage" = "true" ]; then
+      isAnyNew=true
+      mv /tmp/tmpimage.png $HSHQ_ASSETS_DIR/images/${curDomain}.png
+      # Add some random string to the filename, to overcome any browser cache issues.
+      rand_string=$(pwgen -c -n 8 1)
+      cp $HSHQ_ASSETS_DIR/images/${curDomain}.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/${curDomain}-${rand_string}.png
+      sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${curDomain}-${rand_string}.png' where url='https://home.$curDomain';"
+    else
+      rm -f /tmp/tmpimage.png
+    fi
+  done
+  if [ "$isAnyNew" = "true" ]; then
+    echo "Restarting Heimdall..."
+    docker container restart heimdall > /dev/null 2>&1
+  else
+    echo "No new images were detected"
+  fi
+  echo "Update HomeServer logo images complete!"
+}
+
+function uploadHomeServerLogo()
+{
+  img_file="$1"
+  if ! [ "$(file -b --mime-type $img_file)" = "image/png" ]; then
+    echo "ERROR: Image must be a png file"
+    rm -f "$img_file"
+    return
+  fi
+  curImgSize=$(du -s $img_file | xargs | cut -d" " -f1)
+  if [ $curImgSize -lt 1 ]; then
+    echo "ERROR: There was a problem with the image size"
+    rm -f "$img_file"
+    return
+  fi
+  if [ $curImgSize -gt 1024 ]; then
+    echo "ERROR: Image is too large, must be less than 1MB (1024 KB)"
+    rm -f "$img_file"
+    return
+  fi
+  echo "Image is good, updating..."
+  mv "$img_file" $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png
+  # Add some random string to the filename, to overcome any browser cache issues.
+  rand_string=$(pwgen -c -n 8 1)
+  cp $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/${HOMESERVER_DOMAIN}-${rand_string}.png
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${HOMESERVER_DOMAIN}-${rand_string}.png' where url='https://home.$HOMESERVER_DOMAIN';"
+  echo "Restarting Heimdall..."
+  docker container restart heimdall > /dev/null 2>&1
+  echo "HomeServer logo updated succesfully!"
 }
 
 function outputWireGuardScripts()
@@ -23857,11 +24009,14 @@ DOMAIN_BLACKLIST {
 EOFRS
 
   cat <<EOFRS > $HSHQ_STACKS_DIR/mailu/groups.conf
-symbols {
-  "R_DKIM_ALLOW" {
-    weight = -22.0;
+group "dkim" {
+  symbols = {
+    "R_DKIM_ALLOW" = {
+      weight = -6.0;
+    }
   }
 }
+
 EOFRS
 
 }
@@ -41141,7 +41296,7 @@ EOFSC
 {
   "name": "02 Invite User to Network",
   "script_path": "conf/scripts/myNetworkInviteUserConnection.sh",
-  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 'Invite to Network' function. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
+  "description": "Performs a user invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 06 My Network -> 01 Invite to Network function. However, if someone emailed you their public key (and interface IP address), or you are adding a client device to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -42092,6 +42247,81 @@ EOFSC
       "pass_as": "argument"
     }
   ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/uploadHomeServerLogo.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+img=\$(getArgumentValue img "\$@")
+uploadHomeServerLogo "\$img"
+performExitFunctions false
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/uploadHomeServerLogo.json
+{
+  "name": "15 Upload HomeServer Logo",
+  "script_path": "conf/scripts/uploadHomeServerLogo.sh",
+  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 06 My Network -> 16 Update HomeServer Logos function). The image must be a .png and it can be no larger than 1MB (1024 KB).",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select Image",
+      "required": true,
+      "param": "-img=",
+      "same_arg_param": true,
+      "type": "file_upload",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateHomeServerLogoImages.sh
+#!/bin/bash
+
+source $HSHQ_LIB_SCRIPT lib
+updateHomeServerLogoImages
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/updateHomeServerLogoImages.json
+{
+  "name": "16 Update HomeServer Logos",
+  "script_path": "conf/scripts/updateHomeServerLogoImages.sh",
+  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page, as per the URL provided in the application. If you wish to set the logo image for your own HomeServer, then run the 06 My Network -> 15 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager runs this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).",
+  "group": "$group_id_mynetwork",
+  "parameters": []
 }
 
 EOFSC
