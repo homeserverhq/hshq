@@ -42311,7 +42311,7 @@ EOFSC
 {
   "name": "16 Update HomeServer Logos",
   "script_path": "conf/scripts/updateHomeServerLogoImages.sh",
-  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page, as per the URL provided in the application. If you wish to set the logo image for your own HomeServer, then run the 06 My Network -> 15 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager runs this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).",
+  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page, as per the URL provided in the application. If you wish to set the logo image for your own HomeServer, then run the 06 My Network -> 15 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager(s) run this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).",
   "group": "$group_id_mynetwork",
   "parameters": []
 }
