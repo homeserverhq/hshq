@@ -14301,12 +14301,7 @@ EOFHC
     rm -f $HOME/groups.conf
   fi
   set +e
-  sqlite3 $HSHQ_DB "pragma table_info('hsvpn_connections');" | grep HomeServerLogoURL > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    sqlite3 $HSHQ_DB "alter table hsvpn_connections add column HomeServerLogoURL text;"
-    sqlite3 $HSHQ_DB "update hsvpn_connections set HomeServerLogoURL='https://images.' || DomainName || '/' || DomainName || '.png' where ID in (select ID from connections where NetworkType='mynetwork');"
-    cp $HSHQ_ASSETS_DIR/images/hslogo.png $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png
-  fi
+  cp $HSHQ_ASSETS_DIR/images/hslogo.png $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png
 }
 
 function sendRSExposeScripts()
@@ -15923,15 +15918,13 @@ function deleteFromRootCron()
 function updateHomeServerLogoImages()
 {
   set +e
-  hs_list=($(sqlite3 $HSHQ_DB "select hs.DomainName,hs.HomeServerLogoURL from hsvpn_connections hs join connections cn on hs.ID=cn.ID where cn.NetworkType='mynetwork';"))
+  hsid=$(getHeimdallUserIDFromType homeservers)
+  hs_list=($(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select url from items where user_id=$hsid;"))
   isAnyNew=false
   for curHS in "${hs_list[@]}"
   do
-    curDomain=$(echo "$curHS" | cut -d "|" -f1)
-    curURL=$(echo "$curHS" | cut -d "|" -f2)
-    if [ "$curDomain" = "$my_hs_dom" ]; then
-      continue
-    fi
+    curDomain=$(getBaseDomain $(echo "$curHS" | cut -d "/" -f3))
+    curURL="https://images.${curDomain}/${curDomain}.png"
     echo "Getting image for ${curDomain}..."
     wget -q -O /tmp/tmpimage.png $curURL > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -15964,7 +15957,7 @@ function updateHomeServerLogoImages()
       # Add some random string to the filename, to overcome any browser cache issues.
       rand_string=$(pwgen -c -n 8 1)
       cp $HSHQ_ASSETS_DIR/images/${curDomain}.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/${curDomain}-${rand_string}.png
-      sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${curDomain}-${rand_string}.png' where url='https://home.$curDomain';"
+      sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${curDomain}-${rand_string}.png' where url='$curHS';"
     else
       rm -f /tmp/tmpimage.png
     fi
