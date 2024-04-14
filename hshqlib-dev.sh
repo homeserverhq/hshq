@@ -669,10 +669,10 @@ EOFSM
 
   # Some host tuning
   updateSysctl true
-  sudo sed -i "s|^ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^ClientAliveInterval .*$|ClientAliveInterval 900|g" /etc/ssh/sshd_config
   sudo sed -i "s|^ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
-  sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 900|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
   
@@ -2501,10 +2501,10 @@ function main()
   sudo sed -i "s|^Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
   
   # Some other SSH settings
-  sudo sed -i "s|^ClientAliveInterval .*\$|ClientAliveInterval 5|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^ClientAliveInterval .*\$|ClientAliveInterval 300|g" /etc/ssh/sshd_config
   sudo sed -i "s|^ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^PermitEmptyPasswords .*\$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
-  sudo sed -i "s|^#*ClientAliveInterval .*\$|ClientAliveInterval 5|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^#*ClientAliveInterval .*\$|ClientAliveInterval 300|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*\$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
 
