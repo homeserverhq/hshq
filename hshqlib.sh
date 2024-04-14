@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=59
+HSHQ_SCRIPT_VERSION=60
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -669,7 +669,11 @@ EOFSM
 
   # Some host tuning
   updateSysctl true
-  sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 60m|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^#*ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
   
   sudo sed -i "s/^#DefaultLimitNOFILE.*/DefaultLimitNOFILE=65536:524288/g" /etc/systemd/system.conf
@@ -2497,7 +2501,11 @@ function main()
   sudo sed -i "s|^Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
   
   # Some other SSH settings
-  sudo sed -i "s|^#*ClientAliveInterval .*\$|ClientAliveInterval 15m|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^ClientAliveInterval .*\$|ClientAliveInterval 5m|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^PermitEmptyPasswords .*\$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^#*ClientAliveInterval .*\$|ClientAliveInterval 5m|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^#*ClientAliveCountMax .*\$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*\$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
 
   # Update sudoers file
@@ -7490,7 +7498,7 @@ function performNetworkInvite()
       config_name="HS-VPN-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
       if ! [ -z "$checkname_db" ]; then
-        echo "ERROR: There is already a connnection with this name."
+        echo "ERROR: There is already a connection with this name."
         return 7
       fi
       check_dom=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections join connections on hsvpn_connections.ID = connections.ID where hsvpn_connections.DomainName='$domain_name' and connections.NetworkType='mynetwork';")
@@ -7524,7 +7532,7 @@ function performNetworkInvite()
       config_name="HS-Internet-$domain_name"
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
       if ! [ -z "$checkname_db" ]; then
-        echo "ERROR: There is already a connnection with this name."
+        echo "ERROR: There is already a connection with this name."
         return 7
       fi
     ;;
@@ -7744,7 +7752,7 @@ function performNetworkInvite()
       mail_body=""
       mail_body=${mail_body}"User Invitation from $HOMESERVER_NAME\n"
       mail_body=${mail_body}"================================================================\n\n"
-      mail_body=$mail_body"The public root certificate is attached to this email or downloaded via the following links (must be connnected to network first):\n"
+      mail_body=$mail_body"The public root certificate is attached to this email or downloaded via the following links (must be connected to network first):\n"
       mail_body=$mail_body"Root CA (PEM): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt\n"
       mail_body=$mail_body"Root CA (DER): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.der\n"
       mail_body=$mail_body"VPN Owner Home Page: https://home.$HOMESERVER_DOMAIN\n\n"
@@ -21039,7 +21047,8 @@ EOFPM
 						},
 						"decimals": 2,
 						"mappings": [],
-						"max": 10000,
+						"min": 0,
+						"max": 100000,
 						"thresholds": {
 							"mode": "absolute",
 							"steps": [
@@ -21049,11 +21058,11 @@ EOFPM
 								},
 								{
 									"color": "rgba(237, 129, 40, 0.89)",
-									"value": 7000
+									"value": 60000
 								},
 								{
 									"color": "rgba(245, 54, 54, 0.9)",
-									"value": 9000
+									"value": 80000
 								}
 							]
 						},
@@ -41130,9 +41139,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/testPortainer.json
 {
-  "name": "06 Test Portainer Connnection",
+  "name": "06 Test Portainer Connection",
   "script_path": "conf/scripts/testPortainer.sh",
-  "description": "Tests Portainer Connnection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function tests the connectivity with the Portainer API. It acquires an auth token, then runs a simple query. If you change the admin password (in both Portainer and the config file), then use this function to test it before running any other utilities.",
+  "description": "Tests Portainer Connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function tests the connectivity with the Portainer API. It acquires an auth token, then runs a simple query. If you change the admin password (in both Portainer and the config file), then use this function to test it before running any other utilities.",
   "group": "$group_id_testing",
   "parameters": [
     {
