@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=60
+HSHQ_SCRIPT_VERSION=61
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12828,6 +12828,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=59
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 61 ]; then
+    echo "Updating to Version 61..."
+    version61Update
+    HSHQ_VERSION=61
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14308,6 +14314,13 @@ EOFHC
   fi
   set +e
   cp $HSHQ_ASSETS_DIR/images/hslogo.png $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png
+}
+
+function version61Update()
+{
+  set +e
+  outputAllScriptServerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
@@ -17080,7 +17093,7 @@ function loadPinnedDockerImages()
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.0.1
   IMG_HUGINN_APP=ghcr.io/huginn/huginn:c2839b8a78335a1cb7052d6ee1c4fbdc11ee6bb5
   IMG_INFLUXDB=influxdb:2.7.5-alpine
-  IMG_INVIDIOUS=quay.io/invidious/invidious
+  IMG_INVIDIOUS=quay.io/invidious/invidious:latest
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=jellyfin/jellyfin:10.8.13
   IMG_JITSI_WEB=jitsi/web:stable-9258
@@ -18844,6 +18857,19 @@ function emailVaultwardenCredentials()
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
   strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within the Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 07 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 08 Email Root CA) just to ensure the configuration file is back to an encrypted state."
   sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+}
+
+function emailUserVaultwardenCredentials()
+{
+  vw_username=$1
+  vw_email=$2
+  strOutput="_________________________________________________________________________\n\n"
+  strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/index.html#!/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}"\n\n"
+  strInstructions="Vaultwarden User Import Instructions:\n"
+  strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager."
+  sendEmail -s "Vaultwarden User Login Import" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $vw_email
 }
 
 function insertServicesHeimdall()
@@ -39738,6 +39764,85 @@ EOFSC
         }
       },
       "secure": true,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailUserVaultwardenTemplate.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+username=\$(getArgumentValue username "\$@")
+emailaddr=\$(getArgumentValue emailaddr "\$@")
+
+set +e
+echo "Emailing Vaultwarden import template to user..."
+emailUserVaultwardenCredentials "\$username" "\$emailaddr"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailUserVaultwardenTemplate.json
+{
+  "name": "09 Email User VW Template",
+  "script_path": "conf/scripts/emailUserVaultwardenTemplate.sh",
+  "description": "Emails Vaultwarden template to user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function emails a Vaultwarden import template to the provided user at the provided email address. The template keeps all of the LDAP-based services together as a single entry within the Vaultwarden password manager. The default password is simply 'abcdefg', but the user only needs to change this one entry to their correct password. If they change their LDAP password in the future, then they need only change this one entry within Vaultwarden. The is simply a suggested convenience method for your users.",
+  "group": "$group_id_misc",
+  "parameters": [
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter LDAP username",
+      "required": true,
+      "param": "-username=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter email address",
+      "required": true,
+      "param": "-emailaddr=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
       "pass_as": "argument"
     }
   ]
