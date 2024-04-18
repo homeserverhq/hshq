@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=61
+HSHQ_SCRIPT_VERSION=62
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -10515,7 +10515,7 @@ function sendRootCAEmail()
   mail_msg=${mail_msg}"PEM: http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt \n"
   mail_msg=${mail_msg}"DER: http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.der \n"
   mail_msg=${mail_msg}"Add this to any device that you wish to use to access web-based resources on your network. "
-  mail_msg=${mail_msg}"It only needs to be installed once, and is good for at least 20 years. "
+  mail_msg=${mail_msg}"It only needs to be installed once, and is good for at least 40 years. "
   mail_msg=${mail_msg}"It is also included as an attachment in both formats (Some mobile devices may require the DER format). "
   mail_msg=${mail_msg}"You can freely share this with anyone, it will not compromise any security measures. \n"
   mail_msg=${mail_msg}"\n######################### Root CA Begin #########################\n\n"
@@ -12081,7 +12081,7 @@ CERTS_INTERNAL_ORG_NAME=
 CERTS_INTERNAL_OU_NAME=HomeServerHQ
 CERTS_INTERNAL_ROOT_CN=
 CERTS_INTERNAL_INTERMEDIATE_CN=
-CERTS_INTERNAL_CA_DAYS=8395
+CERTS_INTERNAL_CA_DAYS=15330
 # Certs END
 
 # RelayServer Settings BEGIN
