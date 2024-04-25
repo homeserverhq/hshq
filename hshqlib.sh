@@ -11370,7 +11370,7 @@ function getMyNetworkHomeServersDNSUpdateEmailBody()
   fi
   email_body=${email_body}"1. Ensure this is the most recent version of this email with matching subject\n"
   email_body=${email_body}"line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n"
-  email_body=${email_body}"2. Go to the Script-server app, and navigate to 07 Other Networks > 07 Update HomeServer DNS\n"
+  email_body=${email_body}"2. Go to the Script-server app, and navigate to 07 Other Networks > 08 Update HomeServer DNS\n"
   email_body=${email_body}"and paste the ENTIRE list BELOW the following line where appropriate.\n\n"
   email_body=${email_body}"3. After applying the update, you may delete any prior emails with the matching\n"
   email_body=${email_body}"subject line (HomeServer DNS Update from $HOMESERVER_NAME).\n\n\n"
