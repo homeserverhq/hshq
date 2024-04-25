@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=64
+HSHQ_SCRIPT_VERSION=65
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12840,6 +12840,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=64
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 65 ]; then
+    echo "Updating to Version 65..."
+    version65Update
+    HSHQ_VERSION=65
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14335,6 +14341,48 @@ function version64Update()
   clearAllScriptServerScripts
   outputAllScriptServerScripts
   set -e
+}
+
+function version65Update()
+{
+  # Fixes extra leading slash in "map =" entries
+  cat <<EOFRS > $HOME/multimap.conf
+IP_WHITELIST {
+  type = "ip";
+  prefilter = true;
+  map = "\${LOCAL_CONFDIR}/override.d/ip_whitelist.map";
+  action = "accept";
+}
+
+IP_BLACKLIST {
+  type = "ip";
+  prefilter = true;
+  map = "\${LOCAL_CONFDIR}/override.d/ip_blacklist.map";
+  action = "reject";
+}
+
+DOMAIN_WHITELIST {
+  regexp = true;
+  type = "from";
+  filter = "email:domain";
+  map = "\${LOCAL_CONFDIR}/override.d/domain_whitelist.map";
+  score = -100.0;
+  action = "accept";
+}
+
+DOMAIN_BLACKLIST {
+  regexp = true;
+  type = "from";
+  filter = "email:domain";
+  map = "\${LOCAL_CONFDIR}/override.d/domain_blacklist.map";
+  score = 100.0;
+  action = "reject";
+}
+
+EOFRS
+
+  sudo mv $HOME/multimap.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/multimap.conf
+  docker container restart mailu-antispam
 }
 
 function sendRSExposeScripts()
@@ -24019,14 +24067,14 @@ EOFRO
 IP_WHITELIST {
   type = "ip";
   prefilter = true;
-  map = "/\${LOCAL_CONFDIR}/override.d/ip_whitelist.map";
+  map = "\${LOCAL_CONFDIR}/override.d/ip_whitelist.map";
   action = "accept";
 }
 
 IP_BLACKLIST {
   type = "ip";
   prefilter = true;
-  map = "/\${LOCAL_CONFDIR}/override.d/ip_blacklist.map";
+  map = "\${LOCAL_CONFDIR}/override.d/ip_blacklist.map";
   action = "reject";
 }
 
@@ -24034,7 +24082,7 @@ DOMAIN_WHITELIST {
   regexp = true;
   type = "from";
   filter = "email:domain";
-  map = "/\${LOCAL_CONFDIR}/override.d/domain_whitelist.map";
+  map = "\${LOCAL_CONFDIR}/override.d/domain_whitelist.map";
   score = -100.0;
   action = "accept";
 }
@@ -24043,7 +24091,7 @@ DOMAIN_BLACKLIST {
   regexp = true;
   type = "from";
   filter = "email:domain";
-  map = "/\${LOCAL_CONFDIR}/override.d/domain_blacklist.map";
+  map = "\${LOCAL_CONFDIR}/override.d/domain_blacklist.map";
   score = 100.0;
   action = "reject";
 }
