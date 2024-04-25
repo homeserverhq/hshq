@@ -15952,7 +15952,7 @@ function updateHomeServerLogoImages()
 {
   set +e
   hsid=$(getHeimdallUserIDFromType homeservers)
-  hs_list=($(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select url from items where user_id=$hsid;"))
+  hs_list=($(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select url from items where pinned=1 and user_id=$hsid;"))
   isAnyNew=false
   for curHS in "${hs_list[@]}"
   do
