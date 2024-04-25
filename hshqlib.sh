@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=63
+HSHQ_SCRIPT_VERSION=64
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12834,6 +12834,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=61
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 64 ]; then
+    echo "Updating to Version 64..."
+    version64Update
+    HSHQ_VERSION=64
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14319,6 +14325,14 @@ EOFHC
 function version61Update()
 {
   set +e
+  outputAllScriptServerScripts
+  set -e
+}
+
+function version64Update()
+{
+  set +e
+  clearAllScriptServerScripts
   outputAllScriptServerScripts
   set -e
 }
@@ -18865,7 +18879,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/index.html#!/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/index.html#!/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
   strInstructions="Vaultwarden User Import Instructions:\n\n"
   strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager."
@@ -40953,6 +40967,81 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/uploadHomeServerLogo.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+img=\$(getArgumentValue img "\$@")
+uploadHomeServerLogo "\$img"
+performExitFunctions false
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/uploadHomeServerLogo.json
+{
+  "name": "09 Upload HomeServer Logo",
+  "script_path": "conf/scripts/uploadHomeServerLogo.sh",
+  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 04 System Utils -> 10 Update HomeServer Logos function). The image must be a .png and it can be no larger than 1MB (1024 KB).",
+  "group": "$group_id_systemutils",
+  "parameters": [
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select Image",
+      "required": true,
+      "param": "-img=",
+      "same_arg_param": true,
+      "type": "file_upload",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateHomeServerLogoImages.sh
+#!/bin/bash
+
+source $HSHQ_LIB_SCRIPT lib
+updateHomeServerLogoImages
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/updateHomeServerLogoImages.json
+{
+  "name": "10 Update HomeServer Logos",
+  "script_path": "conf/scripts/updateHomeServerLogoImages.sh",
+  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page. If you wish to set the logo image for your own HomeServer, then run the 04 System Utils -> 09 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager(s) run this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).",
+  "group": "$group_id_systemutils",
+  "parameters": []
+}
+
+EOFSC
+
   # 05 Testing
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/sudoPasswordTest.sh
 #!/bin/bash
@@ -42353,81 +42442,6 @@ EOFSC
       "pass_as": "argument"
     }
   ]
-}
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/uploadHomeServerLogo.sh
-#!/bin/bash
-
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
-
-img=\$(getArgumentValue img "\$@")
-uploadHomeServerLogo "\$img"
-performExitFunctions false
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/uploadHomeServerLogo.json
-{
-  "name": "15 Upload HomeServer Logo",
-  "script_path": "conf/scripts/uploadHomeServerLogo.sh",
-  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 06 My Network -> 16 Update HomeServer Logos function). The image must be a .png and it can be no larger than 1MB (1024 KB).",
-  "group": "$group_id_mynetwork",
-  "parameters": [
-    {
-      "name": "Enter config decrypt password",
-      "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Select Image",
-      "required": true,
-      "param": "-img=",
-      "same_arg_param": true,
-      "type": "file_upload",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "pass_as": "argument"
-    }
-  ]
-}
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/updateHomeServerLogoImages.sh
-#!/bin/bash
-
-source $HSHQ_LIB_SCRIPT lib
-updateHomeServerLogoImages
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/updateHomeServerLogoImages.json
-{
-  "name": "16 Update HomeServer Logos",
-  "script_path": "conf/scripts/updateHomeServerLogoImages.sh",
-  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page. If you wish to set the logo image for your own HomeServer, then run the 06 My Network -> 15 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager(s) run this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).",
-  "group": "$group_id_mynetwork",
-  "parameters": []
 }
 
 EOFSC
