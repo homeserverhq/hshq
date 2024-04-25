@@ -19836,6 +19836,7 @@ EOFR
   sudo netplan apply > /dev/null 2>&1
 
   installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
+  retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing AdGuard"
     exit $retval
