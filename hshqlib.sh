@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=65
+HSHQ_SCRIPT_VERSION=66
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12846,6 +12846,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=65
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 66 ]; then
+    echo "Updating to Version 66..."
+    version66Update
+    HSHQ_VERSION=66
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14383,6 +14389,16 @@ EOFRS
 
   sudo mv $HOME/multimap.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/multimap.conf
   docker container restart mailu-antispam
+}
+
+function version66Update()
+{
+  set +e
+  grep "base target" $HSHQ_STACKS_DIR/script-server/web/index.html > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i "s|<\/title>|<\/title><base target=\"_blank\">|" $HSHQ_STACKS_DIR/script-server/web/index.html
+  fi
+  set -e
 }
 
 function sendRSExposeScripts()
@@ -39125,7 +39141,12 @@ function installScriptServer()
   cp $HSHQ_ASSETS_DIR/images/script-server_login.jpg $HSHQ_STACKS_DIR/script-server/conf/theme/
   cp $HSHQ_ASSETS_DIR/images/HSHQ-ApplyJoin.png $HSHQ_STACKS_DIR/script-server/web/img/
   cp $HSHQ_ASSETS_DIR/images/HSHQ-Invite.png $HSHQ_STACKS_DIR/script-server/web/img/
-
+  set +e
+  grep "base target" $HSHQ_STACKS_DIR/script-server/web/index.html > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i "s|<\/title>|<\/title><base target=\"_blank\">|" $HSHQ_STACKS_DIR/script-server/web/index.html
+  fi
+  set -e
   sudo chmod 644 $HSHQ_SCRIPTS_DIR/root/runScriptServer.service
   sudo chown root:root $HSHQ_SCRIPTS_DIR/root/runScriptServer.service
   sudo rm -f /etc/systemd/system/runScriptServer.service
