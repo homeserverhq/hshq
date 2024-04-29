@@ -1,8 +1,7 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=8
-IS_DISABLE_UPDATE_CHECKS=false
+HSHQ_WRAPPER_SCRIPT_VERSION=9
 
-# Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
+# Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -11,16 +10,17 @@ IS_DISABLE_UPDATE_CHECKS=false
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 set -e
 
 function main()
 {
+  IS_DISABLE_UPDATE_CHECKS=false
   MENU_WIDTH=85
   MENU_HEIGHT=25
   MENU_INT_HEIGHT=10
@@ -338,14 +338,14 @@ EOF
       rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
       is_download_lib=false
       rm -f $HSHQ_LIB_TMP
-      echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-      echo "@   There was a verification error on the latest lib version (Version ${hshq_lib_dl_version}).   @"
-      echo "@         Please email security@homeserverhq.com as soon as possible.        @"
-      echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+      echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
+      echo " There was a verification error on the latest lib version(${hshq_lib_dl_version})."
+      echo "   Please email security@homeserverhq.com as soon as possible.  "
+      echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
       if [ -f $HSHQ_LIB_SCRIPT ]; then
-        showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@   There was a verification error on the latest lib version (Version ${hshq_lib_dl_version}).   @\n@         Please email security@homeserverhq.com as soon as possible.        @\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
+        showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest lib version(${hshq_lib_dl_version}).\n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
       else
-        showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@          There was a verification error on the downloaded script.          @\n       Please email security@homeserverhq.com as soon as possible.\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n       Exiting..."
+        showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
         exit 1
       fi
     fi
@@ -360,14 +360,14 @@ EOF
         rm -f $HSHQ_WRAP_TMP
         is_download_lib=false
         rm -f $HSHQ_LIB_TMP
-        echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-        echo "@ There was a verification error on the latest wrapper version (Version ${hshq_wrap_dl_version}). @"
-        echo "@         Please email security@homeserverhq.com as soon as possible.        @"
-        echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+        echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
+        echo " There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). "
+        echo "   Please email security@homeserverhq.com as soon as possible.  "
+        echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
         if [ -f $HSHQ_LIB_SCRIPT ]; then
-          showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@ There was a verification error on the latest wrapper version (Version ${hshq_wrap_dl_version}). @\n       Please email security@homeserverhq.com as soon as possible.\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
+          showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
         else
-          showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@          There was a verification error on the downloaded script.          @\n@         Please email security@homeserverhq.com as soon as possible.        @\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n       Exiting..."
+          showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
           exit 1
         fi
       fi
