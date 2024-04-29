@@ -5269,7 +5269,7 @@ EOFWP
 
   cat <<EOFWC > \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml
 core:
-  listeningAddress: 127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT
+  listeningAddress: :$RELAYSERVER_WG_PORTAL_PORT
   externalUrl: https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/
   adminUser: $RELAYSERVER_WGPORTAL_ADMIN_EMAIL
   adminPass: $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD
@@ -14453,7 +14453,7 @@ function version67Update()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     loadSSHKey
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sed -i \"s/^  listeningAddress:.*/\  listeningAddress: 127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT/\" $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml; chmod 600 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml"
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "chmod 600 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml"
     unloadSSHKey
   fi
 }
@@ -27738,7 +27738,7 @@ networks:
 EOFMD
 
   cat <<EOFMD > $HOME/mastodon.env
-TZ=\${TZ}
+TZ=${TZ}
 UID=$USERID
 GID=$GROUPID
 LOCAL_DOMAIN=$HOMESERVER_DOMAIN
@@ -28125,7 +28125,7 @@ function migrateMastodon()
   echo -e "\nPerforming Mastodon database migration...this could take a few minutes\n"
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
-  docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null
+  docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null 2>&1
   docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
   rm -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
   rm -f $HSHQ_STACKS_DIR/mastodon/stack.env
