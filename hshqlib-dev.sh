@@ -2732,7 +2732,7 @@ EOFSM
     echo "Installing docker, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
     echo "deb [arch=\$(dpkg --print-architecture) \
     signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
     https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | \
@@ -4255,7 +4255,6 @@ function outputConfigPortainer()
 {
   cat <<EOFPC > \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
 $STACK_VERSION_PREFIX portainer $(getScriptStackVersion portainer)
-version: '3.5'
 
 services:
   portainer:
@@ -4342,7 +4341,6 @@ function outputConfigAdGuard()
   
   cat <<EOFAC > \$HOME/adguard-compose.yml
 $STACK_VERSION_PREFIX adguard $(getScriptStackVersion adguard)
-version: '3.5'
 
 services:
   adguard:
@@ -4652,7 +4650,6 @@ function outputConfigMailRelay()
 {
   cat <<EOFPF > \$HOME/mail-relay-compose.yml
 $STACK_VERSION_PREFIX mail-relay $(getScriptStackVersion mail-relay)
-version: '3.5'
 
 services:
   mail-relay-postfix:
@@ -5244,7 +5241,6 @@ EOFWG
 
   cat <<EOFWP > \$HOME/wgportal-compose.yml
 $STACK_VERSION_PREFIX wgportal $(getScriptStackVersion wgportal)
-version: '3.5'
 
 services:
   wgportal:
@@ -5299,7 +5295,6 @@ EOFWC
 
   cat <<EOFCD > \$HOME/clientdns-compose.yml
 $STACK_VERSION_PREFIX clientdns $(getScriptStackVersion clientdns)
-version: '3.5'
 
 services:
   clientdns-dnsmasq:
@@ -5415,7 +5410,6 @@ function outputConfigFileBrowser()
 {
   cat <<EOFFB > \$HOME/filebrowser-compose.yml
 $STACK_VERSION_PREFIX filebrowser $(getScriptStackVersion filebrowser)
-version: '3.5'
 
 services:
   filebrowser:
@@ -5478,7 +5472,6 @@ function outputConfigCaddy()
 {
   cat <<EOFCC > \$HOME/caddy-compose.yml
 $STACK_VERSION_PREFIX caddy $(getScriptStackVersion caddy)
-version: '3.5'
 
 services:
   caddy:
@@ -5759,7 +5752,6 @@ function outputConfigOfelia()
 {
   cat <<EOFOF > \$HOME/ofelia-compose.yml
 $STACK_VERSION_PREFIX ofelia $(getScriptStackVersion ofelia)
-version: '3.5'
 
 services:
   ofelia:
@@ -5856,7 +5848,6 @@ function installSyncthing()
 function outputConfigSyncthing()
 {
   cat <<EOFST > \$HOME/syncthing-compose-tmp.yml
-version: '3.5'
 
 services:
   syncthing:
@@ -5902,7 +5893,6 @@ EOFST
 
   cat <<EOFST > \$HOME/syncthing-compose.yml
 $STACK_VERSION_PREFIX syncthing $(getScriptStackVersion syncthing)
-version: '3.5'
 
 services:
   syncthing:
@@ -13021,7 +13011,6 @@ function version22Update()
     is_antivirus_commented_out="#"
   fi
   cat <<EOFMC > $HOME/mailu-compose.yml
-version: '3.5'
 
 services:
   front:
@@ -13287,7 +13276,6 @@ EOFMC
   if ! [ -z $cdnsStackID ]; then
     # Replace ClientDNS stack
     cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
-version: '3.5'
 
 services:
   clientdns-${cdns_stack_name}-dnsmasq:
@@ -16649,7 +16637,7 @@ function installDockerUbuntu2004Rooted()
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
@@ -19784,7 +19772,6 @@ function outputConfigPortainer()
 
   cat <<EOFPC > $HSHQ_STACKS_DIR/portainer/docker-compose.yml
 $STACK_VERSION_PREFIX portainer $(getScriptStackVersion portainer)
-version: '3.5'
 
 services:
   portainer:
@@ -19984,7 +19971,6 @@ function outputConfigAdGuard()
   ADGUARD_ADMIN_PASSWORD_HASH=$(htpasswd -B -n -b $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD | cut -d":" -f2-)
   cat <<EOFAC > $HOME/adguard-compose.yml
 $STACK_VERSION_PREFIX adguard $(getScriptStackVersion adguard)
-version: '3.5'
 
 services:
   adguard:
@@ -20482,7 +20468,6 @@ function installSysUtils()
 function outputConfigSysUtils()
 {
   cat <<EOFGF > $HOME/sysutils-compose-tmp.yml
-version: '3.5'
 
 services:
   grafana:
@@ -20622,7 +20607,6 @@ EOFGF
 
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils $(getScriptStackVersion sysutils)
-version: '3.5'
 
 services:
   grafana:
@@ -23125,7 +23109,6 @@ EOFPR
 
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils $(getScriptStackVersion sysutils)
-version: '3.5'
 
 services:
   grafana:
@@ -23386,7 +23369,6 @@ function outputConfigOpenLDAP()
 {
   cat <<EOFLC > $HOME/openldap-compose.yml
 $STACK_VERSION_PREFIX openldap $(getScriptStackVersion openldap)
-version: '3.5'
 
 services:
   ldapserver:
@@ -23797,7 +23779,6 @@ function outputConfigMailu()
   fi
   cat <<EOFMC > $HOME/mailu-compose.yml
 $STACK_VERSION_PREFIX mailu $(getScriptStackVersion mailu)
-version: '3.5'
 
 services:
   front:
@@ -24411,7 +24392,6 @@ function outputConfigWazuh()
 {
   cat <<EOFWZ > $HOME/wazuh-compose.yml
 $STACK_VERSION_PREFIX wazuh $(getScriptStackVersion wazuh)
-version: '3.5'
 
 services:
   wazuh.manager:
@@ -25190,7 +25170,6 @@ function outputConfigCollabora()
 {
   cat <<EOFCO > $HOME/collabora-compose.yml
 $STACK_VERSION_PREFIX collabora $(getScriptStackVersion collabora)
-version: '3.5'
 
 services:
   collabora:
@@ -25746,7 +25725,6 @@ TLS_REQSAN demand
 EOFLC
 
   cat <<EOFNC > $HOME/nextcloud-compose-tmp.yml
-version: '3.5'
 
 services:
   nextcloud-db:
@@ -25959,7 +25937,6 @@ EOFNC
 
   cat <<EOFNC > $HOME/nextcloud-compose.yml
 $STACK_VERSION_PREFIX nextcloud $(getScriptStackVersion nextcloud)
-version: '3.5'
 
 services:
   nextcloud-db:
@@ -26308,7 +26285,6 @@ function outputConfigJitsi()
 {
   cat <<EOFJT > $HOME/jitsi-compose.yml
 $STACK_VERSION_PREFIX jitsi $(getScriptStackVersion jitsi)
-version: '3.5'
 
 services:
   jitsi-web:
@@ -26584,7 +26560,6 @@ function outputConfigMatrix()
 {
   cat <<EOFJT > $HOME/matrix-compose.yml
 $STACK_VERSION_PREFIX matrix $(getScriptStackVersion matrix)
-version: '3.5'
 
 services:
   matrix-db:
@@ -27102,7 +27077,6 @@ function outputConfigWikijs()
 {
   cat <<EOFWJ > $HOME/wikijs-compose.yml
 $STACK_VERSION_PREFIX wikijs $(getScriptStackVersion wikijs)
-version: '3.5'
 
 services:
   wikijs-db:
@@ -27320,7 +27294,6 @@ function outputConfigDuplicati()
 {
   cat <<EOFDP > $HOME/duplicati-compose.yml
 $STACK_VERSION_PREFIX duplicati $(getScriptStackVersion duplicati)
-version: '3.5'
 
 services:
   duplicati:
@@ -27486,7 +27459,6 @@ function outputConfigMastodon()
 {
   cat <<EOFMD > $HOME/mastodon-compose.yml
 $STACK_VERSION_PREFIX mastodon $(getScriptStackVersion mastodon)
-version: '3.5'
 
 services:
   mastodon-db:
@@ -28010,7 +27982,6 @@ function outputMastdonMigrate()
   mastodon_redis_image=$2
   mastodon_app_image=$3
   cat <<EOFMD > $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
-version: '3.5'
 
 services:
   mastodon-db:
@@ -28217,7 +28188,6 @@ function outputConfigDozzle()
 {
   cat <<EOFDZ > $HOME/dozzle-compose.yml
 $STACK_VERSION_PREFIX dozzle $(getScriptStackVersion dozzle)
-version: '3.5'
 
 services:
   dozzle:
@@ -28357,7 +28327,6 @@ function outputConfigSearxNG()
 {
   cat <<EOFSE > $HOME/searxng-compose.yml
 $STACK_VERSION_PREFIX searxng $(getScriptStackVersion searxng)
-version: '3.5'
 
 services:
   searxng-caddy:
@@ -28678,7 +28647,6 @@ function outputConfigJellyfin()
 {
   cat <<EOFJF > $HOME/jellyfin-compose.yml
 $STACK_VERSION_PREFIX jellyfin $(getScriptStackVersion jellyfin)
-version: '3.5'
 
 services:
   jellyfin:
@@ -28836,7 +28804,6 @@ function outputConfigFileBrowser()
 {
   cat <<EOFJF > $HOME/filebrowser-compose.yml
 $STACK_VERSION_PREFIX filebrowser $(getScriptStackVersion filebrowser)
-version: '3.5'
 
 services:
   filebrowser:
@@ -29004,7 +28971,6 @@ function installPhotoPrism()
 function outputConfigPhotoPrism()
 {
   cat <<EOFPP > $HOME/photoprism-compose-tmp.yml
-version: '3.5'
 
 services:
   photoprism-db:
@@ -29107,7 +29073,6 @@ EOFPP
 
   cat <<EOFPP > $HOME/photoprism-compose.yml
 $STACK_VERSION_PREFIX photoprism $(getScriptStackVersion photoprism)
-version: '3.5'
 
 services:
   photoprism-db:
@@ -29350,7 +29315,6 @@ function installGuacamole()
 function outputConfigGuacamole()
 {
   cat <<EOFGC > $HOME/guacamole-compose-tmp.yml
-version: '3.5'
 
 services:
   guacamole-db:
@@ -29384,7 +29348,6 @@ EOFGC
 
   cat <<EOFGC > $HOME/guacamole-compose.yml
 $STACK_VERSION_PREFIX guacamole $(getScriptStackVersion guacamole)
-version: '3.5'
 
 services:
   guacamole-db:
@@ -29589,7 +29552,6 @@ function outputConfigAuthelia()
 {
   cat <<EOFAC > $HOME/authelia-compose.yml
 $STACK_VERSION_PREFIX authelia $(getScriptStackVersion authelia)
-version: '3.5'
 
 services:
   authelia:
@@ -29974,7 +29936,6 @@ function outputConfigWordPress()
 {
   cat <<EOFWP > $HOME/wordpress-compose.yml
 $STACK_VERSION_PREFIX wordpress $(getScriptStackVersion wordpress)
-version: '3.5'
 
 services:
   wordpress-db:
@@ -30167,7 +30128,6 @@ function outputConfigGhost()
 {
   cat <<EOFGW > $HOME/ghost-compose.yml
 $STACK_VERSION_PREFIX ghost $(getScriptStackVersion ghost)
-version: '3.5'
 
 services:
   ghost-db:
@@ -30386,7 +30346,6 @@ function outputConfigPeerTube()
 {
   cat <<EOFPT > $HOME/peertube-compose.yml
 $STACK_VERSION_PREFIX peertube $(getScriptStackVersion peertube)
-version: '3.5'
 
 services:
   peertube-db:
@@ -30720,7 +30679,6 @@ function outputConfigHomeAssistant()
 {
   cat <<EOFHA > $HOME/homeassistant-compose.yml
 $STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
-version: '3.5'
 
 services:
   homeassistant-db:
@@ -31159,7 +31117,6 @@ EOFHC
 
   cat <<EOFHA > $HOME/homeassistant-compose.yml
 $STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
-version: '3.5'
 
 services:
   homeassistant-db:
@@ -31404,7 +31361,6 @@ function outputConfigGitlab()
 {
   cat <<EOFGL > $HOME/gitlab-compose.yml
 $STACK_VERSION_PREFIX gitlab $(getScriptStackVersion gitlab)
-version: '3.5'
 
 services:
   gitlab-db:
@@ -31718,7 +31674,6 @@ function outputConfigVaultwarden()
 {
   cat <<EOFVW > $HOME/vaultwarden-compose.yml
 $STACK_VERSION_PREFIX vaultwarden $(getScriptStackVersion vaultwarden)
-version: '3.5'
 
 services:
   vaultwarden-db:
@@ -31969,7 +31924,6 @@ function outputConfigDiscourse()
 {
   cat <<EOFDC > $HOME/discourse-compose.yml
 $STACK_VERSION_PREFIX discourse $(getScriptStackVersion discourse)
-version: '3.5'
 
 services:
   discourse-db:
@@ -32262,7 +32216,6 @@ function outputConfigSyncthing()
 {
   cat <<EOFST > $HOME/syncthing-compose.yml
 $STACK_VERSION_PREFIX syncthing $(getScriptStackVersion syncthing)
-version: '3.5'
 
 services:
   syncthing:
@@ -32436,7 +32389,6 @@ function installCodeServer()
 function outputConfigCodeServer()
 {
   cat <<EOFCS > $HOME/codeserver-compose-tmp.yml
-version: '3.5'
 
 services:
   codeserver:
@@ -32475,7 +32427,6 @@ EOFCS
 
   cat <<EOFCS > $HOME/codeserver-compose.yml
 $STACK_VERSION_PREFIX codeserver $(getScriptStackVersion codeserver)
-version: '3.5'
 
 services:
   codeserver:
@@ -32680,7 +32631,6 @@ function outputConfigShlink()
 {
   cat <<EOFST > $HOME/shlink-compose.yml
 $STACK_VERSION_PREFIX shlink $(getScriptStackVersion shlink)
-version: '3.5'
 
 services:
   shlink-db:
@@ -33001,7 +32951,6 @@ function outputConfigFirefly()
 {
   cat <<EOFFF > $HOME/firefly-compose.yml
 $STACK_VERSION_PREFIX firefly $(getScriptStackVersion firefly)
-version: '3.5'
 
 services:
   firefly-db:
@@ -33285,7 +33234,6 @@ function outputConfigExcalidraw()
 {
   cat <<EOFEX > $HOME/excalidraw-compose.yml
 $STACK_VERSION_PREFIX excalidraw $(getScriptStackVersion excalidraw)
-version: '3.5'
 
 services:
   excalidraw-storage:
@@ -33485,7 +33433,6 @@ function outputConfigDrawIO()
 {
   cat <<EOFDI > $HOME/drawio-compose.yml
 $STACK_VERSION_PREFIX drawio $(getScriptStackVersion drawio)
-version: '3.5'
 
 services:
   drawio-plantuml:
@@ -33661,7 +33608,6 @@ function outputConfigInvidious()
 {
   cat <<EOFIV > $HOME/invidious-compose.yml
 $STACK_VERSION_PREFIX invidious $(getScriptStackVersion invidious)
-version: '3.5'
 
 services:
   invidious-db:
@@ -34062,7 +34008,6 @@ function outputConfigGitea()
 {
   cat <<EOFGL > $HOME/gitea-compose.yml
 $STACK_VERSION_PREFIX gitea $(getScriptStackVersion gitea)
-version: '3.5'
 
 services:
   gitea-db:
@@ -34286,7 +34231,6 @@ function outputConfigMealie()
 {
   cat <<EOFGL > $HOME/mealie-compose.yml
 $STACK_VERSION_PREFIX mealie $(getScriptStackVersion mealie)
-version: '3.5'
 
 services:
   mealie-db:
@@ -34543,7 +34487,6 @@ function outputConfigKasm()
 {
   cat <<EOFGL > $HOME/kasm-compose.yml
 $STACK_VERSION_PREFIX kasm $(getScriptStackVersion kasm)
-version: '3.5'
 
 services:
   kasm:
@@ -34663,7 +34606,6 @@ function outputConfigNTFY()
 {
   cat <<EOFNT > $HOME/ntfy-compose.yml
 $STACK_VERSION_PREFIX ntfy $(getScriptStackVersion ntfy)
-version: '3.5'
 
 services:
   ntfy:
@@ -35152,7 +35094,6 @@ function outputConfigITTools()
 {
   cat <<EOFNT > $HOME/ittools-compose.yml
 $STACK_VERSION_PREFIX ittools $(getScriptStackVersion ittools)
-version: '3.5'
 
 services:
   ittools:
@@ -35269,7 +35210,6 @@ function outputConfigRemotely()
 {
   cat <<EOFRM > $HOME/remotely-compose.yml
 $STACK_VERSION_PREFIX remotely $(getScriptStackVersion remotely)
-version: '3.5'
 
 services:
   remotely:
@@ -35447,7 +35387,6 @@ function outputConfigCalibre()
 {
   cat <<EOFNT > $HOME/calibre-compose.yml
 $STACK_VERSION_PREFIX calibre $(getScriptStackVersion calibre)
-version: '3.5'
 
 services:
   calibre-server:
@@ -35623,7 +35562,6 @@ function outputConfigNetdata()
 {
   cat <<EOFDZ > $HOME/netdata-compose.yml
 $STACK_VERSION_PREFIX netdata $(getScriptStackVersion netdata)
-version: '3.5'
 
 services:
   netdata:
@@ -35786,7 +35724,6 @@ function outputConfigLinkwarden()
 {
   cat <<EOFDZ > $HOME/linkwarden-compose.yml
 $STACK_VERSION_PREFIX linkwarden $(getScriptStackVersion linkwarden)
-version: '3.5'
 
 services:
   linkwarden-db:
@@ -35976,7 +35913,6 @@ function outputConfigStirlingPDF()
 {
   cat <<EOFDZ > $HOME/stirlingpdf-compose.yml
 $STACK_VERSION_PREFIX stirlingpdf $(getScriptStackVersion stirlingpdf)
-version: '3.5'
 
 services:
   stirlingpdf:
@@ -36121,7 +36057,6 @@ function outputConfigBarAssistant()
 {
   cat <<EOFBA > $HOME/bar-assistant-compose.yml
 $STACK_VERSION_PREFIX bar-assistant $(getScriptStackVersion bar-assistant)
-version: '3.5'
 
 services:
   bar-assistant-app:
@@ -36466,7 +36401,6 @@ function outputConfigFreshRSS()
 {
   cat <<EOFBA > $HOME/freshrss-compose.yml
 $STACK_VERSION_PREFIX freshrss $(getScriptStackVersion freshrss)
-version: '3.5'
 
 services:
   freshrss-db:
@@ -36698,7 +36632,6 @@ function outputConfigKeila()
 {
   cat <<EOFBA > $HOME/keila-compose.yml
 $STACK_VERSION_PREFIX keila $(getScriptStackVersion keila)
-version: '3.5'
 
 services:
   keila-db:
@@ -36935,7 +36868,6 @@ function outputConfigWallabag()
 {
   cat <<EOFBA > $HOME/wallabag-compose.yml
 $STACK_VERSION_PREFIX wallabag $(getScriptStackVersion wallabag)
-version: '3.5'
 
 services:
   wallabag-db:
@@ -37163,7 +37095,6 @@ function outputConfigJupyter()
 {
   cat <<EOFDZ > $HOME/jupyter-compose.yml
 $STACK_VERSION_PREFIX jupyter $(getScriptStackVersion jupyter)
-version: '3.5'
 
 services:
   jupyter:
@@ -37605,7 +37536,6 @@ function outputConfigSpeedtestTrackerLocal()
 {
   cat <<EOFBA > $HOME/speedtest-tracker-local-compose.yml
 $STACK_VERSION_PREFIX speedtest-tracker-local $(getScriptStackVersion speedtest-tracker-local)
-version: '3.5'
 
 services:
   speedtest-tracker-local-db:
@@ -37851,7 +37781,6 @@ function outputConfigSpeedtestTrackerVPN()
 {
   cat <<EOFBA > $HOME/speedtest-tracker-vpn-compose.yml
 $STACK_VERSION_PREFIX speedtest-tracker-vpn $(getScriptStackVersion speedtest-tracker-vpn)
-version: '3.5'
 
 services:
   speedtest-tracker-vpn-db:
@@ -38100,7 +38029,6 @@ function outputConfigChangeDetection()
 {
   cat <<EOFCD > $HOME/changedetection-compose.yml
 $STACK_VERSION_PREFIX changedetection $(getScriptStackVersion changedetection)
-version: '3.5'
 
 services:
   changedetection-app:
@@ -38299,7 +38227,6 @@ function outputConfigHuginn()
 {
   cat <<EOFDZ > $HOME/huginn-compose.yml
 $STACK_VERSION_PREFIX huginn $(getScriptStackVersion huginn)
-version: '3.5'
 
 services:
   huginn-db:
@@ -38492,7 +38419,6 @@ function outputConfigCoturn()
 {
   cat <<EOFOF > $HOME/coturn-compose.yml
 $STACK_VERSION_PREFIX coturn $(getScriptStackVersion coturn)
-version: '3.5'
 
 services:
   coturn:
@@ -38641,7 +38567,6 @@ function outputConfigFileDrop()
 {
   cat <<EOFDZ > $HOME/filedrop-compose.yml
 $STACK_VERSION_PREFIX filedrop $(getScriptStackVersion filedrop)
-version: '3.5'
 
 services:
   filedrop:
@@ -38819,7 +38744,6 @@ function outputConfigPiped()
 {
   cat <<EOFPI > $HOME/piped-compose.yml
 $STACK_VERSION_PREFIX piped $(getScriptStackVersion piped)
-version: '3.5'
 
 services:
   piped-db:
@@ -44078,7 +44002,6 @@ function outputConfigSQLPad()
 {
   cat <<EOFSP > $HOME/sqlpad-compose.yml
 $STACK_VERSION_PREFIX sqlpad $(getScriptStackVersion sqlpad)
-version: '3.5'
 
 services:
   sqlpad:
@@ -44534,7 +44457,6 @@ function installHeimdall()
 function outputConfigHeimdall()
 {
   cat <<EOFHC > $HOME/heimdall-compose-tmp.yml
-version: '3.5'
 
 services:
   heimdall:
@@ -44581,7 +44503,6 @@ EOFHC
 
   cat <<EOFHC > $HOME/heimdall-compose.yml
 $STACK_VERSION_PREFIX heimdall $(getScriptStackVersion heimdall)
-version: '3.5'
 
 services:
   heimdall:
@@ -45264,7 +45185,6 @@ function outputConfigCaddy()
     home)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45356,7 +45276,6 @@ EOFCF
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45451,7 +45370,6 @@ EOFCF
       elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45535,7 +45453,6 @@ EOFCF
     other)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45832,7 +45749,6 @@ function outputConfigClientDNS()
 {
   cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
 $STACK_VERSION_PREFIX clientdns-${cdns_stack_name} $(getScriptStackVersion clientdns-${cdns_stack_name})
-version: '3.5'
 
 services:
   clientdns-${cdns_stack_name}-dnsmasq:
@@ -45974,7 +45890,6 @@ function outputConfigOfelia()
 {
   cat <<EOFOF > $HOME/ofelia-compose.yml
 $STACK_VERSION_PREFIX ofelia $(getScriptStackVersion ofelia)
-version: '3.5'
 
 services:
   ofelia:
@@ -46105,7 +46020,6 @@ function outputConfigUptimeKuma()
 {
   cat <<EOFUK > $HOME/uptimekuma-compose.yml
 $STACK_VERSION_PREFIX uptimekuma $(getScriptStackVersion uptimekuma)
-version: '3.5'
 
 services:
   uptimekuma:
