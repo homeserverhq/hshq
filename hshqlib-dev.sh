@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=66
+HSHQ_SCRIPT_VERSION=67
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -186,6 +186,7 @@ function main()
 
 function showNotInstalledMenu()
 {
+  checkSupportedHostOS
   set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update
   notinstalledmenu=$(cat << EOF
@@ -458,6 +459,26 @@ function checkWrapperVersion()
     fi
   fi
   set -e
+}
+
+function checkSupportedHostOS()
+{
+  if [ -f /etc/lsb-release ]; then
+    DISTRIB_ID=$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
+    DISTRIB_RELEASE=$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
+    if [ "$DISTRIB_ID" = "Ubuntu" ] && [ "$DISTRIB_RELEASE" = "22.04" ]; then
+      return
+    fi
+  fi
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  echo "@                   Unsupported Host Operating System                  @"
+  echo "@                                                                      @"
+  echo "@ This installation only supports the following Linux distribution(s): @"
+  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
+  echo "@                                                                      @"
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  closeHSHQScript
+  exit 2
 }
 
 function updateSysctl()
@@ -3129,7 +3150,7 @@ function startStopStack()
 
 function restorePortainer()
 {
-  docker-compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   RELAYSERVER_PORTAINER_TOKEN="\$(getPortainerToken -u $RELAYSERVER_PORTAINER_ADMIN_USERNAME -p $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"
 }
 
@@ -3338,8 +3359,29 @@ function isIPInSubnet()
   fi
 }
 
+function checkSupportedHostOS()
+{
+  if [ -f /etc/lsb-release ]; then
+    DISTRIB_ID=\$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
+    DISTRIB_RELEASE=\$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
+    if [ "\$DISTRIB_ID" = "Ubuntu" ] && [ "\$DISTRIB_RELEASE" = "22.04" ]; then
+      return
+    fi
+  fi
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  echo "@                   Unsupported Host Operating System                  @"
+  echo "@                                                                      @"
+  echo "@ This installation only supports the following Linux distribution(s): @"
+  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
+  echo "@                                                                      @"
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  rm -f $HSHQ_SCRIPT_OPEN
+  exit 2
+}
+
 function install()
 {
+  checkSupportedHostOS
   echo "The installation process is ready to initiate."
   echo "You can safely exit the screen after it starts"
   echo "by pressing CTRL-a, then release, then press d"
@@ -4173,7 +4215,7 @@ function installPortainer()
   echo \$PORTAINER_DB_KEY | sudo tee \$RELAYSERVER_HSHQ_SECRETS_DIR/portainer_key.txt >/dev/null
   sudo chmod 0400 \$RELAYSERVER_HSHQ_SECRETS_DIR/portainer_key.txt
 
-  docker-compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound="F"
   i=0
@@ -4230,7 +4272,7 @@ services:
       # Also ensure to comment out the ports section and dock-ext-net section at the bottom
       - dock-ext-net
     ports:
-      - $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT:9443
+      - "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT:9443"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -4317,8 +4359,8 @@ services:
       dock-ext-net:
         ipv4_address: ${NET_EXTERNAL_SUBNET_PREFIX}.253
     ports:
-      - 53:53/tcp
-      - 53:53/udp
+      - "53:53/tcp"
+      - "53:53/udp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -4625,8 +4667,8 @@ services:
       - dock-ext-net
       - dock-mailrelay-net
     ports:
-      - 25:25
-      - 587:587
+      - "25:25"
+      - "587:587"
     dns:
       - \\\${SUBNET_PREFIX}.253
     depends_on:
@@ -5227,7 +5269,7 @@ EOFWP
 
   cat <<EOFWC > \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml
 core:
-  listeningAddress: :$RELAYSERVER_WG_PORTAL_PORT
+  listeningAddress: 127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT
   externalUrl: https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/
   adminUser: $RELAYSERVER_WGPORTAL_ADMIN_EMAIL
   adminPass: $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD
@@ -5253,6 +5295,7 @@ wg:
   configDirectory: /etc/wireguard
   manageIPAddresses: true
 EOFWC
+  chmod 600 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml
 
   cat <<EOFCD > \$HOME/clientdns-compose.yml
 $STACK_VERSION_PREFIX clientdns $(getScriptStackVersion clientdns)
@@ -5756,7 +5799,7 @@ function installSyncthing()
   generateCert syncthing syncthing
   outputConfigSyncthing
 
-  docker-compose -f \$HOME/syncthing-compose-tmp.yml up -d
+  docker compose -f \$HOME/syncthing-compose-tmp.yml up -d
 
   search="Access the GUI via the following URL"
   isFound="F"
@@ -5778,7 +5821,7 @@ function installSyncthing()
     exit
   fi
   set -e
-  docker-compose -f \$HOME/syncthing-compose-tmp.yml down -v
+  docker compose -f \$HOME/syncthing-compose-tmp.yml down -v
   sleep 5
   rm -f \$HOME/syncthing-compose-tmp.yml
   alltext=\$(sudo cat \$RELAYSERVER_HSHQ_STACKS_DIR/syncthing/config/config.xml)
@@ -5827,10 +5870,10 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - 22000:22000/tcp
-      - 22000:22000/udp
-      - 21027:21027/udp
-      - 127.0.0.1:8384:8384
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+      - "127.0.0.1:8384:8384"
     environment:
       - PUID=0
       - PGID=0
@@ -5874,10 +5917,10 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - 22000:22000/tcp
-      - 22000:22000/udp
-      - 21027:21027/udp
-      - 127.0.0.1:8384:8384
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+      - "127.0.0.1:8384:8384"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -9111,10 +9154,10 @@ function changeHostStaticIP()
   sleep 5
   setHomeServerPrivateRange
   echo "Restarting Portainer..."
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   outputConfigPortainer
   generateCert portainer portainer $HOMESERVER_HOST_IP
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   sudo systemctl restart runScriptServer
   echo "Restarting Heimdall..."
@@ -9580,12 +9623,12 @@ function restartAllStacks()
     startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
     sleep 1
   done
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
   removeDockerNetworks
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   total_tries=10
   num_tries=1
   sleep 5
@@ -11418,8 +11461,7 @@ function getMyNetworkHomeServerDNSListClientDNSBody()
   fi
   email_body=${email_body}"Full Domain List for ${HOMESERVER_NAME}: \n"
   email_body=${email_body}"_______________________________________________________________________\n\n"
-  email_body=${email_body}"$(getMyNetworkHomeServerDNSListForClientDNS)"
-  email_body=${email_body}"_______________________________________________________________________\n"
+  email_body=${email_body}"$(getMyNetworkHomeServerDNSListForClientDNS)\n\n"
   echo "${email_body}"
 }
 
@@ -12852,6 +12894,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=66
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 67 ]; then
+    echo "Updating to Version 67..."
+    version67Update
+    HSHQ_VERSION=67
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -12919,7 +12967,7 @@ function version22Update()
     sleep 1
   done
 
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   set +e
   removeDockerNetworks
   docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
@@ -12939,7 +12987,7 @@ function version22Update()
   sleep 3
   createDockerNetworks
   outputConfigPortainer
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   set +e
   total_tries=10
   num_tries=1
@@ -14401,6 +14449,15 @@ function version66Update()
   set -e
 }
 
+function version67Update()
+{
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sed -i \"s/^  listeningAddress:.*/\  listeningAddress: 127.0.0.1:$RELAYSERVER_WG_PORTAL_PORT/\" $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml; chmod 600 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml"
+    unloadSSHKey
+  fi
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -14536,9 +14593,9 @@ function checkFixPortainerEnv()
   set +e
   grep "HSHQ_RELAYSERVER_DIR" $HSHQ_STACKS_DIR/portainer/portainer.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+    docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
     outputConfigPortainer
-    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+    docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
     startStopStack duplicati stop
     startStopStack syncthing stop
     sleep 5
@@ -19661,7 +19718,7 @@ function installPortainer()
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt 
   fi
 
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound="F"
   i=0
@@ -19742,8 +19799,8 @@ services:
       - dock-proxy-net
       - ${pdocknet}-net
     ports:
-      - 127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT:9443
-      - $HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT:9443
+      - "127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT:9443"
+      - "$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT:9443"
     command:
       --sslcert /data/certs/portainer.crt
       --sslkey /data/certs/portainer.key
@@ -19835,9 +19892,9 @@ function restartPortainer()
 {
   resp_curE=${-//[^e]/}
   set +e
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   sleep 3
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   search="starting HTTPS server"
   isFound="F"
   i=0
@@ -19944,9 +20001,9 @@ services:
       dock-ext-net:
         ipv4_address: \${NET_EXTERNAL_SUBNET_PREFIX}.253
     ports:
-      - 53:53/tcp
-      - 53:53/udp
-      - 127.0.0.1:$ADGUARD_LOCALHOST_PORT:443
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "127.0.0.1:$ADGUARD_LOCALHOST_PORT:443"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -20274,7 +20331,7 @@ function installSysUtils()
   gf_dataset_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
   outputConfigSysUtils
-  docker-compose -f $HOME/sysutils-compose-tmp.yml up -d
+  docker compose -f $HOME/sysutils-compose-tmp.yml up -d
 
   search="HTTP Server Listen"
   isFound="F"
@@ -20293,7 +20350,7 @@ function installSysUtils()
   done
   if [ $isFound == "F" ]; then
     echo "System Utils did not start up correctly..."
-    docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
+    docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
 
@@ -20313,7 +20370,7 @@ function installSysUtils()
   done
   if [ $isFound == "F" ]; then
     echo "System Utils did not start up correctly..."
-    docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
+    docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
   sleep 5
@@ -20358,7 +20415,7 @@ function installSysUtils()
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
 
   sleep 2
-  docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
+  docker compose -f $HOME/sysutils-compose-tmp.yml down -v
   sleep 2
   installStack sysutils grafana "HTTP Server Listen" $HOME/sysutils.env
   retval=$?
@@ -20441,7 +20498,7 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - 127.0.0.1:6565:3000
+      - "127.0.0.1:6565:3000"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -25265,7 +25322,7 @@ function installNextcloud()
     mkdir $HSHQ_STACKS_DIR/nextcloud/ssl
     chmod 777 $HSHQ_STACKS_DIR/nextcloud/dbexport
     outputConfigNextcloud
-    docker-compose -f $HOME/nextcloud-compose-tmp.yml up -d
+    docker compose -f $HOME/nextcloud-compose-tmp.yml up -d
     search="ready to handle connections"
     error_text="rsync error"
     isFound="F"
@@ -25294,7 +25351,7 @@ function installNextcloud()
     if [ $isError == "T" ]; then
       echo "(Attempt $curTries of $numTries) Error starting Nextcloud stack, restarting..."
     fi
-    docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
     ((curTries++))
   done
@@ -25314,7 +25371,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install calendar
   # Sometimes there are issues with apps, check the first one to see if there is an error.
   if [ $? -ne 0 ]; then
-    docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
   fi
@@ -25397,7 +25454,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ background:cron
 
   sleep 5
-  docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
+  docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
 
   # This is dumb. https://github.com/nextcloud/notify_push/issues/355
   sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
@@ -26321,9 +26378,9 @@ services:
       - int-jitsi-net
       - dock-privateip-net
     ports:
-      - '10000:10000/udp'
-      - '4443:4443'
-      - '127.0.0.1:8020:8020'
+      - "10000:10000/udp"
+      - "4443:4443"
+      - "127.0.0.1:8020:8020"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -28068,8 +28125,8 @@ function migrateMastodon()
   echo -e "\nPerforming Mastodon database migration...this could take a few minutes\n"
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
-  docker-compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null
-  docker-compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
+  docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null
+  docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
   rm -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
   rm -f $HSHQ_STACKS_DIR/mastodon/stack.env
   echo -e "\nFinished mastodon database migration, sleeping 3 seconds"
@@ -28637,8 +28694,8 @@ services:
       - dock-ldap-net
     ports:
       # UPnP Conflicts with HomeAssistant
-      #- 1900:1900/udp
-      - 7359:7359/udp
+      #- "1900:1900/udp"
+      - "7359:7359/udp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -28893,7 +28950,7 @@ function installPhotoPrism()
 
   outputConfigPhotoPrism
   echo "Starting PhotoPrism. Please be patient, this process takes a few minutes..."
-  docker-compose -f $HOME/photoprism-compose-tmp.yml up -d
+  docker compose -f $HOME/photoprism-compose-tmp.yml up -d
   search="listening at 0.0.0.0"
   isFound="F"
   i=0
@@ -28911,12 +28968,12 @@ function installPhotoPrism()
   done
   set -e
   if [ $isFound == "F" ]; then
-    docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
+    docker compose -f $HOME/photoprism-compose-tmp.yml down -v
     echo "ERROR: PhotoPrism did not start up correctly..."
     return 1
   fi
   sleep 5
-  docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
+  docker compose -f $HOME/photoprism-compose-tmp.yml down -v
   installStack photoprism photoprism-app "listening at 0.0.0.0" $HOME/photoprism.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -29231,7 +29288,7 @@ function installGuacamole()
 
   outputConfigGuacamole
   docker run --rm $IMG_GUACAMOLE_WEB /opt/guacamole/bin/initdb.sh --mysql > $HSHQ_STACKS_DIR/guacamole/init/initdb.sql
-  docker-compose -f $HOME/guacamole-compose-tmp.yml up -d
+  docker compose -f $HOME/guacamole-compose-tmp.yml up -d
 
   echo "Waiting at least 15 seconds before continuing..."
   sleep 15
@@ -29253,12 +29310,12 @@ function installGuacamole()
   set -e
   if [ $isFound == "F" ]; then
     echo "Guacamole did not start up correctly..."
-    docker-compose -f $HOME/guacamole-compose-tmp.yml down -v
+    docker compose -f $HOME/guacamole-compose-tmp.yml down -v
     exit 1
   fi
   sleep 5
 
-  docker-compose -f $HOME/guacamole-compose-tmp.yml down -v
+  docker compose -f $HOME/guacamole-compose-tmp.yml down -v
   installStack guacamole guacamole-web "Server startup in" $HOME/guacamole.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -30385,7 +30442,7 @@ services:
       - dock-ldap-net
       - dock-internalmail-net
     ports:
-      - 1935:1935
+      - "1935:1935"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -30680,7 +30737,7 @@ services:
       - dock-privateip-net
       - dock-dbs-net
     ports:
-      - $HOMEASSISTANT_DB_LOCALHOST_PORT:5432
+      - "$HOMEASSISTANT_DB_LOCALHOST_PORT:5432"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -31119,7 +31176,7 @@ services:
       - dock-privateip-net
       - dock-dbs-net
     ports:
-      - $HOMEASSISTANT_DB_LOCALHOST_PORT:5432
+      - "$HOMEASSISTANT_DB_LOCALHOST_PORT:5432"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -32220,10 +32277,10 @@ services:
       - dock-proxy-net
       - dock-privateip-net
     ports:
-      - 22000:22000/tcp
-      - 22000:22000/udp
-      - 21027:21027/udp
-      - 127.0.0.1:8384:8384
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+      - "127.0.0.1:8384:8384"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -32320,7 +32377,7 @@ function installCodeServer()
   generateCert codeserver codeserver
   outputConfigCodeServer
   mv $HOME/codeserver.yaml $HSHQ_STACKS_DIR/codeserver/.config/code-server/config.yaml
-  docker-compose -f $HOME/codeserver-compose-tmp.yml up -d
+  docker compose -f $HOME/codeserver-compose-tmp.yml up -d
 
   search="HTTPS server listening on https"
   isFound="F"
@@ -32340,13 +32397,13 @@ function installCodeServer()
   set -e
   if [ $isFound == "F" ]; then
     echo "CodeServer did not start up correctly..."
-    docker-compose -f $HOME/codeserver-compose-tmp.yml down -v
+    docker compose -f $HOME/codeserver-compose-tmp.yml down -v
     exit 1
   fi
   sleep 5
   set -e
   docker exec codeserver code-server --install-extension cweijan.vscode-ssh
-  docker-compose -f $HOME/codeserver-compose-tmp.yml down -v
+  docker compose -f $HOME/codeserver-compose-tmp.yml down -v
   rm -f $HOME/codeserver-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   mv $HOME/settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
@@ -39130,8 +39187,8 @@ function installScriptServer()
   sudo chown -R $USERNAME:$USERNAME $HSHQ_STACKS_DIR/script-server
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/theme
-
-  pip3 install tornado > /dev/null 2>&1
+  echo "Installing python3-tornado..."
+  sudo DEBIAN_FRONTEND=noninteractive apt install python3-tornado -y > /dev/null 2>&1
   initServicesCredentials
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   outputConfigScriptServer
@@ -44373,7 +44430,7 @@ function installHeimdall()
 
   generateCert heimdall heimdall
   outputConfigHeimdall
-  docker-compose -f $HOME/heimdall-compose-tmp.yml up -d
+  docker compose -f $HOME/heimdall-compose-tmp.yml up -d
 
   stack_loaded_text="service 99-ci-service-check successfully started"
   search="$stack_loaded_text"
@@ -44394,12 +44451,12 @@ function installHeimdall()
   set -e
   if [ $isFound == "F" ]; then
     echo "Heimdall did not start up correctly..."
-    docker-compose -f $HOME/heimdall-compose-tmp.yml down -v
+    docker compose -f $HOME/heimdall-compose-tmp.yml down -v
     exit 1
   fi
   sleep 3
 
-  docker-compose -f $HOME/heimdall-compose-tmp.yml down -v
+  docker compose -f $HOME/heimdall-compose-tmp.yml down -v
   rm -f $HOME/heimdall-compose-tmp.yml
 
   sed -i "s|^APP_NAME=.*|APP_NAME=\"$HEIMDALL_WINDOW_TITLE\"|g" $HSHQ_STACKS_DIR/heimdall/config/www/.env
