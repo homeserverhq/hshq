@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=66
+HSHQ_SCRIPT_VERSION=67
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -10,11 +10,11 @@ HSHQ_SCRIPT_VERSION=66
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 set -e
 
@@ -186,6 +186,7 @@ function main()
 
 function showNotInstalledMenu()
 {
+  checkSupportedHostOS
   set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update
   notinstalledmenu=$(cat << EOF
@@ -458,6 +459,26 @@ function checkWrapperVersion()
     fi
   fi
   set -e
+}
+
+function checkSupportedHostOS()
+{
+  if [ -f /etc/lsb-release ]; then
+    DISTRIB_ID=$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
+    DISTRIB_RELEASE=$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
+    if [ "$DISTRIB_ID" = "Ubuntu" ] && [ "$DISTRIB_RELEASE" = "22.04" ]; then
+      return
+    fi
+  fi
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  echo "@                   Unsupported Host Operating System                  @"
+  echo "@                                                                      @"
+  echo "@ This installation only supports the following Linux distribution(s): @"
+  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
+  echo "@                                                                      @"
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  closeHSHQScript
+  exit 2
 }
 
 function updateSysctl()
@@ -2711,7 +2732,7 @@ EOFSM
     echo "Installing docker, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
     echo "deb [arch=\$(dpkg --print-architecture) \
     signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
     https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | \
@@ -3129,7 +3150,7 @@ function startStopStack()
 
 function restorePortainer()
 {
-  docker-compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   RELAYSERVER_PORTAINER_TOKEN="\$(getPortainerToken -u $RELAYSERVER_PORTAINER_ADMIN_USERNAME -p $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"
 }
 
@@ -3338,8 +3359,29 @@ function isIPInSubnet()
   fi
 }
 
+function checkSupportedHostOS()
+{
+  if [ -f /etc/lsb-release ]; then
+    DISTRIB_ID=\$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
+    DISTRIB_RELEASE=\$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
+    if [ "\$DISTRIB_ID" = "Ubuntu" ] && [ "\$DISTRIB_RELEASE" = "22.04" ]; then
+      return
+    fi
+  fi
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  echo "@                   Unsupported Host Operating System                  @"
+  echo "@                                                                      @"
+  echo "@ This installation only supports the following Linux distribution(s): @"
+  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
+  echo "@                                                                      @"
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  rm -f $HSHQ_SCRIPT_OPEN
+  exit 2
+}
+
 function install()
 {
+  checkSupportedHostOS
   echo "The installation process is ready to initiate."
   echo "You can safely exit the screen after it starts"
   echo "by pressing CTRL-a, then release, then press d"
@@ -4173,7 +4215,7 @@ function installPortainer()
   echo \$PORTAINER_DB_KEY | sudo tee \$RELAYSERVER_HSHQ_SECRETS_DIR/portainer_key.txt >/dev/null
   sudo chmod 0400 \$RELAYSERVER_HSHQ_SECRETS_DIR/portainer_key.txt
 
-  docker-compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound="F"
   i=0
@@ -4213,7 +4255,6 @@ function outputConfigPortainer()
 {
   cat <<EOFPC > \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
 $STACK_VERSION_PREFIX portainer $(getScriptStackVersion portainer)
-version: '3.5'
 
 services:
   portainer:
@@ -4230,7 +4271,7 @@ services:
       # Also ensure to comment out the ports section and dock-ext-net section at the bottom
       - dock-ext-net
     ports:
-      - $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT:9443
+      - "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT:9443"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -4300,7 +4341,6 @@ function outputConfigAdGuard()
   
   cat <<EOFAC > \$HOME/adguard-compose.yml
 $STACK_VERSION_PREFIX adguard $(getScriptStackVersion adguard)
-version: '3.5'
 
 services:
   adguard:
@@ -4317,8 +4357,8 @@ services:
       dock-ext-net:
         ipv4_address: ${NET_EXTERNAL_SUBNET_PREFIX}.253
     ports:
-      - 53:53/tcp
-      - 53:53/udp
+      - "53:53/tcp"
+      - "53:53/udp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -4610,7 +4650,6 @@ function outputConfigMailRelay()
 {
   cat <<EOFPF > \$HOME/mail-relay-compose.yml
 $STACK_VERSION_PREFIX mail-relay $(getScriptStackVersion mail-relay)
-version: '3.5'
 
 services:
   mail-relay-postfix:
@@ -4625,8 +4664,8 @@ services:
       - dock-ext-net
       - dock-mailrelay-net
     ports:
-      - 25:25
-      - 587:587
+      - "25:25"
+      - "587:587"
     dns:
       - \\\${SUBNET_PREFIX}.253
     depends_on:
@@ -5202,7 +5241,6 @@ EOFWG
 
   cat <<EOFWP > \$HOME/wgportal-compose.yml
 $STACK_VERSION_PREFIX wgportal $(getScriptStackVersion wgportal)
-version: '3.5'
 
 services:
   wgportal:
@@ -5253,10 +5291,10 @@ wg:
   configDirectory: /etc/wireguard
   manageIPAddresses: true
 EOFWC
+  chmod 600 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml
 
   cat <<EOFCD > \$HOME/clientdns-compose.yml
 $STACK_VERSION_PREFIX clientdns $(getScriptStackVersion clientdns)
-version: '3.5'
 
 services:
   clientdns-dnsmasq:
@@ -5372,7 +5410,6 @@ function outputConfigFileBrowser()
 {
   cat <<EOFFB > \$HOME/filebrowser-compose.yml
 $STACK_VERSION_PREFIX filebrowser $(getScriptStackVersion filebrowser)
-version: '3.5'
 
 services:
   filebrowser:
@@ -5435,7 +5472,6 @@ function outputConfigCaddy()
 {
   cat <<EOFCC > \$HOME/caddy-compose.yml
 $STACK_VERSION_PREFIX caddy $(getScriptStackVersion caddy)
-version: '3.5'
 
 services:
   caddy:
@@ -5716,7 +5752,6 @@ function outputConfigOfelia()
 {
   cat <<EOFOF > \$HOME/ofelia-compose.yml
 $STACK_VERSION_PREFIX ofelia $(getScriptStackVersion ofelia)
-version: '3.5'
 
 services:
   ofelia:
@@ -5756,7 +5791,7 @@ function installSyncthing()
   generateCert syncthing syncthing
   outputConfigSyncthing
 
-  docker-compose -f \$HOME/syncthing-compose-tmp.yml up -d
+  docker compose -f \$HOME/syncthing-compose-tmp.yml up -d
 
   search="Access the GUI via the following URL"
   isFound="F"
@@ -5778,7 +5813,7 @@ function installSyncthing()
     exit
   fi
   set -e
-  docker-compose -f \$HOME/syncthing-compose-tmp.yml down -v
+  docker compose -f \$HOME/syncthing-compose-tmp.yml down -v
   sleep 5
   rm -f \$HOME/syncthing-compose-tmp.yml
   alltext=\$(sudo cat \$RELAYSERVER_HSHQ_STACKS_DIR/syncthing/config/config.xml)
@@ -5813,7 +5848,6 @@ function installSyncthing()
 function outputConfigSyncthing()
 {
   cat <<EOFST > \$HOME/syncthing-compose-tmp.yml
-version: '3.5'
 
 services:
   syncthing:
@@ -5827,10 +5861,10 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - 22000:22000/tcp
-      - 22000:22000/udp
-      - 21027:21027/udp
-      - 127.0.0.1:8384:8384
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+      - "127.0.0.1:8384:8384"
     environment:
       - PUID=0
       - PGID=0
@@ -5859,7 +5893,6 @@ EOFST
 
   cat <<EOFST > \$HOME/syncthing-compose.yml
 $STACK_VERSION_PREFIX syncthing $(getScriptStackVersion syncthing)
-version: '3.5'
 
 services:
   syncthing:
@@ -5874,10 +5907,10 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - 22000:22000/tcp
-      - 22000:22000/udp
-      - 21027:21027/udp
-      - 127.0.0.1:8384:8384
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+      - "127.0.0.1:8384:8384"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -9111,10 +9144,10 @@ function changeHostStaticIP()
   sleep 5
   setHomeServerPrivateRange
   echo "Restarting Portainer..."
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   outputConfigPortainer
   generateCert portainer portainer $HOMESERVER_HOST_IP
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   sudo systemctl restart runScriptServer
   echo "Restarting Heimdall..."
@@ -9580,12 +9613,12 @@ function restartAllStacks()
     startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
     sleep 1
   done
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
   removeDockerNetworks
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   total_tries=10
   num_tries=1
   sleep 5
@@ -11418,8 +11451,7 @@ function getMyNetworkHomeServerDNSListClientDNSBody()
   fi
   email_body=${email_body}"Full Domain List for ${HOMESERVER_NAME}: \n"
   email_body=${email_body}"_______________________________________________________________________\n\n"
-  email_body=${email_body}"$(getMyNetworkHomeServerDNSListForClientDNS)"
-  email_body=${email_body}"_______________________________________________________________________\n"
+  email_body=${email_body}"$(getMyNetworkHomeServerDNSListForClientDNS)\n\n"
   echo "${email_body}"
 }
 
@@ -12852,6 +12884,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=66
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 67 ]; then
+    echo "Updating to Version 67..."
+    version67Update
+    HSHQ_VERSION=67
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -12919,7 +12957,7 @@ function version22Update()
     sleep 1
   done
 
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   set +e
   removeDockerNetworks
   docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
@@ -12939,7 +12977,7 @@ function version22Update()
   sleep 3
   createDockerNetworks
   outputConfigPortainer
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   set +e
   total_tries=10
   num_tries=1
@@ -12973,7 +13011,6 @@ function version22Update()
     is_antivirus_commented_out="#"
   fi
   cat <<EOFMC > $HOME/mailu-compose.yml
-version: '3.5'
 
 services:
   front:
@@ -13239,7 +13276,6 @@ EOFMC
   if ! [ -z $cdnsStackID ]; then
     # Replace ClientDNS stack
     cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
-version: '3.5'
 
 services:
   clientdns-${cdns_stack_name}-dnsmasq:
@@ -14401,6 +14437,15 @@ function version66Update()
   set -e
 }
 
+function version67Update()
+{
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "chmod 600 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml"
+    unloadSSHKey
+  fi
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -14536,9 +14581,9 @@ function checkFixPortainerEnv()
   set +e
   grep "HSHQ_RELAYSERVER_DIR" $HSHQ_STACKS_DIR/portainer/portainer.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+    docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
     outputConfigPortainer
-    docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+    docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
     startStopStack duplicati stop
     startStopStack syncthing stop
     sleep 5
@@ -16592,7 +16637,7 @@ function installDockerUbuntu2004Rooted()
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   echo "Installing docker, please wait..."
   sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
@@ -19661,7 +19706,7 @@ function installPortainer()
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt 
   fi
 
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound="F"
   i=0
@@ -19727,7 +19772,6 @@ function outputConfigPortainer()
 
   cat <<EOFPC > $HSHQ_STACKS_DIR/portainer/docker-compose.yml
 $STACK_VERSION_PREFIX portainer $(getScriptStackVersion portainer)
-version: '3.5'
 
 services:
   portainer:
@@ -19742,8 +19786,8 @@ services:
       - dock-proxy-net
       - ${pdocknet}-net
     ports:
-      - 127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT:9443
-      - $HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT:9443
+      - "127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT:9443"
+      - "$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT:9443"
     command:
       --sslcert /data/certs/portainer.crt
       --sslkey /data/certs/portainer.key
@@ -19835,9 +19879,9 @@ function restartPortainer()
 {
   resp_curE=${-//[^e]/}
   set +e
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
   sleep 3
-  docker-compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   search="starting HTTPS server"
   isFound="F"
   i=0
@@ -19927,7 +19971,6 @@ function outputConfigAdGuard()
   ADGUARD_ADMIN_PASSWORD_HASH=$(htpasswd -B -n -b $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD | cut -d":" -f2-)
   cat <<EOFAC > $HOME/adguard-compose.yml
 $STACK_VERSION_PREFIX adguard $(getScriptStackVersion adguard)
-version: '3.5'
 
 services:
   adguard:
@@ -19944,9 +19987,9 @@ services:
       dock-ext-net:
         ipv4_address: \${NET_EXTERNAL_SUBNET_PREFIX}.253
     ports:
-      - 53:53/tcp
-      - 53:53/udp
-      - 127.0.0.1:$ADGUARD_LOCALHOST_PORT:443
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "127.0.0.1:$ADGUARD_LOCALHOST_PORT:443"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -20274,7 +20317,7 @@ function installSysUtils()
   gf_dataset_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
   outputConfigSysUtils
-  docker-compose -f $HOME/sysutils-compose-tmp.yml up -d
+  docker compose -f $HOME/sysutils-compose-tmp.yml up -d
 
   search="HTTP Server Listen"
   isFound="F"
@@ -20293,7 +20336,7 @@ function installSysUtils()
   done
   if [ $isFound == "F" ]; then
     echo "System Utils did not start up correctly..."
-    docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
+    docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
 
@@ -20313,7 +20356,7 @@ function installSysUtils()
   done
   if [ $isFound == "F" ]; then
     echo "System Utils did not start up correctly..."
-    docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
+    docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
   sleep 5
@@ -20358,7 +20401,7 @@ function installSysUtils()
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
 
   sleep 2
-  docker-compose -f $HOME/sysutils-compose-tmp.yml down -v
+  docker compose -f $HOME/sysutils-compose-tmp.yml down -v
   sleep 2
   installStack sysutils grafana "HTTP Server Listen" $HOME/sysutils.env
   retval=$?
@@ -20425,7 +20468,6 @@ function installSysUtils()
 function outputConfigSysUtils()
 {
   cat <<EOFGF > $HOME/sysutils-compose-tmp.yml
-version: '3.5'
 
 services:
   grafana:
@@ -20441,7 +20483,7 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - 127.0.0.1:6565:3000
+      - "127.0.0.1:6565:3000"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -20565,7 +20607,6 @@ EOFGF
 
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils $(getScriptStackVersion sysutils)
-version: '3.5'
 
 services:
   grafana:
@@ -23068,7 +23109,6 @@ EOFPR
 
   cat <<EOFGF > $HOME/sysutils-compose.yml
 $STACK_VERSION_PREFIX sysutils $(getScriptStackVersion sysutils)
-version: '3.5'
 
 services:
   grafana:
@@ -23329,7 +23369,6 @@ function outputConfigOpenLDAP()
 {
   cat <<EOFLC > $HOME/openldap-compose.yml
 $STACK_VERSION_PREFIX openldap $(getScriptStackVersion openldap)
-version: '3.5'
 
 services:
   ldapserver:
@@ -23740,7 +23779,6 @@ function outputConfigMailu()
   fi
   cat <<EOFMC > $HOME/mailu-compose.yml
 $STACK_VERSION_PREFIX mailu $(getScriptStackVersion mailu)
-version: '3.5'
 
 services:
   front:
@@ -24354,7 +24392,6 @@ function outputConfigWazuh()
 {
   cat <<EOFWZ > $HOME/wazuh-compose.yml
 $STACK_VERSION_PREFIX wazuh $(getScriptStackVersion wazuh)
-version: '3.5'
 
 services:
   wazuh.manager:
@@ -25133,7 +25170,6 @@ function outputConfigCollabora()
 {
   cat <<EOFCO > $HOME/collabora-compose.yml
 $STACK_VERSION_PREFIX collabora $(getScriptStackVersion collabora)
-version: '3.5'
 
 services:
   collabora:
@@ -25265,7 +25301,7 @@ function installNextcloud()
     mkdir $HSHQ_STACKS_DIR/nextcloud/ssl
     chmod 777 $HSHQ_STACKS_DIR/nextcloud/dbexport
     outputConfigNextcloud
-    docker-compose -f $HOME/nextcloud-compose-tmp.yml up -d
+    docker compose -f $HOME/nextcloud-compose-tmp.yml up -d
     search="ready to handle connections"
     error_text="rsync error"
     isFound="F"
@@ -25294,7 +25330,7 @@ function installNextcloud()
     if [ $isError == "T" ]; then
       echo "(Attempt $curTries of $numTries) Error starting Nextcloud stack, restarting..."
     fi
-    docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
     ((curTries++))
   done
@@ -25314,7 +25350,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install calendar
   # Sometimes there are issues with apps, check the first one to see if there is an error.
   if [ $? -ne 0 ]; then
-    docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
   fi
@@ -25397,7 +25433,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ background:cron
 
   sleep 5
-  docker-compose -f $HOME/nextcloud-compose-tmp.yml down -v
+  docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
 
   # This is dumb. https://github.com/nextcloud/notify_push/issues/355
   sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
@@ -25689,7 +25725,6 @@ TLS_REQSAN demand
 EOFLC
 
   cat <<EOFNC > $HOME/nextcloud-compose-tmp.yml
-version: '3.5'
 
 services:
   nextcloud-db:
@@ -25902,7 +25937,6 @@ EOFNC
 
   cat <<EOFNC > $HOME/nextcloud-compose.yml
 $STACK_VERSION_PREFIX nextcloud $(getScriptStackVersion nextcloud)
-version: '3.5'
 
 services:
   nextcloud-db:
@@ -26251,7 +26285,6 @@ function outputConfigJitsi()
 {
   cat <<EOFJT > $HOME/jitsi-compose.yml
 $STACK_VERSION_PREFIX jitsi $(getScriptStackVersion jitsi)
-version: '3.5'
 
 services:
   jitsi-web:
@@ -26321,9 +26354,9 @@ services:
       - int-jitsi-net
       - dock-privateip-net
     ports:
-      - '10000:10000/udp'
-      - '4443:4443'
-      - '127.0.0.1:8020:8020'
+      - "10000:10000/udp"
+      - "4443:4443"
+      - "127.0.0.1:8020:8020"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -26527,7 +26560,6 @@ function outputConfigMatrix()
 {
   cat <<EOFJT > $HOME/matrix-compose.yml
 $STACK_VERSION_PREFIX matrix $(getScriptStackVersion matrix)
-version: '3.5'
 
 services:
   matrix-db:
@@ -27045,7 +27077,6 @@ function outputConfigWikijs()
 {
   cat <<EOFWJ > $HOME/wikijs-compose.yml
 $STACK_VERSION_PREFIX wikijs $(getScriptStackVersion wikijs)
-version: '3.5'
 
 services:
   wikijs-db:
@@ -27263,7 +27294,6 @@ function outputConfigDuplicati()
 {
   cat <<EOFDP > $HOME/duplicati-compose.yml
 $STACK_VERSION_PREFIX duplicati $(getScriptStackVersion duplicati)
-version: '3.5'
 
 services:
   duplicati:
@@ -27429,7 +27459,6 @@ function outputConfigMastodon()
 {
   cat <<EOFMD > $HOME/mastodon-compose.yml
 $STACK_VERSION_PREFIX mastodon $(getScriptStackVersion mastodon)
-version: '3.5'
 
 services:
   mastodon-db:
@@ -27681,7 +27710,7 @@ networks:
 EOFMD
 
   cat <<EOFMD > $HOME/mastodon.env
-TZ=\${TZ}
+TZ=${TZ}
 UID=$USERID
 GID=$GROUPID
 LOCAL_DOMAIN=$HOMESERVER_DOMAIN
@@ -27953,7 +27982,6 @@ function outputMastdonMigrate()
   mastodon_redis_image=$2
   mastodon_app_image=$3
   cat <<EOFMD > $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
-version: '3.5'
 
 services:
   mastodon-db:
@@ -28068,8 +28096,8 @@ function migrateMastodon()
   echo -e "\nPerforming Mastodon database migration...this could take a few minutes\n"
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
-  docker-compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null
-  docker-compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
+  docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null 2>&1
+  docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
   rm -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
   rm -f $HSHQ_STACKS_DIR/mastodon/stack.env
   echo -e "\nFinished mastodon database migration, sleeping 3 seconds"
@@ -28160,7 +28188,6 @@ function outputConfigDozzle()
 {
   cat <<EOFDZ > $HOME/dozzle-compose.yml
 $STACK_VERSION_PREFIX dozzle $(getScriptStackVersion dozzle)
-version: '3.5'
 
 services:
   dozzle:
@@ -28300,7 +28327,6 @@ function outputConfigSearxNG()
 {
   cat <<EOFSE > $HOME/searxng-compose.yml
 $STACK_VERSION_PREFIX searxng $(getScriptStackVersion searxng)
-version: '3.5'
 
 services:
   searxng-caddy:
@@ -28621,7 +28647,6 @@ function outputConfigJellyfin()
 {
   cat <<EOFJF > $HOME/jellyfin-compose.yml
 $STACK_VERSION_PREFIX jellyfin $(getScriptStackVersion jellyfin)
-version: '3.5'
 
 services:
   jellyfin:
@@ -28637,8 +28662,8 @@ services:
       - dock-ldap-net
     ports:
       # UPnP Conflicts with HomeAssistant
-      #- 1900:1900/udp
-      - 7359:7359/udp
+      #- "1900:1900/udp"
+      - "7359:7359/udp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -28779,7 +28804,6 @@ function outputConfigFileBrowser()
 {
   cat <<EOFJF > $HOME/filebrowser-compose.yml
 $STACK_VERSION_PREFIX filebrowser $(getScriptStackVersion filebrowser)
-version: '3.5'
 
 services:
   filebrowser:
@@ -28893,7 +28917,7 @@ function installPhotoPrism()
 
   outputConfigPhotoPrism
   echo "Starting PhotoPrism. Please be patient, this process takes a few minutes..."
-  docker-compose -f $HOME/photoprism-compose-tmp.yml up -d
+  docker compose -f $HOME/photoprism-compose-tmp.yml up -d
   search="listening at 0.0.0.0"
   isFound="F"
   i=0
@@ -28911,12 +28935,12 @@ function installPhotoPrism()
   done
   set -e
   if [ $isFound == "F" ]; then
-    docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
+    docker compose -f $HOME/photoprism-compose-tmp.yml down -v
     echo "ERROR: PhotoPrism did not start up correctly..."
     return 1
   fi
   sleep 5
-  docker-compose -f $HOME/photoprism-compose-tmp.yml down -v
+  docker compose -f $HOME/photoprism-compose-tmp.yml down -v
   installStack photoprism photoprism-app "listening at 0.0.0.0" $HOME/photoprism.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -28947,7 +28971,6 @@ function installPhotoPrism()
 function outputConfigPhotoPrism()
 {
   cat <<EOFPP > $HOME/photoprism-compose-tmp.yml
-version: '3.5'
 
 services:
   photoprism-db:
@@ -29050,7 +29073,6 @@ EOFPP
 
   cat <<EOFPP > $HOME/photoprism-compose.yml
 $STACK_VERSION_PREFIX photoprism $(getScriptStackVersion photoprism)
-version: '3.5'
 
 services:
   photoprism-db:
@@ -29231,7 +29253,7 @@ function installGuacamole()
 
   outputConfigGuacamole
   docker run --rm $IMG_GUACAMOLE_WEB /opt/guacamole/bin/initdb.sh --mysql > $HSHQ_STACKS_DIR/guacamole/init/initdb.sql
-  docker-compose -f $HOME/guacamole-compose-tmp.yml up -d
+  docker compose -f $HOME/guacamole-compose-tmp.yml up -d
 
   echo "Waiting at least 15 seconds before continuing..."
   sleep 15
@@ -29253,12 +29275,12 @@ function installGuacamole()
   set -e
   if [ $isFound == "F" ]; then
     echo "Guacamole did not start up correctly..."
-    docker-compose -f $HOME/guacamole-compose-tmp.yml down -v
+    docker compose -f $HOME/guacamole-compose-tmp.yml down -v
     exit 1
   fi
   sleep 5
 
-  docker-compose -f $HOME/guacamole-compose-tmp.yml down -v
+  docker compose -f $HOME/guacamole-compose-tmp.yml down -v
   installStack guacamole guacamole-web "Server startup in" $HOME/guacamole.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -29293,7 +29315,6 @@ function installGuacamole()
 function outputConfigGuacamole()
 {
   cat <<EOFGC > $HOME/guacamole-compose-tmp.yml
-version: '3.5'
 
 services:
   guacamole-db:
@@ -29327,7 +29348,6 @@ EOFGC
 
   cat <<EOFGC > $HOME/guacamole-compose.yml
 $STACK_VERSION_PREFIX guacamole $(getScriptStackVersion guacamole)
-version: '3.5'
 
 services:
   guacamole-db:
@@ -29532,7 +29552,6 @@ function outputConfigAuthelia()
 {
   cat <<EOFAC > $HOME/authelia-compose.yml
 $STACK_VERSION_PREFIX authelia $(getScriptStackVersion authelia)
-version: '3.5'
 
 services:
   authelia:
@@ -29917,7 +29936,6 @@ function outputConfigWordPress()
 {
   cat <<EOFWP > $HOME/wordpress-compose.yml
 $STACK_VERSION_PREFIX wordpress $(getScriptStackVersion wordpress)
-version: '3.5'
 
 services:
   wordpress-db:
@@ -30110,7 +30128,6 @@ function outputConfigGhost()
 {
   cat <<EOFGW > $HOME/ghost-compose.yml
 $STACK_VERSION_PREFIX ghost $(getScriptStackVersion ghost)
-version: '3.5'
 
 services:
   ghost-db:
@@ -30329,7 +30346,6 @@ function outputConfigPeerTube()
 {
   cat <<EOFPT > $HOME/peertube-compose.yml
 $STACK_VERSION_PREFIX peertube $(getScriptStackVersion peertube)
-version: '3.5'
 
 services:
   peertube-db:
@@ -30385,7 +30401,7 @@ services:
       - dock-ldap-net
       - dock-internalmail-net
     ports:
-      - 1935:1935
+      - "1935:1935"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -30663,7 +30679,6 @@ function outputConfigHomeAssistant()
 {
   cat <<EOFHA > $HOME/homeassistant-compose.yml
 $STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
-version: '3.5'
 
 services:
   homeassistant-db:
@@ -30680,7 +30695,7 @@ services:
       - dock-privateip-net
       - dock-dbs-net
     ports:
-      - $HOMEASSISTANT_DB_LOCALHOST_PORT:5432
+      - "$HOMEASSISTANT_DB_LOCALHOST_PORT:5432"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -31102,7 +31117,6 @@ EOFHC
 
   cat <<EOFHA > $HOME/homeassistant-compose.yml
 $STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
-version: '3.5'
 
 services:
   homeassistant-db:
@@ -31119,7 +31133,7 @@ services:
       - dock-privateip-net
       - dock-dbs-net
     ports:
-      - $HOMEASSISTANT_DB_LOCALHOST_PORT:5432
+      - "$HOMEASSISTANT_DB_LOCALHOST_PORT:5432"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -31347,7 +31361,6 @@ function outputConfigGitlab()
 {
   cat <<EOFGL > $HOME/gitlab-compose.yml
 $STACK_VERSION_PREFIX gitlab $(getScriptStackVersion gitlab)
-version: '3.5'
 
 services:
   gitlab-db:
@@ -31661,7 +31674,6 @@ function outputConfigVaultwarden()
 {
   cat <<EOFVW > $HOME/vaultwarden-compose.yml
 $STACK_VERSION_PREFIX vaultwarden $(getScriptStackVersion vaultwarden)
-version: '3.5'
 
 services:
   vaultwarden-db:
@@ -31912,7 +31924,6 @@ function outputConfigDiscourse()
 {
   cat <<EOFDC > $HOME/discourse-compose.yml
 $STACK_VERSION_PREFIX discourse $(getScriptStackVersion discourse)
-version: '3.5'
 
 services:
   discourse-db:
@@ -32205,7 +32216,6 @@ function outputConfigSyncthing()
 {
   cat <<EOFST > $HOME/syncthing-compose.yml
 $STACK_VERSION_PREFIX syncthing $(getScriptStackVersion syncthing)
-version: '3.5'
 
 services:
   syncthing:
@@ -32220,10 +32230,10 @@ services:
       - dock-proxy-net
       - dock-privateip-net
     ports:
-      - 22000:22000/tcp
-      - 22000:22000/udp
-      - 21027:21027/udp
-      - 127.0.0.1:8384:8384
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+      - "127.0.0.1:8384:8384"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -32320,7 +32330,7 @@ function installCodeServer()
   generateCert codeserver codeserver
   outputConfigCodeServer
   mv $HOME/codeserver.yaml $HSHQ_STACKS_DIR/codeserver/.config/code-server/config.yaml
-  docker-compose -f $HOME/codeserver-compose-tmp.yml up -d
+  docker compose -f $HOME/codeserver-compose-tmp.yml up -d
 
   search="HTTPS server listening on https"
   isFound="F"
@@ -32340,13 +32350,13 @@ function installCodeServer()
   set -e
   if [ $isFound == "F" ]; then
     echo "CodeServer did not start up correctly..."
-    docker-compose -f $HOME/codeserver-compose-tmp.yml down -v
+    docker compose -f $HOME/codeserver-compose-tmp.yml down -v
     exit 1
   fi
   sleep 5
   set -e
   docker exec codeserver code-server --install-extension cweijan.vscode-ssh
-  docker-compose -f $HOME/codeserver-compose-tmp.yml down -v
+  docker compose -f $HOME/codeserver-compose-tmp.yml down -v
   rm -f $HOME/codeserver-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   mv $HOME/settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
@@ -32379,7 +32389,6 @@ function installCodeServer()
 function outputConfigCodeServer()
 {
   cat <<EOFCS > $HOME/codeserver-compose-tmp.yml
-version: '3.5'
 
 services:
   codeserver:
@@ -32418,7 +32427,6 @@ EOFCS
 
   cat <<EOFCS > $HOME/codeserver-compose.yml
 $STACK_VERSION_PREFIX codeserver $(getScriptStackVersion codeserver)
-version: '3.5'
 
 services:
   codeserver:
@@ -32623,7 +32631,6 @@ function outputConfigShlink()
 {
   cat <<EOFST > $HOME/shlink-compose.yml
 $STACK_VERSION_PREFIX shlink $(getScriptStackVersion shlink)
-version: '3.5'
 
 services:
   shlink-db:
@@ -32944,7 +32951,6 @@ function outputConfigFirefly()
 {
   cat <<EOFFF > $HOME/firefly-compose.yml
 $STACK_VERSION_PREFIX firefly $(getScriptStackVersion firefly)
-version: '3.5'
 
 services:
   firefly-db:
@@ -33228,7 +33234,6 @@ function outputConfigExcalidraw()
 {
   cat <<EOFEX > $HOME/excalidraw-compose.yml
 $STACK_VERSION_PREFIX excalidraw $(getScriptStackVersion excalidraw)
-version: '3.5'
 
 services:
   excalidraw-storage:
@@ -33428,7 +33433,6 @@ function outputConfigDrawIO()
 {
   cat <<EOFDI > $HOME/drawio-compose.yml
 $STACK_VERSION_PREFIX drawio $(getScriptStackVersion drawio)
-version: '3.5'
 
 services:
   drawio-plantuml:
@@ -33604,7 +33608,6 @@ function outputConfigInvidious()
 {
   cat <<EOFIV > $HOME/invidious-compose.yml
 $STACK_VERSION_PREFIX invidious $(getScriptStackVersion invidious)
-version: '3.5'
 
 services:
   invidious-db:
@@ -34005,7 +34008,6 @@ function outputConfigGitea()
 {
   cat <<EOFGL > $HOME/gitea-compose.yml
 $STACK_VERSION_PREFIX gitea $(getScriptStackVersion gitea)
-version: '3.5'
 
 services:
   gitea-db:
@@ -34229,7 +34231,6 @@ function outputConfigMealie()
 {
   cat <<EOFGL > $HOME/mealie-compose.yml
 $STACK_VERSION_PREFIX mealie $(getScriptStackVersion mealie)
-version: '3.5'
 
 services:
   mealie-db:
@@ -34486,7 +34487,6 @@ function outputConfigKasm()
 {
   cat <<EOFGL > $HOME/kasm-compose.yml
 $STACK_VERSION_PREFIX kasm $(getScriptStackVersion kasm)
-version: '3.5'
 
 services:
   kasm:
@@ -34606,7 +34606,6 @@ function outputConfigNTFY()
 {
   cat <<EOFNT > $HOME/ntfy-compose.yml
 $STACK_VERSION_PREFIX ntfy $(getScriptStackVersion ntfy)
-version: '3.5'
 
 services:
   ntfy:
@@ -35095,7 +35094,6 @@ function outputConfigITTools()
 {
   cat <<EOFNT > $HOME/ittools-compose.yml
 $STACK_VERSION_PREFIX ittools $(getScriptStackVersion ittools)
-version: '3.5'
 
 services:
   ittools:
@@ -35212,7 +35210,6 @@ function outputConfigRemotely()
 {
   cat <<EOFRM > $HOME/remotely-compose.yml
 $STACK_VERSION_PREFIX remotely $(getScriptStackVersion remotely)
-version: '3.5'
 
 services:
   remotely:
@@ -35390,7 +35387,6 @@ function outputConfigCalibre()
 {
   cat <<EOFNT > $HOME/calibre-compose.yml
 $STACK_VERSION_PREFIX calibre $(getScriptStackVersion calibre)
-version: '3.5'
 
 services:
   calibre-server:
@@ -35566,7 +35562,6 @@ function outputConfigNetdata()
 {
   cat <<EOFDZ > $HOME/netdata-compose.yml
 $STACK_VERSION_PREFIX netdata $(getScriptStackVersion netdata)
-version: '3.5'
 
 services:
   netdata:
@@ -35729,7 +35724,6 @@ function outputConfigLinkwarden()
 {
   cat <<EOFDZ > $HOME/linkwarden-compose.yml
 $STACK_VERSION_PREFIX linkwarden $(getScriptStackVersion linkwarden)
-version: '3.5'
 
 services:
   linkwarden-db:
@@ -35919,7 +35913,6 @@ function outputConfigStirlingPDF()
 {
   cat <<EOFDZ > $HOME/stirlingpdf-compose.yml
 $STACK_VERSION_PREFIX stirlingpdf $(getScriptStackVersion stirlingpdf)
-version: '3.5'
 
 services:
   stirlingpdf:
@@ -36064,7 +36057,6 @@ function outputConfigBarAssistant()
 {
   cat <<EOFBA > $HOME/bar-assistant-compose.yml
 $STACK_VERSION_PREFIX bar-assistant $(getScriptStackVersion bar-assistant)
-version: '3.5'
 
 services:
   bar-assistant-app:
@@ -36409,7 +36401,6 @@ function outputConfigFreshRSS()
 {
   cat <<EOFBA > $HOME/freshrss-compose.yml
 $STACK_VERSION_PREFIX freshrss $(getScriptStackVersion freshrss)
-version: '3.5'
 
 services:
   freshrss-db:
@@ -36641,7 +36632,6 @@ function outputConfigKeila()
 {
   cat <<EOFBA > $HOME/keila-compose.yml
 $STACK_VERSION_PREFIX keila $(getScriptStackVersion keila)
-version: '3.5'
 
 services:
   keila-db:
@@ -36878,7 +36868,6 @@ function outputConfigWallabag()
 {
   cat <<EOFBA > $HOME/wallabag-compose.yml
 $STACK_VERSION_PREFIX wallabag $(getScriptStackVersion wallabag)
-version: '3.5'
 
 services:
   wallabag-db:
@@ -37106,7 +37095,6 @@ function outputConfigJupyter()
 {
   cat <<EOFDZ > $HOME/jupyter-compose.yml
 $STACK_VERSION_PREFIX jupyter $(getScriptStackVersion jupyter)
-version: '3.5'
 
 services:
   jupyter:
@@ -37548,7 +37536,6 @@ function outputConfigSpeedtestTrackerLocal()
 {
   cat <<EOFBA > $HOME/speedtest-tracker-local-compose.yml
 $STACK_VERSION_PREFIX speedtest-tracker-local $(getScriptStackVersion speedtest-tracker-local)
-version: '3.5'
 
 services:
   speedtest-tracker-local-db:
@@ -37794,7 +37781,6 @@ function outputConfigSpeedtestTrackerVPN()
 {
   cat <<EOFBA > $HOME/speedtest-tracker-vpn-compose.yml
 $STACK_VERSION_PREFIX speedtest-tracker-vpn $(getScriptStackVersion speedtest-tracker-vpn)
-version: '3.5'
 
 services:
   speedtest-tracker-vpn-db:
@@ -38043,7 +38029,6 @@ function outputConfigChangeDetection()
 {
   cat <<EOFCD > $HOME/changedetection-compose.yml
 $STACK_VERSION_PREFIX changedetection $(getScriptStackVersion changedetection)
-version: '3.5'
 
 services:
   changedetection-app:
@@ -38242,7 +38227,6 @@ function outputConfigHuginn()
 {
   cat <<EOFDZ > $HOME/huginn-compose.yml
 $STACK_VERSION_PREFIX huginn $(getScriptStackVersion huginn)
-version: '3.5'
 
 services:
   huginn-db:
@@ -38435,7 +38419,6 @@ function outputConfigCoturn()
 {
   cat <<EOFOF > $HOME/coturn-compose.yml
 $STACK_VERSION_PREFIX coturn $(getScriptStackVersion coturn)
-version: '3.5'
 
 services:
   coturn:
@@ -38584,7 +38567,6 @@ function outputConfigFileDrop()
 {
   cat <<EOFDZ > $HOME/filedrop-compose.yml
 $STACK_VERSION_PREFIX filedrop $(getScriptStackVersion filedrop)
-version: '3.5'
 
 services:
   filedrop:
@@ -38762,7 +38744,6 @@ function outputConfigPiped()
 {
   cat <<EOFPI > $HOME/piped-compose.yml
 $STACK_VERSION_PREFIX piped $(getScriptStackVersion piped)
-version: '3.5'
 
 services:
   piped-db:
@@ -39130,8 +39111,8 @@ function installScriptServer()
   sudo chown -R $USERNAME:$USERNAME $HSHQ_STACKS_DIR/script-server
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/theme
-
-  pip3 install tornado > /dev/null 2>&1
+  echo "Installing python3-tornado..."
+  sudo DEBIAN_FRONTEND=noninteractive apt install python3-tornado -y > /dev/null 2>&1
   initServicesCredentials
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   outputConfigScriptServer
@@ -44021,7 +44002,6 @@ function outputConfigSQLPad()
 {
   cat <<EOFSP > $HOME/sqlpad-compose.yml
 $STACK_VERSION_PREFIX sqlpad $(getScriptStackVersion sqlpad)
-version: '3.5'
 
 services:
   sqlpad:
@@ -44373,7 +44353,7 @@ function installHeimdall()
 
   generateCert heimdall heimdall
   outputConfigHeimdall
-  docker-compose -f $HOME/heimdall-compose-tmp.yml up -d
+  docker compose -f $HOME/heimdall-compose-tmp.yml up -d
 
   stack_loaded_text="service 99-ci-service-check successfully started"
   search="$stack_loaded_text"
@@ -44394,12 +44374,12 @@ function installHeimdall()
   set -e
   if [ $isFound == "F" ]; then
     echo "Heimdall did not start up correctly..."
-    docker-compose -f $HOME/heimdall-compose-tmp.yml down -v
+    docker compose -f $HOME/heimdall-compose-tmp.yml down -v
     exit 1
   fi
   sleep 3
 
-  docker-compose -f $HOME/heimdall-compose-tmp.yml down -v
+  docker compose -f $HOME/heimdall-compose-tmp.yml down -v
   rm -f $HOME/heimdall-compose-tmp.yml
 
   sed -i "s|^APP_NAME=.*|APP_NAME=\"$HEIMDALL_WINDOW_TITLE\"|g" $HSHQ_STACKS_DIR/heimdall/config/www/.env
@@ -44477,7 +44457,6 @@ function installHeimdall()
 function outputConfigHeimdall()
 {
   cat <<EOFHC > $HOME/heimdall-compose-tmp.yml
-version: '3.5'
 
 services:
   heimdall:
@@ -44524,7 +44503,6 @@ EOFHC
 
   cat <<EOFHC > $HOME/heimdall-compose.yml
 $STACK_VERSION_PREFIX heimdall $(getScriptStackVersion heimdall)
-version: '3.5'
 
 services:
   heimdall:
@@ -45207,7 +45185,6 @@ function outputConfigCaddy()
     home)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45299,7 +45276,6 @@ EOFCF
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45394,7 +45370,6 @@ EOFCF
       elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
         cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45478,7 +45453,6 @@ EOFCF
     other)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
 $STACK_VERSION_PREFIX $caddy_net_name $(getScriptStackVersion $caddy_net_name)
-version: '3.5'
 
 services:
   $caddy_net_name:
@@ -45775,7 +45749,6 @@ function outputConfigClientDNS()
 {
   cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
 $STACK_VERSION_PREFIX clientdns-${cdns_stack_name} $(getScriptStackVersion clientdns-${cdns_stack_name})
-version: '3.5'
 
 services:
   clientdns-${cdns_stack_name}-dnsmasq:
@@ -45917,7 +45890,6 @@ function outputConfigOfelia()
 {
   cat <<EOFOF > $HOME/ofelia-compose.yml
 $STACK_VERSION_PREFIX ofelia $(getScriptStackVersion ofelia)
-version: '3.5'
 
 services:
   ofelia:
@@ -46048,7 +46020,6 @@ function outputConfigUptimeKuma()
 {
   cat <<EOFUK > $HOME/uptimekuma-compose.yml
 $STACK_VERSION_PREFIX uptimekuma $(getScriptStackVersion uptimekuma)
-version: '3.5'
 
 services:
   uptimekuma:
