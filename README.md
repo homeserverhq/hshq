@@ -26,33 +26,33 @@ bash hshq.sh
 ```
 
 ### Feature Comparisons
-Feature | <a href="https://www.homeserverhq.com/" target="_blank"> HomeServerHQ </a> | <a href="https://www.cloudron.io/" target="_blank"> Cloudron </a> | <a href="https://yunohost.org/" target="_blank"> YunoHost </a> | <a href="https://homelabos.com/" target="_blank"> HomeLabOS </a> | <a href="https://umbrel.com/" target="_blank"> Umbrel </a> | <a href="https://casaos.io/" target="_blank"> CasaOS </a> | <a href="https://github.com/davestephens/ansible-nas" target="_blank"> Ansible-NAS </a>
-:------ | :------: | :------: | :------: | :------: | :------: | :------: | :------:
-Fully configured email server | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
-Fully configured VPN | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Fully configured firewalls | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Auto-configure supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Auto-integrate supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Auto-monitor supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Automatic https | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
-Privately network with other HomeServers | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Tunnel external network traffic for specific docker containers | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-No ports open on home router | :heavy_check_mark: | :x: | :x: | :heavy_check_mark: | :x: | :x: | :x:
-Access with any type of device (desktop/laptop/cellphone/tablet) | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:
-Add your own custom services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :heavy_check_mark: | :x:
-Safe and secure infrastructure | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Production ready | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :heavy_check_mark: | :x: | :x:
-Federation /<a href="https://en.wikipedia.org/wiki/ActivityPub" target="_blank"> ActivityPub</a>  ready | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Cryptographically-signed source code | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
-Bring you own equipment | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:
-No IT experience needed | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Simple installation | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
-Add multiple domains | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: | :x:
-Installs apps | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:
-Updates apps | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
-Console-based management UI | :heavy_check_mark: | :x: | :x: | :heavy_check_mark: | :x: | :x: | :x:
-Web-based management UI | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark: | :x:
-Source Code Repo Files (Auditing) | 6 | 13647 | 344 | 912 | 534 | 225 | 791
+Feature | <a href="https://www.homeserverhq.com/" target="_blank"> HSHQ </a> | <a href="https://www.cloudron.io/" target="_blank"> Cloudron </a> | <a href="https://yunohost.org/" target="_blank"> YunoHost </a> | <a href="https://homelabos.com/" target="_blank"> HomeLabOS </a> | <a href="https://umbrel.com/" target="_blank"> Umbrel </a> | <a href="https://casaos.io/" target="_blank"> CasaOS </a>
+:------ | :------: | :------: | :------: | :------: | :------: | :------: 
+Fully configured email server | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: 
+Fully configured VPN | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Fully configured firewalls | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Auto-configure supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Auto-integrate supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Auto-monitor supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Automatic https | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: 
+Privately network with other HomeServers | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Tunnel external network traffic for specific docker containers | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+No ports open on home router | :heavy_check_mark: | :x: | :x: | :heavy_check_mark: | :x: | :x: 
+Access with any type of device (desktop/laptop/cellphone/tablet) | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: 
+Add your own custom services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :heavy_check_mark: 
+Safe and secure infrastructure | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Production ready | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :heavy_check_mark: | :x: 
+Federation /<a href="https://en.wikipedia.org/wiki/ActivityPub" target="_blank"> ActivityPub</a>  ready | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Cryptographically-signed source code | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: 
+Bring you own equipment | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: 
+No IT experience needed | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Simple installation | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: 
+Add multiple domains | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Installs apps | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: 
+Updates apps | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: 
+Console-based management UI | :heavy_check_mark: | :x: | :x: | :heavy_check_mark: | :x: | :x: 
+Web-based management UI | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark: 
+Source Code Repo Files (Auditing) | 6 | 13647 | 344 | 912 | 534 | 225 
 
 In summary, HomeServerHQ can easily do <ins>**everything**</ins> that these other projects can do. But they can only do a small fraction of what HomeServerHQ can do.
 
