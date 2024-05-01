@@ -30,7 +30,7 @@ Feature | <a href="https://www.homeserverhq.com/" target="_blank"> HSHQ </a> | <
 :------ | :------: | :------: | :------: | :------: | :------: | :------: 
 Fully configured email server | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: 
 Fully configured VPN | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
-Fully configured firewalls | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
+Fully configured firewalls | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x: 
 Auto-configure supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
 Auto-integrate supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
 Auto-monitor supported services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x: 
