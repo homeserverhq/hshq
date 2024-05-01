@@ -54,5 +54,3 @@ Console-based management UI | :heavy_check_mark: | :x: | :x: | :heavy_check_mark
 Web-based management UI | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark: 
 Source Code Repo Files (Auditing) | 6 | 13647 | 344 | 912 | 534 | 225 
 
-In summary, HomeServerHQ can easily do <ins>**everything**</ins> that these other projects can do. But they can only do a small fraction of what HomeServerHQ can do.
-
