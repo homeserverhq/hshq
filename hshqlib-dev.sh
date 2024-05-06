@@ -12938,6 +12938,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=67
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 68 ]; then
+    echo "Updating to Version 68..."
+    version68Update
+    HSHQ_VERSION=68
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14492,6 +14498,39 @@ function version67Update()
     ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "chmod 600 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml"
     unloadSSHKey
   fi
+}
+
+function version68Update()
+{
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    is_continue=""
+    while ! [ "$is_continue" = "ok" ]
+    do
+      read -p "Enter 'ok' to continue: " is_continue
+    done
+    tee $HOME/resetCaddyContainer.sh >/dev/null <<EOFCD
+#!/bin/bash
+RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_NONBACKUP_DIR
+RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_SSL_DIR
+
+docker container stop caddy
+rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/config/*
+rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/data/*
+rm -fr \$RELAYSERVER_HSHQ_SSL_DIR/caddy/*
+docker container start caddy
+
+EOFCD
+    chmod 500 $HOME/resetCaddyContainer.sh
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/resetCaddyContainer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/resetCaddyContainer.sh; sudo mv ~/resetCaddyContainer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh"
+    unloadSSHKey
+    rm -f $HOME/resetCaddyContainer.sh
+  fi
+  set +e
+  outputAllScriptServerScripts
+  set -e
 }
 
 function sendRSExposeScripts()
