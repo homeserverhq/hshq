@@ -1908,7 +1908,7 @@ EOF
       #  ;;
       2)
         PRIMARY_VPN_SETUP_TYPE=manual
-        showMessageBox "DNS Server" "Since you will set up a RelayServer later, you will need to manually set your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally. If you do not know how, do an internet search for 'change DNS server' followed by your operating system."
+        showMessageBox "DNS Server" "Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally."
         ;;
     esac
     updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
