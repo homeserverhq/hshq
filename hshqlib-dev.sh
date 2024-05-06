@@ -1417,9 +1417,11 @@ function performBaseInstallation()
   fi
   initCronJobs
   clearQueryLogAndStatsAdguardHS
+  set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     clearQueryLogAndStatsAdguardRS
   fi
+  set -e
   installLogNotify "Post Installation"
   removeSudoTimeoutInstall
   postInstallation
@@ -6247,7 +6249,7 @@ function connectVPN()
       isBreak=false
       while [ $total_attempts -le $max_attempts ]
       do
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo Successfully logged in to RelayServer!"
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logging in to RelayServer...\"; docker ps > /dev/null 2>&1"
         if [ $? -eq 0 ]; then
           isBreak=true
           break
@@ -15277,7 +15279,7 @@ function installHostNTPServer()
 {
   if [[ "$(isProgramInstalled ntpq)" = "false" ]]; then
     echo "Installing ntp server, please wait..."
-    sudo apt update > /dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
     sudo DEBIAN_FRONTEND=noninteractive apt install ntp -y > /dev/null 2>&1
   fi
   set +e
