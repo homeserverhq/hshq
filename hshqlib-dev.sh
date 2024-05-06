@@ -1324,6 +1324,12 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}If you want to completely remove everything, run the utility\n"
   strInstallConfig="${strInstallConfig}inside this script (System Utils -> Uninstall and Remove\n"
   strInstallConfig="${strInstallConfig}Everything) and follow the prompts.\n\n"
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    strInstallConfig="${strInstallConfig}The installation on the RelayServer will also automatically\n"
+    strInstallConfig="${strInstallConfig}be initiated as well. Ensure to log in to the RelayServer\n"
+    strInstallConfig="${strInstallConfig}as user ($RELAYSERVER_REMOTE_USERNAME) to monitor the progress of the installation,\n"
+    strInstallConfig="${strInstallConfig}by entering the command 'screen -r hshqInstall'.\n\n"
+  fi
   echo -e "${strInstallConfig}"
   isRelayInstallInit=false
   while true;
@@ -1419,7 +1425,10 @@ function performBaseInstallation()
   clearQueryLogAndStatsAdguardHS
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    clearQueryLogAndStatsAdguardRS
+    curl https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      clearQueryLogAndStatsAdguardRS
+    fi
   fi
   set -e
   installLogNotify "Post Installation"
@@ -2490,8 +2499,6 @@ RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 function main()
 {
   echo "Running setup script..."
-  # This is for testing...
-  read -p "Press enter to continue"
   outputNukeScript
   set +e
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
@@ -3852,9 +3859,12 @@ function outputCaddyScripts()
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh >/dev/null <<EOFCD
 #!/bin/bash
 RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
+RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
+
 docker container stop caddy
 rm -fr \\\$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/config/*
 rm -fr \\\$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/data/*
+rm -fr \\\$RELAYSERVER_HSHQ_SSL_DIR/caddy/*
 docker container start caddy
 
 EOFCD
@@ -43788,7 +43798,7 @@ EOFSC
 {
   "name": "07 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyDNSRelayServer.sh",
-  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
+  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack. Note that this will delete all existing data and certificates in Caddy, which includes those obtained externally from ZeroSSL. Running this function too many times could result in a rate limit.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
