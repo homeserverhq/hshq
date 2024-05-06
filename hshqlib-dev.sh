@@ -129,7 +129,6 @@ function main()
     *)
       ;;
   esac
-
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
   fi
@@ -209,6 +208,7 @@ function showNotInstalledMenu()
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      USER_SUDO_PW=""
       continue
     fi
   done
@@ -1344,7 +1344,7 @@ function initInstallation()
     echo "Starting installation on RelayServer..."
     sleep 1
     loadSSHKey
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash install.sh $USER_RELAY_SUDO_PW"
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash install.sh -p $USER_RELAY_SUDO_PW"
     unloadSSHKey
   fi
   set -e
@@ -6364,18 +6364,19 @@ EOF
         echo -e "=======================================================\n"
         echo -e "_______________________________________________________"
         echo -e "The installation script has been uploaded. Please log in to"
-        echo -e "the RelayServer and perform the installation (bash install.sh)."
-        echo -e "Copy your new WireGuard configuration above for your first user."
-        echo -e "After the RelayServer has completed the installation, and the server"
-        echo -e "has rebooted, enter 'ok' to finish the integration. After this"
+        echo -e "the RelayServer and perform the installation, by entering the"
+        echo -e "command 'bash install.sh', and follow the prompts.\n"
+        echo -e "Ensure to copy your new WireGuard configuration above for your first user.\n"
+        echo -e "AFTER the RelayServer has completed the installation, and AFTER the server"
+        echo -e "has FULLY rebooted, enter 'integrate' to finish the integration. When this"
         echo -e "process completes, and you are returned to the main menu, then you can"
         echo -e "safely activate your new WireGuard connection to access your HomeServer"
-        echo -e "network and masquerade your IP address."
-        echo -e "Check your admin email ($EMAIL_ADMIN_EMAIL_ADDRESS) for subsequent details."
+        echo -e "network and masquerade your IP address.\n"
+        echo -e "Check your admin email ($EMAIL_ADMIN_EMAIL_ADDRESS) for a copy of the WireGuard config info."
         while true;
         do
-          read -p "Enter 'ok' to continue (no quotes, all lowercase): " is_continue
-          if [ "$is_continue" = "ok" ]; then
+          read -p "Enter 'integrate' to complete the integration (no quotes, all lowercase): " is_continue
+          if [ "$is_continue" = "integrate" ]; then
             break
           fi
         done
