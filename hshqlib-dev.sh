@@ -2488,6 +2488,7 @@ RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 function main()
 {
   echo "Running setup script..."
+  outputNukeScript
   set +e
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
@@ -2532,7 +2533,6 @@ function main()
   sudo timedatectl set-timezone "$TZ"
 
   installDependencies
-  outputNukeScript
   createDockerNetworks
 }
 
@@ -2853,6 +2853,8 @@ function main()
   sudo systemctl stop docker
   sudo systemctl start docker
   sudo rm -fr \\\$HSHQ_BASE_DIR
+  sudo rm -fr \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
+  sudo rm -fr \$HOME/$RS_INSTALL_FRESH_SCRIPT_NAME
   sudo rm -f \$HOME/$NUKE_SCRIPT_NAME
   sudo rm -fr \$HOME/.ssh/*
   sudo rm -f $HSHQ_SCRIPT_OPEN
