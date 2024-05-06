@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=9
+HSHQ_WRAPPER_SCRIPT_VERSION=10
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -72,10 +72,12 @@ function main()
 EOF
   )
 
-  while getopts ':a:s' opt; do
+  while getopts ':a:p:s' opt; do
     case "$opt" in
       a)
         CONNECTING_IP="$OPTARG" ;;
+      p)
+        USER_SUDO_PW="$OPTARG" ;;
       s)
         is_skip_confirm=true ;;
       ?|h)
@@ -97,21 +99,24 @@ EOF
     echo "127.0.1.1 $(hostname)" | sudo tee -a /etc/hosts
   fi
   rm -f $HOME/dead.letter
-  set -e
-
-  if [[ "$(isProgramInstalled needrestart)" = "true" ]]; then
+  # Also check if config directory exists, so that we don't perpetually remove needrestart. The user may have added it back.
+  if [[ "$(isProgramInstalled needrestart)" = "true" ]] && ! [ -d $HSHQ_DATA_DIR/config ]; then
+    checkPromptUserPW
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-    sudo apt remove -y needrestart >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled whiptail)" = "false" ]]; then
+    checkPromptUserPW
     echo "Installing whiptail, please wait..."
-    sudo apt update && sudo apt install -y whiptail >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y whiptail >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled gpg)" = "false" ]]; then
+    checkPromptUserPW
     echo "Installing gnupg, please wait..."
-    sudo apt update && sudo apt install -y gnupg >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y gnupg >/dev/null 2>/dev/null
   fi
+  set -e
 
   initMenu=$(cat << EOF
 $logo
@@ -160,6 +165,7 @@ EOF
         fi
         set -e
       done
+      tmp_pw1=""
       if [ "$is_use_existing" = "false" ]; then
         tmp_pw1=1
         tmp_pw2=2
@@ -169,8 +175,18 @@ EOF
           tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
           if ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
             showMessageBox "Password Mismatch" "The passwords do not match, please try again."
+            continue
+          fi
+          if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
+            showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
+            continue
           fi
         done
+        # Capture and pass the user password to the self-referenced function call below.
+        # This change was implemented on version 10 of the wrapper (hshq.sh), and 
+        # version 68 of the lib (hshqlib.sh), in order to speed up the installation
+        # process and eliminate duplicate prompting.
+        pwarg="-p $tmp_pw1"
         pw_hash=$(openssl passwd -6 $tmp_pw1)
         tmp_pw1=""
         tmp_pw2=""
@@ -183,7 +199,7 @@ EOF
       fi
       chown ${LINUX_USERNAME}:${LINUX_USERNAME} $0
       mv $0 /home/$LINUX_USERNAME/
-      sudo -u $LINUX_USERNAME bash /home/$LINUX_USERNAME/$(basename $0) -s $ciparg
+      sudo -u $LINUX_USERNAME bash /home/$LINUX_USERNAME/$(basename $0) -s $ciparg $pwarg
     fi
     exit 1
   fi
@@ -193,7 +209,10 @@ EOF
   if [ $? -ne 0 ]; then
     getent group docker >/dev/null || sudo groupadd docker
     sudo usermod -aG docker $USERNAME
-    sudo -u $USERNAME bash $0 -s $ciparg
+    if ! [ -z "$USER_SUDO_PW" ]; then
+      pwarg="-p $USER_SUDO_PW"
+    fi
+    sudo -u $USERNAME bash $0 -s $ciparg $pwarg
     exit 0
   fi
 
@@ -392,7 +411,7 @@ EOF
     showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
     exit 1
   fi
-  bash $HSHQ_LIB_SCRIPT run $is_download_lib $CONNECTING_IP
+  bash $HSHQ_LIB_SCRIPT run $is_download_lib "$CONNECTING_IP" "$USER_SUDO_PW"
 }
 
 function verifyFile()
@@ -491,7 +510,30 @@ $2
 EOF
   )
   menures=$(whiptail --title "$1" --passwordbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    exit 1
+  fi
   echo "$menures"
+}
+
+function checkPromptUserPW()
+{
+  if ! [ "$USERNAME" = "root" ]; then
+    while [ -z "$USER_SUDO_PW" ]
+    do
+      USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your current sudo password (This is only used for the installation process to eliminate duplicate prompting): ")
+      retVal=$?
+      if [ $retVal -ne 0 ]; then
+        exit 3
+      fi
+      echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+        USER_SUDO_PW=""
+        continue
+      fi
+    done
+  fi
 }
 
 function checkValidString()
@@ -502,6 +544,34 @@ function checkValidString()
     echo "true"
   else
     echo "false"
+  fi
+}
+
+function checkValidPassword()
+{
+  pw_in="$1"
+  min_length=$2
+  pw_length=${#pw_in}
+  if ! [[ "$pw_in" =~ [[:upper:]] ]]; then
+    # Does not contain upper case.
+    echo "false"
+  elif ! [[ "$pw_in" =~ [[:lower:]] ]]; then
+    # Does not contain lower case.
+    echo "false"
+  elif ! [[ "$pw_in" =~ [0-9] ]]; then
+    # Does not contain number.
+    echo "false"
+  elif [[ "$pw_in" =~ [[:space:]] ]]; then
+    # Contains a space.
+    echo "false"
+  elif [[ "$pw_in" =~ '$' ]]; then
+    # Contains a dollar sign.
+    echo "false"
+  elif [ $pw_length -lt $min_length ]; then
+    # Less than min characters
+    echo "false"
+  else
+    echo "true"
   fi
 }
 
