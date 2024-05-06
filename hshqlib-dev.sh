@@ -2490,6 +2490,8 @@ RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 function main()
 {
   echo "Running setup script..."
+  # This is for testing...
+  read -p "Press enter to continue"
   outputNukeScript
   set +e
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
@@ -6283,6 +6285,7 @@ function connectVPN()
         break
       fi
     done
+    sleep 10
     # Setup syncthing link
     echo "Setting up Syncthing..."
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
@@ -6302,6 +6305,7 @@ function connectVPN()
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
     set -e
     unloadSSHKey
+    sleep 10
   fi
 }
 
