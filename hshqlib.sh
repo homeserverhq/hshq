@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=67
+HSHQ_SCRIPT_VERSION=68
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -115,6 +115,7 @@ function main()
   case "$1" in
     "install")
       CONNECTING_IP=$2
+      USER_SUDO_PW=$3
       IS_PERFORM_INSTALL=true
       ;;
     "-a")
@@ -123,11 +124,11 @@ function main()
     "run")
       IS_NEW_LIB=$2
       CONNECTING_IP=$3
+      USER_SUDO_PW=$4
       ;;
     *)
       ;;
   esac
-
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
   fi
@@ -188,6 +189,29 @@ function showNotInstalledMenu()
 {
   checkSupportedHostOS
   set +e
+  # Check and capture the user sudo password, only for the installation process.
+  # This change was implemented on version 10 of the wrapper (hshq.sh), and 
+  # version 68 of the lib (hshqlib.sh), in order to speed up the installation
+  # process and eliminate duplicate prompting.
+  if ! [ -z "$USER_SUDO_PW" ]; then
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_SUDO_PW=""
+    fi
+  fi
+  while [ -z "$USER_SUDO_PW" ]
+  do
+    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your current sudo password (This is only used for the installation process to eliminate duplicate prompting): ")
+    if [ $? -ne 0 ]; then
+      exit 3
+    fi
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      USER_SUDO_PW=""
+      continue
+    fi
+  done
   sudo DEBIAN_FRONTEND=noninteractive apt update
   notinstalledmenu=$(cat << EOF
 
@@ -1301,69 +1325,39 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}inside this script (System Utils -> Uninstall and Remove\n"
   strInstallConfig="${strInstallConfig}Everything) and follow the prompts.\n\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    strInstallConfig="${strInstallConfig}The installation must also be performed on your RelayServer.\n"
-    strInstallConfig="${strInstallConfig}You have the option of initiating the installation of your\n"
-    strInstallConfig="${strInstallConfig}RelayServer directly within this session or creating a new\n"
-    strInstallConfig="${strInstallConfig}SSH session to start and monitor the process. If a separate\n"
-    strInstallConfig="${strInstallConfig}session, you will need to log into your RelayServer as your\n"
-    strInstallConfig="${strInstallConfig}new user ($RELAYSERVER_REMOTE_USERNAME) and initiate the installation process by\n"
-    strInstallConfig="${strInstallConfig}entering: 'bash $RS_INSTALL_FRESH_SCRIPT_NAME'. The installation script has already\n"
-    strInstallConfig="${strInstallConfig}been transferred to your RelayServer in the user's home\n"
-    strInstallConfig="${strInstallConfig}directory (/home/$RELAYSERVER_REMOTE_USERNAME). Start the installation on your\n"
-    strInstallConfig="${strInstallConfig}RelayServer first before starting the installation here."
+    strInstallConfig="${strInstallConfig}The installation on the RelayServer will also automatically\n"
+    strInstallConfig="${strInstallConfig}be initiated as well. Ensure to log in to the RelayServer\n"
+    strInstallConfig="${strInstallConfig}as user ($RELAYSERVER_REMOTE_USERNAME) to monitor the progress of the installation,\n"
+    strInstallConfig="${strInstallConfig}by entering the command 'screen -r hshqInstall'.\n\n"
   fi
-  #rm -f $HSHQ_INSTALL_CFG
-  #echo -e "$strInstallConfig" > $HSHQ_INSTALL_CFG
-  #chmod 0400 $HSHQ_INSTALL_CFG
   echo -e "${strInstallConfig}"
   isRelayInstallInit=false
   while true;
   do
-    if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ "$isRelayInstallInit" = "false" ]; then
-      echo -e "\nIf you want to initiate the installation on your RelayServer"
-      echo -e "directly within this session, enter 'relay' below and follow"
-      echo -e "the subsequent instructions. Enter 'install' to perform the"
-      echo -e "HomeServer installation."
-      echo -e "________________________________________________________________________"
-      read -p "After reading/copying the above section, enter 'relay', 'install', or 'exit': " is_install
-    else
-      echo -e "________________________________________________________________________"
-      read -p "After reading/copying the above section, enter 'install' or 'exit': " is_install
-    fi
-    if [ "$is_install" = "exit" ]; then
+    echo -e "________________________________________________________________________"
+    read -p "After reading/copying the above section, enter 'install' or 'exit': " is_install
+    if [ "$is_install" = "install" ]; then
+      break
+    elif [ "$is_install" = "exit" ]; then
       echo "Exiting..."
       closeHSHQScript
       exit 1
-    fi
-    if [ "$is_install" = "install" ]; then
-      break
-    elif [ "$is_install" = "relay" ] && [ "$isRelayInstallInit" = "false" ]; then
-      echo -e "________________________________________________________________________"
-      echo -e "\n\nYou will now be logged in to your RelayServer to initiate"
-      echo -e "that part of the installation. If the 'screen' utility needs to"
-      echo -e "installed, then it will be installed first. After that, the screen"
-      echo -e "will clear and you will be provided with instructions and prompted"
-      echo -e "for your password. Once the installation process starts, and you"
-      echo -e "have followed the instructions to detach from the screen, you will"
-      echo -e "be returned back to your HomeServer session so that you can"
-      echo -e "start the installation here.\n\n"
-      read -p "Press enter to continue."
-      loadSSHKey
-      ssh -p $RELAYSERVER_CURRENT_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash install.sh"
-      isRelayInstallInit=true
-      unloadSSHKey
-      echo -e "\n\n\n________________________________________________________________________\n"
-      echo -e "You're back!"
-      echo -e "If the installation process on your RelayServer has been properly"
-      echo -e "initiated, then you can proceed with HomeServer installation.\n"
-      continue
     else
       echo "Unknown response, please try again."
     fi
   done
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "Starting installation on RelayServer..."
+    sleep 1
+    loadSSHKey
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash install.sh -p $USER_RELAY_SUDO_PW"
+    unloadSSHKey
+  fi
   set -e
   sudo -v
-  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME -S hshqInstall bash $0 install $CONNECTING_IP
+  echo "Starting installation on HomeServer..."
+  sleep 1
+  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME -S hshqInstall bash $0 install "$CONNECTING_IP" "$USER_SUDO_PW"
   exit 0
 }
 
@@ -1389,6 +1383,8 @@ function performBaseInstallation()
   fi
   IS_INSTALLING=true
   updateConfigVar IS_INSTALLING $IS_INSTALLING
+  set +e
+  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   set -e
   setSudoTimeoutInstall
   sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
@@ -1427,9 +1423,14 @@ function performBaseInstallation()
   fi
   initCronJobs
   clearQueryLogAndStatsAdguardHS
+  set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    clearQueryLogAndStatsAdguardRS
+    curl https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      clearQueryLogAndStatsAdguardRS
+    fi
   fi
+  set -e
   installLogNotify "Post Installation"
   removeSudoTimeoutInstall
   postInstallation
@@ -1907,6 +1908,7 @@ EOF
       #  ;;
       2)
         PRIMARY_VPN_SETUP_TYPE=manual
+        showMessageBox "DNS Server" "Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally."
         ;;
     esac
     updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
@@ -2497,6 +2499,7 @@ RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 function main()
 {
   echo "Running setup script..."
+  outputNukeScript
   set +e
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
@@ -2541,7 +2544,6 @@ function main()
   sudo timedatectl set-timezone "$TZ"
 
   installDependencies
-  outputNukeScript
   createDockerNetworks
 }
 
@@ -2862,6 +2864,8 @@ function main()
   sudo systemctl stop docker
   sudo systemctl start docker
   sudo rm -fr \\\$HSHQ_BASE_DIR
+  sudo rm -fr \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
+  sudo rm -fr \$HOME/$RS_INSTALL_FRESH_SCRIPT_NAME
   sudo rm -f \$HOME/$NUKE_SCRIPT_NAME
   sudo rm -fr \$HOME/.ssh/*
   sudo rm -f $HSHQ_SCRIPT_OPEN
@@ -3266,10 +3270,12 @@ function main()
   RELAYSERVER_SERVER_IP=\$(getHostIP)
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   installLogNotify "Begin Main"
-  while getopts ':i' opt; do
+  while getopts ':p:i' opt; do
     case "\$opt" in
       i)
         IS_PERFORM_INSTALL=true ;;
+      p)
+        USER_RELAY_SUDO_PW="\$OPTARG" ;;
       ?|h)
         echo "Usage: \$(basename \$0)"
         exit 1 ;;
@@ -3280,6 +3286,9 @@ function main()
     echo "Installation already in progess, exiting..."
     exit 1
   fi
+  if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
+    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  fi
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
     touch $HSHQ_SCRIPT_OPEN
     install
@@ -3289,7 +3298,10 @@ function main()
       sudo DEBIAN_FRONTEND=noninteractive apt update
       sudo DEBIAN_FRONTEND=noninteractive apt install -y screen > /dev/null 2>&1
     fi
-    screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i
+    if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
+      pwarg="-p \$USER_RELAY_SUDO_PW"
+    fi
+    screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i \$pwarg
   fi
 }
 
@@ -3847,9 +3859,12 @@ function outputCaddyScripts()
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh >/dev/null <<EOFCD
 #!/bin/bash
 RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
+RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
+
 docker container stop caddy
 rm -fr \\\$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/config/*
 rm -fr \\\$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/data/*
+rm -fr \\\$RELAYSERVER_HSHQ_SSL_DIR/caddy/*
 docker container start caddy
 
 EOFCD
@@ -6007,8 +6022,8 @@ function uploadVPNInstallScripts()
         continue
       fi
       if ! [ -z "$nonroot_username" ]; then
-        if [ $(checkPasswordStrength "$tmp_pw1") = "false" ]; then
-          showMessageBox "Weak Password" "The password is too weak, please make a stronger one. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers."
+        if [ $(checkValidPassword "$tmp_pw1" 16) = "false" ]; then
+          showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
           tmp_pw1=""
           tmp_pw2=""
           continue
@@ -6021,6 +6036,7 @@ function uploadVPNInstallScripts()
         tmp_pw2=$tmp_pw1
       fi
     done
+    USER_RELAY_SUDO_PW=$tmp_pw1
     remote_pw=$tmp_pw1
     tmp_pw1=""
     tmp_pw2=""
@@ -6063,7 +6079,7 @@ function uploadVPNInstallScripts()
     set +e
     if ! [ -z "$nonroot_username" ]; then
       pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
-      pw_hash=$(openssl passwd -6 $remote_pw)
+      pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
       sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
@@ -6073,11 +6089,11 @@ function uploadVPNInstallScripts()
       ssh -q -o ConnectTimeout=10 -o "BatchMode=yes" -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP exit
       if [ $? -ne 0 ]; then
         # Key not present
-        sshpass -p $remote_pw ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
+        sshpass -p $USER_RELAY_SUDO_PW ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
       fi
       is_err=$?
       if [ $is_err -eq 0 ]; then
-        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $remote_pw | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
+        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $USER_RELAY_SUDO_PW | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
         is_err=$?
         unloadSSHKey
       fi
@@ -6245,7 +6261,7 @@ function connectVPN()
       isBreak=false
       while [ $total_attempts -le $max_attempts ]
       do
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo Successfully logged in to RelayServer!"
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logging in to RelayServer...\"; docker ps > /dev/null 2>&1"
         if [ $? -eq 0 ]; then
           isBreak=true
           break
@@ -6279,6 +6295,7 @@ function connectVPN()
         break
       fi
     done
+    sleep 10
     # Setup syncthing link
     echo "Setting up Syncthing..."
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
@@ -6298,6 +6315,7 @@ function connectVPN()
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
     set -e
     unloadSSHKey
+    sleep 10
   fi
 }
 
@@ -6364,18 +6382,19 @@ EOF
         echo -e "=======================================================\n"
         echo -e "_______________________________________________________"
         echo -e "The installation script has been uploaded. Please log in to"
-        echo -e "the RelayServer and perform the installation (bash install.sh)."
-        echo -e "Copy your new WireGuard configuration above for your first user."
-        echo -e "After the RelayServer has completed the installation, and the server"
-        echo -e "has rebooted, enter 'ok' to finish the integration. After this"
+        echo -e "the RelayServer and perform the installation, by entering the"
+        echo -e "command 'bash install.sh', and follow the prompts.\n"
+        echo -e "Ensure to copy your new WireGuard configuration above for your first user.\n"
+        echo -e "AFTER the RelayServer has completed the installation, and AFTER the server"
+        echo -e "has FULLY rebooted, enter 'integrate' to finish the integration. When this"
         echo -e "process completes, and you are returned to the main menu, then you can"
         echo -e "safely activate your new WireGuard connection to access your HomeServer"
-        echo -e "network and masquerade your IP address."
-        echo -e "Check your admin email ($EMAIL_ADMIN_EMAIL_ADDRESS) for subsequent details."
+        echo -e "network and masquerade your IP address.\n"
+        echo -e "Check your admin email ($EMAIL_ADMIN_EMAIL_ADDRESS) for a copy of the WireGuard config info."
         while true;
         do
-          read -p "Enter 'ok' to continue (no quotes, all lowercase): " is_continue
-          if [ "$is_continue" = "ok" ]; then
+          read -p "Enter 'integrate' to complete the integration (no quotes, all lowercase): " is_continue
+          if [ "$is_continue" = "integrate" ]; then
             break
           fi
         done
@@ -10390,9 +10409,10 @@ function checkValidIPAddress()
   fi
 }
 
-function checkPasswordStrength()
+function checkValidPassword()
 {
   pw_in="$1"
+  min_length=$2
   pw_length=${#pw_in}
   if ! [[ "$pw_in" =~ [[:upper:]] ]]; then
     # Does not contain upper case.
@@ -10406,8 +10426,11 @@ function checkPasswordStrength()
   elif [[ "$pw_in" =~ [[:space:]] ]]; then
     # Contains a space.
     echo "false"
-  elif [ $pw_length -lt 16 ]; then
-    # Less than 16 characters
+  elif [[ "$pw_in" =~ '$' ]]; then
+    # Contains a dollar sign.
+    echo "false"
+  elif [ $pw_length -lt $min_length ]; then
+    # Less than min characters
     echo "false"
   else
     echo "true"
@@ -11653,6 +11676,31 @@ function updateHomeServerDNS()
     if [ "$curPeerDomain" = "$HOMESERVER_DOMAIN" ]; then
       continue
     fi
+    if [ -z "$curHSName" ]; then
+      is_error=true
+      error_text="The HomeServer name is empty."
+      break
+    fi
+    if [ -z "$curHostDomain" ]; then
+      is_error=true
+      error_text="The host domain name is empty."
+      break
+    fi
+    if [ -z "$curPeerDomain" ]; then
+      is_error=true
+      error_text="The peer domain name is empty."
+      break
+    fi
+    if [ -z "$curExtPrefix" ]; then
+      is_error=true
+      error_text="The ext prefix is empty."
+      break
+    fi
+    if [ -z "$curIP" ]; then
+      is_error=true
+      error_text="The ip address is empty."
+      break
+    fi
     check_ip=$(checkHomeServerDNSIPAddressInVPN $curHostDomain $curPeerDomain $curIP)
     if ! [ "$check_ip" = "true" ]; then
       is_error=true
@@ -12888,6 +12936,12 @@ function checkUpdateVersion()
     echo "Updating to Version 67..."
     version67Update
     HSHQ_VERSION=67
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 68 ]; then
+    echo "Updating to Version 68..."
+    version68Update
+    HSHQ_VERSION=68
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -14446,6 +14500,39 @@ function version67Update()
   fi
 }
 
+function version68Update()
+{
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    is_continue=""
+    while ! [ "$is_continue" = "ok" ]
+    do
+      read -p "Enter 'ok' to continue: " is_continue
+    done
+    tee $HOME/resetCaddyContainer.sh >/dev/null <<EOFCD
+#!/bin/bash
+RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_NONBACKUP_DIR
+RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_SSL_DIR
+
+docker container stop caddy
+rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/config/*
+rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/caddy/data/*
+rm -fr \$RELAYSERVER_HSHQ_SSL_DIR/caddy/*
+docker container start caddy
+
+EOFCD
+    chmod 500 $HOME/resetCaddyContainer.sh
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/resetCaddyContainer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/resetCaddyContainer.sh; sudo mv ~/resetCaddyContainer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh"
+    unloadSSHKey
+    rm -f $HOME/resetCaddyContainer.sh
+  fi
+  set +e
+  outputAllScriptServerScripts
+  set -e
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -15245,7 +15332,7 @@ function installHostNTPServer()
 {
   if [[ "$(isProgramInstalled ntpq)" = "false" ]]; then
     echo "Installing ntp server, please wait..."
-    sudo apt update > /dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
     sudo DEBIAN_FRONTEND=noninteractive apt install ntp -y > /dev/null 2>&1
   fi
   set +e
@@ -43750,7 +43837,7 @@ EOFSC
 {
   "name": "07 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyDNSRelayServer.sh",
-  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
+  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack. Note that this will delete all existing data and certificates in Caddy, which includes those obtained externally from ZeroSSL. Running this function too many times could result in a rate limit.",
   "group": "$group_id_relayserver",
   "parameters": [
     {
