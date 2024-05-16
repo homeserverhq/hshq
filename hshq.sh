@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=10
+HSHQ_WRAPPER_SCRIPT_VERSION=11
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -109,12 +109,14 @@ EOF
   if [[ "$(isProgramInstalled whiptail)" = "false" ]]; then
     checkPromptUserPW
     echo "Installing whiptail, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y whiptail >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall whiptail >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled gpg)" = "false" ]]; then
     checkPromptUserPW
     echo "Installing gnupg, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y gnupg >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall gnupg >/dev/null 2>/dev/null
   fi
   set -e
 
@@ -179,6 +181,8 @@ EOF
           fi
           if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
             showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
+            tmp_pw1=1
+            tmp_pw2=2
             continue
           fi
         done
@@ -441,6 +445,11 @@ function verifyFile()
     return $ver_res
   fi
   rm -f /tmp/verify
+}
+
+function performAptInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' $1
 }
 
 function isProgramInstalled()
