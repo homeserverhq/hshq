@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=68
+HSHQ_SCRIPT_VERSION=70
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -654,6 +654,11 @@ function performSuggestedSecUpdates()
   fi
 }
 
+function performAptInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' $1
+}
+
 function installDependencies()
 {
   set +e
@@ -661,12 +666,12 @@ function installDependencies()
   installHostNTPServer
   if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
     echo "Installing ssmtp, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y ssmtp
+    performAptInstall ssmtp
   fi
 
   if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
     echo "Installing mailx, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y mailutils
+    performAptInstall mailutils
   fi
 
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
@@ -693,7 +698,7 @@ EOFSM
     if [[ "$(isProgramInstalled $util)" = "false" ]]; then
       lib_name=$(echo $util | cut -d"|" -f2)
       echo "Installing $lib_name, please wait..."
-      sudo DEBIAN_FRONTEND=noninteractive apt install -y $lib_name
+      performAptInstall $lib_name
     fi
   done
 
@@ -706,7 +711,7 @@ EOFSM
     sudo systemctl status rsyslog > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       echo "Installing rsyslog, please wait..."
-      sudo DEBIAN_FRONTEND=noninteractive apt install -y rsyslog
+      performAptInstall rsyslog
       sudo systemctl enable rsyslog
       sudo systemctl start rsyslog
     fi
@@ -735,10 +740,10 @@ EOFSM
   if ! [ -z $DESKTOP_ENV ]; then
     case $DESKTOP_ENV in
       "kde")
-        sudo DEBIAN_FRONTEND=noninteractive apt install -y kde-full
+        performAptInstall kde-full
 	    ;;
       "gnome")
-        sudo DEBIAN_FRONTEND=noninteractive apt install -y ubuntu-gnome-desktop
+        performAptInstall ubuntu-gnome-desktop
 	    ;;
     esac
     if ! [ $DESKTOP_ENV = "na" ]; then
@@ -746,7 +751,7 @@ EOFSM
       sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
       echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
       sudo DEBIAN_FRONTEND=noninteractive apt update
-      sudo DEBIAN_FRONTEND=noninteractive apt install -y brave-browser
+      performAptInstall brave-browser
       if ! [ -z "$CERTS_ROOT_CA_NAME" ]; then
         mkdir -p $HOME/.pki
         certutil -d sql:$HOME/.pki/nssdb -A -t "CT,C,C" -n "$HOMESERVER_NAME Root CA" -i /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
@@ -860,7 +865,7 @@ function initConfig()
   fi
   if [[ "$(isProgramInstalled grepcidr)" = "false" ]]; then
     echo "Installing grepcidr, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y grepcidr > /dev/null 2>&1
+    performAptInstall grepcidr > /dev/null 2>&1
   fi
   set -e
 
@@ -1035,7 +1040,7 @@ function initConfig()
   while [ -z "$HOMESERVER_HOST_IP" ]
   do
     defIP=$(getDefaultRouteIPAddress)
-    HOMESERVER_HOST_IP=$(promptUserInputMenu "$defIP" "Enter IP Address" "Enter your internal private IP Address. The value provided should be correct, but please confirm. If you are on a cloud-based server, then this value will be the public IP address: ")
+    HOMESERVER_HOST_IP=$(promptUserInputMenu "$defIP" "Enter IP Address" "Enter the static IP to assign to your default interface. The value provided is the current source IP on the default route. If the value is empty, then enter the IP address you used to log in via SSH: ")
     if [ -z "$HOMESERVER_HOST_IP" ]; then
       showMessageBox "IP Address Empty" "The IP address cannot be empty"
     else
@@ -1200,7 +1205,7 @@ function initConfig()
 
   if [[ "$(isProgramInstalled pwgen)" = "false" ]]; then
     echo "Installing pwgen, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y pwgen > /dev/null 2>&1
+    performAptInstall pwgen > /dev/null 2>&1
   fi
 
   while [ -z "$EMAIL_ADMIN_USERNAME" ]
@@ -1264,11 +1269,11 @@ function initInstallation()
 {
   if [[ "$(isProgramInstalled screen)" = "false" ]]; then
     echo "Installing screen, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y screen > /dev/null 2>&1
+    performAptInstall screen > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled nano)" = "false" ]]; then
     echo "Installing nano, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y nano > /dev/null 2>&1
+    performAptInstall nano > /dev/null 2>&1
   fi
   # Show info to user and prompt for confirmation
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -1391,7 +1396,9 @@ function performBaseInstallation()
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   set -e
   setSudoTimeoutInstall
-  sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   echo "Setting static IP..."
   setStaticIPToCurrent
   echo "Setting MOTD..."
@@ -1881,7 +1888,7 @@ function setupVPNConnection()
 {
   if [[ "$(isProgramInstalled wg)" = "false" ]]; then
     echo "Installing WireGuard utils, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y wireguard-tools > /dev/null 2>&1
+    performAptInstall wireguard-tools > /dev/null 2>&1
   fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "none" ]; then
     initWireGuardDB
@@ -1959,19 +1966,19 @@ function setupHostedVPN()
 {
   if [[ "$(isProgramInstalled dig)" = "false" ]]; then
     echo "Installing dig, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y dnsutils > /dev/null 2>&1
+    performAptInstall dnsutils > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled sshpass)" = "false" ]]; then
     echo "Installing sshpass, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y sshpass > /dev/null 2>&1
+    performAptInstall sshpass > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled sipcalc)" = "false" ]]; then
     echo "Installing sipcalc, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y sipcalc > /dev/null 2>&1
+    performAptInstall sipcalc > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled jq)" = "false" ]]; then
     echo "Installing jq, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y jq > /dev/null 2>&1
+    performAptInstall jq > /dev/null 2>&1
   fi
 
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
@@ -2670,6 +2677,11 @@ function performSuggestedSecUpdates()
   fi
 }
 
+function performAptInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' \$1
+}
+
 function installDependencies()
 {
   UTILS_LIST="$RELAYSERVER_UTILS_LIST"
@@ -2681,9 +2693,10 @@ function installDependencies()
     sudo sed -i "s/#\\\$nrconf{kernelhints} = -1;/\\\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
     sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart > /dev/null 2>&1
   fi
-  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
 
-  sudo DEBIAN_FRONTEND=noninteractive apt install ssmtp -y
+  performAptInstall ssmtp
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
 mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
@@ -2700,7 +2713,7 @@ root:$EMAIL_SMTP_EMAIL_ADDRESS
 \$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
 EOFSM
 
-  sudo DEBIAN_FRONTEND=noninteractive apt install mailutils -y
+  performAptInstall mailutils
   getent group mailsenders >/dev/null || sudo groupadd mailsenders
   sudo usermod -aG mailsenders \$USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
@@ -2710,7 +2723,7 @@ EOFSM
   sudo systemctl status rsyslog > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     echo "Installing rsyslog, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y rsyslog > /dev/null 2>&1
+    performAptInstall rsyslog > /dev/null 2>&1
     sudo systemctl enable rsyslog
     sudo systemctl start rsyslog
   fi
@@ -2720,7 +2733,7 @@ EOFSM
     if [[ "\$(isProgramInstalled \$util)" = "false" ]]; then
       lib_name=\$(echo \$util | cut -d"|" -f2)
       echo "Installing \$lib_name, please wait..."
-      sudo DEBIAN_FRONTEND=noninteractive apt install -y \$lib_name > /dev/null 2>&1
+      performAptInstall \$lib_name > /dev/null 2>&1
     fi
   done
 
@@ -2736,7 +2749,10 @@ EOFSM
   if ! [ "\$(isProgramInstalled \$util)" = "true" ]; then
     # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
     echo "Installing docker, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
+    performAptInstall ca-certificates > /dev/null 2>&1
+    performAptInstall curl > /dev/null 2>&1
+    performAptInstall gnupg > /dev/null 2>&1
+    performAptInstall lsb-release > /dev/null 2>&1
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
     sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
     echo "deb [arch=\$(dpkg --print-architecture) \
@@ -2745,7 +2761,11 @@ EOFSM
     sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo DEBIAN_FRONTEND=noninteractive apt update
     echo "Installing docker, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce=5:25.0.5-1~ubuntu.22.04~jammy docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
+    performAptInstall docker-ce=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
+    performAptInstall docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
+    performAptInstall containerd.io > /dev/null 2>&1
+    performAptInstall docker-compose > /dev/null 2>&1
+    performAptInstall docker-compose-plugin > /dev/null 2>&1
     # See https://www.portainer.io/blog/portainer-and-docker-26
     sudo apt-mark hold docker-ce
     sudo apt-mark hold docker-ce-cli
@@ -2979,6 +2999,11 @@ function getHostIP()
 function getIPFromHostname()
 {
   echo \$(dig \$1 +short | grep '^[.0-9]*\$')
+}
+
+function performAptInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' \$1
 }
 
 function haltAndWaitForConfirmation()
@@ -3234,7 +3259,7 @@ function startWazuhAgent()
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install wazuh-agent
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -3300,13 +3325,18 @@ function main()
     if [[ "\$(isProgramInstalled screen)" = "false" ]]; then
       echo "Installing screen, please wait..."
       sudo DEBIAN_FRONTEND=noninteractive apt update
-      sudo DEBIAN_FRONTEND=noninteractive apt install -y screen > /dev/null 2>&1
+      performAptInstall screen > /dev/null 2>&1
     fi
     if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
       pwarg="-p \$USER_RELAY_SUDO_PW"
     fi
     screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i \$pwarg
   fi
+}
+
+function performAptInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' \$1
 }
 
 function isProgramInstalled()
@@ -4202,7 +4232,7 @@ function startWazuhAgent()
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install wazuh-agent
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -13614,11 +13644,11 @@ function version37Update()
   SCRIPTSERVER_LOCALHOST_PORT=8008
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   echo "Installing python, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y python3 > /dev/null 2>&1
+  performAptInstall python3 > /dev/null 2>&1
   echo "Installing python-pip, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y python3-pip > /dev/null 2>&1
+  performAptInstall python3-pip > /dev/null 2>&1
   echo "Installing unzip, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y unzip > /dev/null 2>&1
+  performAptInstall unzip > /dev/null 2>&1
   getUpdateAssets
   set +e
   outputBootScripts
@@ -15337,7 +15367,7 @@ function installHostNTPServer()
   if [[ "$(isProgramInstalled ntpq)" = "false" ]]; then
     echo "Installing ntp server, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-    sudo DEBIAN_FRONTEND=noninteractive apt install ntp -y > /dev/null 2>&1
+    performAptInstall ntp > /dev/null 2>&1
   fi
   set +e
   grep "127.127.1.0" /etc/ntp.conf > /dev/null 2>&1
@@ -16239,7 +16269,8 @@ function outputWireGuardScripts()
 {
   if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
     echo "Installing networkd-dispatcher, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt install -y networkd-dispatcher > /dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall networkd-dispatcher > /dev/null 2>&1
   fi
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh >/dev/null <<EOFWG
 #!/bin/bash
@@ -16582,7 +16613,7 @@ EOFWG
   sudo systemctl enable createWGDockerNetworks
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
     echo "Installing sqlite3, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y sqlite3 > /dev/null 2>&1
+    performAptInstall sqlite3 > /dev/null 2>&1
   fi
 }
 
@@ -16727,12 +16758,19 @@ function installDockerUbuntu2004Rooted()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   echo "Installing docker, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y ca-certificates curl gnupg lsb-release > /dev/null 2>&1
+  performAptInstall ca-certificates > /dev/null 2>&1
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall lsb-release > /dev/null 2>&1
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y docker-ce=5:25.0.5-1~ubuntu.22.04~jammy docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy containerd.io docker-compose docker-compose-plugin > /dev/null 2>&1
+  performAptInstall docker-ce=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
+  performAptInstall docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-compose > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
   # See https://www.portainer.io/blog/portainer-and-docker-26
   sudo apt-mark hold docker-ce
   sudo apt-mark hold docker-ce-cli
@@ -16744,7 +16782,9 @@ function installDockerUbuntu2004Rootless()
 {
   sudo DEBIAN_FRONTEND=noninteractive apt update
   # Install dependencies for rootless docker (https://linuxhandbook.com/rootless-docker/)
-  sudo DEBIAN_FRONTEND=noninteractive apt install -y uidmap dbus-user-session fuse-overlayfs > /dev/null 2>&1
+  performAptInstall uidmap > /dev/null 2>&1
+  performAptInstall dbus-user-session  > /dev/null 2>&1
+  performAptInstall fuse-overlayfs  > /dev/null 2>&1
   sudo systemctl disable --now docker.service docker.socket
   # Install the rootless docker package (https://linuxhandbook.com/rootless-docker/)
   curl -fsSL https://get.docker.com/rootless | sh
@@ -16765,19 +16805,19 @@ function initCertificateAuthority()
   fi
   if [[ "$(isProgramInstalled openssl)" = "false" ]]; then
     echo "Installing openssl, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y openssl > /dev/null 2>&1
+    performAptInstall openssl > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled faketime)" = "false" ]]; then
     echo "Installing faketime, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y faketime > /dev/null 2>&1
+    performAptInstall faketime > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled bc)" = "false" ]]; then
     echo "Installing bc, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y bc > /dev/null 2>&1
+    performAptInstall bc > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled htpasswd)" = "false" ]]; then
     echo "Installing htpasswd, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt install -y apache2-utils > /dev/null 2>&1
+    performAptInstall apache2-utils > /dev/null 2>&1
   fi
 
   if [ -z "$CERTS_ROOT_CA_NAME" ]; then
@@ -24448,7 +24488,7 @@ function installWazuh()
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install wazuh-agent
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -39203,7 +39243,7 @@ function installScriptServer()
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/theme
   echo "Installing python3-tornado..."
-  sudo DEBIAN_FRONTEND=noninteractive apt install python3-tornado -y > /dev/null 2>&1
+  performAptInstall python3-tornado -y > /dev/null 2>&1
   initServicesCredentials
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   outputConfigScriptServer
@@ -40850,7 +40890,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
 echo "Updating Linux and rebooting..."
-sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y && sudo reboot
+sudo DEBIAN_FRONTEND=noninteractive apt update
+sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+sudo reboot
 set -e
 
 EOFSC
