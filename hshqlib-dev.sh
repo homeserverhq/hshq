@@ -1040,7 +1040,7 @@ function initConfig()
   while [ -z "$HOMESERVER_HOST_IP" ]
   do
     defIP=$(getDefaultRouteIPAddress)
-    HOMESERVER_HOST_IP=$(promptUserInputMenu "$defIP" "Enter IP Address" "Enter your internal private IP Address. The value provided should be correct, but please confirm. If you are on a cloud-based server, then this value will be the public IP address: ")
+    HOMESERVER_HOST_IP=$(promptUserInputMenu "$defIP" "Enter IP Address" "Enter the static IP to assign to your default interface. The value provided is the current source IP on the default route. If the value is empty, then enter the IP address you used to log in via SSH: ")
     if [ -z "$HOMESERVER_HOST_IP" ]; then
       showMessageBox "IP Address Empty" "The IP address cannot be empty"
     else
