@@ -201,7 +201,7 @@ function showNotInstalledMenu()
   fi
   while [ -z "$USER_SUDO_PW" ]
   do
-    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your current sudo password (This is only used for the installation process to eliminate duplicate prompting): ")
+    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME (This is only used for the installation process to eliminate duplicate prompting): ")
     if [ $? -ne 0 ]; then
       exit 3
     fi
@@ -212,6 +212,7 @@ function showNotInstalledMenu()
       continue
     fi
   done
+  setSudoTimeoutInstall
   sudo DEBIAN_FRONTEND=noninteractive apt update
   notinstalledmenu=$(cat << EOF
 
@@ -943,6 +944,9 @@ function initConfig()
       HOMESERVER_DOMAIN=""
     elif [ $(checkValidBaseDomain "$HOMESERVER_DOMAIN") = "false" ]; then
       showMessageBox "Invalid Domain Name" "Invalid domain name. The base domain must be of the format 'example.com'. It cannot be a subdomain."
+      HOMESERVER_DOMAIN=""
+    elif [ $(getDomainTLD "$HOMESERVER_DOMAIN") = "test" ]; then
+      showMessageBox "Invalid Domain" "The specific TLD .test actually causes some issues. Change it to .tester or something else."
       HOMESERVER_DOMAIN=""
 	else
 	  updateConfigVar HOMESERVER_DOMAIN $HOMESERVER_DOMAIN
