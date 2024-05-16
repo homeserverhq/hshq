@@ -1396,7 +1396,9 @@ function performBaseInstallation()
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   set -e
   setSudoTimeoutInstall
-  sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   echo "Setting static IP..."
   setStaticIPToCurrent
   echo "Setting MOTD..."
@@ -40888,7 +40890,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
 echo "Updating Linux and rebooting..."
-sudo DEBIAN_FRONTEND=noninteractive apt update && sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y && sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y && sudo reboot
+sudo DEBIAN_FRONTEND=noninteractive apt update
+sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+sudo reboot
 set -e
 
 EOFSC
