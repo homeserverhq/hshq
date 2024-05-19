@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=11
+HSHQ_WRAPPER_SCRIPT_VERSION=12
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -105,6 +105,12 @@ EOF
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
     sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart >/dev/null 2>/dev/null
+  fi
+  if [[ "$(isProgramInstalled curl)" = "false" ]]; then
+    checkPromptUserPW
+    echo "Installing curl, please wait..."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall curl >/dev/null 2>/dev/null
   fi
   if [[ "$(isProgramInstalled whiptail)" = "false" ]]; then
     checkPromptUserPW
