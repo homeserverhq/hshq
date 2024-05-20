@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=70
+HSHQ_SCRIPT_VERSION=71
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -93,7 +93,7 @@ function init()
   initServiceDefaults
   loadPinnedDockerImages
   loadDirectoryStructure
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
   hshqlogo=$(cat << EOF
@@ -407,8 +407,9 @@ EOF
   "1" "Update Linux OS and Reboot" \
   "2" "Download All Docker Images" \
   "3" "Change Host Static IP" \
-  "4" "Uninstall and Remove Everything" \
-  "5" "Exit" 3>&1 1>&2 2>&3)
+  "4" "Configure Simple Backup" \
+  "5" "Uninstall and Remove Everything" \
+  "6" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -431,8 +432,11 @@ EOF
       set +e
       return 1 ;;
     4)
-      nukeHSHQ ;;
+      checkLoadConfig
+      showConfigureSimpleBackupMenu ;;
     5)
+      nukeHSHQ ;;
+    6)
 	  return 0 ;;
   esac
 }
@@ -880,7 +884,7 @@ function initConfig()
         exit 1
       fi
     elif [[ "$HOMESERVER_HOST_IP" =~ ^172\.16\. ]]; then
-      showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/24 range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range. Exiting..."
+      showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/16 range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range. Exiting..."
       exit 1
     elif [[ "$HOMESERVER_HOST_IP" =~ ^172\. ]]; then
       showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/12 range. This range is reserved for Docker networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
@@ -1063,7 +1067,7 @@ function initConfig()
         fi
       fi
       if [[ "$HOMESERVER_HOST_IP" =~ ^172\.16\. ]]; then
-        showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/24 range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
+        showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 172.16.0.0/16 range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
         HOMESERVER_HOST_IP=""
         continue
       fi
@@ -1398,11 +1402,11 @@ function performBaseInstallation()
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  set -e
   setSudoTimeoutInstall
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  set -e
   echo "Setting static IP..."
   setStaticIPToCurrent
   echo "Setting MOTD..."
@@ -1501,6 +1505,248 @@ function installLogNotify()
   if [ "$IS_INSTALLING" = "true" ]; then
     echo $(date)" - $log_message" >> ${HSHQ_BASE_DIR}/${HSHQ_TIMESTAMP_LOG_NAME}
   fi
+}
+
+function showConfigureSimpleBackupMenu()
+{
+  set +e
+  showYesNoMessageBox "Continue?" "This is a very basic utility to set up your local encrypted backup. It will search for any unmounted disks and prompt you with a list. After making your selection and confirming, it will wipe all data and partitions on that disk, create a single partition, automount the filesystem on boot, then configure your backup in Duplicati for this disk. There are infinite ways you can configure your backup, and infinite tools to accomplish it. This utility is merely one simple way. If you decide to manually set up your own backup process, the directory you need to focus on is $HSHQ_DATA_DIR. The full system can be restored from the contents of this directory. Do you wish to continue?"
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  sudo cat /etc/fstab | grep $HSHQ_BACKUP_DIR > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR in /etc/fstab. Please unmount this filesystem and remove it from /etc/fstab, returning..."
+    return
+  fi
+  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
+    return
+  fi
+  if ! [ -f $HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite ]; then
+    showMessageBox "ERROR" "Could not find the Duplicati database, returning..."
+    return
+  fi
+  sudo sqlite3 $HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite "select TargetURL from Backup;" | grep /backups/ > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a backup in Duplicati that uses the /backups directory, returning..."
+    return
+  fi
+  dbackmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  diskarr=($(sudo hwinfo --disk --short | tail +2))
+  curListNum=1
+  scsbm_menu_items=( --title "Select Disk" --radiolist "$dbackmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
+  for curDisk in "${diskarr[@]}"
+  do
+    curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
+    curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
+    findmnt | grep $curDiskID  > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      continue
+    fi
+    curDiskSize=$(lsblk -o SIZE --noheadings --raw -d $curDiskID)
+    curDiskParts=$(sudo partx -g $curDiskID 2> /dev/null | wc -l)
+    scsbm_menu_items+=( "$curDiskID  $curDiskSize  ($curDiskParts Partitions)  $curDiskName" )
+    scsbm_menu_items+=( "|" )
+    scsbm_menu_items+=( "off" )
+    ((curListNum++))
+  done
+  IFS=$OIFS
+  if [ $curListNum -le 1 ]; then
+    showMessageBox "ERROR" "There are no available disks for this operation, returning..."
+    return
+  fi
+  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
+  confirmFormat=$(promptUserInputMenu "" "Confirm Format" "WARNING - This operation will entirely ERASE the contents of the selected drive. To confirm, enter the word 'format' below:")
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  if [ $? -ne 0 ] || [ -z $confirmFormat ] || ! [ "$confirmFormat" = "format" ]; then
+    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
+    return
+  fi
+  while true;
+  do
+    backupHour=$(promptUserInputMenu "" "Daily Backup Time" "Enter the hour of the day(0-23) that you wish to perform the daily backup (this can be modified later in Duplicati):")
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    if [[ $backupHour =~ ^[0-9]+$ ]] && [ $backupHour -ge 0 ] && [ $backupHour -le 23 ]; then
+      break
+    else
+      showMessageBox "Invalid Number" "The value is not a valid number."
+    fi
+  done
+
+  tmp_pw1=""
+  tmp_pw2=""
+  while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
+  do
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a super-computer) and you will NOT be able to recover your data: ")
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    if [ -z "$tmp_pw1" ]; then
+      showMessageBox "Password Empty" "The password cannot be empty, please try again."
+      continue
+    fi
+    if [ $(checkValidPassword "$tmp_pw1" 16) = "false" ]; then
+      showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
+      tmp_pw1=""
+      tmp_pw2=""
+      continue
+    fi
+    tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    if ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
+      showMessageBox "Password Mismatch" "The passwords do not match, please try again."
+    fi
+  done
+  backupPW="$tmp_pw1"
+  tmp_pw1=""
+  tmp_pw2=""
+  confirmFinal=$(promptUserInputMenu "" "Confirm" "The backup configuration is ready. To perform all actions, including erasing and formatting the selected disk, enter the word 'confirm' below:")
+  if [ $? -ne 0 ] || [ -z $confirmFinal ] || ! [ "$confirmFinal" = "confirm" ]; then
+    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
+    return
+  fi
+  docker container stop duplicati > /dev/null 2>&1
+  docker container stop syncthing > /dev/null 2>&1
+  sudo sfdisk --delete $selDisk > /dev/null
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "Encountered an error attempting to delete the partitions from the disk, exiting..."
+    return
+  fi
+  # A little sleep never hurts
+  sleep 1
+  echo 'type=83' | sudo sfdisk $selDisk > /dev/null
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "Encountered an error attempting to create the new partition, exiting..."
+    return
+  fi
+  sleep 1
+  newPart=$(sudo fdisk -l $selDisk | grep '^/dev' | cut -d' ' -f1)
+  sleep 1
+  sudo mkfs -F -t ext4 $newPart > /dev/null
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "Encountered an error attempting to create the new filesystem, exiting..."
+    return
+  fi
+  sleep 1
+  sudo mount $newPart $HSHQ_BACKUP_DIR > /dev/null
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "Encountered an error attempting to mount the filesystem, exiting..."
+    return
+  fi
+  sleep 1
+  sudo mkdir $HSHQ_BACKUP_DIR/$HOMESERVER_DOMAIN
+  docker container start duplicati > /dev/null 2>&1
+  docker container start syncthing > /dev/null 2>&1
+  newPartID=$(sudo blkid -s UUID -o value $newPart)
+  sudo cp /etc/fstab /etc/fstab.old
+  echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  if [ -z $newPartID ]; then
+    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  else
+    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  fi
+  sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo mv /etc/fstab.old /etc/fstab
+    showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup device will not be auto-mounted after a reboot."
+  else
+    sudo rm -f /etc/fstab.old
+  fi
+  mydate=$(date --date="$(date +%Y-%m-%d) $backupHour:00")
+  dtnow=$(date)
+  if [ $(($(date -d "$dtnow" +%s) - $(date -d "$mydate" +%s))) -gt 0 ]; then
+    mydate=$(date -d "$mydate + 1 day")
+  fi
+  utcdate=$(TZ="UTC" date --date="$mydate")
+  cat <<EOFBU > $HOME/hshq-backup.json
+{
+  "CreatedByVersion": "2.0.7.1",
+  "Schedule": {
+    "Time": "$(TZ="UTC" date --date="$utcdate" +%FT%TZ)",
+    "Repeat": "1D",
+    "LastRun": "0001-01-01T05:51:00Z",
+    "Rule": "AllowedWeekDays=Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday",
+    "AllowedDays": [
+      "mon",
+      "tue",
+      "wed",
+      "thu",
+      "fri",
+      "sat",
+      "sun"
+    ]
+  },
+  "Backup": {
+    "Name": "HSHQ Backup",
+    "Description": "",
+    "Tags": [],
+    "TargetURL": "file:///backups/$HOMESERVER_DOMAIN",
+    "Sources": [
+      "/source/"
+    ],
+    "Settings": [
+      {
+        "Filter": "",
+        "Name": "encryption-module",
+        "Value": "aes",
+        "Argument": null
+      },
+      {
+        "Filter": "",
+        "Name": "compression-module",
+        "Value": "zip",
+        "Argument": null
+      },
+      {
+        "Filter": "",
+        "Name": "dblock-size",
+        "Value": "50mb",
+        "Argument": null
+      },
+      {
+        "Filter": "",
+        "Name": "passphrase",
+        "Value": "$backupPW",
+        "Argument": null
+      },
+      {
+        "Filter": "",
+        "Name": "retention-policy",
+        "Value": "1W:1D,4W:1W,12M:1M",
+        "Argument": null
+      }
+    ],
+    "Filters": [],
+    "Metadata": {},
+    "IsTemporary": false
+  },
+  "DisplayNames": {
+    "/source/": "source"
+  }
+}
+EOFBU
+  sudo mv $HOME/hshq-backup.json $HSHQ_STACKS_DIR/duplicati/config/
+  docker exec duplicati bash -c "mono /app/duplicati/Duplicati.CommandLine.ConfigurationImporter.exe /config/hshq-backup.json --import-metadata=false --server-datafolder=/config"
+  showMessageBox "SUCCESS" "Your backup is configured. It will run automatically starting at $mydate, or you can trigger it manually. You will recieve a daily email in your admin email account ($EMAIL_ADMIN_EMAIL_ADDRESS) after each backup. You can view/edit the configuration in https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN ."
 }
 
 # Stacks Functions
@@ -10279,7 +10525,7 @@ function replaceOrAppendTextBlockInFile()
     if ! [ -z $space_delim ]; then
       replace_text=$(echo $replace_text | sed "s|$space_delim| |g")
     fi
-    echo -e "${block_match_begin}\n${replace_text}\n${block_match_end}\n" >> $r_filename
+    echo -e "\n${block_match_begin}\n${replace_text}\n${block_match_end}" >> $r_filename
   else
     #Replace
     replaceTextBlockInFile "$block_match_begin" "$block_match_end" "$replace_text" $r_filename true "$space_delim"
@@ -12982,6 +13228,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=68
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 71 ]; then
+    echo "Updating to Version 71..."
+    version71Update
+    HSHQ_VERSION=71
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14569,6 +14821,11 @@ EOFCD
   set +e
   outputAllScriptServerScripts
   set -e
+}
+
+function version71Update()
+{
+  performAptInstall hwinfo > /dev/null 2>&1
 }
 
 function sendRSExposeScripts()
@@ -27465,6 +27722,7 @@ EOFDP
   cat <<EOFDP > $HOME/duplicati.env
 PUID=0
 PGID=0
+CLI_ARGS=--webservice-password=$DUPLICATI_ADMIN_PASSWORD
 EOFDP
 }
 
