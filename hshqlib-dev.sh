@@ -45528,7 +45528,6 @@ EOFCF
   }
 }
 # sn-sub-${SUB_IMAGES} END
-
 EOFCF
 
   cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
