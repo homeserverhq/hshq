@@ -875,7 +875,15 @@ function initConfig()
   set -e
 
   HOMESERVER_HOST_IP=$(getDefaultRouteIPAddress)
-  isInPrivateRange=$(checkDefaultRouteIPIsPrivateIP)
+  if [[ "$HOMESERVER_HOST_IP" =~ ^127\. ]]; then
+    # This case should never occur, but just for completeness.
+    showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 127.0.0.0/8 range. This range is specifically reserved for the loopback interface. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range. Exiting..."
+    exit 1
+  fi
+  isInPrivateRange=false
+  if ! [ -z $HOMESERVER_HOST_IP ]; then
+    isInPrivateRange=$(checkDefaultRouteIPIsPrivateIP)
+  fi
   if [ "$isInPrivateRange" = "true" ]; then
     if [[ "$HOMESERVER_HOST_IP" =~ ^10\. ]]; then
       showYesNoMessageBox "Bad Private Range" "Your current private IP address is in the 10.0.0.0/8 range. This range is reserved for VPN networking within this infrastructure. This may work fine, or you could encounter networking issues either during installation or down the road when connecting with other HomeServers. It is highly advisable to either change your router's LAN subnet or daisy-chain another router in between, and set it in the 192.168.0.0/16 range. Are you sure you want to continue?"
@@ -894,7 +902,6 @@ function initConfig()
       fi
     fi
   fi
-  HOMESERVER_HOST_IP=""
 
   if [ -z "$USERID" ]; then
     USERID=$(id -u)
@@ -1045,10 +1052,12 @@ function initConfig()
     fi
   done
 
+  if [ -z "$HOMESERVER_HOST_IP" ]; then
+    HOMESERVER_HOST_IP=$(getDefaultRouteIPAddress)
+  fi
   while [ -z "$HOMESERVER_HOST_IP" ]
   do
-    defIP=$(getDefaultRouteIPAddress)
-    HOMESERVER_HOST_IP=$(promptUserInputMenu "$defIP" "Enter IP Address" "Enter the static IP to assign to your default interface. The value provided is the current source IP on the default route. If the value is empty, then enter the IP address you used to log in via SSH: ")
+    HOMESERVER_HOST_IP=$(promptUserInputMenu "" "Enter IP Address" "Your current IP address could not be detected. Enter the static IP to assign to your default interface: ")
     if [ -z "$HOMESERVER_HOST_IP" ]; then
       showMessageBox "IP Address Empty" "The IP address cannot be empty"
     else
@@ -1079,12 +1088,13 @@ function initConfig()
           continue
         fi
       fi
-      updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
-      HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
-      updateConfigVar HOMESERVER_HOST_ISPRIVATE $HOMESERVER_HOST_ISPRIVATE
-      setHomeServerPrivateRange
     fi
   done
+
+  updateConfigVar HOMESERVER_HOST_IP $HOMESERVER_HOST_IP
+  HOMESERVER_HOST_ISPRIVATE=$(checkDefaultRouteIPIsPrivateIP)
+  updateConfigVar HOMESERVER_HOST_ISPRIVATE $HOMESERVER_HOST_ISPRIVATE
+  setHomeServerPrivateRange
 
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
     if [ -z $CONNECTING_IP ]; then
@@ -1594,7 +1604,7 @@ EOF
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a super-computer) and you will NOT be able to recover your data: ")
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a quantum super-computer) and you will NOT be able to recover your data: ")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -12380,7 +12390,7 @@ function createInitialEnv()
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of your configuration file (unless you have a super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of your configuration file (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
     if [ $? -ne 0 ]; then exit; fi
     if [ -z "$tmp_pw1" ]; then
       showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -39540,7 +39550,7 @@ function installScriptServer()
   updateCaddyBlocks $SUB_SCRIPTSERVER $MANAGETLS_SCRIPTSERVER "$is_integrate_hshq" $NETDEFAULT_SCRIPTSERVER "$inner_block"
   insertSubAuthelia $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN admins
   insertEnableSvcAll script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png"
-  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png"
+  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true
   restartAllCaddyContainers
   sudo systemctl daemon-reload
   sudo systemctl enable runScriptServer
