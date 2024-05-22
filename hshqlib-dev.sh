@@ -2556,7 +2556,7 @@ EOFCF
 #CLIENT_ADDRESS=${RELAYSERVER_WG_INTERNET_HS_IP}/32
 #MTU=$RELAYSERVER_CLIENT_DEFAULT_MTU
 #IS_ENABLED=true
-#EXT_DOMAIN=$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
+#EXT_DOMAIN=$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
 
 [Interface]
 PrivateKey = $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY
@@ -14850,8 +14850,16 @@ function version72Update()
   mkdir -p $HSHQ_WIREGUARD_DIR/logs
   outputWGDockInternetScript
   outputUpdateEndpointIPsScript
+  outputDockerWireGuardCaddyScript
   sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
   sudo systemctl start networkd-dispatcher > /dev/null 2>&1
+  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+  do
+    cur_ext_dom=$(sudo grep "^#EXT_DOMAIN=" $conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+    if ! [[ $cur_ext_dom =~ ^$RELAYSERVER_SUB_WG.* ]]; then
+      sudo sed -i "s|^#EXT_DOMAIN=.*|#EXT_DOMAIN=${RELAYSERVER_SUB_WG}\.${cur_ext_dom}|g" $conf
+    fi
+  done
 }
 
 function sendRSExposeScripts()
@@ -16132,10 +16140,15 @@ set +e
 # wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
 # at boot, will wait until the interfaces are up, then start/restart the Caddy containers.
 
+# This script will also initialize all of the tunnelled WireGuard internet-bound connections that are bound to a docker network.
+
 hshq_db=$HSHQ_DB
+HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
 
 function main()
 {
+  sudo \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+
   ips_arr=(\$(sqlite3 \$hshq_db "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
 
   ns_sleep=5
@@ -16686,6 +16699,15 @@ function main()
     return
   fi
 
+  if ! [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
+    edip=\$(dig \$EXT_DOMAIN +short | grep '^[0-9]')
+    if [ \$? -ne 0 ]; then
+      # Cannot resolve hostname, this happens in boot process during networkd-dispatcher startup
+      echo "Cannot resolve hostname, returning..."
+      return
+    fi
+  fi
+
   shift
   shift
   case "\$COMMAND" in
@@ -16769,7 +16791,7 @@ function status()
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
   CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
   while_check "\$CMD" "\$CHECK"
-  VPNIP=\$(docker run -ti --rm --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 -fsSL --max-time 5 https://api.ipify.org)
+  VPNIP=\$(docker run --rm --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 -fsSL --max-time 5 https://api.ipify.org)
   IP=\$(curl --silent https://api.ipify.org)
   if [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
     rsip=\$EXT_DOMAIN
@@ -16859,14 +16881,14 @@ function main()
       if ! [ -z "\$rs_ip" ]; then
         timeout \$ping_timeout ping -c 1 \$rs_ip > /dev/null 2>&1
         if [ \$? -ne 0 ]; then
-          addLogMessage "Connection Error, restarting \$cname..."
+          addLogMessage "Connection Error, restarting(HSVPN) \$cname..."
           resetVPN \$iname
         fi
       fi
     fi
   done
 
-  # Check ClientDNS
+  # Check/fix ClientDNS
   cdns_id=(\$(sqlite3 \$db "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
   for cur_cdns in "\${cdns_id[@]}"
   do
@@ -16878,9 +16900,20 @@ function main()
     if ! [ -z "\$cur_cdns" ] && [ "\$(checkByID \$cur_cdns)" = "true" ]; then
       cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_cdns;")
       echo "IP changed, restarting \$cname..."
-      addLogMessage "IP changed, restarting $cname..."
+      addLogMessage "IP changed, restarting(ClientDNS) $cname..."
       docker container restart \${cname}-wireguard
       docker container restart \${cname}-dnsmasq
+    fi
+  done
+
+  # Check/fix tunnelled WireGuard internet connections
+  ls \$HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+  do
+    resOut=\$(\$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf status)
+    retVal=\$?
+    if [ \$retVal -ne 0 ]; then
+      addLogMessage "Connection Error, restarting(HSInternet)[\$retVal - \$resOut] \$conf..."
+      \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf restart > /dev/null 2>&1
     fi
   done
 }
