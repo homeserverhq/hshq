@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=71
+HSHQ_SCRIPT_VERSION=72
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -12367,6 +12367,7 @@ function createInitialEnv()
   mkdir -p $HSHQ_WIREGUARD_DIR/scripts
   mkdir -p $HSHQ_WIREGUARD_DIR/users
   mkdir -p $HSHQ_WIREGUARD_DIR/requestkeys
+  mkdir -p $HSHQ_WIREGUARD_DIR/logs
   mkdir -p $HSHQ_RELAYSERVER_DIR/backup
   mkdir -p $HSHQ_RELAYSERVER_DIR/scripts
   mkdir -p $HSHQ_SCRIPTS_DIR/user
@@ -13242,6 +13243,12 @@ function checkUpdateVersion()
     echo "Updating to Version 71..."
     version71Update
     HSHQ_VERSION=71
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 72 ]; then
+    echo "Updating to Version 72..."
+    version72Update
+    HSHQ_VERSION=72
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -14836,6 +14843,15 @@ EOFCD
 function version71Update()
 {
   performAptInstall hwinfo > /dev/null 2>&1
+}
+
+function version72Update()
+{
+  mkdir -p $HSHQ_WIREGUARD_DIR/logs
+  outputWGDockInternetScript
+  outputUpdateEndpointIPsScript
+  sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
+  sudo systemctl start networkd-dispatcher > /dev/null 2>&1
 }
 
 function sendRSExposeScripts()
@@ -16543,6 +16559,102 @@ function outputWireGuardScripts()
     sudo DEBIAN_FRONTEND=noninteractive apt update
     performAptInstall networkd-dispatcher > /dev/null 2>&1
   fi
+  sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
+  sudo systemctl start networkd-dispatcher > /dev/null 2>&1
+  outputWGDockInternetScript
+  sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh >/dev/null <<EOFWG
+#!/bin/bash
+set +e
+
+if [ -f /tmp/wgDockInternetUpAll-Updating ]; then
+  exit
+fi
+touch /tmp/wgDockInternetUpAll-Updating
+
+wgdir=$HSHQ_WIREGUARD_DIR
+scripts_dir=$HSHQ_SCRIPTS_DIR
+
+\$scripts_dir/root/dockPrivateIP.sh
+
+ls \$wgdir/internet/*.conf > /dev/null 2>&1
+if [ \$? -eq 0 ]; then
+  ls \$wgdir/internet/*.conf | while read conf
+  do
+    \$wgdir/scripts/wgDockInternet.sh \$conf up
+  done
+fi
+
+rm -f /tmp/wgDockInternetUpAll-Updating
+EOFWG
+  sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+  sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh >/dev/null <<EOFWG
+#!/bin/bash
+
+wgdir=$HSHQ_WIREGUARD_DIR
+sudo ls \$wgdir/internet/*.conf | while read conf
+do
+  \$wgdir/scripts/wgDockInternet.sh \$conf down
+done
+EOFWG
+  sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
+  outputUpdateEndpointIPsScript
+  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
+  sudo ln -s $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
+#!/bin/bash
+set +e
+
+wgdir=$HSHQ_WIREGUARD_DIR
+scriptsdir=$HSHQ_SCRIPTS_DIR
+
+function main()
+{
+  sudo ls \$wgdir/internet/*.conf | while read conf
+  do
+    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
+    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
+    CONN=\$(getConfigVar \#MTU)
+    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
+    fi
+  done
+}
+function getConfigVar()
+{
+  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+}
+
+main "\$@"
+EOFWG
+  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service >/dev/null <<EOFWG
+[Unit]
+Description=Check or create Docker networks for WireGuard interfaces and private IP ranges
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=$HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+
+[Install]
+WantedBy=default.target
+EOFWG
+  sudo chmod 644 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
+  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
+  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
+  sudo ln -s $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service /etc/systemd/system/createWGDockerNetworks.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable createWGDockerNetworks
+  if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
+    echo "Installing sqlite3, please wait..."
+    performAptInstall sqlite3 > /dev/null 2>&1
+  fi
+}
+
+function outputWGDockInternetScript()
+{
+  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh >/dev/null <<EOFWG
 #!/bin/bash
 
@@ -16666,12 +16778,16 @@ function status()
   fi
   if [ -z "\$rsip" ]; then
     echo "ERROR: Could not determine IP from \$EXT_DOMAIN"
-  elif [[ "\$VPNIP" = "\$rsip" ]]; then
-    echo "Connected to \$rsip: Blackhole active"
+    return 1
   elif [[ "\$VPNIP" = "\$IP" ]]; then
     echo "Not connected to Endpoint: Blackhole NOT active!"
+    return 2
+  elif [[ "\$VPNIP" = "\$rsip" ]]; then
+    echo "Connected to \$rsip: Blackhole active"
+    return 0
   else
-    echo "Connected to \$VPNIP: Blackhole active"
+    echo "Unknown error, VPNIP=\$VPNIP, RSIP=\$rsip, LocalIP=\$IP"
+    return 3
   fi
 }
 
@@ -16707,92 +16823,64 @@ function getConfigVar()
 main "\$@"
 EOFWG
   sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh
-  sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
+}
 
-if [ -f /tmp/wgDockInternetUpAll-Updating ]; then
-  exit
-fi
-touch /tmp/wgDockInternetUpAll-Updating
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scripts_dir=$HSHQ_SCRIPTS_DIR
-
-\$scripts_dir/root/dockPrivateIP.sh
-
-ls \$wgdir/internet/*.conf > /dev/null 2>&1
-if [ \$? -eq 0 ]; then
-  ls \$wgdir/internet/*.conf | while read conf
-  do
-    \$wgdir/scripts/wgDockInternet.sh \$conf up
-  done
-fi
-
-rm -f /tmp/wgDockInternetUpAll-Updating
-EOFWG
-  sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
-  sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh >/dev/null <<EOFWG
-#!/bin/bash
-
-wgdir=$HSHQ_WIREGUARD_DIR
-sudo ls \$wgdir/internet/*.conf | while read conf
-do
-  \$wgdir/scripts/wgDockInternet.sh \$conf down
-done
-EOFWG
-  sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
+function outputUpdateEndpointIPsScript()
+{
+  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null <<EOFWG
 #!/bin/bash
 
 HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
 db=$HSHQ_DB
+ping_timeout=5
 
 function main()
 {
-  # Three special cases for our network (HomeServer VPN, HomeServer Internet, and ClientDNS).
-  # After that, any HomeServer connection from other networks needs to be checked/updated.
-
-  id=\$(sqlite3 \$db "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='primary';")
-  if ! [ -z \$id ] && [ "\$(checkByID \$id)" = "true" ]; then
-    iname=\$(sqlite3 \$db "select InterfaceName from connections where ID=\$id;")
-    cname=\$(sqlite3 \$db "select Name from connections where ID=\$id;")
-    echo "IP changed, restarting \$cname..."
-    resetVPN \$iname
-  fi
-
-  id=\$(sqlite3 \$db "select ID from connections where ConnectionType='homeserver_internet' and NetworkType='primary';")
-  if ! [ -z \$id ] && [ "\$(checkByID \$id)" = "true" ]; then
-    iname=\$(sqlite3 \$db "select InterfaceName from connections where ID=\$id;")
-    cname=\$(sqlite3 \$db "select Name from connections where ID=\$id;")
-    echo "IP changed, restarting \$cname..."
-    resetInternet \$iname
-  fi
-
-  cdns_id=(\$(sqlite3 \$db "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
-  for cur_cdns in "\${cdns_id[@]}"
-  do
-    if ! [ -z \$cur_cdns ] && [ "\$(checkByID \$cur_cdns)" = "true" ]; then
-      cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_cdns;")
-      echo "IP changed, restarting \$cname..."
-      docker container restart \${cname}-wireguard
-    fi
-  done
-
-  conn_list=(\$(sqlite3 \$db "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='other';"))
+  conn_list=(\$(sqlite3 \$db "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
 
   for cur_id in "\${conn_list[@]}"
   do
+    is_int=\$(sqlite3 \$db "select IsInternet from connections where ID='\$cur_id';")
+    iname=\$(sqlite3 \$db "select InterfaceName from connections where ID='\$cur_id';")
+    cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_id;")
     if [ "\$(checkByID \$cur_id)" = "true" ]; then
-      is_int=\$(sqlite3 \$db "select IsInternet from connections where ID='\$cur_id';")
-      iname=\$(sqlite3 \$db "select InterfaceName from connections where ID='\$cur_id';")
-      cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_id;")
       echo "IP changed, restarting $cname..."
+      addLogMessage "IP changed, restarting $cname..."
       if [ \$is_int = 0 ]; then
         resetVPN \$iname
       else
         resetInternet \$iname
       fi
+    fi
+    if [ \$is_int = 0 ]; then
+      # Also need to check health of connection and reset if issues
+      rs_ip=\$(sqlite3 \$db "select RS_VPN_IP from hsvpn_connections where ID=\$cur_id;")
+      if ! [ -z "\$rs_ip" ]; then
+        timeout \$ping_timeout ping -c 1 \$rs_ip > /dev/null 2>&1
+        if [ \$? -ne 0 ]; then
+          addLogMessage "Connection Error, restarting \$cname..."
+          resetVPN \$iname
+        fi
+      fi
+    fi
+  done
+
+  # Check ClientDNS
+  cdns_id=(\$(sqlite3 \$db "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
+  for cur_cdns in "\${cdns_id[@]}"
+  do
+    # First, check if container is actually running
+    docker ps | grep \${cname}-wireguard > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      continue
+    fi
+    if ! [ -z "\$cur_cdns" ] && [ "\$(checkByID \$cur_cdns)" = "true" ]; then
+      cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_cdns;")
+      echo "IP changed, restarting \$cname..."
+      addLogMessage "IP changed, restarting $cname..."
+      docker container restart \${cname}-wireguard
+      docker container restart \${cname}-dnsmasq
     fi
   done
 }
@@ -16802,10 +16890,10 @@ function checkByID()
   dbID=\$1
   ehost=\$(sqlite3 \$db "select EndpointHostname from connections where ID='\$dbID';")
   eip=\$(sqlite3 \$db "select EndpointIP from connections where ID='\$dbID';")
-  if ! [ -z \$ehost ]; then
+  if ! [ -z "\$ehost" ]; then
     check_ip=\$(getIPFromHostname \$ehost)
   fi
-  if ! [ -z \$check_ip ] && ! [ "\$check_ip" = "\$eip" ]; then
+  if ! [ -z "\$check_ip" ] && ! [ "\$check_ip" = "\$eip" ]; then
     curdt=\$(date '+%Y-%m-%d %H:%M:%S')
     sqlite3 \$db "update connections set EndpointIP='\$check_ip',LastUpdated='\$curdt' where ID='\$dbID';"
     echo "true"
@@ -16817,13 +16905,13 @@ function checkByID()
 function resetVPN()
 {
   iname=\$1
-  systemctl restart wg-quick@\$iname
+  systemctl restart wg-quick@\$iname > /dev/null 2>&1
 }
 
 function resetInternet()
 {
   iname=\$1
-  \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$HSHQ_WIREGUARD_DIR/internet/\${iname}.conf restart
+  \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$HSHQ_WIREGUARD_DIR/internet/\${iname}.conf restart > /dev/null 2>&1
 }
 
 function getIPFromHostname()
@@ -16831,61 +16919,15 @@ function getIPFromHostname()
   echo \$(dig \$1 +short | grep '^[.0-9]*\$')
 }
 
+function addLogMessage()
+{
+  log_msg=\$1
+  echo "\$(date +%Y-%m-%d_%H%M%S): \$log_msg" >> \$HSHQ_WIREGUARD_DIR/logs/wireguard.log
+}
+
 main "\$@"
 EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
-  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
-  sudo ln -s $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scriptsdir=$HSHQ_SCRIPTS_DIR
-
-function main()
-{
-  sudo ls \$wgdir/internet/*.conf | while read conf
-  do
-    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
-    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
-    CONN=\$(getConfigVar \#MTU)
-    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
-    fi
-  done
-}
-function getConfigVar()
-{
-  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service >/dev/null <<EOFWG
-[Unit]
-Description=Check or create Docker networks for WireGuard interfaces and private IP ranges
-After=default.target
-
-[Service]
-Type=oneshot
-ExecStart=$HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
-
-[Install]
-WantedBy=default.target
-EOFWG
-  sudo chmod 644 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
-  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
-  sudo ln -s $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service /etc/systemd/system/createWGDockerNetworks.service
-  sudo systemctl daemon-reload
-  sudo systemctl enable createWGDockerNetworks
-  if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
-    echo "Installing sqlite3, please wait..."
-    performAptInstall sqlite3 > /dev/null 2>&1
-  fi
 }
 
 function enableWGInterfaceQuick()
