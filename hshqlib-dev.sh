@@ -1637,7 +1637,10 @@ EOF
   docker container stop duplicati > /dev/null 2>&1
   docker container stop syncthing > /dev/null 2>&1
   sudo sfdisk --delete $selDisk > /dev/null
-  if [ $? -ne 0 ]; then
+  retV=$?
+  if [ $retV -ne 0 ] && [ $retV -ne 1 ]; then
+    docker container start duplicati > /dev/null 2>&1
+    docker container start syncthing > /dev/null 2>&1
     showMessageBox "ERROR" "Encountered an error attempting to delete the partitions from the disk, exiting..."
     return
   fi
@@ -1645,6 +1648,8 @@ EOF
   sleep 1
   echo 'type=83' | sudo sfdisk $selDisk > /dev/null
   if [ $? -ne 0 ]; then
+    docker container start duplicati > /dev/null 2>&1
+    docker container start syncthing > /dev/null 2>&1
     showMessageBox "ERROR" "Encountered an error attempting to create the new partition, exiting..."
     return
   fi
@@ -1653,12 +1658,16 @@ EOF
   sleep 1
   sudo mkfs -F -t ext4 $newPart > /dev/null
   if [ $? -ne 0 ]; then
+    docker container start duplicati > /dev/null 2>&1
+    docker container start syncthing > /dev/null 2>&1
     showMessageBox "ERROR" "Encountered an error attempting to create the new filesystem, exiting..."
     return
   fi
   sleep 1
   sudo mount $newPart $HSHQ_BACKUP_DIR > /dev/null
   if [ $? -ne 0 ]; then
+    docker container start duplicati > /dev/null 2>&1
+    docker container start syncthing > /dev/null 2>&1
     showMessageBox "ERROR" "Encountered an error attempting to mount the filesystem, exiting..."
     return
   fi
@@ -16489,7 +16498,7 @@ function updateHomeServerLogoImages()
     curDomain=$(getBaseDomain $(echo "$curHS" | cut -d "/" -f3))
     curURL="https://images.${curDomain}/${curDomain}.png"
     echo -e "\nGetting image for ${curDomain}..."
-    wget -q -O /tmp/tmpimage.png $curURL > /dev/null 2>&1
+    wget -q --timeout=10 --tries=1 -O /tmp/tmpimage.png $curURL > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       echo "ERROR: Could not obtain image for $curDomain"
       rm -f /tmp/tmpimage.png
@@ -31434,9 +31443,6 @@ influxdb:
   token: "$INFLUXDB_TOKEN"
   organization: "$INFLUXDB_ORG"
   bucket: "$INFLUXDB_HA_BUCKET"
-
-zeroconf:
-  default_interface: true
 
 EOFHC
 
