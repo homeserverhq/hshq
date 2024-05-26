@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=72
+HSHQ_SCRIPT_VERSION=73
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -13260,6 +13260,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=72
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 73 ]; then
+    echo "Updating to Version 73..."
+    version73Update
+    HSHQ_VERSION=73
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14869,6 +14875,12 @@ function version72Update()
       sudo sed -i "s|^#EXT_DOMAIN=.*|#EXT_DOMAIN=${RELAYSERVER_SUB_WG}\.${cur_ext_dom}|g" $conf
     fi
   done
+}
+
+function version73Update()
+{
+  updateStackEnv heimdall outputHeimdallCompose
+  docker container restart ofelia > /dev/null 2>&1
 }
 
 function sendRSExposeScripts()
@@ -44943,6 +44955,8 @@ function installHeimdall()
 
 function outputConfigHeimdall()
 {
+  outputHeimdallCompose
+
   cat <<EOFHC > $HOME/heimdall-compose-tmp.yml
 
 services:
@@ -44985,47 +44999,6 @@ networks:
     external: true
   dock-ext-net:
     name: dock-ext
-    external: true
-EOFHC
-
-  cat <<EOFHC > $HOME/heimdall-compose.yml
-$STACK_VERSION_PREFIX heimdall $(getScriptStackVersion heimdall)
-
-services:
-  heimdall:
-    image: $(getScriptImageByContainerName heimdall)
-    container_name: heimdall
-    hostname: heimdall
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/heimdall/config:/config
-      - \${HSHQ_SSL_DIR}/heimdall.crt:/config/keys/cert.crt
-      - \${HSHQ_SSL_DIR}/heimdall.key:/config/keys/cert.key
-      - v-heimdall:/var/www/localhost/heimdall
-      - \${HSHQ_STACKS_DIR}/heimdall/app.php:/var/www/localhost/heimdall/config/app.php
-      - \${HSHQ_STACKS_DIR}/heimdall/list.json:/var/www/localhost/heimdall/public/list.json
-
-volumes:
-  v-heimdall:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${HSHQ_STACKS_DIR}/heimdall/html
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
     external: true
 EOFHC
 
@@ -45307,6 +45280,62 @@ function performUpdateHeimdall()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function outputHeimdallCompose()
+{
+  cat <<EOFHC > $HOME/heimdall-compose.yml
+$STACK_VERSION_PREFIX heimdall $(getScriptStackVersion heimdall)
+
+services:
+  heimdall:
+    image: $(getScriptImageByContainerName heimdall)
+    container_name: heimdall
+    hostname: heimdall
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/heimdall/config:/config
+      - \${HSHQ_SSL_DIR}/heimdall.crt:/config/keys/cert.crt
+      - \${HSHQ_SSL_DIR}/heimdall.key:/config/keys/cert.key
+      - v-heimdall:/var/www/localhost/heimdall
+      - \${HSHQ_STACKS_DIR}/heimdall/app.php:/var/www/localhost/heimdall/config/app.php
+      - \${HSHQ_STACKS_DIR}/heimdall/list.json:/var/www/localhost/heimdall/public/list.json
+      - \${HSHQ_STACKS_DIR}/heimdall/cleanupHeimdallSessions.sh:/cleanupHeimdallSessions.sh
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.heimdall-sessions-cleanup.schedule=@every 4h"
+      - "ofelia.job-exec.heimdall-sessions-cleanup.command=/cleanupHeimdallSessions.sh"
+volumes:
+  v-heimdall:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/heimdall/html
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+EOFHC
+
+  rm -f $HSHQ_STACKS_DIR/heimdall/cleanupHeimdallSessions.sh
+  cat <<EOFHC > $HSHQ_STACKS_DIR/heimdall/cleanupHeimdallSessions.sh
+#!/bin/bash
+
+find /var/www/localhost/heimdall/storage/framework/sessions/ -type f -delete
+EOFHC
+  chmod 555 $HSHQ_STACKS_DIR/heimdall/cleanupHeimdallSessions.sh
 }
 
 function insertEnableSvcAll()
