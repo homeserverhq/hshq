@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=75
+HSHQ_SCRIPT_VERSION=74
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
