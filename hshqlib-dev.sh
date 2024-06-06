@@ -20190,23 +20190,21 @@ function installPortainer()
 
   initServicesCredentials
   outputConfigPortainer
-  echo "Generating Portainer certificate..."
   generateCert portainer portainer $HOMESERVER_HOST_IP
-  echo "Checking Portainer DB Key..."
   if [ -z "$PORTAINER_DB_KEY" ]; then
-    echo "Generating Portainer DB Key..."
     PORTAINER_DB_KEY=$(pwgen -c -n 64 1)
     updateConfigVar PORTAINER_DB_KEY $PORTAINER_DB_KEY
     rm -f $HSHQ_SECRETS_DIR/portainer_key.txt
     echo $PORTAINER_DB_KEY > $HSHQ_SECRETS_DIR/portainer_key.txt
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
   elif ! [ -f $HSHQ_SECRETS_DIR/portainer_key.txt ]; then
-    echo "Output existing Portainer DB Key..."
     echo $PORTAINER_DB_KEY > $HSHQ_SECRETS_DIR/portainer_key.txt
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
   fi
-  echo "Starting Portainer..."
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  # Strange bug, when running docker compose (vs. docker-compose), the docker group membership
+  # is not honored when running script from root as another user, i.e. 'sudo -u <USER> bash hshq.sh'
+  # docker command and docker-compose commands run just fine, but not the new V2 docker compose.
+  sudo docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound="F"
   i=0
