@@ -44852,7 +44852,7 @@ function installHeimdall()
 
   generateCert heimdall heimdall
   outputConfigHeimdall
-  docker compose -f $HOME/heimdall-compose-tmp.yml up -d
+  sudo docker compose -f $HOME/heimdall-compose-tmp.yml up -d
 
   stack_loaded_text="service 99-ci-service-check successfully started"
   search="$stack_loaded_text"
@@ -44873,12 +44873,12 @@ function installHeimdall()
   set -e
   if [ $isFound == "F" ]; then
     echo "Heimdall did not start up correctly..."
-    docker compose -f $HOME/heimdall-compose-tmp.yml down -v
+    sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
     exit 1
   fi
   sleep 3
 
-  docker compose -f $HOME/heimdall-compose-tmp.yml down -v
+  sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
   rm -f $HOME/heimdall-compose-tmp.yml
 
   sed -i "s|^APP_NAME=.*|APP_NAME=\"$HEIMDALL_WINDOW_TITLE\"|g" $HSHQ_STACKS_DIR/heimdall/config/www/.env
