@@ -11510,6 +11510,16 @@ function addExposeDomainPathsToRelayServer()
   if [ -z "$newList" ]; then
     return
   fi
+  last_relay_expose_filename=lastrelayexpose.txt
+  if ! [ -f $HSHQ_CONFIG_DIR/$last_relay_expose_filename ]; then
+    echo "$(date +%s)" > $HSHQ_CONFIG_DIR/$last_relay_expose_filename
+  else
+    lastExpose=$(head -n 1 $HSHQ_CONFIG_DIR/$last_relay_expose_filename)
+    if [ $(date +%s) -lt $(($lastExpose+300)) ]; then
+      echo "ERROR: You need to wait at least 5 minutes between subsequent requests to allow the certificate-issuing process to complete."
+      return 4
+    fi
+  fi
   newList=${newList%?}
   loadSSHKey
   ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $subdoms_exp"
@@ -11524,6 +11534,7 @@ function addExposeDomainPathsToRelayServer()
   do
     sqlite3 $HSHQ_DB "insert or ignore into exposedomains(Domain,BaseDomain) values('$add_sub','$base_domain');"
   done
+  echo "$(date +%s)" > $HSHQ_CONFIG_DIR/$last_relay_expose_filename
 }
 
 function removeExposeDomainPathsFromRelayServer()
