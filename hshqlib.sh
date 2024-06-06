@@ -20,6 +20,14 @@ set -e
 
 function init()
 {
+  # Version 74 Update
+  # Changing to the home directory fixes issues with docker compose (v2)
+  # since the command 'stat .' (inside of docker compose) results in a 
+  # permission denied error when running script from root as another user,
+  # i.e. 'sudo -u <USER> bash hshq.sh'
+  # Basically, docker compose is dependent on which directory it is
+  # executed from, regardless if a specified file is in a readable directory.
+  cd ~
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   HSHQ_SCRIPT_OPEN=/tmp/hshqopen
@@ -3213,6 +3221,7 @@ set -e
 
 TZ=$TZ
 USERNAME=\$(id -u -n)
+cd ~
 RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
 RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
 RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
@@ -3555,6 +3564,7 @@ TZ=$TZ
 USERNAME=\$(id -u -n)
 USERID=\$(id -u)
 GROUPID=\$(id -g)
+cd ~
 RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
 RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
 RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
@@ -20201,9 +20211,7 @@ function installPortainer()
     echo $PORTAINER_DB_KEY > $HSHQ_SECRETS_DIR/portainer_key.txt
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
   fi
-  # Strange bug, when running docker compose (vs. docker-compose), the docker group membership
-  # is not honored when running script from root as another user, i.e. 'sudo -u <USER> bash hshq.sh'
-  # docker command and docker-compose commands run just fine, but not the new V2 docker compose.
+  # Version 74 Update - see note at very top inside of init() function.
   sudo docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound="F"
