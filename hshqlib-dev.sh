@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=73
+HSHQ_SCRIPT_VERSION=74
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -20194,14 +20194,12 @@ function installPortainer()
   if [ -z "$PORTAINER_DB_KEY" ]; then
     PORTAINER_DB_KEY=$(pwgen -c -n 64 1)
     updateConfigVar PORTAINER_DB_KEY $PORTAINER_DB_KEY
-	rm -f $HSHQ_SECRETS_DIR/portainer_key.txt
+    rm -f $HSHQ_SECRETS_DIR/portainer_key.txt
     echo $PORTAINER_DB_KEY > $HSHQ_SECRETS_DIR/portainer_key.txt
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
-  fi
-
-  if ! [ -f $HSHQ_SECRETS_DIR/portainer_key.txt ]; then
+  elif ! [ -f $HSHQ_SECRETS_DIR/portainer_key.txt ]; then
     echo $PORTAINER_DB_KEY > $HSHQ_SECRETS_DIR/portainer_key.txt
-    chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt 
+    chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
   fi
 
   docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
