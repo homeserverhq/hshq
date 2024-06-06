@@ -17284,7 +17284,7 @@ subjectKeyIdentifier=hash
 authorityKeyIdentifier=keyid:always,issuer
 keyUsage = critical, cRLSign, keyCertSign
 EOFCA
-  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 2569682280" | bc -l) )); then echo 2569682280; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
+  totDays=$(echo "($(if (( $(echo "$(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N) < 3137754960" | bc -l) )); then echo 3137754960; else echo $(date --date="$CERTS_INTERNAL_CA_DAYS days" +%s.%N); fi)-1559365200)/86400" | bc)
 
   # Certificate Authority Certificate
   # Regarding faketime, see https://support.apple.com/en-us/HT210176
