@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=74
+HSHQ_SCRIPT_VERSION=75
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -20190,18 +20190,22 @@ function installPortainer()
 
   initServicesCredentials
   outputConfigPortainer
+  echo "Generating Portainer certificate..."
   generateCert portainer portainer $HOMESERVER_HOST_IP
+  echo "Checking Portainer DB Key..."
   if [ -z "$PORTAINER_DB_KEY" ]; then
+    echo "Generating Portainer DB Key..."
     PORTAINER_DB_KEY=$(pwgen -c -n 64 1)
     updateConfigVar PORTAINER_DB_KEY $PORTAINER_DB_KEY
     rm -f $HSHQ_SECRETS_DIR/portainer_key.txt
     echo $PORTAINER_DB_KEY > $HSHQ_SECRETS_DIR/portainer_key.txt
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
   elif ! [ -f $HSHQ_SECRETS_DIR/portainer_key.txt ]; then
+    echo "Output existing Portainer DB Key..."
     echo $PORTAINER_DB_KEY > $HSHQ_SECRETS_DIR/portainer_key.txt
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
   fi
-
+  echo "Starting Portainer..."
   docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound="F"
