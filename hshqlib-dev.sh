@@ -14917,7 +14917,22 @@ function version75Update()
 {
   checkAddVarsToServiceConfig "Wazuh" "WAZUH_AGENT_VERSION=4.7.5-1"
   WAZUH_AGENT_VERSION=4.7.5-1
-  sudo apt-mark hold wazuh-agent
+  if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
+    sudo apt update
+    sudo apt install -y --only-upgrade wazuh-agent=$WAZUH_AGENT_VERSION
+    sudo apt-mark hold wazuh-agent
+    if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+      echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
+      is_continue=""
+      while ! [ "$is_continue" = "ok" ]
+      do
+        read -p "Enter 'ok' to continue: " is_continue
+      done
+      loadSSHKey
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo apt update; sudo apt install -y --only-upgrade wazuh-agent=$WAZUH_AGENT_VERSION; sudo apt-mark hold wazuh-agent"
+      unloadSSHKey
+    fi
+  fi
 }
 
 function sendRSExposeScripts()
