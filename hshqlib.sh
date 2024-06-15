@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=74
+HSHQ_SCRIPT_VERSION=75
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -1146,7 +1146,7 @@ function initConfig()
       set -e
     fi
   done
-
+  # Do the boring things that must be done
   while [ -z "$LDAP_PRIMARY_USER_USERNAME" ]
   do
     LDAP_PRIMARY_USER_USERNAME=$(promptUserInputMenu $USERNAME "Enter First User" "Enter the username for your first HomeServer user account: ")
@@ -3537,7 +3537,8 @@ function startWazuhAgent()
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
+  sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -4511,7 +4512,8 @@ function startWazuhAgent()
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
+  sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -12658,6 +12660,7 @@ WAZUH_USERS_KIBANARO_PASSWORD=
 WAZUH_USERS_LOGSTASH_PASSWORD=
 WAZUH_USERS_READALL_PASSWORD=
 WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD=
+WAZUH_AGENT_VERSION=4.7.5-1
 # Wazuh (Service Details) END
 
 # Collabora (Service Details) BEGIN
@@ -13285,6 +13288,12 @@ function checkUpdateVersion()
     echo "Updating to Version 73..."
     version73Update
     HSHQ_VERSION=73
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 75 ]; then
+    echo "Updating to Version 75..."
+    version75Update
+    HSHQ_VERSION=75
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -14902,6 +14911,28 @@ function version73Update()
 {
   updateStackEnv heimdall outputHeimdallCompose
   docker container restart ofelia > /dev/null 2>&1
+}
+
+function version75Update()
+{
+  checkAddVarsToServiceConfig "Wazuh" "WAZUH_AGENT_VERSION=4.7.5-1"
+  WAZUH_AGENT_VERSION=4.7.5-1
+  if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
+    sudo apt update
+    sudo apt install -y --only-upgrade wazuh-agent=$WAZUH_AGENT_VERSION
+    sudo apt-mark hold wazuh-agent
+    if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+      echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
+      is_continue=""
+      while ! [ "$is_continue" = "ok" ]
+      do
+        read -p "Enter 'ok' to continue: " is_continue
+      done
+      loadSSHKey
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo apt update; sudo apt install -y --only-upgrade wazuh-agent=$WAZUH_AGENT_VERSION; sudo apt-mark hold wazuh-agent"
+      unloadSSHKey
+    fi
+  fi
 }
 
 function sendRSExposeScripts()
@@ -19497,7 +19528,7 @@ function emailVaultwardenCredentials()
   fi
   strOutput=${strOutput}"\n\n\n\n"
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
-  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within the Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 07 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 08 Email Root CA) just to ensure the configuration file is back to an encrypted state."
+  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within the Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
   sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
@@ -24857,6 +24888,7 @@ function installWazuh()
     WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD $WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD
   fi
+
   outputConfigWazuh
   generateCert wazuh.manager "wazuh.manager"
   generateCert wazuh.indexer "wazuh.indexer"
@@ -24874,7 +24906,8 @@ function installWazuh()
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
+  sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
   set +e
   sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
@@ -39990,6 +40023,27 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartPortainerStack.sh
+#!/bin/bash
+
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+restartPortainer
+echo "Portainer successfully restarted."
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restartPortainerStack.json
+{
+  "name": "04 Restart Portainer",
+  "script_path": "conf/scripts/restartPortainerStack.sh",
+  "description": "Restarts Portainer stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function restarts the Portainer stack.",
+  "group": "$group_id_misc",
+  "parameters": []
+}
+
+EOFSC
+
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/generateSignedCertificate.sh
 #!/bin/bash
 
@@ -40015,7 +40069,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/generateSignedCertificate.json
 {
-  "name": "04 Generate Signed Certificate",
+  "name": "05 Generate Signed Certificate",
   "script_path": "conf/scripts/generateSignedCertificate.sh",
   "description": "Generates a certificate signed by the Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/>\n- The resulting key/certificate pair will be stored in $HSHQ_SSL_DIR.\n- Multiple domain names and/or IP addresses should be a comma-separated list (no spaces).\n- Dates should be formatted as '2023-01-01 00:00:00 GMT'.\n- Leave start date empty to default to current date/time.\n- If end date is empty, then the certificate will expire $CERTS_INTERNAL_CA_DAYS days after the start date.",
   "group": "$group_id_misc",
@@ -40139,7 +40193,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetCaddyData.json
 {
-  "name": "05 Reset Caddy Data",
+  "name": "06 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyData.sh",
   "description": "Clears out all data for the selected Caddy instance and restarts the stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
   "group": "$group_id_misc",
@@ -40219,7 +40273,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restartAllStacks.json
 {
-  "name": "06 Restart All Stacks",
+  "name": "07 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
   "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. The most prevalent case is when you run an update on the host system and docker is updated to a new version. The docker daemon is restarted as a result, but sometimes not everything comes back up correctly. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient (unless you are accessing this utility via IP on your home network, which is preferred). If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
   "group": "$group_id_misc",
@@ -40280,7 +40334,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailCredentialsVaultwarden.json
 {
-  "name": "07 Email Vaultwarden Credentials",
+  "name": "08 Email Vaultwarden Credentials",
   "script_path": "conf/scripts/emailCredentialsVaultwarden.sh",
   "description": "Emails Vaultwarden credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a format that can easily be imported into Vaultwarden, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_misc",
@@ -40326,7 +40380,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailRootCA.json
 {
-  "name": "08 Email Root CA",
+  "name": "09 Email Root CA",
   "script_path": "conf/scripts/emailRootCA.sh",
   "description": "Emails Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the Root Certificate Authority (CA) certificate to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_misc",
@@ -40375,7 +40429,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailUserVaultwardenTemplate.json
 {
-  "name": "09 Email User VW Template",
+  "name": "10 Email User VW Template",
   "script_path": "conf/scripts/emailUserVaultwardenTemplate.sh",
   "description": "Emails Vaultwarden template to user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function emails a Vaultwarden import template to the provided user at the provided email address. The template keeps all of the LDAP-based services together as a single entry within the Vaultwarden password manager. The default password is simply 'abcdefg', but the user only needs to change this one entry to their correct password. If they change their LDAP password in the future, then they need only change this one entry within Vaultwarden. The is simply a suggested convenience method for your users.",
   "group": "$group_id_misc",
