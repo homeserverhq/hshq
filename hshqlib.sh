@@ -25906,6 +25906,8 @@ function installNextcloud()
   fi
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings email "$NEXTCLOUD_ADMIN_EMAIL_ADDRESS"
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings display_name "${HOMESERVER_ABBREV^^} Nextcloud Admin"
+  docker exec -u www-data nextcloud-app php occ --no-warnings app:install bruteforcesettings
+  docker exec -u www-data nextcloud-app php occ --no-warnings app:enable bruteforcesettings
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install contacts
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install groupfolders
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install tasks
@@ -25980,6 +25982,7 @@ function installNextcloud()
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_infected_action --value="delete"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus enabled --value="yes"
   fi
+  docker exec -u www-data nextcloud-app php occ db:add-missing-indices
   docker exec -u www-data nextcloud-app php occ background:cron
 
   sleep 5
