@@ -19370,6 +19370,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_IMAGES.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JITSI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KEILA.$HOMESERVER_DOMAIN\n"
@@ -19430,7 +19431,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_GUACAMOLE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_INFLUXDB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ITTOOLS.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JUPYTER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM_WIZARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NETDATA.$HOMESERVER_DOMAIN\n"
@@ -34521,7 +34521,7 @@ function installGitea()
 
   initServicesCredentials
   outputConfigGitea
-  installStack gitea gitea-app "Starting new Web server:" $HOME/gitea.env
+  installStack gitea gitea-app "Starting new Web server:" $HOME/gitea.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
