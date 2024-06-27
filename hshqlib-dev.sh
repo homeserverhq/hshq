@@ -6390,24 +6390,33 @@ function uploadVPNInstallScripts()
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
       sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
+      loadSSHKey
     else
       loadSSHKey
       set +e
       ssh -q -o ConnectTimeout=10 -o "BatchMode=yes" -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP exit
       if [ $? -ne 0 ]; then
         # Key not present
+        echo "Adding key to RelayServer..."
         sshpass -p $USER_RELAY_SUDO_PW ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
       fi
       is_err=$?
       if [ $is_err -eq 0 ]; then
+        echo "Logging into RelayServer..."
         ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $USER_RELAY_SUDO_PW | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
         is_err=$?
       fi
     fi
     if [ $is_err -eq 0 ]; then
+      echo "Checking for existing installation..."
       # Ensure there is not already an existing installation on the RelayServer
       isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d $RELAYSERVER_HSHQ_BASE_DIR ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
       is_err=$?
+
+      isHSHQDir1=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d $RELAYSERVER_HSHQ_BASE_DIR ]; then echo true; else echo false; fi")
+      isHSHQDock1=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
+      echo "isHSHQDir1: $isHSHQDir1, isHSHQDock1: $isHSHQDock1, isHSHQDir: $isHSHQDir"
+      
       unloadSSHKey
       if [ "$isHSHQDir" = "true" ]; then
         errmenu=$(cat << EOF
@@ -6423,8 +6432,8 @@ EOF
         continue
       fi
     fi
+    unloadSSHKey
     if [ $is_err -eq 0 ]; then
-      unloadSSHKey
       break
     else
       errmenu=$(cat << EOF
