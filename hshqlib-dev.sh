@@ -6402,13 +6402,13 @@ function uploadVPNInstallScripts()
       if [ $is_err -eq 0 ]; then
         ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $USER_RELAY_SUDO_PW | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
         is_err=$?
-        unloadSSHKey
       fi
     fi
     if [ $is_err -eq 0 ]; then
       # Ensure there is not already an existing installation on the RelayServer
       isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d $RELAYSERVER_HSHQ_BASE_DIR ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
       is_err=$?
+      unloadSSHKey
       if [ "$isHSHQDir" = "true" ]; then
         errmenu=$(cat << EOF
 $hshqlogo
@@ -6424,6 +6424,7 @@ EOF
       fi
     fi
     if [ $is_err -eq 0 ]; then
+      unloadSSHKey
       break
     else
       errmenu=$(cat << EOF
