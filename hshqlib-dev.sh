@@ -6410,13 +6410,8 @@ function uploadVPNInstallScripts()
     if [ $is_err -eq 0 ]; then
       echo "Checking for existing installation..."
       # Ensure there is not already an existing installation on the RelayServer
-      isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d $RELAYSERVER_HSHQ_BASE_DIR ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
+      isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d /home/$RELAYSERVER_REMOTE_USERNAME/hshq ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
       is_err=$?
-
-      isHSHQDir1=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d $RELAYSERVER_HSHQ_BASE_DIR ]; then echo true; else echo false; fi")
-      isHSHQDock1=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
-      echo "isHSHQDir1: $isHSHQDir1, isHSHQDock1: $isHSHQDock1, isHSHQDir: $isHSHQDir"
-      
       unloadSSHKey
       if [ "$isHSHQDir" = "true" ]; then
         errmenu=$(cat << EOF
