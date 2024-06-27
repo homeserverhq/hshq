@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=75
+HSHQ_SCRIPT_VERSION=76
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -2699,6 +2699,8 @@ function transferHostedVPN()
   # Pause syncthing RelayServer
   jsonbody="{\"paused\": true}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  outputRelayServerInstallSetupScript
+  outputRelayServerInstallTransferScript
   uploadVPNInstallScripts true
   sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
   loadSSHKey
@@ -2773,6 +2775,7 @@ function transferHostedVPN()
 
 function outputRelayServerInstallSetupScript()
 {
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
   cat <<EOFRS > $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
 #!/bin/bash
 
@@ -2783,6 +2786,8 @@ RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
 RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
 RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
 RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
+MAIL_RELAY_SUBNET=172.16.3.0/24
+CLIENT_DNS_SUBNET=172.16.4.0/24
 
 function main()
 {
@@ -3204,6 +3209,8 @@ function createDockerNetworks()
   set -e
   docker network create -o com.docker.network.bridge.name=$NET_EXTERNAL_BRIDGE_NAME --driver=bridge --subnet $NET_EXTERNAL_SUBNET dock-ext
   docker network create -o com.docker.network.bridge.name=$NET_WEBPROXY_BRIDGE_NAME --driver=bridge --subnet $NET_WEBPROXY_SUBNET --internal dock-proxy
+  docker network create -o com.docker.network.bridge.name=brd-mailrelay --driver=bridge --subnet \$MAIL_RELAY_SUBNET dock-mailrelay
+  docker network create -o com.docker.network.bridge.name=brcd-user1 --driver=bridge --subnet \$CLIENT_DNS_SUBNET cdns-user1
 }
 
 main "\$@"
@@ -3214,6 +3221,7 @@ EOFRS
 
 function outputRelayServerInstallTransferScript()
 {
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
   cat <<EOFRS > $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
 #!/bin/bash
 
@@ -3481,20 +3489,10 @@ EOFR
   done
   sudo netplan apply > /dev/null 2>&1
 
+  oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
+  sed -i "s|\$oldIP|\$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
   startStopStack adguard stop
   startStopStack adguard start
-
-  basic_auth="$(getAdguardCredentialsRS)"
-
-  del_domain="*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-  del_ip_addr=\$(curl -s -H "Authorization: Basic \$basic_auth" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/list | jq -r --arg del_domain \$del_domain '.[] | select(.domain==\$del_domain) | .answer')
-  dom_json=\$(jq -n --arg del_domain \$del_domain --arg del_ip_addr \$del_ip_addr '{domain: \$del_domain, answer: \$del_ip_addr}')
-  curl -s -H "Authorization: Basic \$basic_auth" -H 'Content-Type: application/json' -d "\$dom_json" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/delete
-
-  add_domain="*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-  add_ip_addr="\$RELAYSERVER_SERVER_IP"
-  dom_json=\$(jq -n --arg add_domain \$add_domain --arg add_ip_addr \$add_ip_addr '{domain: \$add_domain, answer: \$add_ip_addr}')
-  curl -s -H "Authorization: Basic \$basic_auth" -H 'Content-Type: application/json' -d "\$dom_json" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/rewrite/add
 }
 
 function restoreMailRelay()
@@ -3557,6 +3555,7 @@ EOFRS
 
 function outputRelayServerInstallFreshScript()
 {
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   cat <<EOFRS > $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
 #!/bin/bash
 
@@ -4958,12 +4957,8 @@ function installMailRelay()
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/clamav
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/unbound
 
-  # Create temp network to determine available subnet
-  docker network create --driver=bridge mail-relay-tmp > /dev/null
-  mail_relay_subnet=\$(getDockerSubnet mail-relay-tmp)
+  mail_relay_subnet=\$(getDockerSubnet dock-mailrelay)
   mail_relay_net_prefix=\$(echo \$mail_relay_subnet | rev | cut -d '.' -f2- | rev)
-  docker network rm mail-relay-tmp
-  docker network create -o com.docker.network.bridge.name=brd-mailrelay --driver=bridge --subnet \$mail_relay_subnet dock-mailrelay
 
   pw_hash=\$(docker run --rm $IMG_MAIL_RELAY_RSPAMD rspamadm pw -p $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)
   outputConfigMailRelay
@@ -5370,11 +5365,8 @@ function installWireGuard()
   wginitdate=\$(date --date="\$wgdate" -u '+%Y-%m-%d %H:%M:%S.%N %z %Z')
   wgdbdate=\$(date --date="\$wgdate" -u '+%Y-%m-%d %H:%M:%S.%N')
 
-  docker network create --driver=bridge tmpnet >/dev/null
-  clientdns_subnet=\$(getDockerSubnet tmpnet)
+  clientdns_subnet=\$(getDockerSubnet cdns-user1)
   clientdns_subnet_prefix=\$(echo \$clientdns_subnet | rev | cut -d "." -f2- | rev)
-  docker network rm tmpnet >/dev/null
-  docker network create -o com.docker.network.bridge.name=brcd-user1 --driver=bridge --subnet \$clientdns_subnet cdns-user1
 
   outputConfigWireGuard
   sudo ln /etc/wireguard/$RELAYSERVER_WG_INTERFACE_NAME.conf \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/$RELAYSERVER_WG_INTERFACE_NAME.conf
@@ -6398,21 +6390,44 @@ function uploadVPNInstallScripts()
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
       sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
+      loadSSHKey
     else
       loadSSHKey
       set +e
       ssh -q -o ConnectTimeout=10 -o "BatchMode=yes" -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP exit
       if [ $? -ne 0 ]; then
         # Key not present
+        echo "Adding key to RelayServer..."
         sshpass -p $USER_RELAY_SUDO_PW ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
       fi
       is_err=$?
       if [ $is_err -eq 0 ]; then
+        echo "Logging into RelayServer..."
         ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $USER_RELAY_SUDO_PW | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
         is_err=$?
-        unloadSSHKey
       fi
     fi
+    if [ $is_err -eq 0 ]; then
+      echo "Checking for existing installation..."
+      # Ensure there is not already an existing installation on the RelayServer
+      isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d /home/$RELAYSERVER_REMOTE_USERNAME/hshq ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
+      is_err=$?
+      unloadSSHKey
+      if [ "$isHSHQDir" = "true" ]; then
+        errmenu=$(cat << EOF
+$hshqlogo
+
+It appears that there is already an existing installation on the RelayServer. Please remove this installation by logging in and running 'bash nuke.sh' and follow the provided instructions to clear everything out before continuing. Press Retry or Cancel to proceed.
+EOF
+  )
+        if ! (whiptail --title "Install Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
+          return 1
+        fi
+        remote_pw=""
+        continue
+      fi
+    fi
+    unloadSSHKey
     if [ $is_err -eq 0 ]; then
       break
     else
@@ -13296,6 +13311,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=75
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 76 ]; then
+    echo "Updating to Version 76..."
+    version76Update
+    HSHQ_VERSION=76
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14932,6 +14953,15 @@ function version75Update()
       ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo apt update; sudo apt install -y --only-upgrade wazuh-agent=$WAZUH_AGENT_VERSION; sudo apt-mark hold wazuh-agent"
       unloadSSHKey
     fi
+  fi
+}
+
+function version76Update()
+{
+  outputUpdateEndpointIPsScript
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    outputRelayServerInstallSetupScript
+    outputRelayServerInstallTransferScript
   fi
 }
 
@@ -16965,13 +16995,13 @@ function main()
   cdns_id=(\$(sqlite3 \$db "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
   for cur_cdns in "\${cdns_id[@]}"
   do
+    cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_cdns;")
     # First, check if container is actually running
     docker ps | grep \${cname}-wireguard > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
       continue
     fi
     if ! [ -z "\$cur_cdns" ] && [ "\$(checkByID \$cur_cdns)" = "true" ]; then
-      cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_cdns;")
       echo "IP changed, restarting \$cname..."
       addLogMessage "IP changed, restarting(ClientDNS) $cname..."
       docker container restart \${cname}-wireguard
