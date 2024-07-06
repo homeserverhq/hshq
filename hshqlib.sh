@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=76
+HSHQ_SCRIPT_VERSION=77
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -9493,10 +9493,10 @@ function changeHostStaticIP()
   sleep 5
   setHomeServerPrivateRange
   echo "Restarting Portainer..."
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  stopPortainer
   outputConfigPortainer
   generateCert portainer portainer $HOMESERVER_HOST_IP
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  startPortainer
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   sudo systemctl restart runScriptServer
   echo "Restarting Heimdall..."
@@ -9505,6 +9505,7 @@ function changeHostStaticIP()
   docker container restart heimdall > /dev/null 2>&1
   echo "Updating Adguard..."
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
+  docker container restart adguard > /dev/null 2>&1
   echo "Restarting Caddy stacks..."
   caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
@@ -9522,6 +9523,7 @@ function changeHostStaticIP()
   sudo iptables -D INPUT -p tcp -m tcp -i $default_iface -s $curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
   sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
   echo "Change Static IP Complete!"
+  showMessageBox "Change Complete" "The static IP has been successfully changed. If you experience any issues, try rebooting the host machine."
   sendEmail -s "Static IP Succesfully Changed" -b "Static IP Succesfully Changed\n\nThe static IP address for the host machine has been updated from $curHostIP to ${HOMESERVER_HOST_IP}.\nYou will need to update your Vaultwarden password IP URLs for both Portainer and ScriptServer to the new IP address."
 }
 
@@ -9962,12 +9964,12 @@ function restartAllStacks()
     startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
     sleep 1
   done
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down
+  stopPortainer
   removeDockerNetworks
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  startPortainer
   total_tries=10
   num_tries=1
   sleep 5
@@ -10357,7 +10359,7 @@ function startStopStackByID()
     ((sss_numTries++))
   done
   if [ $sss_retVal -ne 0 ]; then
-    echo "ERROR: Could not get $startStop stack in Portainer..." 1>&2
+    echo "ERROR: Could not $startStop stack (ID=$stackID) in Portainer..." 1>&2
     return
   fi
 }
@@ -13384,7 +13386,7 @@ function version22Update()
     sleep 1
   done
 
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  stopPortainer
   set +e
   removeDockerNetworks
   docker network rm cdns-${cdns_stack_name} > /dev/null 2>&1
@@ -13404,7 +13406,7 @@ function version22Update()
   sleep 3
   createDockerNetworks
   outputConfigPortainer
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+  startPortainer
   set +e
   total_tries=10
   num_tries=1
@@ -14354,6 +14356,7 @@ function version47Update()
 function version48Update()
 {
   set +e
+  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
   grep HOMEASSISTANT_CONFIGURATOR_USER $CONFIG_FILE >/dev/null 2>&1
   if [ $? -ne 0 ]; then
     checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
@@ -15100,9 +15103,9 @@ function checkFixPortainerEnv()
   set +e
   grep "HSHQ_RELAYSERVER_DIR" $HSHQ_STACKS_DIR/portainer/portainer.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+    stopPortainer
     outputConfigPortainer
-    docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
+    startPortainer
     startStopStack duplicati stop
     startStopStack syncthing stop
     sleep 5
@@ -20455,14 +20458,25 @@ function performUpdatePortainer()
 
 function restartPortainer()
 {
-  resp_curE=${-//[^e]/}
-  set +e
-  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  stopPortainer
   sleep 3
+  startPortainer
+}
+
+function stopPortainer()
+{
+  docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+}
+
+function startPortainer()
+{
+  stpo_curE=${-//[^e]/}
+  set +e
   docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   search="starting HTTPS server"
   isFound="F"
   i=0
+  set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs portainer 2>&1 | grep "$search")
@@ -20474,7 +20488,7 @@ function restartPortainer()
     sleep 1
     i=$((i+1))
   done
-  if ! [ -z $resp_curE ]; then
+  if ! [ -z $stpo_curE ]; then
     set -e
   fi
   sleep 3
@@ -25767,6 +25781,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
 networks:
   dock-proxy-net:
