@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=77
+HSHQ_SCRIPT_VERSION=78
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -1654,7 +1654,7 @@ EOF
   fi
   # A little sleep never hurts
   sleep 1
-  echo 'type=83' | sudo sfdisk $selDisk > /dev/null
+  echo ';' | sudo sfdisk $selDisk > /dev/null
   if [ $? -ne 0 ]; then
     docker container start duplicati > /dev/null 2>&1
     docker container start syncthing > /dev/null 2>&1
@@ -3607,9 +3607,10 @@ function main()
       performAptInstall screen > /dev/null 2>&1
     fi
     if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
-      pwarg="-p \$USER_RELAY_SUDO_PW"
+      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
+    else
+      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i
     fi
-    screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i \$pwarg
   fi
 }
 
@@ -6762,7 +6763,7 @@ function showRemovePrimaryVPN()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     is_remove=$(promptUserInputMenu "" "Remove RelayServer" "If you wish to remove all connections/data, enter the word 'remove' below:")
-    if ! [ $is_remove = "remove" ]; then
+    if [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
       showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
       return 0
     fi
@@ -9418,10 +9419,9 @@ function setStaticIPToCurrent()
     return
   fi
   cur_ip=$(getDefaultRouteIPAddress)
-  def_route=$(ip route | grep -e "^default")
   cidr_part=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
   ip_cidr=$cur_ip"/"$cidr_part
-  cur_gate=$(echo $def_route | awk '{print $3}')
+  cur_gate=$(getCurrentGateway)
   setStaticIP $ip_cidr $cur_gate
   if [ $? -ne 0 ]; then
     echo "ERROR: There was an error setting the static IP Address, exiting..."
@@ -9525,6 +9525,11 @@ function changeHostStaticIP()
   echo "Change Static IP Complete!"
   showMessageBox "Change Complete" "The static IP has been successfully changed. If you experience any issues, try rebooting the host machine."
   sendEmail -s "Static IP Succesfully Changed" -b "Static IP Succesfully Changed\n\nThe static IP address for the host machine has been updated from $curHostIP to ${HOMESERVER_HOST_IP}.\nYou will need to update your Vaultwarden password IP URLs for both Portainer and ScriptServer to the new IP address."
+}
+
+function getCurrentGateway()
+{
+  ip route | grep -e "^default" | awk '{print $3}'
 }
 
 function initWireGuardDB()
@@ -13319,6 +13324,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=76
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 78 ]; then
+    echo "Updating to Version 78..."
+    version78Update
+    HSHQ_VERSION=78
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -13847,16 +13858,7 @@ function version23Update()
 
 function version24Update()
 {
-  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET="
-  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY="
-  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
+  checkAddAllNewSvcs
   checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
   checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false"
   checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false"
@@ -13951,22 +13953,21 @@ function version30Update()
 
 function version31Update()
 {
-  checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD="
+  checkAddAllNewSvcs
   addToDisabledServices jupyter
 }
 
 function version32Update()
 {
-  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
+  checkAddAllNewSvcs
   addToDisabledServices paperless
 }
 
 function version34Update()
 {
   sudo sed -i "/timestamp_timeout/a Defaults passwd_tries=$SUDO_MAX_RETRIES" /etc/sudoers
-  checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD="
+  checkAddAllNewSvcs
   addToDisabledServices speedtest-tracker-local
-  checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD="
   addToDisabledServices speedtest-tracker-vpn
 }
 
@@ -13978,9 +13979,8 @@ function version35Update()
 function version37Update()
 {
   sed -i "s|Relay Server|RelayServer|g" $CONFIG_FILE
-  checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD="
+  checkAddAllNewSvcs
   CHANGEDETECTION_INIT_ENV=false
-  checkAddServiceToConfig "Script-server" "SCRIPTSERVER_INIT_ENV=false,SCRIPTSERVER_LOCALHOST_PORT=8008,SCRIPTSERVER_ADMIN_USERNAME=,SCRIPTSERVER_ADMIN_PASSWORD="
   SCRIPTSERVER_INIT_ENV=false
   SCRIPTSERVER_LOCALHOST_PORT=8008
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
@@ -14040,7 +14040,7 @@ EOFRS
   startStopStack mailu start
   sleep 5
   set -e
-  checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
+  checkAddAllNewSvcs
   HUGINN_INIT_ENV=false
 }
 
@@ -14271,7 +14271,7 @@ EOFWA
     rm -f $HOME/v41.sh
   fi
   set -e
-  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
+  checkAddAllNewSvcs
   outputBootScripts
   fixAutheliaConfig
 }
@@ -14356,7 +14356,7 @@ function version47Update()
 function version48Update()
 {
   set +e
-  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
+  checkAddAllNewSvcs
   grep HOMEASSISTANT_CONFIGURATOR_USER $CONFIG_FILE >/dev/null 2>&1
   if [ $? -ne 0 ]; then
     checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
@@ -14386,7 +14386,7 @@ function version50Update()
 function version51Update()
 {
   set +e
-  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
+  checkAddAllNewSvcs
   set -e
 }
 
@@ -14965,6 +14965,23 @@ function version76Update()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     outputRelayServerInstallSetupScript
     outputRelayServerInstallTransferScript
+  fi
+}
+
+function version78Update()
+{
+  outputPingGatewayBootscript
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\nUpdating the mail relay postfix image on the RelayServer.\n"
+    echo -e "\n\n\nThe mail relay postfix image requires an update on the RelayServer which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\nAfter this update has completed, go to Portainer on the RelayServer and stop/start the mail-relay stack.\n"
+    is_continue=""
+    while ! [ "$is_continue" = "ok" ]
+    do
+      read -p "Enter 'ok' to continue: " is_continue
+    done
+    loadSSHKey
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"
+    unloadSSHKey
   fi
 }
 
@@ -15780,8 +15797,32 @@ function installHostNTPServer()
   sudo systemctl restart ntp > /dev/null 2>&1
 }
 
+function checkAddAllNewSvcs()
+{
+  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET="
+  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY="
+  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
+  checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Script-server" "SCRIPTSERVER_INIT_ENV=false,SCRIPTSERVER_LOCALHOST_PORT=8008,SCRIPTSERVER_ADMIN_USERNAME=,SCRIPTSERVER_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
+  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
+}
+
 function checkAddServiceToConfig()
 {
+  casc_curE=${-//[^e]/}
   service_name="$1"
   variable_list=$2
   set +e
@@ -15796,13 +15837,17 @@ function checkAddServiceToConfig()
     replace_block=$replace_block"# $service_name (Service Details) END\n\n# Service Details END"
     sed -i "s|# Service Details END|$replace_block|g" $CONFIG_FILE
   fi
-  set -e
+  set +e
+  if ! [ -z $casc_curE ]; then
+    set -e
+  fi
 }
 
 function checkAddVarsToServiceConfig()
 {
+  cavc_curE=${-//[^e]/}
   service_name="$1"
-  variable_list=$2
+  variable_list="$2"
   set +e
   varListArr=($(echo $variable_list | tr "," "\n"))
   for curVar in "${varListArr[@]}"
@@ -15814,7 +15859,10 @@ function checkAddVarsToServiceConfig()
       sed -i "s|# $service_name (Service Details) END|$replace_block|g" $CONFIG_FILE
     fi
   done
-  set -e
+  set +e
+  if ! [ -z $cavc_curE ]; then
+    set -e
+  fi
 }
 
 function removeServiceFromConfig()
@@ -15965,6 +16013,7 @@ EOFBS
   sudo systemctl enable runOnBootRoot
   outputHABandaidScript
   outputDockerWireGuardCaddyScript
+  outputPingGatewayBootscript
 }
 
 function outputIPTablesScripts()
@@ -16546,6 +16595,27 @@ EOFWG
   sudo chown root:root $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
 }
 
+function outputPingGatewayBootscript()
+{
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/15-pingGateway.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/15-pingGateway.sh >/dev/null <<EOFPO
+#!/bin/bash
+
+# This script pings the gateway/router on boot.
+# It's purpose is to address issues on older routers
+# with hosts on the network that have static IP
+# addresses (as this server does).
+
+timeout_length=30
+ping_count=10
+
+cur_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
+timeout \$timeout_length ping -c \$ping_count \$cur_gate > /dev/null
+
+EOFPO
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/15-pingGateway.sh
+}
+
 function initCronJobs()
 {
   echo "MAILTO=$EMAIL_ADMIN_EMAIL_ADDRESS" | sudo tee $HOME/rootcron >/dev/null
@@ -16959,6 +17029,7 @@ function outputUpdateEndpointIPsScript()
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null <<EOFWG
 #!/bin/bash
 
+set +e
 HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
 db=$HSHQ_DB
 ping_timeout=5
