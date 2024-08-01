@@ -17820,7 +17820,7 @@ function upgradeStack()
     fi
   fi
   removeImageCSVList "$rm_image_list"
-  stack_upgrade_report="$comp_stack_name: Upgraded from $old_ver to $new_ver"
+  stack_upgrade_report="${stack_upgrade_report}${comp_stack_name}: Upgraded from $old_ver to $new_ver"
 }
 
 function doNothing()
@@ -17857,7 +17857,7 @@ function loadPinnedDockerImages()
   IMG_FILEDROP=filedrop/filedrop:1
   IMG_FIREFLY=fireflyiii/core:version-6.1.19
   IMG_FRESHRSS=freshrss/freshrss:1.24.1
-  IMG_GHOST=ghost:5.88.3-alpine
+  IMG_GHOST=ghost:5.88.2-alpine
   IMG_GITEA_APP=gitea/gitea:1.22.1
   IMG_GITLAB_APP=gitlab/gitlab-ce:16.8.4-ce.0
   IMG_GRAFANA=grafana/grafana-oss:11.1.3
@@ -17941,9 +17941,9 @@ function loadPinnedDockerImages()
   IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.5-alpine
   IMG_VAULTWARDEN_LDAP=thegeeklab/vaultwarden-ldap:0.6.2
   IMG_WALLABAG=wallabag/wallabag:2.6.8
-  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.8.1
-  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.8.1
-  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.8.1
+  IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.3
+  IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.3
+  IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.7.3
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS=requarks/wiki:2.5.301
   IMG_WIREGUARD=linuxserver/wireguard:1.0.20210914
@@ -17966,7 +17966,7 @@ function getScriptStackVersion()
     mailu)
       echo "v3" ;;
     wazuh)
-      echo "v6" ;;
+      echo "v5" ;;
     collabora)
       echo "v5" ;;
     nextcloud)
@@ -25767,28 +25767,21 @@ function performUpdateWazuh()
     ;;
     4)
       # The only purpose of this stack upgrade is to implement the increased Java memory fix
-      newVer=v6
+      newVer=v5
       curImageList=wazuh/wazuh-manager:4.7.3,wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-dashboard:4.7.3
-      image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.8.1"
-      image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.8.1"
-      image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.8.1"
+      image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.7.3"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateWazuhStackJavaMem
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     5)
-      newVer=v6
+      newVer=v5
       curImageList=wazuh/wazuh-manager:4.7.3,wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-dashboard:4.7.3
-      image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.8.1"
-      image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.8.1"
-      image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.8.1"
-    ;;
-    6)
-      newVer=v6
-      curImageList=wazuh/wazuh-manager:4.8.1,wazuh/wazuh-indexer:4.8.1,wazuh/wazuh-dashboard:4.8.1
-      image_update_map[0]="wazuh/wazuh-manager:4.8.1,wazuh/wazuh-manager:4.8.1"
-      image_update_map[1]="wazuh/wazuh-indexer:4.8.1,wazuh/wazuh-indexer:4.8.1"
-      image_update_map[2]="wazuh/wazuh-dashboard:4.8.1,wazuh/wazuh-dashboard:4.8.1"
+      image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
+      image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
+      image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.7.3"
     ;;
     *)
       is_upgrade_error=true
@@ -26115,6 +26108,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:system:set enabledPreviewProviders 0 --value="OC\\Preview\\Imaginary"
   docker exec -u www-data nextcloud-app php occ config:system:set preview_imaginary_url --value="http://nextcloud-imaginary:$NEXTCLOUD_IMAGINARY_PORT"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install notify_push
+  docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
 
   if ! [ "$(isServiceDisabled clamav)" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_antivirus
@@ -26188,202 +26182,7 @@ function installNextcloud()
 
 function outputConfigNextcloud()
 {
-  cat <<EOFNG > $HSHQ_STACKS_DIR/nextcloud/web/nginx.conf
-worker_processes auto;
-
-error_log  /var/log/nginx/error.log warn;
-pid        /var/run/nginx.pid;
-
-
-events {
-    worker_connections  1024;
-}
-
-
-http {
-    include       /etc/nginx/mime.types;
-    default_type  application/octet-stream;
-
-    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
-                      '\$status \$body_bytes_sent "\$http_referer" '
-                      '"\$http_user_agent" "\$http_x_forwarded_for"';
-
-    access_log  /var/log/nginx/access.log  main;
-
-    sendfile        on;
-    #tcp_nopush     on;
-
-    # Prevent nginx HTTP Server Detection
-    server_tokens   off;
-
-    keepalive_timeout  65;
-
-    map \$http_host \$this_host {
-        "" \$host;
-        default \$http_host;
-    }
-
-    map \$http_x_forwarded_proto \$the_scheme {
-        default \$http_x_forwarded_proto;
-        "" \$scheme;
-    }
-
-    map \$http_x_forwarded_host \$the_host {
-       default \$http_x_forwarded_host;
-       "" \$this_host;
-    }
-
-    #gzip  on;
-
-    upstream php-handler {
-        server nextcloud-app:9000;
-    }
-
-    server {
-        listen 80;
-        listen 443 ssl http2;
-        ssl_certificate /etc/nginx/certs/cert.crt;
-        ssl_certificate_key /etc/nginx/certs/cert.key;
-
-        # HSTS settings
-        # WARNING: Only add the preload option once you read about
-        # the consequences in https://hstspreload.org/. This option
-        # will add the domain to a hardcoded list that is shipped
-        # in all major browsers and getting removed from this list
-        # could take several months.
-        #add_header Strict-Transport-Security "max-age=15768000; includeSubDomains;" always;
-
-        # set max upload size
-        client_max_body_size 16400M;
-        fastcgi_buffers 64 16K;
-        fastcgi_buffer_size 16K;
-
-        # Enable gzip but do not remove ETag headers
-        gzip on;
-        gzip_vary on;
-        gzip_comp_level 4;
-        gzip_min_length 256;
-        gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
-        gzip_types application/atom+xml application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
-
-        # Pagespeed is not supported by Nextcloud, so if your server is built
-        # with the ngx_pagespeed module, uncomment this line to disable it.
-        #pagespeed off;
-
-        # HTTP response headers borrowed from Nextcloud .htaccess
-        add_header Referrer-Policy                      "no-referrer"   always;
-        add_header X-Content-Type-Options               "nosniff"       always;
-        add_header X-Download-Options                   "noopen"        always;
-        add_header X-Frame-Options                      "SAMEORIGIN"    always;
-        add_header X-Permitted-Cross-Domain-Policies    "none"          always;
-        add_header X-Robots-Tag                     "noindex, nofollow" always;
-        add_header X-XSS-Protection                     "1; mode=block" always;
-
-        # Remove X-Powered-By, which is an information leak
-        fastcgi_hide_header X-Powered-By;
-
-        # Path to the root of your installation
-        root /var/www/html;
-
-        # Specify how to handle directories -- specifying /index.php\$request_uri
-        # here as the fallback means that Nginx always exhibits the desired behaviour
-        # when a client requests a path that corresponds to a directory that exists
-        # on the server. In particular, if that directory contains an index.php file,
-        # that file is correctly served; if it doesn't, then the request is passed to
-        # the front-end controller. This consistent behaviour means that we don't need
-        # to specify custom rules for certain paths (e.g. images and other assets,
-        # /updater, /ocm-provider, /ocs-provider), and thus
-        # try_files \$uri \$uri/ /index.php\$request_uri
-        # always provides the desired behaviour.
-        index index.php index.html /index.php\$request_uri;
-
-        # Rule borrowed from .htaccess to handle Microsoft DAV clients
-        location = / {
-            if ( \$http_user_agent ~ ^DavClnt ) {
-                return 302 /remote.php/webdav/\$is_args\$args;
-            }
-        }
-
-        location = /robots.txt {
-            allow all;
-            log_not_found off;
-            access_log off;
-        }
-
-        # Make a regex exception for /.well-known so that clients can still
-        # access it despite the existence of the regex rule
-        # location ~ /(\.|autotest|...) which would otherwise handle requests
-        # for /.well-known.
-        location ^~ /.well-known {
-            # The rules in this block are an adaptation of the rules
-            # in .htaccess that concern /.well-known.
-
-            location = /.well-known/carddav { return 301 /remote.php/dav/; }
-            location = /.well-known/caldav  { return 301 /remote.php/dav/; }
-
-            location /.well-known/acme-challenge    { try_files \$uri \$uri/ =404; }
-            location /.well-known/pki-validation    { try_files \$uri \$uri/ =404; }
-
-            # Let Nextcloud's API for /.well-known URIs handle all other
-            # requests by passing them to the front-end controller.
-            return 301 /index.php\$request_uri;
-        }
-
-        # Rules borrowed from .htaccess to hide certain paths from clients
-        location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:\$|/)  { return 404; }
-        location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console)                { return 404; }
-
-        # Ensure this block, which passes PHP files to the PHP process, is above the blocks
-        # which handle static assets (as seen below). If this block is not declared first,
-        # then Nginx will encounter an infinite rewriting loop when it prepends /index.php
-        # to the URI, resulting in a HTTP 500 error response.
-        location ~ \.php(?:\$|/) {
-            # Required for legacy support
-            rewrite ^/(?!index|remote|public|cron|core\/ajax\/update|status|ocs\/v[12]|updater\/.+|oc[ms]-provider\/.+|.+\/richdocumentscode\/proxy) /index.php\$request_uri;
-
-            fastcgi_split_path_info ^(.+?\.php)(/.*)\$;
-            set \$path_info \$fastcgi_path_info;
-
-            try_files \$fastcgi_script_name =404;
-
-            include fastcgi_params;
-            fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-            fastcgi_param PATH_INFO \$path_info;
-            #fastcgi_param HTTPS on;
-
-            fastcgi_param modHeadersAvailable true;         # Avoid sending the security headers twice
-            fastcgi_param front_controller_active true;     # Enable pretty urls
-            fastcgi_pass php-handler;
-
-            fastcgi_intercept_errors on;
-            fastcgi_request_buffering off;
-        }
-
-        location ~ \.(?:css|js|svg|gif)\$ {
-            try_files \$uri /index.php\$request_uri;
-            expires 6M;         # Cache-Control policy borrowed from .htaccess
-            access_log off;     # Optional: Don't log access to assets
-        }
-
-        location ~ \.woff2?\$ {
-            try_files \$uri /index.php\$request_uri;
-            expires 7d;         # Cache-Control policy borrowed from .htaccess
-            access_log off;     # Optional: Don't log access to assets
-        }
-
-        # Rule borrowed from .htaccess
-        location /remote {
-            return 301 /remote.php\$request_uri;
-        }
-
-        location / {
-            try_files \$uri \$uri/ /index.php\$request_uri;
-        }
-    }
-}
-
-EOFNG
-
+  outputNGINXConfigNextcloud
   cat <<EOFNC > $HSHQ_STACKS_DIR/nextcloud/www.conf
 [www]
 user = www-data
@@ -26866,6 +26665,224 @@ REDIS_TLS_ENABLED=no
 EOFNC
 }
 
+function outputNGINXConfigNextcloud()
+{
+  cat <<EOFNG > $HSHQ_STACKS_DIR/nextcloud/web/nginx.conf
+worker_processes auto;
+
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+
+events {
+    worker_connections  1024;
+}
+
+
+http {
+    default_type  application/octet-stream;
+
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile        on;
+    #tcp_nopush     on;
+
+    # Prevent nginx HTTP Server Detection
+    server_tokens   off;
+
+    keepalive_timeout  65;
+
+    map \$http_host \$this_host {
+        "" \$host;
+        default \$http_host;
+    }
+
+    map \$http_x_forwarded_proto \$the_scheme {
+        default \$http_x_forwarded_proto;
+        "" \$scheme;
+    }
+
+    map \$http_x_forwarded_host \$the_host {
+       default \$http_x_forwarded_host;
+       "" \$this_host;
+    }
+
+    # Set the `immutable` cache control options only for assets with a cache busting `v` argument
+    map \$arg_v \$asset_immutable {
+        "" "";
+        default ", immutable";
+    }
+
+    #gzip  on;
+
+    upstream php-handler {
+        server nextcloud-app:9000;
+    }
+
+    server {
+        listen 80;
+        listen 443 ssl;
+        http2 on;
+        ssl_certificate /etc/nginx/certs/cert.crt;
+        ssl_certificate_key /etc/nginx/certs/cert.key;
+        include /etc/nginx/mime.types;
+        types {
+            text/javascript js mjs;
+        }
+
+        # HSTS settings
+        # WARNING: Only add the preload option once you read about
+        # the consequences in https://hstspreload.org/. This option
+        # will add the domain to a hardcoded list that is shipped
+        # in all major browsers and getting removed from this list
+        # could take several months.
+        add_header Strict-Transport-Security "max-age=15768000; includeSubDomains;" always;
+
+        # set max upload size
+        client_max_body_size 16400M;
+        fastcgi_buffers 64 16K;
+        fastcgi_buffer_size 16K;
+
+        # Enable gzip but do not remove ETag headers
+        gzip on;
+        gzip_vary on;
+        gzip_comp_level 4;
+        gzip_min_length 256;
+        gzip_proxied expired no-cache no-store private no_last_modified no_etag auth;
+        gzip_types application/atom+xml application/javascript application/json application/ld+json application/manifest+json application/rss+xml application/vnd.geo+json application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/bmp image/svg+xml image/x-icon text/cache-manifest text/css text/plain text/vcard text/vnd.rim.location.xloc text/vtt text/x-component text/x-cross-domain-policy;
+
+        # Pagespeed is not supported by Nextcloud, so if your server is built
+        # with the ngx_pagespeed module, uncomment this line to disable it.
+        #pagespeed off;
+
+        # HTTP response headers borrowed from Nextcloud .htaccess
+        add_header Referrer-Policy                      "no-referrer"   always;
+        add_header X-Content-Type-Options               "nosniff"       always;
+        add_header X-Download-Options                   "noopen"        always;
+        add_header X-Frame-Options                      "SAMEORIGIN"    always;
+        add_header X-Permitted-Cross-Domain-Policies    "none"          always;
+        add_header X-Robots-Tag                     "noindex, nofollow" always;
+        add_header X-XSS-Protection                     "1; mode=block" always;
+
+        # Remove X-Powered-By, which is an information leak
+        fastcgi_hide_header X-Powered-By;
+
+        # Path to the root of your installation
+        root /var/www/html;
+
+        # Specify how to handle directories -- specifying /index.php\$request_uri
+        # here as the fallback means that Nginx always exhibits the desired behaviour
+        # when a client requests a path that corresponds to a directory that exists
+        # on the server. In particular, if that directory contains an index.php file,
+        # that file is correctly served; if it doesn't, then the request is passed to
+        # the front-end controller. This consistent behaviour means that we don't need
+        # to specify custom rules for certain paths (e.g. images and other assets,
+        # /updater, /ocm-provider, /ocs-provider), and thus
+        # try_files \$uri \$uri/ /index.php\$request_uri
+        # always provides the desired behaviour.
+        index index.php index.html /index.php\$request_uri;
+
+        # Rule borrowed from .htaccess to handle Microsoft DAV clients
+        location = / {
+            if ( \$http_user_agent ~ ^DavClnt ) {
+                return 302 /remote.php/webdav/\$is_args\$args;
+            }
+        }
+
+        location = /robots.txt {
+            allow all;
+            log_not_found off;
+            access_log off;
+        }
+
+        # Make a regex exception for /.well-known so that clients can still
+        # access it despite the existence of the regex rule
+        # location ~ /(\.|autotest|...) which would otherwise handle requests
+        # for /.well-known.
+        location ^~ /.well-known {
+            # The rules in this block are an adaptation of the rules
+            # in .htaccess that concern /.well-known.
+
+            location = /.well-known/carddav { return 301 /remote.php/dav/; }
+            location = /.well-known/caldav  { return 301 /remote.php/dav/; }
+
+            location /.well-known/acme-challenge    { try_files \$uri \$uri/ =404; }
+            location /.well-known/pki-validation    { try_files \$uri \$uri/ =404; }
+
+            # Let Nextcloud's API for /.well-known URIs handle all other
+            # requests by passing them to the front-end controller.
+            return 301 /index.php\$request_uri;
+        }
+
+        # Rules borrowed from .htaccess to hide certain paths from clients
+        location ~ ^/(?:build|tests|config|lib|3rdparty|templates|data)(?:\$|/)  { return 404; }
+        location ~ ^/(?:\.|autotest|occ|issue|indie|db_|console)                { return 404; }
+
+        # Ensure this block, which passes PHP files to the PHP process, is above the blocks
+        # which handle static assets (as seen below). If this block is not declared first,
+        # then Nginx will encounter an infinite rewriting loop when it prepends /index.php
+        # to the URI, resulting in a HTTP 500 error response.
+        location ~ \.php(?:\$|/) {
+            # Required for legacy support
+            rewrite ^/(?!index|remote|public|cron|core\/ajax\/update|status|ocs\/v[12]|updater\/.+|oc[ms]-provider\/.+|.+\/richdocumentscode\/proxy) /index.php\$request_uri;
+
+            fastcgi_split_path_info ^(.+?\.php)(/.*)\$;
+            set \$path_info \$fastcgi_path_info;
+
+            try_files \$fastcgi_script_name =404;
+
+            include fastcgi_params;
+            fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+            fastcgi_param PATH_INFO \$path_info;
+            #fastcgi_param HTTPS on;
+
+            fastcgi_param modHeadersAvailable true;         # Avoid sending the security headers twice
+            fastcgi_param front_controller_active true;     # Enable pretty urls
+            fastcgi_pass php-handler;
+
+            fastcgi_intercept_errors on;
+            fastcgi_request_buffering off;
+        }
+
+        # Serve static files
+        location ~ \.(?:css|js|mjs|svg|gif|png|jpg|ico|wasm|tflite|map|ogg|flac)\$ {
+            try_files \$uri /index.php\$request_uri;
+            # HTTP response headers borrowed from Nextcloud `.htaccess`
+            add_header Cache-Control                     "public, max-age=15778463\$asset_immutable";
+            add_header Referrer-Policy                   "no-referrer"       always;
+            add_header X-Content-Type-Options            "nosniff"           always;
+            add_header X-Frame-Options                   "SAMEORIGIN"        always;
+            add_header X-Permitted-Cross-Domain-Policies "none"              always;
+            add_header X-Robots-Tag                      "noindex, nofollow" always;
+            add_header X-XSS-Protection                  "1; mode=block"     always;
+            access_log off;     # Optional: Don't log access to assets
+        }
+
+        location ~ \.woff2?\$ {
+            try_files \$uri /index.php\$request_uri;
+            expires 7d;         # Cache-Control policy borrowed from .htaccess
+            access_log off;     # Optional: Don't log access to assets
+        }
+
+        # Rule borrowed from .htaccess
+        location /remote {
+            return 301 /remote.php\$request_uri;
+        }
+
+        location / {
+            try_files \$uri \$uri/ /index.php\$request_uri;
+        }
+    }
+}
+
+EOFNG
+
+}
+
 function performUpdateNextcloud()
 {
   perform_stack_name=nextcloud
@@ -26908,6 +26925,11 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:27.1.7-fpm-alpine,nextcloud:28.0.8-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfNextcloudUpdateNGINXConfig false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      performMaintenanceNextcloud
+      docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
+      return
     ;;
     5)
       newVer=v5
@@ -26926,6 +26948,35 @@ function performUpdateNextcloud()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+  performMaintenanceNextcloud
+}
+
+function performMaintenanceNextcloud()
+{
+  search="ready to handle connections"
+  isFound="F"
+  i=0
+  set +e
+  while [ $i -le 300 ]
+  do
+    findtext=$(docker logs nextcloud-app 2>&1 | grep "$search")
+    if ! [ -z "$findtext" ]; then
+      isFound="T"
+      break
+    fi
+    echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
+    sleep 5
+    i=$((i+5))
+  done
+  if [ $isFound == "T" ]; then
+    docker exec -u www-data nextcloud-app php occ db:add-missing-indices
+    docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive
+  fi
+}
+
+function mfNextcloudUpdateNGINXConfig()
+{
+  outputNGINXConfigNextcloud
 }
 
 # Jitsi
@@ -29450,8 +29501,8 @@ EOFJF
   <LdapBaseDn>$LDAP_BASE_DN</LdapBaseDn>
   <LdapSearchFilter>(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)</LdapSearchFilter>
   <LdapAdminBaseDn>cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN</LdapAdminBaseDn>
-  <LdapAdminFilter>_disabled_</LdapAdminFilter>
-  <LdapSearchAttributes>uid, cn, mail, displayName</LdapSearchAttributes>
+  <LdapAdminFilter>(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)</LdapAdminFilter>
+  <LdapSearchAttributes>uid,mail</LdapSearchAttributes>
   <EnableCaseInsensitiveUsername>false</EnableCaseInsensitiveUsername>
   <CreateUsersFromLdap>true</CreateUsersFromLdap>
   <AllowPassChange>false</AllowPassChange>
@@ -29476,11 +29527,19 @@ function performUpdateJellyfin()
       newVer=v3
       curImageList=jellyfin/jellyfin:10.8.10
       image_update_map[0]="jellyfin/jellyfin:10.8.10,jellyfin/jellyfin:10.9.8"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" notifyJellyfinLDAPPluginUpdate false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      sendEmailJellyfinLDAPPluginUpdate
+      return
     ;;
     2)
       newVer=v3
       curImageList=jellyfin/jellyfin:10.8.13
       image_update_map[0]="jellyfin/jellyfin:10.8.13,jellyfin/jellyfin:10.9.8"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" notifyJellyfinLDAPPluginUpdate false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      sendEmailJellyfinLDAPPluginUpdate
+      return
     ;;
     3)
       newVer=v3
@@ -29495,6 +29554,16 @@ function performUpdateJellyfin()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function notifyJellyfinLDAPPluginUpdate()
+{
+  stack_upgrade_report="${stack_upgrade_report}jellyfin: This version update requires the LDAP plugin to be reinstalled. See admin email ($EMAIL_ADMIN_EMAIL_ADDRESS) for more details.\n"
+}
+
+function sendEmailJellyfinLDAPPluginUpdate()
+{
+  sendEmail -s "Jellyfin Version Update" -b "This new version of Jellyfin requires the LDAP plugin to be updated as well. Login as the Jellyfin administrator ($JELLYFIN_ADMIN_USERNAME), and uninstall and reinstall the LDAP Authentication plugin. The new version of the plugin should be version (19.0.0.0). After reinstalling, ensure to restart the jellyfin stack in Portainer." -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
 }
 
 # FileBrowser
@@ -31005,31 +31074,31 @@ function performUpdateGhost()
       newVer=v5
       curImageList=mariadb:10.7.3,ghost:5.59.1-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.59.1-alpine,ghost:5.88.3-alpine"
+      image_update_map[1]="ghost:5.59.1-alpine,ghost:5.88.2-alpine"
     ;;
     2)
       newVer=v5
       curImageList=mariadb:10.7.3,ghost:5.75.2-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.75.2-alpine,ghost:5.88.3-alpine"
+      image_update_map[1]="ghost:5.75.2-alpine,ghost:5.88.2-alpine"
     ;;
     3)
       newVer=v5
       curImageList=mariadb:10.7.3,ghost:5.78.0-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.78.0-alpine,ghost:5.88.3-alpine"
+      image_update_map[1]="ghost:5.78.0-alpine,ghost:5.88.2-alpine"
     ;;
     4)
       newVer=v5
       curImageList=mariadb:10.7.3,ghost:5.80.3-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.80.3-alpine,ghost:5.88.3-alpine"
+      image_update_map[1]="ghost:5.80.3-alpine,ghost:5.88.2-alpine"
     ;;
     5)
       newVer=v5
-      curImageList=mariadb:10.7.3,ghost:5.88.3-alpine
+      curImageList=mariadb:10.7.3,ghost:5.88.2-alpine
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.88.3-alpine,ghost:5.88.3-alpine"
+      image_update_map[1]="ghost:5.88.2-alpine,ghost:5.88.2-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -31357,6 +31426,7 @@ function installHomeAssistant()
   mkdir $HSHQ_STACKS_DIR/homeassistant/config/www/images
   mkdir $HSHQ_STACKS_DIR/homeassistant/config/www/plugins
   mkdir $HSHQ_STACKS_DIR/homeassistant/config/www/themes
+  mkdir $HSHQ_STACKS_DIR/homeassistant/config/www/panels
   mkdir $HSHQ_STACKS_DIR/homeassistant/configurator
   mkdir $HSHQ_STACKS_DIR/homeassistant/db
   mkdir $HSHQ_STACKS_DIR/homeassistant/dbexport
@@ -31655,6 +31725,12 @@ module.exports = {
 }
 EOFCF
 
+  outputHASSPanels
+  outputHASSConfigYaml
+}
+
+function outputHASSConfigYaml()
+{
   cat <<EOFHC > $HSHQ_STACKS_DIR/homeassistant/configuration.yaml
 
 default_config:
@@ -31702,20 +31778,28 @@ http:
   ssl_certificate: /certs/homeassistant-app.crt
   ssl_key: /certs/homeassistant-app.key
 
-panel_iframe:
-  nodered:
-    title: "Node Red"
-    url: "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN"
-    icon: mdi:file-tree
-  configurator:
-    title: "Configurator"
-    icon: mdi:wrench
-    url: "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN"
+panel_custom:
+  - name: nodered
+    sidebar_title: "Node Red"
+    sidebar_icon: mdi:file-tree
+    url_path: nodered
+    module_url: /local/panels/nodered_redirect.js
+    embed_iframe: true
     require_admin: true
-  tasmoadmin:
-    title: "TasmoAdmin"
-    url: "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
-    icon: mdi:home-automation
+  - name: Configurator
+    sidebar_title: "Configurator"
+    sidebar_icon: mdi:wrench
+    url_path: configurator
+    module_url: /local/panels/configurator_redirect.js
+    embed_iframe: true
+    require_admin: true
+  - name: tasmoadmin
+    sidebar_title: "TasmoAdmin"
+    sidebar_icon: mdi:home-automation
+    url_path: tasmoadmin
+    module_url: /local/panels/tasmoadmin_redirect.js
+    embed_iframe: true
+    require_admin: true
 
 recorder:
   db_url: postgresql://$HOMEASSISTANT_DATABASE_USER:$HOMEASSISTANT_DATABASE_USER_PASSWORD@localhost:$HOMEASSISTANT_DB_LOCALHOST_PORT/$HOMEASSISTANT_DATABASE_NAME
@@ -31733,6 +31817,14 @@ influxdb:
 
 EOFHC
 
+}
+
+function outputHASSPanels()
+{
+  mkdir -p $HSHQ_STACKS_DIR/homeassistant/config/www/panels
+  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_CONFIGURATOR/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/configurator_redirect.js
+  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_NODERED/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/nodered_redirect.js
+  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_TASMOADMIN/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/tasmoadmin_redirect.js
 }
 
 function performUpdateHomeAssistant()
@@ -31792,6 +31884,9 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.1.7,nodered/node-red:4.0.2"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.0.1,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateHASSiFramesConfig false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     6)
       newVer=v6
@@ -31817,84 +31912,7 @@ function mfV4UpdateHASS()
   # Replace the config and compose files...
   # Typically, we would be more surgical with the changes,
   # but in this case, the amount of users affected is minimal.
-  cat <<EOFHC > $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml
-
-default_config:
-
-homeassistant:
-  time_zone: $TZ
-  external_url: "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN"
-  internal_url: "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN"
-  country: US
-
-frontend:
-  themes: !include_dir_merge_named themes
-
-tts:
-  - platform: picotts
-    language: 'en-US'
-
-notify:
-  - name: "LOCAL_SMTP"
-    platform: smtp
-    server: "$SUB_POSTFIX.$HOMESERVER_DOMAIN"
-    port: 25
-    timeout: 15
-    sender: "$EMAIL_SMTP_EMAIL_ADDRESS"
-    encryption: starttls
-    verify_ssl: false
-    recipient:
-      - "$EMAIL_ADMIN_EMAIL_ADDRESS"
-    sender_name: "HomeAssistant $HSHQ_ADMIN_NAME"
-
-automation: !include automations.yaml
-script: !include scripts.yaml
-scene: !include scenes.yaml
-
-http:
-  use_x_forwarded_for: true
-  trusted_proxies:
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-    - 192.168.0.0/16
-  ip_ban_enabled: true
-  login_attempts_threshold: 5
-  server_host: 0.0.0.0
-  server_port: $HOMEASSISTANT_LOCALHOST_PORT
-  ssl_certificate: /certs/homeassistant-app.crt
-  ssl_key: /certs/homeassistant-app.key
-
-panel_iframe:
-  nodered:
-    title: "Node Red"
-    url: "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN"
-    icon: mdi:file-tree
-  configurator:
-    title: "Configurator"
-    icon: mdi:wrench
-    url: "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN"
-    require_admin: true
-  tasmoadmin:
-    title: "TasmoAdmin"
-    url: "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN"
-    icon: mdi:home-automation
-
-recorder:
-  db_url: postgresql://$HOMEASSISTANT_DATABASE_USER:$HOMEASSISTANT_DATABASE_USER_PASSWORD@localhost:$HOMEASSISTANT_DB_LOCALHOST_PORT/$HOMEASSISTANT_DATABASE_NAME
-
-influxdb:
-  api_version: 2
-  ssl: true
-  host: $SUB_INFLUXDB.$HOMESERVER_DOMAIN
-  port: 443
-  verify_ssl: true
-  ssl_ca_cert: /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
-  token: "$INFLUXDB_TOKEN"
-  organization: "$INFLUXDB_ORG"
-  bucket: "$INFLUXDB_HA_BUCKET"
-
-EOFHC
-
+  outputHASSConfigYaml
   cat <<EOFHA > $HOME/homeassistant-compose.yml
 $STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
 
@@ -32050,6 +32068,15 @@ EOFHA
   sudo chown root:root $HOME/homeassistant-compose.yml
   sudo mv $HOME/homeassistant-compose.yml $upgrade_compose_file
   insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN" true
+}
+
+function mfUpdateHASSiFramesConfig()
+{
+  outputHASSPanels
+  if [ -f $HSHQ_STACKS_DIR/homeassistant/configuration.yaml ]; then
+    mv $HSHQ_STACKS_DIR/homeassistant/configuration.yaml $HSHQ_STACKS_DIR/homeassistant/configuration.old
+  fi
+  outputHASSConfigYaml
 }
 
 # Gitlab
@@ -36103,7 +36130,7 @@ function performUpdateRemotely()
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=immybot/remotely:88
       image_update_map[0]="immybot/remotely:88,immybot/remotely:589"
     ;;
