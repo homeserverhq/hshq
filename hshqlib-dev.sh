@@ -32441,7 +32441,6 @@ function installVaultwarden()
   chmod 777 $HSHQ_STACKS_DIR/vaultwarden/dbexport
 
   initServicesCredentials
-  VAULTWARDEN_ADMIN_TOKEN_HASH=$(echo -n "$VAULTWARDEN_ADMIN_TOKEN" | argon2 $(pwgen -c -n 32 1) -id -e -m 16 | sed 's/\$/\$\$/g')
   outputConfigVaultwarden
   generateCert vaultwarden-app vaultwarden-app
   installStack vaultwarden vaultwarden-app " " $HOME/vaultwarden.env
@@ -32588,6 +32587,7 @@ networks:
       driver: default
 EOFVW
 
+  VAULTWARDEN_ADMIN_TOKEN_HASH=$(echo -n "$VAULTWARDEN_ADMIN_TOKEN" | argon2 $(pwgen -c -n 32 1) -id -e -m 16 | sed 's/\$/\$\$/g')
   cat <<EOFVW > $HOME/vaultwarden.env
 UID=$USERID
 GID=$GROUPID
