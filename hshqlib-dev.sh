@@ -17939,7 +17939,7 @@ function loadPinnedDockerImages()
   IMG_SYNCTHING=syncthing/syncthing:1.27.9
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.13-alpine
   IMG_VAULTWARDEN_APP=vaultwarden/server:1.30.5-alpine
-  IMG_VAULTWARDEN_LDAP=thegeeklab/vaultwarden-ldap:0.6.2
+  IMG_VAULTWARDEN_LDAP=vividboarder/vaultwarden_ldap:2.0.1
   IMG_WALLABAG=wallabag/wallabag:2.6.8
   IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.7.3
   IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.7.3
@@ -18006,7 +18006,7 @@ function getScriptStackVersion()
     gitlab)
       echo "v4" ;;
     vaultwarden)
-      echo "v4" ;;
+      echo "v5" ;;
     discourse)
       echo "v5" ;;
     syncthing)
@@ -26711,7 +26711,7 @@ http {
        "" \$this_host;
     }
 
-    # Set the `immutable` cache control options only for assets with a cache busting `v` argument
+    # Set the immutable cache control options only for assets with a cache busting v argument
     map \$arg_v \$asset_immutable {
         "" "";
         default ", immutable";
@@ -26851,7 +26851,7 @@ http {
         # Serve static files
         location ~ \.(?:css|js|mjs|svg|gif|png|jpg|ico|wasm|tflite|map|ogg|flac)\$ {
             try_files \$uri /index.php\$request_uri;
-            # HTTP response headers borrowed from Nextcloud `.htaccess`
+            # HTTP response headers borrowed from Nextcloud .htaccess
             add_header Cache-Control                     "public, max-age=15778463\$asset_immutable";
             add_header Referrer-Policy                   "no-referrer"       always;
             add_header X-Content-Type-Options            "nosniff"           always;
@@ -31822,9 +31822,9 @@ EOFHC
 function outputHASSPanels()
 {
   mkdir -p $HSHQ_STACKS_DIR/homeassistant/config/www/panels
-  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_CONFIGURATOR/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/configurator_redirect.js
-  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_NODERED/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/nodered_redirect.js
-  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_TASMOADMIN/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/tasmoadmin_redirect.js
+  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/configurator_redirect.js
+  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/nodered_redirect.js
+  echo "window.location.replace(\"https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN/\");" > $HSHQ_STACKS_DIR/homeassistant/config/www/panels/tasmoadmin_redirect.js
 }
 
 function performUpdateHomeAssistant()
@@ -32073,10 +32073,11 @@ EOFHA
 function mfUpdateHASSiFramesConfig()
 {
   outputHASSPanels
-  if [ -f $HSHQ_STACKS_DIR/homeassistant/configuration.yaml ]; then
-    mv $HSHQ_STACKS_DIR/homeassistant/configuration.yaml $HSHQ_STACKS_DIR/homeassistant/configuration.old
+  if [ -f $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml ]; then
+    sudo mv $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml $HSHQ_STACKS_DIR/homeassistant/config/configuration.old
   fi
   outputHASSConfigYaml
+  sudo mv $HSHQ_STACKS_DIR/homeassistant/configuration.yaml $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml
 }
 
 # Gitlab
@@ -32562,9 +32563,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.der:/cacert/rootca.der:ro
     environment:
-      - VAULTWARDEN_LDAP_VAULTWARDEN_ADMIN_TOKEN=$VAULTWARDEN_ADMIN_TOKEN
-      - VAULTWARDEN_LDAP_BIND_PASSWORD=$LDAP_READONLY_USER_PASSWORD
+      - APP_VAULTWARDEN_ADMIN_TOKEN=$VAULTWARDEN_ADMIN_TOKEN
+      - APP_LDAP_BIND_PASSWORD=$LDAP_READONLY_USER_PASSWORD
 
 networks:
   dock-proxy-net:
@@ -32604,14 +32606,19 @@ SMTP_SECURITY=starttls
 POSTGRES_DB=$VAULTWARDEN_DATABASE_NAME
 POSTGRES_USER=$VAULTWARDEN_DATABASE_USER
 POSTGRES_PASSWORD=$VAULTWARDEN_DATABASE_USER_PASSWORD
-VAULTWARDEN_LDAP_VAULTWARDEN_URL=https://vaultwarden-app:443
-VAULTWARDEN_LDAP_HOST=ldapserver
-VAULTWARDEN_LDAP_SSL=true
-VAULTWARDEN_LDAP_BIND_DN=$LDAP_READONLY_USER_BIND_DN
-VAULTWARDEN_LDAP_SEARCH_BASE_DN=$LDAP_BASE_DN
-VAULTWARDEN_LDAP_SSL_VERIFY=true
-VAULTWARDEN_LDAP_SYNC_INTERVAL_SECONDS=300
-VAULTWARDEN_LDAP_SEARCH_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+RUST_BACKTRACE=1
+APP_VAULTWARDEN_URL=https://vaultwarden-app:443
+APP_LDAP_HOST=ldapserver
+APP_LDAP_PORT=389
+APP_LDAP_BIND_DN=$LDAP_READONLY_USER_BIND_DN
+APP_LDAP_SEARCH_BASE_DN=$LDAP_BASE_DN
+APP_LDAP_STARTTLS=true
+APP_LDAP_NO_TLS_VERIFY=true
+APP_VAULTWARDEN_ROOT_CERT_FILE=/cacert/rootca.der
+APP_LDAP_SEARCH_BASE_DN=$LDAP_BASE_DN
+APP_LDAP_SEARCH_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+APP_LDAP_SYNC_INTERVAL_SECONDS=300
+
 EOFVW
 
 }
@@ -32645,11 +32652,21 @@ function performUpdateVaultwarden()
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.5-alpine,thegeeklab/vaultwarden-ldap:0.6.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.5-alpine,vaultwarden/server:1.30.5-alpine"
-      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    5)
+      newVer=v5
+      curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.5-alpine,vividboarder/vaultwarden_ldap:2.0.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.30.5-alpine,vaultwarden/server:1.30.5-alpine"
+      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.1,vividboarder/vaultwarden_ldap:2.0.1"
     ;;
     *)
       is_upgrade_error=true
@@ -32659,6 +32676,11 @@ function performUpdateVaultwarden()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfReplaceVaultwardenLDAPConnector()
+{
+  outputConfigVaultwarden
 }
 
 # Discourse
@@ -38536,6 +38558,7 @@ TZ=\${TZ}
 PUID=$USERID
 PGID=$GROUPID
 APP_URL=https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN
+APP_KEY=base64:$(pwgen -c -n 43 1)=
 POSTGRES_DB=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 POSTGRES_USER=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
 POSTGRES_PASSWORD=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
@@ -38598,10 +38621,13 @@ function performUpdateSpeedtestTrackerLocal()
       return
     ;;
     3)
-      newVer=v4
+      newVer=v3
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.18.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="linuxserver/speedtest-tracker:0.18.3,linuxserver/speedtest-tracker:0.20.8"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Speedtest Tracker cannot be upgraded to the next version. You must uninstall your current version and reinstall the new version."
+      return
     ;;
     4)
       newVer=v4
@@ -38787,6 +38813,7 @@ TZ=\${TZ}
 PUID=$USERID
 PGID=$GROUPID
 APP_URL=https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN
+APP_KEY=base64:$(pwgen -c -n 43 1)=
 POSTGRES_DB=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 POSTGRES_USER=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
 POSTGRES_PASSWORD=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
@@ -38849,10 +38876,13 @@ function performUpdateSpeedtestTrackerVPN()
       return
     ;;
     3)
-      newVer=v4
+      newVer=v3
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.18.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="linuxserver/speedtest-tracker:0.18.3,linuxserver/speedtest-tracker:0.20.8"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Speedtest Tracker cannot be upgraded to the next version. You must uninstall your current version and reinstall the new version."
+      return
     ;;
     4)
       newVer=v4
