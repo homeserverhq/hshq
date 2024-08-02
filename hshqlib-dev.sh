@@ -3750,12 +3750,13 @@ function install()
   installLogNotify "Rebooting"
   echo -e "\n\n\n\n########################################\n\n"
   echo "RelayServer Installation Complete!"
-  echo "The system is rebooting..."
+  echo "The system will reboot in 5 seconds..."
   echo -e "\n\n########################################\n\n"
   rm -f $HSHQ_SCRIPT_OPEN
   # Successfull installation, clean up the logs
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME
+  sleep 5
   sudo reboot
 }
 
@@ -19572,8 +19573,8 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/index.html#!/login.html $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/index.html#!/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GUACAMOLE" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_UPTIMEKUMA" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SQLPAD" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
@@ -19642,7 +19643,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/index.html#!/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
   strInstructions="Vaultwarden User Import Instructions:\n\n"
   strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager."
@@ -32443,11 +32444,12 @@ function installVaultwarden()
   initServicesCredentials
   outputConfigVaultwarden
   generateCert vaultwarden-app vaultwarden-app
-  installStack vaultwarden vaultwarden-app " " $HOME/vaultwarden.env
+  installStack vaultwarden vaultwarden-app "Rocket has launched" $HOME/vaultwarden.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
+  docker container restart vaultwarden-ldap > /dev/null 2>&1
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN {\n"
@@ -32631,25 +32633,34 @@ function performUpdateVaultwarden()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.29.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.29.1-alpine,vaultwarden/server:1.30.5-alpine"
-      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     2)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.1-alpine,thegeeklab/vaultwarden-ldap:0.6.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.1-alpine,vaultwarden/server:1.30.5-alpine"
-      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.2-alpine,thegeeklab/vaultwarden-ldap:0.6.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.2-alpine,vaultwarden/server:1.30.5-alpine"
-      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,thegeeklab/vaultwarden-ldap:0.6.2"
+      image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     4)
       newVer=v5

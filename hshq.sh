@@ -67,7 +67,7 @@ function main()
         #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
         #===============================================================#
        HomeServerHQ Installation and Management Utility
-       Copyright (C) 2023 HomeServerHQ, LLC <drdoug@homeserverhq.com>
+       Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
        Licensed under GNU General Public License Version 3
 EOF
   )
