@@ -9024,7 +9024,7 @@ function changeHSInternetPrimaryIPAddress()
   sqlite3 $HSHQ_DB "update connections set IPAddress='$new_ip' where ID=$db_id;"
 }
 
-function changeUserIPAddress()
+function changeDeviceIPAddress()
 {
   # Just in case there's a network collision, allow
   # user to change the IP address rather than having
@@ -42756,7 +42756,7 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/changeUserIP.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/changeDeviceIP.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
@@ -42771,17 +42771,17 @@ ipaddr=\$(getArgumentValue ipaddr "\$@")
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-changeUserIPAddress \$rem_id \$ipaddr
+changeDeviceIPAddress \$rem_id \$ipaddr
 set -e
 performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/changeUserIP.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/changeDeviceIP.json
 {
-  "name": "04 Change User IP",
-  "script_path": "conf/scripts/changeUserIP.sh",
-  "description": "Changes the interface IP address of a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address due to a collision. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection. If <ins>you</ins> are the one initiating the change, i.e. the user did not request the change, then ensure to confer with them beforehand, since changing it has potential cascading effects on their device's interface peers.",
+  "name": "04 Change Device IP",
+  "script_path": "conf/scripts/changeDeviceIP.sh",
+  "description": "Changes the interface IP address of a device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address for their device due to a collision. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection. If <ins>you</ins> are the one initiating the change, i.e. the user did not request the change, then ensure to confer with them beforehand, since changing it has potential cascading effects on their device's interface peers.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -43001,7 +43001,7 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeUserConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeDeviceConnection.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
@@ -43022,11 +43022,11 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeUserConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeDeviceConnection.json
 {
-  "name": "07 Remove User Connection",
-  "script_path": "conf/scripts/removeUserConnection.sh",
-  "description": "Removes a user connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the user being removed.",
+  "name": "07 Remove Device Connection",
+  "script_path": "conf/scripts/removeDeviceConnection.sh",
+  "description": "Removes a client device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the user of the device being removed.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -43137,7 +43137,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 set +e
-echo "Emailing HomeServer DNS list for users..."
+echo "Emailing HomeServer DNS list for user devices..."
 showEmailMyNetworkHomeServerDNSListClientDNSNoMenu
 set -e
 performExitFunctions false
@@ -43146,7 +43146,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailUsersDNSList.json
 {
-  "name": "09 Email Users DNS List",
+  "name": "09 Email Client Device DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
   "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this ecosystem).",
   "group": "$group_id_mynetwork",
@@ -43171,7 +43171,7 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailMyNetworkUserDetails.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailMyNetworkClientDeviceDetails.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
@@ -43189,11 +43189,11 @@ performExitFunctions false
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailMyNetworkUserDetails.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailMyNetworkClientDeviceDetails.json
 {
-  "name": "10 Email User Details",
-  "script_path": "conf/scripts/emailMyNetworkUserDetails.sh",
-  "description": "Emails user details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all user connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the users to the new network with the same information.",
+  "name": "10 Email Client Device Details",
+  "script_path": "conf/scripts/emailMyNetworkClientDeviceDetails.sh",
+  "description": "Emails client device details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all client device connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the devices to the new network with the same information.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
