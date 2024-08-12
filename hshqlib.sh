@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=80
+HSHQ_SCRIPT_VERSION=81
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -10279,7 +10279,9 @@ function installStack()
     PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   echo "Creating stack: $stack_name"
+  set -f
   echo "$(createStackJson $stack_name $HOME/$stack_name-compose.yml "$envfile")" > $HOME/$stack_name-json.tmp
+  set +f
   sleep 1
   ins_numTries=1
   ins_totalTries=5
@@ -19647,7 +19649,7 @@ function emailVaultwardenCredentials()
   fi
   strOutput=${strOutput}"\n\n\n\n"
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
-  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within the Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
+  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
   sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
@@ -38494,6 +38496,9 @@ function installSpeedtestTrackerLocal()
 
 function outputConfigSpeedtestTrackerLocal()
 {
+  pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
+  rand_minute=$((3 + RANDOM % 24))
+
   cat <<EOFBA > $HOME/speedtest-tracker-local-compose.yml
 $STACK_VERSION_PREFIX speedtest-tracker-local $(getScriptStackVersion speedtest-tracker-local)
 
@@ -38578,12 +38583,18 @@ networks:
 
 EOFBA
 
+  set -f
   cat <<EOFBA > $HOME/speedtest-tracker-local.env
 TZ=\${TZ}
 PUID=$USERID
 PGID=$GROUPID
+APP_NAME=Speedtest Tracker Local
 APP_URL=https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN
 APP_KEY=base64:$(pwgen -c -n 43 1)=
+APP_TIMEZONE=${TZ}
+DISPLAY_TIMEZONE=${TZ}
+PUBLIC_DASHBOARD=false
+SPEEDTEST_SCHEDULE='$rand_minute */3 * * *'
 POSTGRES_DB=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 POSTGRES_USER=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
 POSTGRES_PASSWORD=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
@@ -38602,20 +38613,13 @@ MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
 MAIL_FROM_NAME=SpeedtestTrackerLocal $HSHQ_ADMIN_NAME
 
 EOFBA
-
-  pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
-  rand_minute=$((3 + RANDOM % 24))
+  set +f
   cat <<EOFDS > $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport/setupDBSettings.sh
 #!/bin/bash
 
 PGPASSWORD=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
-echo "update settings set payload=to_json('Speedtest Tracker Local'::text) where name='site_name';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-echo "update settings set payload=to_json('$TZ'::text) where name='timezone';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-echo "update settings set payload=to_json(false) where name='public_dashboard_enabled';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-echo "update settings set payload=to_json(true) where name='db_has_timezone';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-echo "update settings set payload=to_json('$rand_minute */3 * * *'::text) where name='speedtest_schedule';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 
+echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerLocal Admin', email='$SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
 
 EOFDS
@@ -38749,6 +38753,9 @@ function installSpeedtestTrackerVPN()
 
 function outputConfigSpeedtestTrackerVPN()
 {
+  pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
+  rand_minute=$((33 + RANDOM % 24))
+
   cat <<EOFBA > $HOME/speedtest-tracker-vpn-compose.yml
 $STACK_VERSION_PREFIX speedtest-tracker-vpn $(getScriptStackVersion speedtest-tracker-vpn)
 
@@ -38833,12 +38840,18 @@ networks:
 
 EOFBA
 
+  set -f
   cat <<EOFBA > $HOME/speedtest-tracker-vpn.env
 TZ=\${TZ}
 PUID=$USERID
 PGID=$GROUPID
+APP_NAME=Speedtest Tracker VPN
 APP_URL=https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN
 APP_KEY=base64:$(pwgen -c -n 43 1)=
+APP_TIMEZONE=${TZ}
+DISPLAY_TIMEZONE=${TZ}
+PUBLIC_DASHBOARD=false
+SPEEDTEST_SCHEDULE='$rand_minute */3 * * *'
 POSTGRES_DB=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 POSTGRES_USER=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
 POSTGRES_PASSWORD=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
@@ -38857,20 +38870,13 @@ MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
 MAIL_FROM_NAME=SpeedtestTrackerVPN $HSHQ_ADMIN_NAME
 
 EOFBA
-
-  pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
-  rand_minute=$((33 + RANDOM % 24))
+  set +f
   cat <<EOFDS > $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
 #!/bin/bash
 
 PGPASSWORD=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
-echo "update settings set payload=to_json('Speedtest Tracker VPN'::text) where name='site_name';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-echo "update settings set payload=to_json('$TZ'::text) where name='timezone';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-echo "update settings set payload=to_json(false) where name='public_dashboard_enabled';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-echo "update settings set payload=to_json(true) where name='db_has_timezone';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-echo "update settings set payload=to_json('$rand_minute */3 * * *'::text) where name='speedtest_schedule';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 
+echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\" } ]' where name='mail_recipients';" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerVPN Admin', email='$SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 
 EOFDS
