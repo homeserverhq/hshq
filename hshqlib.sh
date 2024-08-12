@@ -17857,7 +17857,7 @@ function loadPinnedDockerImages()
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.22
   IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.46.02
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
-  IMG_CODESERVER=codercom/code-server:4.91.1
+  IMG_CODESERVER=codercom/code-server:4.22.1
   IMG_COLLABORA=collabora/code:24.04.5.2.1
   IMG_COTURN=coturn/coturn:4.6.2
   IMG_DISCOURSE=bitnami/discourse:3.2.5
@@ -18029,7 +18029,7 @@ function getScriptStackVersion()
     syncthing)
       echo "v5" ;;
     codeserver)
-      echo "v5" ;;
+      echo "v4" ;;
     shlink)
       echo "v4" ;;
     firefly)
@@ -33373,35 +33373,30 @@ function performUpdateCodeServer()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v5
+      newVer=v4
       curImageList=codercom/code-server:4.16.1
-      image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.91.1"
+      image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.22.1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
-      newVer=v5
+      newVer=v4
       curImageList=codercom/code-server:4.20.0
-      image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.91.1"
+      image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.22.1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     3)
-      newVer=v5
+      newVer=v4
       curImageList=codercom/code-server:4.20.1
-      image_update_map[0]="codercom/code-server:4.20.1,codercom/code-server:4.91.1"
+      image_update_map[0]="codercom/code-server:4.20.1,codercom/code-server:4.22.1"
     ;;
     4)
-      newVer=v5
+      newVer=v4
       curImageList=codercom/code-server:4.22.1
-      image_update_map[0]="codercom/code-server:4.22.1,codercom/code-server:4.91.1"
-    ;;
-    5)
-      newVer=v5
-      curImageList=codercom/code-server:4.91.1
-      image_update_map[0]="codercom/code-server:4.91.1,codercom/code-server:4.91.1"
+      image_update_map[0]="codercom/code-server:4.22.1,codercom/code-server:4.22.1"
     ;;
     *)
       is_upgrade_error=true
