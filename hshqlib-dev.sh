@@ -33221,13 +33221,14 @@ function installCodeServer()
     docker compose -f $HOME/codeserver-compose-tmp.yml down -v
     exit 1
   fi
-  sleep 5
-  set -e
+  echo "Codeserver installed, sleeping 10 seconds..."
+  sleep 10
   docker exec codeserver code-server --install-extension cweijan.vscode-ssh
+  set -e
   docker compose -f $HOME/codeserver-compose-tmp.yml down -v
   rm -f $HOME/codeserver-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
-  mv $HOME/settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
+  mv $HOME/codeserver-settings.json $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
   installStack codeserver codeserver "HTTPS server listening on https" $HOME/codeserver.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -33352,7 +33353,7 @@ cert: false
 disable-telemetry: true
 EOFCS
 
-  cat <<EOFCS > $HOME/settings.json
+  cat <<EOFCS > $HOME/codeserver-settings.json
 {
     "workbench.colorTheme": "Default Dark Modern",
     "workbench.startupEditor": "none",
