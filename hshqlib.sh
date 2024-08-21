@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=81
+HSHQ_SCRIPT_VERSION=82
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -13339,6 +13339,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=80
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 82 ]; then
+    echo "Updating to Version 82..."
+    version82Update
+    HSHQ_VERSION=82
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -14998,6 +15004,14 @@ function version80Update()
 {
   set +e
   clearAllScriptServerScripts
+  outputAllScriptServerScripts
+  set -e
+}
+
+function version82Update()
+{
+  set +e
+  outputUpdateEndpointIPsScript
   outputAllScriptServerScripts
   set -e
 }
@@ -17061,8 +17075,8 @@ function main()
     iname=\$(sqlite3 \$db "select InterfaceName from connections where ID='\$cur_id';")
     cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_id;")
     if [ "\$(checkByID \$cur_id)" = "true" ]; then
-      echo "IP changed, restarting $cname..."
-      addLogMessage "IP changed, restarting $cname..."
+      echo "IP changed, restarting \$cname..."
+      addLogMessage "IP changed, restarting \$cname..."
       if [ \$is_int = 0 ]; then
         resetVPN \$iname
       else
@@ -19146,7 +19160,7 @@ function initServiceVars()
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
   checkAddSvc "SVCD_INVIDIOUS=invidious,invidious,primary,user,Invidious,invidious,hshq"
   checkAddSvc "SVCD_ITTOOLS=ittools,ittools,primary,admin,IT Tools,ittools,hshq"
-  checkAddSvc "SVCD_JELLYFIN=jellyfin,jellyfin,primary,user,Jellyfin,jellyfin,hshq"
+  checkAddSvc "SVCD_JELLYFIN=jellyfin,jellyfin,primary,user,Jellyfin,jellyfin,le"
   checkAddSvc "SVCD_JITSI=jitsi,jitsi,other,user,Jitsi,jitsi,le"
   checkAddSvc "SVCD_JUPYTER=jupyter,jupyter,primary,admin,Jupyter,jupyter,hshq"
   checkAddSvc "SVCD_LINKWARDEN=linkwarden,linkwarden,primary,user,Linkwarden,linkwarden,hshq"
@@ -41036,7 +41050,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Finally, remove the service that failed (02 Services -> 05 Remove Service(s)), then rerun this utility to install the remainder of services. If that same service continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
