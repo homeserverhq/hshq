@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=82
+HSHQ_SCRIPT_VERSION=83
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -7590,7 +7590,7 @@ function createOtherNetworkApplyUserConfig()
   if [ $? -ne 0 ]; then
     return
   fi
-  showYesNoMessageBox "Internet Access" "Request public internet access for this connection?"
+  showYesNoMessageBox "Internet Access" "Request public internet IP masquerade for this connection?"
   if [ $? -eq 0 ]; then
     isInternetAccess=true
   else
@@ -13345,6 +13345,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=82
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 83 ]; then
+    echo "Updating to Version 83..."
+    version83Update
+    HSHQ_VERSION=83
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -15012,6 +15018,14 @@ function version82Update()
 {
   set +e
   outputUpdateEndpointIPsScript
+  outputAllScriptServerScripts
+  set -e
+}
+
+function version83Update()
+{
+  set +e
+  clearAllScriptServerScripts
   outputAllScriptServerScripts
   set -e
 }
@@ -42485,7 +42499,7 @@ EOFSC
 {
   "name": "01 Invite to Network",
   "script_path": "conf/scripts/myNetworkInviteConnection.sh",
-  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or User to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User applications, for your your own internal nomenclature (use the Description that the applicant provided in the email as reference). Names for other connection types will be automatically generated.",
+  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or user device to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User device applications, for your your own internal nomenclature (use the Description that the applicant provided in the email as reference). Names for other connection types will be automatically generated.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -42504,7 +42518,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter a name for this configuration (User invites only)",
+      "name": "Enter a name for this configuration (User device invites only)",
       "required": false,
       "param": "-configname=",
       "same_arg_param": true,
@@ -42622,7 +42636,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Request public internet access?",
+      "name": "Request public internet IP masquerade?",
       "required": true,
       "param": "-requestinternet=",
       "same_arg_param": true,
@@ -43681,9 +43695,9 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/applyUserConnection.json
 {
-  "name": "03 User Connection Application",
+  "name": "03 User Device Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If you request public internet access and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email.\n3. When the requestor receives the invitation to the network, they must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
+  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the recipient must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -43747,7 +43761,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Request public internet access?",
+      "name": "Request public internet IP masquerade?",
       "required": true,
       "param": "-requestinternet=",
       "same_arg_param": true,
