@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=83
+HSHQ_SCRIPT_VERSION=84
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -7483,6 +7483,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   msg_body=$msg_body"ConnectionType = HomeServer VPN\n"
   msg_body=$msg_body"EmailAddress = $EMAIL_ADMIN_EMAIL_ADDRESS\n"
   msg_body=$msg_body"PublicKey = $pub_key\n"
+  msg_body=$msg_body"PresharedKey = \n"
   msg_body=$msg_body"DomainName = $domain_name\n"
   msg_body=$msg_body"HomeServerName = $HOMESERVER_NAME\n"
   msg_body=$msg_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
@@ -7934,9 +7935,10 @@ function performNetworkInvite()
     ;;
   esac
 
-  # Perform application steps
+  # Perform invitation steps
+  tmp_preshared_key=$(wg genpsk)
   if [ -z "$preshared_key" ]; then
-    preshared_key=$(wg genpsk)
+    preshared_key="$tmp_preshared_key"
   fi
   wgPortalAuth="$(getWGPortalAuth)"
   loadSSHKey
@@ -8035,7 +8037,7 @@ function performNetworkInvite()
       mail_body=$mail_body"EndpointPort = $RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
-      mail_body=$mail_body"PresharedKey = $preshared_key\n"
+      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"HomeServerName = $HOMESERVER_NAME\n"
       mail_body=$mail_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
       mail_body=$mail_body"InternalPrefix = $INT_DOMAIN_PREFIX\n"
@@ -8061,7 +8063,7 @@ function performNetworkInvite()
       mail_body=$mail_body"MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU\n\n"
       mail_body=$mail_body"[Peer]\n"
       mail_body=$mail_body"PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      mail_body=$mail_body"PresharedKey = $preshared_key\n"
+      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"AllowedIPs = $RELAYSERVER_WG_VPN_SUBNET\n"
       mail_body=$mail_body"Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE\n"
@@ -8123,7 +8125,7 @@ function performNetworkInvite()
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
       mail_body=$mail_body"EndpointPublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      mail_body=$mail_body"PresharedKey = $preshared_key\n"
+      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU\n"
       mail_body=$mail_body"\n####################### Base Config End ########################\n"
       mail_body=$mail_body"\n$INVITATION_LAST_LINE\n\n"
@@ -8170,7 +8172,7 @@ function performNetworkInvite()
       fi
       wg_config=$wg_config"[Peer]\n"
       wg_config=$wg_config"PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      wg_config=$wg_config"PresharedKey = $preshared_key\n"
+      wg_config=$wg_config"PresharedKey = $tmp_preshared_key\n"
       wg_config=$wg_config"AllowedIPs = $allowed_ips\n"
       wg_config=$wg_config"Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\n"
       wg_config=$wg_config"PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE\n"
