@@ -13353,6 +13353,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=83
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 84 ]; then
+    echo "Updating to Version 84..."
+    version84Update
+    HSHQ_VERSION=84
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -15032,6 +15038,14 @@ function version83Update()
   set -e
 }
 
+function version84Update()
+{
+  set +e
+  outputWGDockInternetScript
+  outputDockerWireGuardCaddyScript
+  set -e
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -16380,8 +16394,8 @@ function main()
     docker container restart \$curcaddy
   done
 
-  docker ps -a --filter name=coturn --format "{{.Names}}" > /dev/null 2>&1
-  if [ \$? -eq 0 ]; then
+  isCoturn=\$(docker ps -a --filter name=coturn --format "{{.Names}}")
+  if ! [ -z "\$isCoturn" ]; then
     docker container restart coturn
   fi
 }
@@ -16991,6 +17005,11 @@ function up()
 
 function down()
 {
+  isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
+  if ! [ -z "\$isCurl" ]; then
+    docker container stop \${NETWORK_NAME}-curl > /dev/null 2>&1
+    docker container rm \${NETWORK_NAME}-curl > /dev/null 2>&1
+  fi
   ip link del \$NETWORK_NAME
   echo "Connection: \$NETWORK_NAME is down"
   if ! [ -z \$DOCKER_NETWORK_SUBNET ]; then
@@ -17011,10 +17030,18 @@ function restart()
 
 function status()
 {
+  # Checking the status will start a curl container.
+  # So if this is called when the connection is set
+  # to a down state, then the container will not be
+  # cleaned up.
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
   CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
   while_check "\$CMD" "\$CHECK"
-  VPNIP=\$(docker run --rm --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 -fsSL --max-time 5 https://api.ipify.org)
+  isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
+  if [ -z "\$isCurl" ]; then
+    docker run -d --name=\${NETWORK_NAME}-curl --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 tail -f /dev/null > /dev/null 2>&1
+  fi
+  VPNIP=\$(docker exec \${NETWORK_NAME}-curl curl -fsSL --max-time 5 https://api.ipify.org)
   IP=\$(curl --silent https://api.ipify.org)
   if [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
     rsip=\$EXT_DOMAIN
