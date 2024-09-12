@@ -41,6 +41,7 @@ function init()
   NUKE_SCRIPT_NAME=nuke.sh
   HSHQ_INSTALL_CFG=$HOME/hshq/installConfig.txt
   HSHQ_FULL_LOG_NAME=hshqInstall.log
+  HSHQ_RESTORE_LOG_NAME=hshqRestore.log
   HSHQ_TIMESTAMP_LOG_NAME=hshqInstallTS.log
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
@@ -151,7 +152,6 @@ function main()
       echo "Cannot install as root user, exiting..."
       exit 1
     fi
-    checkLoadConfig
     performBaseInstallation
     exit 0
   fi
@@ -161,7 +161,6 @@ function main()
       echo "Cannot install as root user, exiting..."
       exit 1
     fi
-    checkLoadConfig
     performFullRestore
     exit 0
   fi
@@ -434,22 +433,38 @@ function showRestoreUnencryptedMenu()
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
-  mv $HSHQ_RESTORE_DIR $HSHQ_DATA_DIR
-  bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
+
+  # Temp fix p1
+  cp $HSHQ_LIB_SCRIPT $HOME/$HSHQ_LIB_FILENAME
+  rm -fr $HSHQ_DATA_DIR/*
+  mv $HSHQ_RESTORE_DIR/* $HSHQ_DATA_DIR/
+  rm -fr $HSHQ_RESTORE_DIR
+  # Temp fix p2
+  mv $HOME/$HSHQ_LIB_FILENAME $HSHQ_LIB_SCRIPT
+  rm -f $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME
+  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME -S hshqRestore bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
+  exit 0
 }
 
 function performFullRestore()
 {
+  checkLoadConfig
+  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  setSudoTimeoutInstall
   checkCreateNonbackupDirs
   echo "Pulling docker images..."
   restorePullDockerImages
+  removeSudoTimeoutInstall
+  performExitFunctions
+  echo "Restore Complete!"
+  sleep 5
 }
 
 function restorePullDockerImages()
 {
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  imgList=($(sudo find $HSHQ_RESTORE_DIR/stacks/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^[[:blank:]]*image:"))
+  imgList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^[[:blank:]]*image:"))
   imgOnlyList=()
   for curImgItem in "${imgList[@]}"
   do
@@ -460,8 +475,9 @@ function restorePullDockerImages()
   for curImg in "${uniqs_arr[@]}"
   do
     echo "Pulling Image: $curImg"
+    #pullImage $curImg
   done
-  buildCustomImages
+  #buildCustomImages
 }
 
 function buildCustomImages()
@@ -1796,6 +1812,7 @@ function removeSudoTimeoutInstall()
 
 function performBaseInstallation()
 {
+  checkLoadConfig
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
     echo "Already installed or existing installation is in progress, exiting..."
     exit 1
@@ -13464,6 +13481,9 @@ EOFCF
 
 function checkUpdateVersion()
 {
+  if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+    return
+  fi
   is_update_performed=false
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     is_update_performed=true
