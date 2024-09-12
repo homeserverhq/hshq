@@ -134,6 +134,11 @@ function main()
       CONNECTING_IP=$3
       USER_SUDO_PW=$4
       ;;
+    "restore")
+      CONNECTING_IP=$2
+      USER_SUDO_PW=$3
+      IS_PERFORM_RESTORE=true
+      ;;
     *)
       ;;
   esac
@@ -148,6 +153,16 @@ function main()
     fi
     checkLoadConfig
     performBaseInstallation
+    exit 0
+  fi
+
+  if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+    if [ "$USERNAME" = "root" ]; then
+      echo "Cannot install as root user, exiting..."
+      exit 1
+    fi
+    checkLoadConfig
+    performFullRestore
     exit 0
   fi
 
@@ -410,43 +425,48 @@ EOF
 
 function showRestoreUnencryptedMenu()
 {
-  if ! [ -d "$HSHQ_RESTORE_DIR" ]; then
-    showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) does not exist, returning..."
+  performRestorePostcheck
+  if [ $? -ne 0 ]; then
     return
   fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/assets" ]; then
-    showMessageBox "ERROR" "The restore (assets) directory ($HSHQ_RESTORE_DIR/assets) does not exist, returning..."
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The main restore process is ready to start. This will take awhile to complete, as all of the docker images must be re-downloaded. You will be prompted shortly for your config decrypt password. Enter the word 'restore' below to continue:")
+  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
+    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/config" ]; then
-    showMessageBox "ERROR" "The restore (config) directory ($HSHQ_RESTORE_DIR/config) does not exist, returning..."
-    return
-  fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/lib" ]; then
-    showMessageBox "ERROR" "The restore (lib) directory ($HSHQ_RESTORE_DIR/lib) does not exist, returning..."
-    return
-  fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/scripts" ]; then
-    showMessageBox "ERROR" "The restore (scripts) directory ($HSHQ_RESTORE_DIR/scripts) does not exist, returning..."
-    return
-  fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/secrets" ]; then
-    showMessageBox "ERROR" "The restore (secrets) directory ($HSHQ_RESTORE_DIR/secrets) does not exist, returning..."
-    return
-  fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/ssl" ]; then
-    showMessageBox "ERROR" "The restore (ssl) directory ($HSHQ_RESTORE_DIR/ssl) does not exist, returning..."
-    return
-  fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/stacks" ]; then
-    showMessageBox "ERROR" "The restore (stacks) directory ($HSHQ_RESTORE_DIR/stacks) does not exist, returning..."
-    return
-  fi
-  if ! [ -d "$HSHQ_RESTORE_DIR/wireguard" ]; then
-    showMessageBox "ERROR" "The restore (wireguard) directory ($HSHQ_RESTORE_DIR/wireguard) does not exist, returning..."
-    return
-  fi
+  mv $HSHQ_RESTORE_DIR $HSHQ_DATA_DIR
+  bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
+}
 
+function performFullRestore()
+{
+  checkCreateNonbackupDirs
+  echo "Pulling docker images..."
+  restorePullDockerImages
+}
+
+function restorePullDockerImages()
+{
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  imgList=($(sudo find $HSHQ_RESTORE_DIR/stacks/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^[[:blank:]]*image:"))
+  imgOnlyList=()
+  for curImgItem in "${imgList[@]}"
+  do
+    imgOnlyList+=($(echo "$curImgItem" | xargs | cut -d" " -f2))
+  done
+  IFS=$OLDIFS
+  uniqs_arr=($(for tmpImg in "${imgOnlyList[@]}"; do echo "${tmpImg}"; done | sort -u))
+  for curImg in "${uniqs_arr[@]}"
+  do
+    echo "Pulling Image: $curImg"
+  done
+  buildCustomImages
+}
+
+function buildCustomImages()
+{
+  buildFileDropImage
 }
 
 function showRestoreMountDriveMenu()
@@ -634,6 +654,46 @@ function performRestorePrecheck()
   fi
   if [ -d $HSHQ_WIREGUARD_DIR ]; then
     echo "The HSHQ wireguard directory ($HSHQ_WIREGUARD_DIR) already exists. Cannot perform restore."
+  fi
+}
+
+function performRestorePostcheck()
+{
+  if ! [ -d "$HSHQ_RESTORE_DIR" ]; then
+    showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/assets" ]; then
+    showMessageBox "ERROR" "The restore (assets) directory ($HSHQ_RESTORE_DIR/assets) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/config" ]; then
+    showMessageBox "ERROR" "The restore (config) directory ($HSHQ_RESTORE_DIR/config) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/lib" ]; then
+    showMessageBox "ERROR" "The restore (lib) directory ($HSHQ_RESTORE_DIR/lib) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/scripts" ]; then
+    showMessageBox "ERROR" "The restore (scripts) directory ($HSHQ_RESTORE_DIR/scripts) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/secrets" ]; then
+    showMessageBox "ERROR" "The restore (secrets) directory ($HSHQ_RESTORE_DIR/secrets) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/ssl" ]; then
+    showMessageBox "ERROR" "The restore (ssl) directory ($HSHQ_RESTORE_DIR/ssl) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/stacks" ]; then
+    showMessageBox "ERROR" "The restore (stacks) directory ($HSHQ_RESTORE_DIR/stacks) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/wireguard" ]; then
+    showMessageBox "ERROR" "The restore (wireguard) directory ($HSHQ_RESTORE_DIR/wireguard) does not exist, returning..."
+    return 1
   fi
 }
 
@@ -19497,7 +19557,7 @@ function initServicesCredentials()
 function checkCreateNonbackupDirs()
 {
   mkdir -p $HSHQ_NONBACKUP_DIR
-  mkdir -p $HSHQ_NONBACKUP_DIR/build
+  mkdir -p $HSHQ_BUILD_DIR
   mkdir -p $HSHQ_NONBACKUP_DIR/adguard
   mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
   mkdir -p $HSHQ_NONBACKUP_DIR/sysutils
@@ -39944,11 +40004,8 @@ function installFileDrop()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
-  docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
-  retVal=$?
-  sudo rm -fr $HSHQ_BUILD_DIR/filedrop
-  if [ $retVal -ne 0 ]; then
+  buildFileDropImage
+  if [ $? -ne 0 ]; then
     return 1
   fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
@@ -40059,6 +40116,16 @@ function performUpdateFileDrop()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function buildFileDropImage()
+{
+  set +e
+  git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
+  docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
+  retVal=$?
+  sudo rm -fr $HSHQ_BUILD_DIR/filedrop
+  return $retVal
 }
 
 # Piped
