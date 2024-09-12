@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=84
+HSHQ_SCRIPT_VERSION=85
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -101,7 +101,7 @@ function init()
   initServiceDefaults
   loadPinnedDockerImages
   loadDirectoryStructure
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
   hshqlogo=$(cat << EOF
@@ -233,7 +233,8 @@ EOF
   "2" "Edit Configuration" \
   "3" "Install Dependencies" \
   "4" "Uninstall and Remove Everything" \
-  "5" "Exit" 3>&1 1>&2 2>&3)
+  "5" "Restore From Backup" \
+  "6" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -273,6 +274,11 @@ EOF
       set +e
       return 1 ;;
     5)
+      set +e
+      showRestoreMenu
+      set +e
+	  return 1 ;;
+    6)
 	  return 0 ;;
   esac
 }
@@ -337,6 +343,298 @@ EOF
     5)
 	  return 0 ;;
   esac
+}
+
+function showRestoreMenu()
+{
+  precheckRestoreResult="$(performRestorePrecheck)" 
+  if ! [ -z "$precheckRestoreResult" ]; then
+    showMessageBox "ERROR" "$precheckRestoreResult"
+    return
+  fi
+  checkPerformSystemPrep
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  restoremenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Restore From Encrypted Duplicati Backup" \
+  "2" "Restore From Unencrypted Backup" \
+  "3" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  case $menures in
+    0)
+	  return 0 ;;
+    1)
+	  showRestoreEncryptedMenu ;;
+    2)
+	  showRestoreUnencryptedMenu ;;
+    3)
+	  return 0 ;;
+  esac
+}
+
+function showRestoreEncryptedMenu()
+{
+  restoremenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Mount Drive" \
+  "2" "Select Directory" \
+  "3" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  case $menures in
+    0)
+	  return 0 ;;
+    1)
+	  showRestoreMountDriveMenu ;;
+    2)
+	  showRestoreSelectEncryptedDirectoryMenu ;;
+    3)
+	  return 0 ;;
+  esac
+}
+
+function showRestoreUnencryptedMenu()
+{
+  if ! [ -d "$HSHQ_RESTORE_DIR" ]; then
+    showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/assets" ]; then
+    showMessageBox "ERROR" "The restore (assets) directory ($HSHQ_RESTORE_DIR/assets) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/config" ]; then
+    showMessageBox "ERROR" "The restore (config) directory ($HSHQ_RESTORE_DIR/config) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/lib" ]; then
+    showMessageBox "ERROR" "The restore (lib) directory ($HSHQ_RESTORE_DIR/lib) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/scripts" ]; then
+    showMessageBox "ERROR" "The restore (scripts) directory ($HSHQ_RESTORE_DIR/scripts) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/secrets" ]; then
+    showMessageBox "ERROR" "The restore (secrets) directory ($HSHQ_RESTORE_DIR/secrets) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/ssl" ]; then
+    showMessageBox "ERROR" "The restore (ssl) directory ($HSHQ_RESTORE_DIR/ssl) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/stacks" ]; then
+    showMessageBox "ERROR" "The restore (stacks) directory ($HSHQ_RESTORE_DIR/stacks) does not exist, returning..."
+    return
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/wireguard" ]; then
+    showMessageBox "ERROR" "The restore (wireguard) directory ($HSHQ_RESTORE_DIR/wireguard) does not exist, returning..."
+    return
+  fi
+
+}
+
+function showRestoreMountDriveMenu()
+{
+  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
+    return
+  fi
+  dbackmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  diskarr=($(sudo hwinfo --disk --short | tail +2))
+  curListNum=1
+  scsbm_menu_items=( --title "Select Disk/Partition" --radiolist "$dbackmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
+  for curDisk in "${diskarr[@]}"
+  do
+    curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
+    curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
+    findmnt | grep $curDiskID  > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      continue
+    fi
+    curDiskPartitions=($(lsblk --noheadings --raw -o NAME,SIZE,TYPE $curDiskID))
+    for curDiskPart in "${curDiskPartitions[@]}"
+    do
+      curDiskPartName=$(echo $curDiskPart | cut -d" " -f1)
+      curDiskPartSize=$(echo $curDiskPart | cut -d" " -f2)
+      curDiskPartType=$(echo $curDiskPart | cut -d" " -f3)
+      if [ "$curDiskPartType" = "part" ]; then
+        scsbm_menu_items+=( "$curDiskPartName  $curDiskPartSize  ($curDiskName)" )
+        scsbm_menu_items+=( "|" )
+        scsbm_menu_items+=( "off" )
+        ((curListNum++))
+      fi
+    done
+  done
+  IFS=$OIFS
+
+  if [ $curListNum -le 1 ]; then
+    showMessageBox "ERROR" "There are no available disks for this operation, returning..."
+    return
+  fi
+  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
+  if [ -z "$selDisk" ]; then
+    showMessageBox "ERROR" "No partition was selected, returning..."
+    return
+  fi
+  mountDir=$(promptUserInputMenu "$HSHQ_BACKUP_DIR" "Select Directory" "Enter the directory where you would like to mount this partition:")
+  if [ "$mountDir" = "$HSHQ_BACKUP_DIR" ]; then
+    mkdir -p $HSHQ_BACKUP_DIR
+  fi
+  if [ $(checkValidDirectory "$mountDir") = "false" ]; then
+    showMessageBox "ERROR" "Invalid directory name, returning..."
+    return
+  fi
+  findmnt | grep "$mountDir"  > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a disk mounted to this directory, returning..."
+    return
+  fi
+  if [ -d "$mountDir" ]; then
+    if ! [ -z "$(ls -A $mountDir)" ]; then
+      showMessageBox "ERROR" "The selected directory is not empty, returning..."
+      return
+    fi
+  fi
+  if ! [ -d "$mountDir" ]; then
+    showYesNoMessageBox "ERROR" "This directory does not exist, would you like to create it now?"
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    mkdir -p $mountDir
+    if [ $? -ne 0 ]; then
+      showMessageBox "ERROR" "There was an error creating this directory, likely a permission error, returning..."
+      return
+    fi
+  fi
+  sudo mount /dev/$selDisk $mountDir
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was an error mounting this partition, returning..."
+    return
+  fi
+  showRestoreDuplicatiRestoreMenu "$mountDir"
+}
+
+function showRestoreSelectEncryptedDirectoryMenu()
+{
+  backupDir=$(promptUserInputMenu "$HSHQ_BACKUP_DIR" "Select Directory" "Enter the top-level directory of the encrypted data:")
+  showRestoreDuplicatiRestoreMenu "$backupDir"
+}
+
+function showRestoreDuplicatiRestoreMenu()
+{
+  backupDirTL="$1"
+
+  curListNum=1
+  dbackupmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  dupback_menu_items=( --title "Select Directory" --radiolist "$dbackupmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
+  dirarr=($(ls $backupDirTL))
+  for curDir in "${dirarr[@]}"
+  do
+    if [ "$curDir" = "lost+found" ]; then
+      continue
+    fi
+    dupback_menu_items+=( "$curDir" )
+    dupback_menu_items+=( "|" )
+    dupback_menu_items+=( "off" )
+    ((curListNum++))
+  done
+  IFS=$OLDIFS
+  if [ $curListNum -le 1 ]; then
+    showMessageBox "ERROR" "There are no subdirectories for this operation, returning..."
+    return
+  fi
+  selBackupDir=$(whiptail "${dupback_menu_items[@]}" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  if [ -z "$selBackupDir" ]; then
+    showMessageBox "ERROR" "No directory was selected, returning..."
+    return
+  fi
+  if [ -d "$HSHQ_RESTORE_DIR" ]; then
+    if ! [ -z "$(ls -A $HSHQ_RESTORE_DIR)" ]; then
+      showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) is not empty, returning..."
+      return
+    fi
+  else
+    mkdir -p $HSHQ_RESTORE_DIR
+  fi
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The restore process is ready to start. You will be prompted for the password that you used to encrypt your data. It could take awhile to perform the restoration (15-45 minutes depending on how much data). Enter the word 'restore' below to continue:")
+  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
+    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
+    return
+  fi
+  docker container stop duplicati-restore > /dev/null 2>&1
+  docker container rm duplicati-restore > /dev/null 2>&1
+  docker run -d --name=duplicati-restore -v $backupDirTL/$selBackupDir:/backup -v $HSHQ_RESTORE_DIR:/restore $IMG_DUPLICATI > /dev/null 2>&1
+  docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --restore-path=/restore --overwrite=true --restore-permissions"
+  docker container stop duplicati-restore > /dev/null 2>&1
+  docker container rm duplicati-restore > /dev/null 2>&1
+  echo "Data Successfully Restored!"
+  showRestoreUnencryptedMenu
+}
+
+function performRestorePrecheck()
+{
+  if [ -d $HSHQ_ASSETS_DIR ]; then
+    echo "The HSHQ assets directory ($HSHQ_ASSETS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_CONFIG_DIR ]; then
+    echo "The HSHQ config directory ($HSHQ_CONFIG_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_RELAYSERVER_DIR ]; then
+    echo "The HSHQ relayserver directory ($HSHQ_RELAYSERVER_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_SCRIPTS_DIR ]; then
+    echo "The HSHQ scripts directory ($HSHQ_SCRIPTS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_SECRETS_DIR ]; then
+    echo "The HSHQ secrets directory ($HSHQ_SECRETS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_SSL_DIR ]; then
+    echo "The HSHQ ssl directory ($HSHQ_SSL_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_STACKS_DIR ]; then
+    echo "The HSHQ stacks directory ($HSHQ_STACKS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_WIREGUARD_DIR ]; then
+    echo "The HSHQ wireguard directory ($HSHQ_WIREGUARD_DIR) already exists. Cannot perform restore."
+  fi
 }
 
 function showHSHQUtilsMenu()
@@ -484,6 +782,27 @@ EOF
       sudo $HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh $curcaddy
     fi
   done
+}
+
+function checkPerformSystemPrep()
+{
+  isPrepped=true
+  for util in $UTILS_LIST; do
+    if [[ "$(isProgramInstalled $util)" = "false" ]]; then
+      isPrepped=false
+      break
+    fi
+  done
+  if [ "$isPrepped" = "false" ]; then
+    showYesNoMessageBox "Prep System" "The system must be prepped with updates and required utilities. The system will automatically reboot upon completion and you will need to re-run this utility. Do you wish to continue?"
+    if [ $? -ne 0 ]; then
+      return 1
+    fi
+    sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y
+    installDependencies
+    pullBaseServicesDockerImages
+    sudo reboot
+  fi
 }
 
 function checkWrapperVersion()
@@ -677,35 +996,6 @@ function installDependencies()
   set +e
   # Install utils
   installHostNTPServer
-  if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
-    echo "Installing ssmtp, please wait..."
-    performAptInstall ssmtp
-  fi
-
-  if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
-    echo "Installing mailx, please wait..."
-    performAptInstall mailutils
-  fi
-
-  sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
-root=$EMAIL_ADMIN_EMAIL_ADDRESS
-mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
-hostname=$(cat /etc/hostname)
-TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
-UseSTARTTLS=yes
-FromLineOverride=no
-AuthUser=$EMAIL_SMTP_EMAIL_ADDRESS
-AuthPass=$EMAIL_SMTP_PASSWORD
-EOFSM
-
-  sudo tee /etc/ssmtp/revaliases >/dev/null <<EOFSM
-root:$EMAIL_SMTP_EMAIL_ADDRESS
-$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
-EOFSM
-
-  getent group mailsenders >/dev/null || sudo groupadd mailsenders 
-  sudo usermod -aG mailsenders $USERNAME
-  sudo chown root:mailsenders /usr/bin/mail.mailutils
 
   for util in $UTILS_LIST; do
     if [[ "$(isProgramInstalled $util)" = "false" ]]; then
@@ -773,6 +1063,40 @@ EOFSM
   fi
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
+}
+
+function installMailUtils()
+{
+  set +e
+  if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
+    echo "Installing ssmtp, please wait..."
+    performAptInstall ssmtp
+  fi
+
+  if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
+    echo "Installing mailx, please wait..."
+    performAptInstall mailutils
+  fi
+
+  sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
+root=$EMAIL_ADMIN_EMAIL_ADDRESS
+mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
+hostname=$(cat /etc/hostname)
+TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
+UseSTARTTLS=yes
+FromLineOverride=no
+AuthUser=$EMAIL_SMTP_EMAIL_ADDRESS
+AuthPass=$EMAIL_SMTP_PASSWORD
+EOFSM
+
+  sudo tee /etc/ssmtp/revaliases >/dev/null <<EOFSM
+root:$EMAIL_SMTP_EMAIL_ADDRESS
+$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
+EOFSM
+
+  getent group mailsenders >/dev/null || sudo groupadd mailsenders 
+  sudo usermod -aG mailsenders $USERNAME
+  sudo chown root:mailsenders /usr/bin/mail.mailutils
 }
 
 function checkLoadConfig()
@@ -1431,6 +1755,7 @@ function performBaseInstallation()
   updateMOTD
   performSuggestedSecUpdates
   installLogNotify "Install Dependencies"
+  installMailUtils
   installDependencies
   pullBaseServicesDockerImages
   installLogNotify "Init DH Params"
@@ -10674,6 +10999,18 @@ function checkValidString()
   fi
 }
 
+function checkValidDirectory()
+{
+  check_string=$1
+  if [ $(checkValidString "$check_string" "/") = "false" ]; then
+    echo "false"
+  fi
+  if [[ ${check_string:0:1} != "/" ]]; then
+    echo "false"
+  fi
+  echo "true"
+}
+
 function checkValidBaseDomain()
 {
   check_domain=$1
@@ -11088,6 +11425,7 @@ function loadDirectoryStructure()
   HSHQ_SSL_DIR=$HSHQ_DATA_DIR/ssl
   HSHQ_STACKS_DIR=$HSHQ_DATA_DIR/stacks
   HSHQ_WIREGUARD_DIR=$HSHQ_DATA_DIR/wireguard
+  HSHQ_RESTORE_DIR=$HOME/hshqrestore
 
   HSHQ_WRAP_SCRIPT=$HOME/$HSHQ_WRAP_FILENAME
   HSHQ_LIB_SCRIPT=$HSHQ_LIB_DIR/$HSHQ_LIB_FILENAME
@@ -13359,6 +13697,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=84
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 85 ]; then
+    echo "Updating to Version 85..."
+    version85Update
+    HSHQ_VERSION=85
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -15044,6 +15388,13 @@ function version84Update()
   outputWGDockInternetScript
   outputDockerWireGuardCaddyScript
   set -e
+}
+
+function version85Update()
+{
+  set +e
+  set -e
+  return
 }
 
 function sendRSExposeScripts()
@@ -19143,6 +19494,54 @@ function initServicesCredentials()
   fi
 }
 
+function checkCreateNonbackupDirs()
+{
+  mkdir -p $HSHQ_NONBACKUP_DIR
+  mkdir -p $HSHQ_NONBACKUP_DIR/build
+  mkdir -p $HSHQ_NONBACKUP_DIR/adguard
+  mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
+  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils
+  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
+  mkdir -p $HSHQ_NONBACKUP_DIR/duplicati
+  mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
+  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon
+  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
+  mkdir -p $HSHQ_NONBACKUP_DIR/searxng
+  mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/peertube
+  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
+  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/discourse
+  mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/shlink
+  mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/firefly
+  mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/kasm
+  mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
+  mkdir -p $HSHQ_NONBACKUP_DIR/netdata
+  mkdir -p $HSHQ_NONBACKUP_DIR/netdata/cache
+  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf
+  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
+  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
+  mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant
+  mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/wallabag
+  mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/piped
+  mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
+}
+
 function installBaseStacks()
 {
   initCaddyCommon
@@ -20658,9 +21057,8 @@ function installAdGuard()
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/adguard
-  mkdir $HSHQ_NONBACKUP_DIR/adguard
   mkdir $HSHQ_STACKS_DIR/adguard/conf
-  mkdir $HSHQ_NONBACKUP_DIR/adguard/work
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   outputConfigAdGuard
@@ -21051,8 +21449,7 @@ function installSysUtils()
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/etc
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/var
   mkdir $HSHQ_STACKS_DIR/sysutils/prometheus
-  mkdir $HSHQ_NONBACKUP_DIR/sysutils
-  mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   generateCert influxdb influxdb
@@ -25052,11 +25449,7 @@ function installWazuh()
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/filebeat-etc
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/filebeat-var
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/indexer-data
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   if [ -z "$WAZUH_API_USERNAME" ]; then
@@ -28099,8 +28492,8 @@ function installDuplicati()
   domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
   mkdir $HSHQ_STACKS_DIR/duplicati
   mkdir $HSHQ_STACKS_DIR/duplicati/config
-  mkdir $HSHQ_NONBACKUP_DIR/duplicati
-  mkdir $HSHQ_NONBACKUP_DIR/duplicati/restore
+  checkCreateNonbackupDirs
+
   initServicesCredentials
   echo "Installing Duplicati..."
   outputConfigDuplicati
@@ -28238,9 +28631,7 @@ function installMastodon()
   mkdir $HSHQ_STACKS_DIR/mastodon/web
   sudo chown 991:991 $HSHQ_STACKS_DIR/mastodon/system
   chmod 777 $HSHQ_STACKS_DIR/mastodon/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon/redis
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon/static
+  checkCreateNonbackupDirs
 
   MASTODON_SECRET_KEY_BASE=$(openssl rand -hex 64)
   MASTODON_OTP_SECRET=$(openssl rand -hex 64)
@@ -29144,8 +29535,7 @@ function installSearxNG()
   mkdir $HSHQ_STACKS_DIR/searxng
   mkdir $HSHQ_STACKS_DIR/searxng/caddy
   mkdir $HSHQ_STACKS_DIR/searxng/web
-  mkdir $HSHQ_NONBACKUP_DIR/searxng
-  mkdir $HSHQ_NONBACKUP_DIR/searxng/redis
+  checkCreateNonbackupDirs
 
   if [ -z "$SEARXNG_REDIS_PASSWORD" ]; then
     SEARXNG_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -31207,9 +31597,7 @@ function installPeerTube()
   mkdir $HSHQ_STACKS_DIR/peertube/dbexport
   mkdir $HSHQ_STACKS_DIR/peertube/data
   chmod 777 $HSHQ_STACKS_DIR/peertube/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/peertube
-  mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
-  mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
+  checkCreateNonbackupDirs
 
   initServicesCredentials
 
@@ -32179,8 +32567,7 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
@@ -32211,8 +32598,7 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
+  checkCreateNonbackupDirs
 
   mv $HOME/gitlab.rb $HSHQ_STACKS_DIR/gitlab/app/config/gitlab.rb
   mv $HOME/gitlab-postconfigure.sh $HSHQ_STACKS_DIR/gitlab/app/config/gitlab-postconfigure.sh
@@ -32789,8 +33175,7 @@ function installDiscourse()
   mkdir $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_STACKS_DIR/discourse/app
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/discourse
-  mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   if [ -z "$DISCOURSE_DATABASE_USER_PASSWORD" ]; then
@@ -33498,8 +33883,7 @@ function installShlink()
   mkdir $HSHQ_STACKS_DIR/shlink/db
   mkdir $HSHQ_STACKS_DIR/shlink/dbexport
   mkdir $HSHQ_STACKS_DIR/shlink/web
-  mkdir $HSHQ_NONBACKUP_DIR/shlink
-  mkdir $HSHQ_NONBACKUP_DIR/shlink/redis
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/shlink/dbexport
 
   initServicesCredentials
@@ -33830,8 +34214,7 @@ function installFirefly()
   mkdir $HSHQ_STACKS_DIR/firefly/db
   mkdir $HSHQ_STACKS_DIR/firefly/dbexport
   mkdir $HSHQ_STACKS_DIR/firefly/data
-  mkdir $HSHQ_NONBACKUP_DIR/firefly
-  mkdir $HSHQ_NONBACKUP_DIR/firefly/redis
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/firefly/dbexport
 
   initServicesCredentials
@@ -35380,8 +35763,7 @@ function installKasm()
 
   mkdir $HSHQ_STACKS_DIR/kasm
   mkdir $HSHQ_STACKS_DIR/kasm/profiles
-  mkdir $HSHQ_NONBACKUP_DIR/kasm
-  mkdir $HSHQ_NONBACKUP_DIR/kasm/data
+  checkCreateNonbackupDirs
 
   outputConfigKasm
   installStack kasm kasm "" $HOME/kasm.env
@@ -36498,8 +36880,7 @@ function installNetdata()
   mkdir $HSHQ_STACKS_DIR/netdata
   mkdir $HSHQ_STACKS_DIR/netdata/config
   mkdir $HSHQ_STACKS_DIR/netdata/lib
-  mkdir $HSHQ_NONBACKUP_DIR/netdata
-  mkdir $HSHQ_NONBACKUP_DIR/netdata/cache
+  checkCreateNonbackupDirs
 
   outputConfigNetdata
   installStack netdata netdata "" $HOME/netdata.env
@@ -36859,9 +37240,7 @@ function installStirlingPDF()
 
   mkdir $HSHQ_STACKS_DIR/stirlingpdf
   mkdir $HSHQ_STACKS_DIR/stirlingpdf/configs
-  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf
-  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
-  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
+  checkCreateNonbackupDirs
 
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
@@ -37000,8 +37379,7 @@ function installBarAssistant()
   mkdir $HSHQ_STACKS_DIR/bar-assistant/app
   mkdir $HSHQ_STACKS_DIR/bar-assistant/meilisearch
   mkdir $HSHQ_STACKS_DIR/bar-assistant/web
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
+  checkCreateNonbackupDirs
 
   if [ -z "$BARASSISTANT_REDIS_PASSWORD" ]; then
     BARASSISTANT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -37807,8 +38185,7 @@ function installWallabag()
   mkdir $HSHQ_STACKS_DIR/wallabag/db
   mkdir $HSHQ_STACKS_DIR/wallabag/dbexport
   mkdir $HSHQ_STACKS_DIR/wallabag/images
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag/redis
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/wallabag/dbexport
 
   initServicesCredentials
@@ -39722,8 +40099,7 @@ function installPiped()
   mkdir $HSHQ_STACKS_DIR/piped/config
   mkdir $HSHQ_STACKS_DIR/piped/cron
   mkdir $HSHQ_STACKS_DIR/piped/web
-  mkdir $HSHQ_NONBACKUP_DIR/piped
-  mkdir $HSHQ_NONBACKUP_DIR/piped/proxy
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/piped/dbexport
 
   initServicesCredentials
