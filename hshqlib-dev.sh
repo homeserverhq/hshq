@@ -434,13 +434,17 @@ function showRestoreUnencryptedMenu()
     return
   fi
 
-  # Temp fix p1
   cp $HSHQ_LIB_SCRIPT $HOME/$HSHQ_LIB_FILENAME
   rm -fr $HSHQ_DATA_DIR/*
   mv $HSHQ_RESTORE_DIR/* $HSHQ_DATA_DIR/
   rm -fr $HSHQ_RESTORE_DIR
-  # Temp fix p2
-  mv $HOME/$HSHQ_LIB_FILENAME $HSHQ_LIB_SCRIPT
+  # Only restore hshqlib script if version is less than 85
+  hshqlib_orig_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  if [ $hshqlib_orig_version -lt 85 ]; then
+    mv $HOME/$HSHQ_LIB_FILENAME $HSHQ_LIB_SCRIPT
+  else
+    rm -f $HOME/$HSHQ_LIB_FILENAME
+  fi
   rm -f $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME
   screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME -S hshqRestore bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
   exit 0
@@ -450,9 +454,41 @@ function performFullRestore()
 {
   checkLoadConfig
   set +e
+  origUsername=$(echo $HSHQ_BASE_DIR | cut -d"/" -f3)
+  curUID=$(id -u)
+  curGID=$(id -g)
+  if ! [ "$USERNAME" = "$origUsername" ] || ! [ "$curUID" = "$USERID" ] || ! [ "$curGID" = "$GROUPID" ]; then
+    msgmenu=$(cat << EOF
+
+$hshqlogo
+
+ The current username (UID:GID) does not match the original username (UID:GID).
+
+   Current: $USERNAME ($curUID:$curGID)
+   Original: $origUsername ($USERID:$GROUPID)
+
+ The restore cannot be performed.
+ Please ensure to have the exact same username and UID:GID as the Original.
+EOF
+    )
+    whiptail --title "ERROR" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
+    return
+  fi
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   setSudoTimeoutInstall
   checkCreateNonbackupDirs
+
+  # Set hostname
+  new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
+  if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
+    echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
+  fi
+  sudo hostnamectl set-hostname $new_hostname
+  rm -f $HOME/dead.letter
+
+  # Set timezone
+  sudo timedatectl set-timezone "$TZ"
+
   echo "Pulling docker images..."
   restorePullDockerImages
   rm -f $HOME/script-server.zip
