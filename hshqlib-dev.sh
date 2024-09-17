@@ -449,15 +449,53 @@ function showRestoreUnencryptedMenu()
 function performFullRestore()
 {
   checkLoadConfig
+  set +e
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   setSudoTimeoutInstall
   checkCreateNonbackupDirs
   echo "Pulling docker images..."
   restorePullDockerImages
+  rm -f $HOME/script-server.zip
+  find $HSHQ_SSL_DIR -name "*-ca.crt" -print0 | xargs -0 -I {} sudo cp {} /usr/local/share/ca-certificates/
+  sudo update-ca-certificates
+  # Change SSH port on host
+  sudo sed -i "s|^#*Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
+  setStaticIPToCurrentRestore
+  updateMOTD
+  performSuggestedSecUpdates
+  installMailUtils
+
+  outputScripts
+  sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
+  enableAllWGVPNInterfaces
+  sudo $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+
+  performAptInstall python3-tornado > /dev/null 2>&1
+  sudo rm -f /etc/systemd/system/runScriptServer.service
+  sudo ln -s $HSHQ_SCRIPTS_DIR/root/runScriptServer.service /etc/systemd/system/runScriptServer.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable runScriptServer
+  sudo systemctl start runScriptServer
+
+  if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
+    installWazuhAgent
+  fi
+
+  createDockerNetworks
+  startPortainer
+  docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
+  createClientDNSNetworksOnRestore
+  set +e
+  prepAdguardInstallation
+  restartAllStacks "duplicati,syncthing"
+  addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
+  initCronJobs
+
   removeSudoTimeoutInstall
   performExitFunctions
   echo "Restore Complete!"
-  sleep 5
 }
 
 function restorePullDockerImages()
@@ -474,10 +512,9 @@ function restorePullDockerImages()
   uniqs_arr=($(for tmpImg in "${imgOnlyList[@]}"; do echo "${tmpImg}"; done | sort -u))
   for curImg in "${uniqs_arr[@]}"
   do
-    echo "Pulling Image: $curImg"
-    #pullImage $curImg
+    pullImage $curImg
   done
-  #buildCustomImages
+  buildCustomImages
 }
 
 function buildCustomImages()
@@ -979,9 +1016,41 @@ net.ipv4.neigh.default.gc_thresh1=1024
 
 # Increase number of multicast groups permitted
 net.ipv4.igmp_max_memberships=1024
+
+# See https://documentation.wazuh.com/current/deployment-options/docker/docker-installation.html
+vm.max_map_count = 262144
+
 EOFSC
   if ! [ "$isPerfUpdate" = "false" ]; then
     sudo sysctl --system > /dev/null 2>&1
+  fi
+}
+
+function updateLogrotateConfig()
+{
+  ulrc_curE=${-//[^e]/}
+  set +e
+  # Set max size of syslog to 5G
+  grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo sed -i "/weekly$/a\        maxsize 5G" /etc/logrotate.d/rsyslog
+  fi
+  # Move logrotate into hourly
+  if [ -f /etc/cron.daily/logrotate ]; then
+    sudo mv /etc/cron.daily/logrotate /etc/cron.hourly
+  fi
+  # Set conditions for docker container logs
+  sudo tee /etc/logrotate.d/docker >/dev/null <<EOFLR
+/var/log/docker/*.log {
+    weekly
+    maxsize 100M
+    rotate 4
+    missingok
+    notifempty
+}
+EOFLR
+  if ! [ -z $ulrc_curE ]; then
+    set -e
   fi
 }
 
@@ -1070,6 +1139,8 @@ function performAptInstall()
 function installDependencies()
 {
   set +e
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   # Install utils
   installHostNTPServer
 
@@ -1098,6 +1169,7 @@ function installDependencies()
 
   # Some host tuning
   updateSysctl true
+  updateLogrotateConfig
   sudo sed -i "s|^ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
@@ -3565,7 +3637,7 @@ function main()
   sudo docker network prune -f
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -3941,7 +4013,7 @@ function startWazuhAgent()
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
   set +e
-  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
+  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
   fi
@@ -5406,7 +5478,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/etc/postfix/tls/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/postfix/tls/${CERTS_ROOT_CA_NAME}.crt:ro
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/config:/etc/postfix/config
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/sasl:/etc/postfix/sasl
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/scripts:/etc/postfix/scripts
@@ -9667,6 +9739,7 @@ function checkDeleteStackAndDirectory()
     done
     IFS=$OLDIFS
   fi
+  performPostStackRemoval $stack_name
   set +e
   if ! [ -z $cdsad_curE ]; then
     set -e
@@ -9816,6 +9889,21 @@ function checkIsIPPrivate()
     fi
   done
   echo "false"
+}
+
+function setStaticIPToCurrentRestore()
+{
+  curHostIP=$HOMESERVER_HOST_IP
+  curHostRange=$HOMESERVER_HOST_RANGE
+  setStaticIPToCurrent
+  outputConfigPortainer
+  generateCert portainer portainer $HOMESERVER_HOST_IP
+  generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$curHostIP:$PORTAINER_LOCAL_HTTPS_PORT%';"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT' where url like '%$curHostIP:$SCRIPTSERVER_LOCALHOST_PORT%';"
+
+  sudo sed -i "s|$curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT|$HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT|g" $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo sed -i "s|$curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT|$HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT|g" $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
 }
 
 function setStaticIPToCurrent()
@@ -10324,8 +10412,43 @@ function restartAllStacksDialog()
   restartAllStacks
 }
 
+function createClientDNSNetworksOnRestore()
+{
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  rsi_numTries=1
+  rsi_totalTries=5
+  rsi_retVal=1
+  rstackIDsQry=""
+  while [ $rsi_numTries -le $rsi_totalTries ]
+  do
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rsi_retVal=$?
+    if [ $rsi_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsi_numTries++))
+  done
+  if [ $rsi_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    return
+  fi
+  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]} - 1))
+  for curID in $(seq 0 $numItems);
+  do
+    echo ${rstackNames[$curID]} | grep "^clientdns-" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      cdns_stack_name=$(echo echo ${rstackNames[$curID]} | cut -d"-" -f2)
+      clientdns_subnet=$(getConfigVarFromFile CLIENTDNS_SUBNET_PREFIX $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env root).0/24
+      docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null
+    fi
+  done
+}
+
 function restartAllStacks()
 {
+  skipRestart="$1"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   startStopStack uptimekuma stop "$portainerToken"
 
@@ -10347,25 +10470,7 @@ function restartAllStacks()
     return
   fi
   rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
-
-  rsn_numTries=1
-  rsn_totalTries=5
-  rsn_retVal=1
-  rstackNamesQry=""
-  while [ $rsn_numTries -le $rsn_totalTries ]
-  do
-    rstackNamesQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
-    rsn_retVal=$?
-    if [ $rsn_retVal -eq 0 ]; then
-      break
-    fi
-    ((rsn_numTries++))
-  done
-  if [ $rsn_retVal -ne 0 ]; then
-    echo "ERROR: Could not get list of stack names in Portainer..." 1>&2
-    return
-  fi
-  rstackNames=($(echo $rstackNamesQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
 
   numItems=$((${#rstackIDs[@]} - 1))
   for curID in $(seq 0 $numItems);
@@ -10399,9 +10504,15 @@ function restartAllStacks()
   fi
   for curID in $(seq 0 $numItems);
   do
-    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} start $portainerToken
-    sleep 3
+    echo "$skipRestart" | grep ,${rstackNames[$curID]} || echo "$skipRestart" | grep ${rstackNames[$curID]}, > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo "Skipping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+      continue
+    else
+      echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+      startStopStackByID ${rstackIDs[$curID]} start $portainerToken
+      sleep 3
+    fi
   done
   startStopStack uptimekuma start "$portainerToken"
 }
@@ -15473,8 +15584,23 @@ function version84Update()
 function version85Update()
 {
   set +e
+  updateLogrotateConfig
+  if sudo test -f $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf; then
+    sudo sed -i "s/.*Shared agent configuration here.*/\  <rootcheck>\n    <ignore>\/var\/lib\/docker\/overlay2<\/ignore>\n  <\/rootcheck>/" $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf
+  fi
+  if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
+    echo "Updating wazuh stack..."
+    updateStackEnv wazuh mfFixCACertPath
+  fi
+  echo "Updating authelia stack..."
+  updateStackEnv authelia mfFixCACertPath
+  updateSysctl true
   set -e
-  return
+}
+
+function mfFixCACertPath()
+{
+  sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
 }
 
 function sendRSExposeScripts()
@@ -16444,7 +16570,7 @@ function nukeHSHQ()
   sudo docker network prune -f
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -16711,7 +16837,7 @@ EOFPT
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   util="docker|docker"
-  if ! [ "$isRunUpdate" = "false" ] && ! [ "$(isProgramInstalled $util)" = "false" ]; then
+  if ( ! [ "$isRunUpdate" = "false" ] && ! [ "$(isProgramInstalled $util)" = "false" ] ) || [ "IS_PERFORM_RESTORE" = "true" ]; then
     sudo $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
     # Just in case
     cur_ssh_port=$(grep "^Port" /etc/ssh/sshd_config)
@@ -17294,7 +17420,7 @@ function main()
   do
     DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
     DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
-    CONN=\$(getConfigVar \#MTU)
+    MTU=\$(getConfigVar \#MTU)
     docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
       docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
@@ -17645,6 +17771,15 @@ EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
 }
 
+function enableAllWGVPNInterfaces()
+{
+  sudo ls /etc/wireguard | while read fname
+  do
+    bname=$(basename $fname .conf)
+    enableWGInterfaceQuick $bname
+  done
+}
+
 function enableWGInterfaceQuick()
 {
   config_filename=$1
@@ -17958,16 +18093,6 @@ EOFCA
 function initDHParams()
 {
   openssl dhparam -out $HSHQ_SSL_DIR/dhparam.pem $CERTS_INTERNAL_DHPARAMS_KEYLENGTH
-#  cat <<EOFDH > $HSHQ_SSL_DIR/dhparam.pem
-#-----BEGIN DH PARAMETERS-----
-#MIIBCAKCAQEA8NP8HQHwCifBetSY2KEby8sxVVm7jNMa0m9IKMB2hdPOblzTl/SK
-#I720AMEhHKNC3utwYp6fhbyVQ7e+QN/VtrtbW2WsQPny2xhoOp4aUuZGVwzF4boF
-#/FpCO1onyLQ4UYxPdQhoww/O7oLZceha1H4Ltq41NNzHO8KGyT5iC4Np736q/Xzl
-#aRYGH/57ALBD5hxv5ROYiRdEW/8WbEVhvKVxsXU/hHSptlfqvS92OrULaagh3WJf
-#M2IbmwGbw5szBtX18JLyS9yuxHWfb7eIjs1NImPOlo9BpOY15Tel8ObQv3ikGofB
-#ugU5BJtHTbpmzMzL+BdaL7H+uWK1Rhn8RwIBAg==
-#-----END DH PARAMETERS-----
-#EOFDH
   chmod 0444 $HSHQ_SSL_DIR/dhparam.pem
 }
 
@@ -20874,6 +20999,17 @@ function getScriptImageByContainerName()
   echo "$container_image"
 }
 
+function performPostStackRemoval()
+{
+  case "$1" in
+    "wazuh")
+      removeWazuhAgent
+      ;;
+    *)
+      ;;
+  esac
+}
+
 # Stacks Installation/Update Functions
 
 # Portainer
@@ -21144,19 +21280,7 @@ function installAdGuard()
   outputConfigAdGuard
   generateCert adguard adguard
 
-  sudo systemctl stop systemd-resolved > /dev/null 2>&1
-  sudo systemctl disable systemd-resolved > /dev/null 2>&1
-  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo tee /etc/resolv.conf >/dev/null <<EOFR
-nameserver 127.0.0.1
-EOFR
-  np_path="/etc/netplan/*"
-  for cur_np in "$np_path"
-  do
-    sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
-    sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
-  done
-  sudo netplan apply > /dev/null 2>&1
+  prepAdguardInstallation
 
   installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
   retval=$?
@@ -21493,6 +21617,23 @@ function performUpdateAdGuard()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function prepAdguardInstallation()
+{
+  sudo systemctl stop systemd-resolved > /dev/null 2>&1
+  sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+  np_path="/etc/netplan/*"
+  for cur_np in "$np_path"
+  do
+    sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
+    sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
+  done
+  sudo netplan apply > /dev/null 2>&1
 }
 
 # SysUtils
@@ -25576,23 +25717,21 @@ function installWazuh()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  echo "Wazuh installed, sleeping 5 seconds..."
-  sleep 5
+  echo "Wazuh manager installed..."
+  maxACount=300
+  curACount=1
+  while [ $curACount -lt $maxACount ]
+  do
+    if sudo test -f $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf; then
+      break
+    fi
+    echo "Waiting for agent.conf to initialize ($curACount seconds)..."
+    sleep 1
+    ((curACount++))
+  done
+  sudo sed -i "s/.*Shared agent configuration here.*/\  <rootcheck>\n    <ignore>\/var\/lib\/docker\/overlay2<\/ignore>\n  <\/rootcheck>/" $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf
 
-  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
-  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
-  sudo apt-mark hold wazuh-agent
-  sudo systemctl daemon-reload
-  set +e
-  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
-  if [ $? -ne 0 ]; then
-    sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
-  fi
-  set -e
-  sudo systemctl enable wazuh-agent
-  sudo systemctl start wazuh-agent
+  installWazuhAgent
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WAZUH.$HOMESERVER_DOMAIN {\n"
@@ -25647,7 +25786,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/etc/ssl/root-ca.pem:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/ssl/root-ca.pem:ro
       - \${HSHQ_SSL_DIR}/wazuh.manager.crt:/etc/ssl/filebeat.pem
       - \${HSHQ_SSL_DIR}/wazuh.manager.key:/etc/ssl/filebeat.key
       - \${HSHQ_STACKS_DIR}/wazuh/wazuh-cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
@@ -25686,7 +25825,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
       - \${HSHQ_SSL_DIR}/wazuh.indexer.crt:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
       - \${HSHQ_SSL_DIR}/wazuh.indexer.key:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
       - \${HSHQ_SSL_DIR}/wazuh.admin.crt:/usr/share/wazuh-indexer/certs/admin.pem
@@ -25711,7 +25850,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
       - \${HSHQ_SSL_DIR}/wazuh.dashboard.crt:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
       - \${HSHQ_SSL_DIR}/wazuh.dashboard.key:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
       - \${HSHQ_STACKS_DIR}/wazuh/wazuh-dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
@@ -26145,17 +26284,9 @@ EOFWZ
     <disabled>yes</disabled>
   </cluster>
 
-</ossec_config>
-
-<ossec_config>
   <localfile>
     <log_format>syslog</log_format>
     <location>/var/ossec/logs/active-responses.log</location>
-  </localfile>
-
-  <localfile>
-    <log_format>syslog</log_format>
-    <location>/var/log/docker/*</location>
   </localfile>
 
 </ossec_config>
@@ -26343,6 +26474,32 @@ function performUpdateWazuh()
 function mfUpdateWazuhStackJavaMem()
 {
   sed -i "s|OPENSEARCH_JAVA_OPTS=.*|OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g|" $HOME/wazuh.env
+}
+
+function installWazuhAgent()
+{
+  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
+  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
+  sudo apt-mark hold wazuh-agent
+  sudo systemctl daemon-reload
+  set +e
+  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
+  fi
+  set -e
+  sudo systemctl enable wazuh-agent
+  sudo systemctl start wazuh-agent
+}
+
+function removeWazuhAgent()
+{
+  sudo systemctl stop wazuh-agent
+  sudo systemctl disable wazuh-agent
+  sudo systemctl daemon-reload
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
 }
 
 # Collabora
@@ -30976,7 +31133,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro
       - \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro
       - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
       - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
@@ -40625,7 +40782,7 @@ function installScriptServer()
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/theme
   echo "Installing python3-tornado..."
-  performAptInstall python3-tornado -y > /dev/null 2>&1
+  performAptInstall python3-tornado > /dev/null 2>&1
   initServicesCredentials
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   outputConfigScriptServer
