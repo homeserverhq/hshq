@@ -484,10 +484,10 @@ function performFullRestore()
   fi
 
   createDockerNetworks
+  set +e
   startPortainer
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
   createClientDNSNetworksOnRestore
-  set +e
   prepAdguardInstallation
   restartAllStacks "duplicati,syncthing"
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
@@ -748,6 +748,42 @@ function performRestorePostcheck()
     showMessageBox "ERROR" "The restore (wireguard) directory ($HSHQ_RESTORE_DIR/wireguard) does not exist, returning..."
     return 1
   fi
+}
+
+function createClientDNSNetworksOnRestore()
+{
+  echo "Creating ClientDNS networks..."
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  rsi_numTries=1
+  rsi_totalTries=5
+  rsi_retVal=1
+  rstackIDsQry=""
+  while [ $rsi_numTries -le $rsi_totalTries ]
+  do
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rsi_retVal=$?
+    if [ $rsi_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsi_numTries++))
+  done
+  if [ $rsi_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    return
+  fi
+  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]} - 1))
+  for curID in $(seq 0 $numItems);
+  do
+    echo ${rstackNames[$curID]} | grep "^clientdns-" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo "Found ClientDNS stack: (${rstackIDs[$curID]}) ${rstackNames[$curID]}"
+      cdns_stack_name=$(echo echo ${rstackNames[$curID]} | cut -d"-" -f2)
+      clientdns_subnet=$(getConfigVarFromFile CLIENTDNS_SUBNET_PREFIX $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env root).0/24
+      docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null
+    fi
+  done
 }
 
 function showHSHQUtilsMenu()
@@ -10412,40 +10448,6 @@ function restartAllStacksDialog()
   restartAllStacks
 }
 
-function createClientDNSNetworksOnRestore()
-{
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  rsi_numTries=1
-  rsi_totalTries=5
-  rsi_retVal=1
-  rstackIDsQry=""
-  while [ $rsi_numTries -le $rsi_totalTries ]
-  do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
-    rsi_retVal=$?
-    if [ $rsi_retVal -eq 0 ]; then
-      break
-    fi
-    ((rsi_numTries++))
-  done
-  if [ $rsi_retVal -ne 0 ]; then
-    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
-    return
-  fi
-  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
-  numItems=$((${#rstackIDs[@]} - 1))
-  for curID in $(seq 0 $numItems);
-  do
-    echo ${rstackNames[$curID]} | grep "^clientdns-" > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      cdns_stack_name=$(echo echo ${rstackNames[$curID]} | cut -d"-" -f2)
-      clientdns_subnet=$(getConfigVarFromFile CLIENTDNS_SUBNET_PREFIX $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env root).0/24
-      docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null
-    fi
-  done
-}
-
 function restartAllStacks()
 {
   skipRestart="$1"
@@ -10504,15 +10506,16 @@ function restartAllStacks()
   fi
   for curID in $(seq 0 $numItems);
   do
-    echo "$skipRestart" | grep ,${rstackNames[$curID]} || echo "$skipRestart" | grep ${rstackNames[$curID]}, > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      echo "Skipping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-      continue
-    else
-      echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-      startStopStackByID ${rstackIDs[$curID]} start $portainerToken
-      sleep 3
+    if ! [ -z "$skipRestart" ]; then
+      echo "$skipRestart" | grep ,${rstackNames[$curID]} > /dev/null 2>&1 || echo "$skipRestart" | grep ${rstackNames[$curID]}, > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        echo "Skipping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+        continue
+      fi
     fi
+    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} start $portainerToken
+    sleep 3
   done
   startStopStack uptimekuma start "$portainerToken"
 }
