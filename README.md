@@ -51,3 +51,4 @@ bash hshq.sh
  - Updates apps 
  - Console-based management UI
  - Web-based management UI
+ - Simple and streamlined backup/restore procedures
