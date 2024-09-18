@@ -48,6 +48,7 @@ function init()
   SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
+  SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -648,7 +649,7 @@ EOF
     showMessageBox "ERROR" "There was an error mounting this partition, returning..."
     return
   fi
-  showRestoreDuplicatiRestoreMenu "$mountDir"
+  showRestoreDuplicatiRestoreMenu "$mountDir" "/dev/$selDisk"
 }
 
 function showRestoreSelectEncryptedDirectoryMenu()
@@ -660,7 +661,7 @@ function showRestoreSelectEncryptedDirectoryMenu()
 function showRestoreDuplicatiRestoreMenu()
 {
   backupDirTL="$1"
-
+  umountDisk="$2"
   curListNum=1
   dbackupmenu=$(cat << EOF
 
@@ -715,6 +716,9 @@ EOF
   docker container stop duplicati-restore > /dev/null 2>&1
   docker container rm duplicati-restore > /dev/null 2>&1
   echo "Data Successfully Restored!"
+  if ! [ -z "$umountDisk" ]; then
+    sudo umount $umountDisk
+  fi
   showRestoreUnencryptedMenu
 }
 
@@ -924,7 +928,9 @@ EOF
       return 1 ;;
     4)
       checkLoadConfig
-      showConfigureSimpleBackupMenu ;;
+      showSimpleBackupMenu
+      set +e
+      return 1 ;;
     5)
       nukeHSHQ ;;
     6)
@@ -2071,6 +2077,36 @@ function installLogNotify()
   fi
 }
 
+function showSimpleBackupMenu()
+{
+  set +e
+  utilmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Configure Backup" \
+  "2" "Mount Existing Backup Disk" \
+  "3" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  case $menures in
+    0)
+	  return 1 ;;
+    1)
+      showConfigureSimpleBackupMenu
+      return 1 ;;
+    2)
+      showMountBackupDriveMenu
+      return 1 ;;
+    3)
+	  return 0 ;;
+  esac
+}
+
 function showConfigureSimpleBackupMenu()
 {
   set +e
@@ -2240,7 +2276,7 @@ EOF
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     sudo mv /etc/fstab.old /etc/fstab
-    showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup device will not be auto-mounted after a reboot."
+    showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup disk will not be auto-mounted after a reboot."
   else
     sudo rm -f /etc/fstab.old
   fi
@@ -2320,6 +2356,95 @@ EOFBU
   sudo mv $HOME/hshq-backup.json $HSHQ_STACKS_DIR/duplicati/config/
   docker exec duplicati bash -c "mono /app/duplicati/Duplicati.CommandLine.ConfigurationImporter.exe /config/hshq-backup.json --import-metadata=false --server-datafolder=/config"
   showMessageBox "SUCCESS" "Your backup is configured. It will run automatically starting at $mydate, or you can trigger it manually. You will recieve a daily email in your admin email account ($EMAIL_ADMIN_EMAIL_ADDRESS) after each backup. You can view/edit the configuration in https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN ."
+}
+
+function showMountBackupDriveMenu()
+{
+  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
+    return
+  fi
+  sudo cat /etc/fstab | grep $HSHQ_BACKUP_DIR > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR in /etc/fstab. Please unmount this filesystem and remove it from /etc/fstab, returning..."
+    return
+  fi
+  mkdir -p $HSHQ_BACKUP_DIR
+  if ! [ -z "$(ls -A $HSHQ_BACKUP_DIR)" ]; then
+    showMessageBox "ERROR" "The backup directory ($HSHQ_BACKUP_DIR) is not empty, returning..."
+    return
+  fi
+
+  dbackmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  diskarr=($(sudo hwinfo --disk --short | tail +2))
+  curListNum=1
+  scsbm_menu_items=( --title "Select Disk/Partition" --radiolist "$dbackmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
+  for curDisk in "${diskarr[@]}"
+  do
+    curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
+    curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
+    findmnt | grep $curDiskID  > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      continue
+    fi
+    curDiskPartitions=($(lsblk --noheadings --raw -o NAME,SIZE,TYPE $curDiskID))
+    for curDiskPart in "${curDiskPartitions[@]}"
+    do
+      curDiskPartName=$(echo $curDiskPart | cut -d" " -f1)
+      curDiskPartSize=$(echo $curDiskPart | cut -d" " -f2)
+      curDiskPartType=$(echo $curDiskPart | cut -d" " -f3)
+      if [ "$curDiskPartType" = "part" ]; then
+        scsbm_menu_items+=( "$curDiskPartName  $curDiskPartSize  ($curDiskName)" )
+        scsbm_menu_items+=( "|" )
+        scsbm_menu_items+=( "off" )
+        ((curListNum++))
+      fi
+    done
+  done
+  IFS=$OIFS
+
+  if [ $curListNum -le 1 ]; then
+    showMessageBox "ERROR" "There are no available disks for this operation, returning..."
+    return
+  fi
+  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
+  if [ -z "$selDisk" ]; then
+    showMessageBox "ERROR" "No partition was selected, returning..."
+    return
+  fi
+  sudo mount /dev/$selDisk $HSHQ_BACKUP_DIR
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was an error mounting this partition, returning..."
+    return
+  fi
+  newPart=/dev/$selDisk
+  newPartID=$(sudo blkid -s UUID -o value $newPart)
+  sudo cp /etc/fstab /etc/fstab.old
+  echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  if [ -z $newPartID ]; then
+    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  else
+    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  fi
+  sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo mv /etc/fstab.old /etc/fstab
+    showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup disk will not be auto-mounted after a reboot."
+  else
+    sudo rm -f /etc/fstab.old
+  fi
 }
 
 # Stacks Functions
@@ -2704,6 +2829,28 @@ function deleteListOfStacks()
   removeSudoTimeoutInstall
   restartAllCaddyContainers
   outputStackListsScriptServer
+}
+
+function clearRedisTempDataByStackName()
+{
+  stackName="$1"
+  if ! [ -d $HSHQ_NONBACKUP_DIR/$stackName/redis ]; then
+    echo "ERROR: Could not find corresponding redis directory"
+    return
+  fi
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  stackStatus=$(getStackStatusByName "$stackName" "$portainerToken")
+  if ! [ "$stackStatus" = "1" ]; then
+    echo "ERROR: This stack is not currently running"
+    return
+  fi
+  echo "Stopping $stackName..."
+  startStopStack "$stackName" stop "$portainerToken"
+  echo "Clearing redis data..."
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/$stackName/redis/*
+  echo "Starting $stackName..."
+  startStopStack "$stackName" start "$portainerToken"
+  echo "Complete!"
 }
 
 # VPN Setup
@@ -15635,6 +15782,8 @@ function version85Update()
   updateStackEnv authelia mfFixCACertPath
   updateSysctl true
   outputCreateWGDockerNetworksScript
+  outputAllScriptServerScripts
+  outputStackListsScriptServer
   set -e
 }
 
@@ -41867,7 +42016,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "cat conf/updateStackList.txt",
+        "script": "cat conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME",
         "shell": true
       },
       "pass_as": "argument"
@@ -42077,6 +42226,90 @@ EOFSC
         }
       },
       "secure": true,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearTempRedisData.sh
+#!/bin/bash
+
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+selstack=\$(getArgumentValue selstack "\$@")
+
+set +e
+echo "Clearing out temp data for \${selstack}..."
+clearRedisTempDataByStackName "\${selstack}"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/clearTempRedisData.json
+{
+  "name": "07 Clear Service Temp Data",
+  "script_path": "conf/scripts/clearTempRedisData.sh",
+  "description": "Clear Temp Data For Selected Service. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will stop the selected stack, delete all data from its respective Redis database, then restart the service. The use case for this function is in the event of a sudden power outage or some other unforseen circumstance, the Redis database could become corrupted and render the entire service unusable. The Redis database for each of these services functions as a caching mechanism, and can be safely cleared out if necessary.",
+  "group": "$group_id_services",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select stack",
+      "required": true,
+      "param": "-selstack=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "cat conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME",
+        "shell": true
+      },
       "pass_as": "argument"
     }
   ]
@@ -45688,6 +45921,13 @@ function outputStackListsScriptServer()
   sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME
   echo $(getStacksToUpdate) | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
   sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
+
+  redislist=($(find $HSHQ_NONBACKUP_DIR/ -maxdepth 2 -type d -name redis | sort))
+  rm -f $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
+  for curdir in "${redislist[@]}"
+  do
+    echo $(echo "$curdir" | rev | cut -d"/" -f2 | rev) >> $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
+  done
 }
 
 # SQLPad
