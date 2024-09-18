@@ -13771,6 +13771,15 @@ PIPED_DATABASE_USER=
 PIPED_DATABASE_USER_PASSWORD=
 # Piped (Service Details) END
 
+# GrampsWeb (Service Details) BEGIN
+GRAMPSWEB_INIT_ENV=true
+GRAMPSWEB_ADMIN_USERNAME=
+GRAMPSWEB_ADMIN_PASSWORD=
+GRAMPSWEB_ADMIN_EMAIL_ADDRESS=
+GRAMPSWEB_SECRET_KEY=
+GRAMPSWEB_REDIS_PASSWORD=
+# GrampsWeb (Service Details) END
+
 # Service Details END
 EOFCF
   set -e
@@ -15784,6 +15793,7 @@ function version85Update()
   outputCreateWGDockerNetworksScript
   outputAllScriptServerScripts
   outputStackListsScriptServer
+  checkAddAllNewSvcs
   set -e
 }
 
@@ -16625,6 +16635,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
   checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
 }
 
 function checkAddServiceToConfig()
@@ -18685,6 +18696,7 @@ function loadPinnedDockerImages()
   IMG_GITEA_APP=gitea/gitea:1.22.1
   IMG_GITLAB_APP=gitlab/gitlab-ce:16.8.4-ce.0
   IMG_GRAFANA=grafana/grafana-oss:11.1.3
+  IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:v24.8.0
   IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.5
   IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.5
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
@@ -18895,6 +18907,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     piped)
       echo "v1" ;;
+    grampsweb)
+      echo "v1" ;;
     ofelia)
       echo "v3" ;;
     sqlpad)
@@ -19019,6 +19033,7 @@ function pullDockerImages()
   pullImage $IMG_PIPED_PROXY
   pullImage $IMG_PIPED_API
   pullImage $IMG_PIPED_CRON
+  pullImage $IMG_GRAMPSWEB
 }
 
 function pullBaseServicesDockerImages()
@@ -19891,6 +19906,26 @@ function initServicesCredentials()
     PIPED_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PIPED_DATABASE_USER_PASSWORD $PIPED_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$GRAMPSWEB_ADMIN_USERNAME" ]; then
+    GRAMPSWEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_grampsweb"
+    updateConfigVar GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_USERNAME
+  fi
+  if [ -z "$GRAMPSWEB_ADMIN_PASSWORD" ]; then
+    GRAMPSWEB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GRAMPSWEB_ADMIN_PASSWORD $GRAMPSWEB_ADMIN_PASSWORD
+  fi
+  if [ -z "$GRAMPSWEB_ADMIN_EMAIL_ADDRESS" ]; then
+    GRAMPSWEB_ADMIN_EMAIL_ADDRESS=$GRAMPSWEB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar GRAMPSWEB_ADMIN_EMAIL_ADDRESS $GRAMPSWEB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$GRAMPSWEB_SECRET_KEY" ]; then
+    GRAMPSWEB_SECRET_KEY=$(pwgen -c -n 43 1)
+    updateConfigVar GRAMPSWEB_SECRET_KEY $GRAMPSWEB_SECRET_KEY
+  fi
+  if [ -z "$GRAMPSWEB_REDIS_PASSWORD" ]; then
+    GRAMPSWEB_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GRAMPSWEB_REDIS_PASSWORD $GRAMPSWEB_REDIS_PASSWORD
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -19989,6 +20024,7 @@ function initServiceVars()
   checkAddSvc "SVCD_GITEA=gitea,gitea,primary,user,Gitea,gitea,le"
   checkAddSvc "SVCD_GITLAB=gitlab,gitlab,primary,user,Gitlab,gitlab,hshq"
   checkAddSvc "SVCD_GRAFANA=sysutils,grafana,primary,admin,Grafana,grafana,hshq"
+  checkAddSvc "SVCD_GRAMPSWEB=grampsweb,grampsweb,primary,user,GrampsWeb,grampsweb,le"
   checkAddSvc "SVCD_GUACAMOLE=guacamole,guacamole,primary,admin,Guacamole,guacamole,hshq"
   checkAddSvc "SVCD_HEIMDALL=heimdall,heimdall,other,user,Heimdall,heimdall,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_APP=homeassistant,homeassistant,primary,admin,HomeAssistant,homeassistant,hshq"
@@ -20167,6 +20203,8 @@ function installStackByName()
       installFileDrop $is_integrate ;;
     piped)
       installPiped $is_integrate ;;
+    grampsweb)
+      installGrampsWeb $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -20303,6 +20341,8 @@ function performUpdateStackByName()
       performUpdateFileDrop "$portainerToken" ;;
     piped)
       performUpdatePiped "$portainerToken" ;;
+    piped)
+      performUpdateGrampsWeb "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -20339,6 +20379,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_FILEDROP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FRESHRSS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITEA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_GRAMPSWEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEIMDALL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - home.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN\n"
@@ -20489,6 +20530,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_VPN}-Admin" https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -20599,6 +20641,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0 "huginn.png"
   insertIntoHeimdallDB "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0 "filedrop.png"
   insertIntoHeimdallDB "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0 "piped.png"
+  insertIntoHeimdallDB "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0 "grampsweb.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -20686,6 +20729,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -20698,19 +20742,19 @@ function insertServicesUptimeKuma()
 
 function getLetsEncryptCertsDefault()
 {
-  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN"
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN"
 }
 
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,guacamole,kasm,stirlingpdf,piped
-  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
+  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,kasm,stirlingpdf,piped
+  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb
 }
 
 function getScriptImageByContainerName()
@@ -21186,6 +21230,12 @@ function getScriptImageByContainerName()
       ;;
     "uptimekuma")
       container_image=$IMG_UPTIMEKUMA
+      ;;
+    "grampsweb-app")
+      container_image=$IMG_GRAMPSWEB
+      ;;
+    "grampsweb-redis")
+      container_image=$IMG_REDIS
       ;;
     *)
       ;;
@@ -40935,6 +40985,270 @@ function performUpdatePiped()
       image_update_map[2]="1337kavin/piped:latest,1337kavin/piped:latest"
       image_update_map[2]="barrypiccinni/psql-curl,barrypiccinni/psql-curl"
       image_update_map[2]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# GrampsWeb
+function installGrampsWeb()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory grampsweb "GrampsWeb"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_GRAMPSWEB
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/grampsweb
+  mkdir $HSHQ_STACKS_DIR/grampsweb/redis
+  mkdir $HSHQ_STACKS_DIR/grampsweb/users
+  mkdir $HSHQ_STACKS_DIR/grampsweb/index
+  mkdir $HSHQ_STACKS_DIR/grampsweb/thumbcache
+  mkdir $HSHQ_STACKS_DIR/grampsweb/cache
+  mkdir $HSHQ_STACKS_DIR/grampsweb/secret
+  mkdir $HSHQ_STACKS_DIR/grampsweb/db
+  mkdir $HSHQ_STACKS_DIR/grampsweb/media
+  mkdir $HSHQ_STACKS_DIR/grampsweb/tmp
+
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $GRAMPSWEB_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $GRAMPSWEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  if ! [ "$GRAMPSWEB_INIT_ENV" = "true" ]; then
+    sendEmail -s "GrampsWeb Admin Login Info" -b "GrampsWeb Admin Username: $GRAMPSWEB_ADMIN_USERNAME\nGrampsWeb Admin Password: $GRAMPSWEB_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    GRAMPSWEB_INIT_ENV=true
+    updateConfigVar GRAMPSWEB_INIT_ENV $GRAMPSWEB_INIT_ENV
+  fi
+  outputConfigGrampsWeb
+  installStack grampsweb grampsweb-app "Listening at: http://0.0.0.0:5000" $HOME/grampsweb.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
+  docker exec -it grampsweb-app python3 -m gramps_webapi user add --fullname "$HOMESERVER_NAME Admin" --email "$GRAMPSWEB_ADMIN_EMAIL_ADDRESS" --role 5 "$GRAMPSWEB_ADMIN_USERNAME" "$GRAMPSWEB_ADMIN_PASSWORD" > /dev/null 2>&1
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(1,'EMAIL_HOST','mailu-front');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(2,'EMAIL_PORT','465');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(3,'EMAIL_HOST_USER','$EMAIL_SMTP_EMAIL_ADDRESS');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(4,'EMAIL_HOST_PASSWORD','$EMAIL_SMTP_PASSWORD');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(6,'BASE_URL','https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(7,'EMAIL_USE_TLS','0');"
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  startStopStack grampsweb stop "$portainerToken"
+  startStopStack grampsweb start "$portainerToken"
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://grampsweb-app:5000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_GRAMPSWEB $MANAGETLS_GRAMPSWEB "$is_integrate_hshq" $NETDEFAULT_GRAMPSWEB "$inner_block"
+  insertSubAuthelia $SUB_GRAMPSWEB.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll grampsweb "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" "grampsweb.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigGrampsWeb()
+{
+  cat <<EOFPI > $HOME/grampsweb-compose.yml
+$STACK_VERSION_PREFIX grampsweb $(getScriptStackVersion grampsweb)
+
+services:
+
+  grampsweb-app:
+    image: $(getScriptImageByContainerName grampsweb-app)
+    container_name: grampsweb-app
+    hostname: grampsweb-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - grampsweb-redis
+    networks:
+      - dock-grampsweb-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-grampsweb-users:/app/users
+      - v-grampsweb-index:/app/indexdir
+      - v-grampsweb-thumbcache:/app/thumbnail_cache
+      - v-grampsweb-cache:/app/cache
+      - v-grampsweb-secret:/app/secret
+      - v-grampsweb-db:/root/.gramps/grampsdb
+      - v-grampsweb-media:/app/media
+      - v-grampsweb-tmp:/tmp
+
+  grampsweb-celery:
+    image: $(getScriptImageByContainerName grampsweb-app)
+    container_name: grampsweb-celery
+    hostname: grampsweb-celery
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: celery -A gramps_webapi.celery worker --loglevel=INFO
+    depends_on:
+      - grampsweb-redis
+    networks:
+      - dock-grampsweb-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-grampsweb-users:/app/users
+      - v-grampsweb-index:/app/indexdir
+      - v-grampsweb-thumbcache:/app/thumbnail_cache
+      - v-grampsweb-cache:/app/cache
+      - v-grampsweb-secret:/app/secret
+      - v-grampsweb-db:/root/.gramps/grampsdb
+      - v-grampsweb-media:/app/media
+      - v-grampsweb-tmp:/tmp
+
+  grampsweb-redis:
+    image: $(getScriptImageByContainerName grampsweb-redis)
+    container_name: grampsweb-redis
+    hostname: grampsweb-redis
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-grampsweb-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-grampsweb-redis:/bitnami/redis/data
+
+volumes:
+  v-grampsweb-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/redis
+  v-grampsweb-users:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/users
+  v-grampsweb-index:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/index
+  v-grampsweb-thumbcache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/thumbcache
+  v-grampsweb-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/cache
+  v-grampsweb-secret:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/secret
+  v-grampsweb-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/db
+  v-grampsweb-media:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/media
+  v-grampsweb-tmp:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/tmp
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-grampsweb-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFPI
+
+  cat <<EOFPI > $HOME/grampsweb.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+GRAMPSWEB_SECRET_KEY=$GRAMPSWEB_SECRET_KEY
+GRAMPSWEB_TREE=GrampsWeb Tree
+GRAMPSWEB_CELERY_CONFIG__broker_url=redis://:$GRAMPSWEB_REDIS_PASSWORD@grampsweb-redis:6379/0
+GRAMPSWEB_CELERY_CONFIG__result_backend=redis://:$GRAMPSWEB_REDIS_PASSWORD@grampsweb-redis:6379/0
+GRAMPSWEB_RATELIMIT_STORAGE_URI=redis://:$GRAMPSWEB_REDIS_PASSWORD@grampsweb-redis:6379/1
+REDIS_PASSWORD=$GRAMPSWEB_REDIS_PASSWORD
+EOFPI
+
+}
+
+function performUpdateGrampsWeb()
+{
+  perform_stack_name=grampsweb
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/gramps-project/grampsweb:v24.8.0,bitnami/redis:7.0.5
+      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v24.8.0,ghcr.io/gramps-project/grampsweb:v24.8.0"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
       is_upgrade_error=true
