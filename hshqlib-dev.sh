@@ -15634,6 +15634,7 @@ function version85Update()
   echo "Updating authelia stack..."
   updateStackEnv authelia mfFixCACertPath
   updateSysctl true
+  outputCreateWGDockerNetworksScript
   set -e
 }
 
@@ -17446,34 +17447,7 @@ EOFWG
   outputUpdateEndpointIPsScript
   sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
   sudo ln -s $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scriptsdir=$HSHQ_SCRIPTS_DIR
-
-function main()
-{
-  sudo ls \$wgdir/internet/*.conf | while read conf
-  do
-    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
-    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
-    MTU=\$(getConfigVar \#MTU)
-    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
-    fi
-  done
-}
-function getConfigVar()
-{
-  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  outputCreateWGDockerNetworksScript
   sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service >/dev/null <<EOFWG
 [Unit]
 Description=Check or create Docker networks for WireGuard interfaces and private IP ranges
@@ -17691,6 +17665,38 @@ function getConfigVar()
 main "\$@"
 EOFWG
   sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh
+}
+
+function outputCreateWGDockerNetworksScript()
+{
+  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
+#!/bin/bash
+set +e
+
+wgdir=$HSHQ_WIREGUARD_DIR
+scriptsdir=$HSHQ_SCRIPTS_DIR
+
+function main()
+{
+  sudo ls \$wgdir/internet/*.conf | while read conf
+  do
+    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
+    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
+    MTU=\$(getConfigVar \#MTU)
+    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
+    fi
+  done
+}
+function getConfigVar()
+{
+  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+}
+
+main "\$@"
+EOFWG
+  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
 }
 
 function outputUpdateEndpointIPsScript()
