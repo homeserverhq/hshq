@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=83
+HSHQ_SCRIPT_VERSION=85
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -41,12 +41,14 @@ function init()
   NUKE_SCRIPT_NAME=nuke.sh
   HSHQ_INSTALL_CFG=$HOME/hshq/installConfig.txt
   HSHQ_FULL_LOG_NAME=hshqInstall.log
+  HSHQ_RESTORE_LOG_NAME=hshqRestore.log
   HSHQ_TIMESTAMP_LOG_NAME=hshqInstallTS.log
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
   SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
+  SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -101,7 +103,7 @@ function init()
   initServiceDefaults
   loadPinnedDockerImages
   loadDirectoryStructure
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 mailx|mailutils dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
   hshqlogo=$(cat << EOF
@@ -134,6 +136,11 @@ function main()
       CONNECTING_IP=$3
       USER_SUDO_PW=$4
       ;;
+    "restore")
+      CONNECTING_IP=$2
+      USER_SUDO_PW=$3
+      IS_PERFORM_RESTORE=true
+      ;;
     *)
       ;;
   esac
@@ -146,8 +153,16 @@ function main()
       echo "Cannot install as root user, exiting..."
       exit 1
     fi
-    checkLoadConfig
     performBaseInstallation
+    exit 0
+  fi
+
+  if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+    if [ "$USERNAME" = "root" ]; then
+      echo "Cannot install as root user, exiting..."
+      exit 1
+    fi
+    performFullRestore
     exit 0
   fi
 
@@ -233,7 +248,8 @@ EOF
   "2" "Edit Configuration" \
   "3" "Install Dependencies" \
   "4" "Uninstall and Remove Everything" \
-  "5" "Exit" 3>&1 1>&2 2>&3)
+  "5" "Restore From Backup" \
+  "6" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -273,6 +289,11 @@ EOF
       set +e
       return 1 ;;
     5)
+      set +e
+      showRestoreMenu
+      set +e
+	  return 1 ;;
+    6)
 	  return 0 ;;
   esac
 }
@@ -337,6 +358,477 @@ EOF
     5)
 	  return 0 ;;
   esac
+}
+
+function showRestoreMenu()
+{
+  precheckRestoreResult="$(performRestorePrecheck)" 
+  if ! [ -z "$precheckRestoreResult" ]; then
+    showMessageBox "ERROR" "$precheckRestoreResult"
+    return
+  fi
+  checkPerformSystemPrep
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  restoremenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Restore From Encrypted Duplicati Backup" \
+  "2" "Restore From Unencrypted Backup" \
+  "3" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  case $menures in
+    0)
+	  return 0 ;;
+    1)
+	  showRestoreEncryptedMenu ;;
+    2)
+	  showRestoreUnencryptedMenu ;;
+    3)
+	  return 0 ;;
+  esac
+}
+
+function showRestoreEncryptedMenu()
+{
+  restoremenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Mount Drive" \
+  "2" "Select Directory" \
+  "3" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  case $menures in
+    0)
+	  return 0 ;;
+    1)
+	  showRestoreMountDriveMenu ;;
+    2)
+	  showRestoreSelectEncryptedDirectoryMenu ;;
+    3)
+	  return 0 ;;
+  esac
+}
+
+function showRestoreUnencryptedMenu()
+{
+  performRestorePostcheck
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The main restore process is ready to start. This will take awhile to complete, as all of the docker images must be re-downloaded. You will be prompted shortly for your config decrypt password. Enter the word 'restore' below to continue:")
+  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
+    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
+    return
+  fi
+
+  cp $HSHQ_LIB_SCRIPT $HOME/$HSHQ_LIB_FILENAME
+  rm -fr $HSHQ_DATA_DIR/*
+  mv $HSHQ_RESTORE_DIR/* $HSHQ_DATA_DIR/
+  rm -fr $HSHQ_RESTORE_DIR
+  # Only restore hshqlib script if version is less than 85
+  hshqlib_orig_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  if [ $hshqlib_orig_version -lt 85 ]; then
+    mv $HOME/$HSHQ_LIB_FILENAME $HSHQ_LIB_SCRIPT
+  else
+    rm -f $HOME/$HSHQ_LIB_FILENAME
+  fi
+  rm -f $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME
+  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME -S hshqRestore bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
+  exit 0
+}
+
+function performFullRestore()
+{
+  checkLoadConfig
+  set +e
+  origUsername=$(echo $HSHQ_BASE_DIR | cut -d"/" -f3)
+  curUID=$(id -u)
+  curGID=$(id -g)
+  if ! [ "$USERNAME" = "$origUsername" ] || ! [ "$curUID" = "$USERID" ] || ! [ "$curGID" = "$GROUPID" ]; then
+    msgmenu=$(cat << EOF
+
+$hshqlogo
+
+ The current username (UID:GID) does not match the original username (UID:GID).
+
+   Current: $USERNAME ($curUID:$curGID)
+   Original: $origUsername ($USERID:$GROUPID)
+
+ The restore cannot be performed.
+ Please ensure to have the exact same username and UID:GID as the Original.
+EOF
+    )
+    whiptail --title "ERROR" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
+    return
+  fi
+  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  setSudoTimeoutInstall
+  checkCreateNonbackupDirs
+
+  # Set hostname
+  new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
+  if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
+    echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
+  fi
+  sudo hostnamectl set-hostname $new_hostname
+  rm -f $HOME/dead.letter
+
+  # Set timezone
+  sudo timedatectl set-timezone "$TZ"
+
+  echo "Pulling docker images..."
+  restorePullDockerImages
+  rm -f $HOME/script-server.zip
+  find $HSHQ_SSL_DIR -name "*-ca.crt" -print0 | xargs -0 -I {} sudo cp {} /usr/local/share/ca-certificates/
+  sudo update-ca-certificates
+  # Change SSH port on host
+  sudo sed -i "s|^#*Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
+  sudo sed -i "s|^Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
+  setStaticIPToCurrentRestore
+  updateMOTD
+  performSuggestedSecUpdates
+  installMailUtils
+
+  outputScripts
+  sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
+  enableAllWGVPNInterfaces
+  sudo $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+
+  performAptInstall python3-tornado > /dev/null 2>&1
+  sudo rm -f /etc/systemd/system/runScriptServer.service
+  sudo ln -s $HSHQ_SCRIPTS_DIR/root/runScriptServer.service /etc/systemd/system/runScriptServer.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable runScriptServer
+  sudo systemctl start runScriptServer
+
+  if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
+    installWazuhAgent
+  fi
+
+  createDockerNetworks
+  set +e
+  startPortainer
+  docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
+  createClientDNSNetworksOnRestore
+  prepAdguardInstallation
+  restartAllStacks "duplicati,syncthing"
+  addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
+  initCronJobs
+  # Add RelayServer fingerprint
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
+    ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successfully connected to RelayServer!'
+    unloadSSHKey
+  fi
+  removeSudoTimeoutInstall
+  performExitFunctions
+  echo "Restore Complete!"
+}
+
+function restorePullDockerImages()
+{
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  imgList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^[[:blank:]]*image:"))
+  imgOnlyList=()
+  for curImgItem in "${imgList[@]}"
+  do
+    imgOnlyList+=($(echo "$curImgItem" | xargs | cut -d" " -f2))
+  done
+  IFS=$OLDIFS
+  uniqs_arr=($(for tmpImg in "${imgOnlyList[@]}"; do echo "${tmpImg}"; done | sort -u))
+  for curImg in "${uniqs_arr[@]}"
+  do
+    pullImage $curImg
+  done
+  buildCustomImages
+}
+
+function buildCustomImages()
+{
+  buildFileDropImage
+}
+
+function showRestoreMountDriveMenu()
+{
+  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
+    return
+  fi
+  dbackmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  diskarr=($(sudo hwinfo --disk --short | tail +2))
+  curListNum=1
+  scsbm_menu_items=( --title "Select Disk/Partition" --radiolist "$dbackmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
+  for curDisk in "${diskarr[@]}"
+  do
+    curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
+    curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
+    findmnt | grep $curDiskID  > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      continue
+    fi
+    curDiskPartitions=($(lsblk --noheadings --raw -o NAME,SIZE,TYPE $curDiskID))
+    for curDiskPart in "${curDiskPartitions[@]}"
+    do
+      curDiskPartName=$(echo $curDiskPart | cut -d" " -f1)
+      curDiskPartSize=$(echo $curDiskPart | cut -d" " -f2)
+      curDiskPartType=$(echo $curDiskPart | cut -d" " -f3)
+      if [ "$curDiskPartType" = "part" ]; then
+        scsbm_menu_items+=( "$curDiskPartName  $curDiskPartSize  ($curDiskName)" )
+        scsbm_menu_items+=( "|" )
+        scsbm_menu_items+=( "off" )
+        ((curListNum++))
+      fi
+    done
+  done
+  IFS=$OIFS
+
+  if [ $curListNum -le 1 ]; then
+    showMessageBox "ERROR" "There are no available disks for this operation, returning..."
+    return
+  fi
+  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
+  if [ -z "$selDisk" ]; then
+    showMessageBox "ERROR" "No partition was selected, returning..."
+    return
+  fi
+  mountDir=$(promptUserInputMenu "$HSHQ_BACKUP_DIR" "Select Directory" "Enter the directory where you would like to mount this partition:")
+  if [ "$mountDir" = "$HSHQ_BACKUP_DIR" ]; then
+    mkdir -p $HSHQ_BACKUP_DIR
+  fi
+  if [ $(checkValidDirectory "$mountDir") = "false" ]; then
+    showMessageBox "ERROR" "Invalid directory name, returning..."
+    return
+  fi
+  findmnt | grep "$mountDir"  > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a disk mounted to this directory, returning..."
+    return
+  fi
+  if [ -d "$mountDir" ]; then
+    if ! [ -z "$(ls -A $mountDir)" ]; then
+      showMessageBox "ERROR" "The selected directory is not empty, returning..."
+      return
+    fi
+  fi
+  if ! [ -d "$mountDir" ]; then
+    showYesNoMessageBox "ERROR" "This directory does not exist, would you like to create it now?"
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    mkdir -p $mountDir
+    if [ $? -ne 0 ]; then
+      showMessageBox "ERROR" "There was an error creating this directory, likely a permission error, returning..."
+      return
+    fi
+  fi
+  sudo mount /dev/$selDisk $mountDir
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was an error mounting this partition, returning..."
+    return
+  fi
+  showRestoreDuplicatiRestoreMenu "$mountDir" "/dev/$selDisk"
+}
+
+function showRestoreSelectEncryptedDirectoryMenu()
+{
+  backupDir=$(promptUserInputMenu "$HSHQ_BACKUP_DIR" "Select Directory" "Enter the top-level directory of the encrypted data:")
+  showRestoreDuplicatiRestoreMenu "$backupDir"
+}
+
+function showRestoreDuplicatiRestoreMenu()
+{
+  backupDirTL="$1"
+  umountDisk="$2"
+  curListNum=1
+  dbackupmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  dupback_menu_items=( --title "Select Directory" --radiolist "$dbackupmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
+  dirarr=($(ls $backupDirTL))
+  for curDir in "${dirarr[@]}"
+  do
+    if [ "$curDir" = "lost+found" ]; then
+      continue
+    fi
+    dupback_menu_items+=( "$curDir" )
+    dupback_menu_items+=( "|" )
+    dupback_menu_items+=( "off" )
+    ((curListNum++))
+  done
+  IFS=$OLDIFS
+  if [ $curListNum -le 1 ]; then
+    showMessageBox "ERROR" "There are no subdirectories for this operation, returning..."
+    return
+  fi
+  selBackupDir=$(whiptail "${dupback_menu_items[@]}" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  if [ -z "$selBackupDir" ]; then
+    showMessageBox "ERROR" "No directory was selected, returning..."
+    return
+  fi
+  if [ -d "$HSHQ_RESTORE_DIR" ]; then
+    if ! [ -z "$(ls -A $HSHQ_RESTORE_DIR)" ]; then
+      showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) is not empty, returning..."
+      return
+    fi
+  else
+    mkdir -p $HSHQ_RESTORE_DIR
+  fi
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The restore process is ready to start. You will be prompted for the password that you used to encrypt your data. It could take awhile to perform the restoration (15-45 minutes depending on how much data). Enter the word 'restore' below to continue:")
+  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
+    showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
+    return
+  fi
+  docker container stop duplicati-restore > /dev/null 2>&1
+  docker container rm duplicati-restore > /dev/null 2>&1
+  docker run -d --name=duplicati-restore -v $backupDirTL/$selBackupDir:/backup -v $HSHQ_RESTORE_DIR:/restore $IMG_DUPLICATI > /dev/null 2>&1
+  docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --restore-path=/restore --overwrite=true --restore-permissions"
+  docker container stop duplicati-restore > /dev/null 2>&1
+  docker container rm duplicati-restore > /dev/null 2>&1
+  echo "Data Successfully Restored!"
+  if ! [ -z "$umountDisk" ]; then
+    sudo umount $umountDisk
+  fi
+  showRestoreUnencryptedMenu
+}
+
+function performRestorePrecheck()
+{
+  if [ -d $HSHQ_ASSETS_DIR ]; then
+    echo "The HSHQ assets directory ($HSHQ_ASSETS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_CONFIG_DIR ]; then
+    echo "The HSHQ config directory ($HSHQ_CONFIG_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_RELAYSERVER_DIR ]; then
+    echo "The HSHQ relayserver directory ($HSHQ_RELAYSERVER_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_SCRIPTS_DIR ]; then
+    echo "The HSHQ scripts directory ($HSHQ_SCRIPTS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_SECRETS_DIR ]; then
+    echo "The HSHQ secrets directory ($HSHQ_SECRETS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_SSL_DIR ]; then
+    echo "The HSHQ ssl directory ($HSHQ_SSL_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_STACKS_DIR ]; then
+    echo "The HSHQ stacks directory ($HSHQ_STACKS_DIR) already exists. Cannot perform restore."
+  fi
+  if [ -d $HSHQ_WIREGUARD_DIR ]; then
+    echo "The HSHQ wireguard directory ($HSHQ_WIREGUARD_DIR) already exists. Cannot perform restore."
+  fi
+}
+
+function performRestorePostcheck()
+{
+  if ! [ -d "$HSHQ_RESTORE_DIR" ]; then
+    showMessageBox "ERROR" "The restore directory ($HSHQ_RESTORE_DIR) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/assets" ]; then
+    showMessageBox "ERROR" "The restore (assets) directory ($HSHQ_RESTORE_DIR/assets) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/config" ]; then
+    showMessageBox "ERROR" "The restore (config) directory ($HSHQ_RESTORE_DIR/config) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/lib" ]; then
+    showMessageBox "ERROR" "The restore (lib) directory ($HSHQ_RESTORE_DIR/lib) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/scripts" ]; then
+    showMessageBox "ERROR" "The restore (scripts) directory ($HSHQ_RESTORE_DIR/scripts) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/secrets" ]; then
+    showMessageBox "ERROR" "The restore (secrets) directory ($HSHQ_RESTORE_DIR/secrets) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/ssl" ]; then
+    showMessageBox "ERROR" "The restore (ssl) directory ($HSHQ_RESTORE_DIR/ssl) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/stacks" ]; then
+    showMessageBox "ERROR" "The restore (stacks) directory ($HSHQ_RESTORE_DIR/stacks) does not exist, returning..."
+    return 1
+  fi
+  if ! [ -d "$HSHQ_RESTORE_DIR/wireguard" ]; then
+    showMessageBox "ERROR" "The restore (wireguard) directory ($HSHQ_RESTORE_DIR/wireguard) does not exist, returning..."
+    return 1
+  fi
+}
+
+function createClientDNSNetworksOnRestore()
+{
+  echo "Creating ClientDNS networks..."
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  rsi_numTries=1
+  rsi_totalTries=5
+  rsi_retVal=1
+  rstackIDsQry=""
+  while [ $rsi_numTries -le $rsi_totalTries ]
+  do
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rsi_retVal=$?
+    if [ $rsi_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsi_numTries++))
+  done
+  if [ $rsi_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    return
+  fi
+  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]} - 1))
+  for curID in $(seq 0 $numItems);
+  do
+    echo ${rstackNames[$curID]} | grep "^clientdns-" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      echo "Found ClientDNS stack: (${rstackIDs[$curID]}) ${rstackNames[$curID]}"
+      cdns_stack_name=$(echo echo ${rstackNames[$curID]} | cut -d"-" -f2)
+      clientdns_subnet=$(getConfigVarFromFile CLIENTDNS_SUBNET_PREFIX $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env root).0/24
+      docker network create -o com.docker.network.bridge.name=brcd-${cdns_stack_name} --driver=bridge --subnet $clientdns_subnet cdns-${cdns_stack_name} > /dev/null
+    fi
+  done
 }
 
 function showHSHQUtilsMenu()
@@ -441,7 +933,9 @@ EOF
       return 1 ;;
     4)
       checkLoadConfig
-      showConfigureSimpleBackupMenu ;;
+      showSimpleBackupMenu
+      set +e
+      return 1 ;;
     5)
       nukeHSHQ ;;
     6)
@@ -484,6 +978,27 @@ EOF
       sudo $HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh $curcaddy
     fi
   done
+}
+
+function checkPerformSystemPrep()
+{
+  isPrepped=true
+  for util in $UTILS_LIST; do
+    if [[ "$(isProgramInstalled $util)" = "false" ]]; then
+      isPrepped=false
+      break
+    fi
+  done
+  if [ "$isPrepped" = "false" ]; then
+    showYesNoMessageBox "Prep System" "The system must be prepped with updates and required utilities. The system will automatically reboot upon completion and you will need to re-run this utility. Do you wish to continue?"
+    if [ $? -ne 0 ]; then
+      return 1
+    fi
+    sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y
+    installDependencies
+    pullBaseServicesDockerImages
+    sudo reboot
+  fi
 }
 
 function checkWrapperVersion()
@@ -584,9 +1099,41 @@ net.ipv4.neigh.default.gc_thresh1=1024
 
 # Increase number of multicast groups permitted
 net.ipv4.igmp_max_memberships=1024
+
+# See https://documentation.wazuh.com/current/deployment-options/docker/docker-installation.html
+vm.max_map_count = 262144
+
 EOFSC
   if ! [ "$isPerfUpdate" = "false" ]; then
     sudo sysctl --system > /dev/null 2>&1
+  fi
+}
+
+function updateLogrotateConfig()
+{
+  ulrc_curE=${-//[^e]/}
+  set +e
+  # Set max size of syslog to 5G
+  grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo sed -i "/weekly$/a\        maxsize 5G" /etc/logrotate.d/rsyslog
+  fi
+  # Move logrotate into hourly
+  if [ -f /etc/cron.daily/logrotate ]; then
+    sudo mv /etc/cron.daily/logrotate /etc/cron.hourly
+  fi
+  # Set conditions for docker container logs
+  sudo tee /etc/logrotate.d/docker >/dev/null <<EOFLR
+/var/log/docker/*.log {
+    weekly
+    maxsize 100M
+    rotate 4
+    missingok
+    notifempty
+}
+EOFLR
+  if ! [ -z $ulrc_curE ]; then
+    set -e
   fi
 }
 
@@ -675,37 +1222,10 @@ function performAptInstall()
 function installDependencies()
 {
   set +e
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   # Install utils
   installHostNTPServer
-  if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
-    echo "Installing ssmtp, please wait..."
-    performAptInstall ssmtp
-  fi
-
-  if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
-    echo "Installing mailx, please wait..."
-    performAptInstall mailutils
-  fi
-
-  sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
-root=$EMAIL_ADMIN_EMAIL_ADDRESS
-mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
-hostname=$(cat /etc/hostname)
-TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
-UseSTARTTLS=yes
-FromLineOverride=no
-AuthUser=$EMAIL_SMTP_EMAIL_ADDRESS
-AuthPass=$EMAIL_SMTP_PASSWORD
-EOFSM
-
-  sudo tee /etc/ssmtp/revaliases >/dev/null <<EOFSM
-root:$EMAIL_SMTP_EMAIL_ADDRESS
-$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
-EOFSM
-
-  getent group mailsenders >/dev/null || sudo groupadd mailsenders 
-  sudo usermod -aG mailsenders $USERNAME
-  sudo chown root:mailsenders /usr/bin/mail.mailutils
 
   for util in $UTILS_LIST; do
     if [[ "$(isProgramInstalled $util)" = "false" ]]; then
@@ -732,6 +1252,7 @@ EOFSM
 
   # Some host tuning
   updateSysctl true
+  updateLogrotateConfig
   sudo sed -i "s|^ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
@@ -773,6 +1294,40 @@ EOFSM
   fi
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
+}
+
+function installMailUtils()
+{
+  set +e
+  if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
+    echo "Installing ssmtp, please wait..."
+    performAptInstall ssmtp
+  fi
+
+  if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
+    echo "Installing mailx, please wait..."
+    performAptInstall mailutils
+  fi
+
+  sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
+root=$EMAIL_ADMIN_EMAIL_ADDRESS
+mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
+hostname=$(cat /etc/hostname)
+TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
+UseSTARTTLS=yes
+FromLineOverride=no
+AuthUser=$EMAIL_SMTP_EMAIL_ADDRESS
+AuthPass=$EMAIL_SMTP_PASSWORD
+EOFSM
+
+  sudo tee /etc/ssmtp/revaliases >/dev/null <<EOFSM
+root:$EMAIL_SMTP_EMAIL_ADDRESS
+$USERNAME:$EMAIL_SMTP_EMAIL_ADDRESS
+EOFSM
+
+  getent group mailsenders >/dev/null || sudo groupadd mailsenders 
+  sudo usermod -aG mailsenders $USERNAME
+  sudo chown root:mailsenders /usr/bin/mail.mailutils
 }
 
 function checkLoadConfig()
@@ -1412,6 +1967,7 @@ function removeSudoTimeoutInstall()
 
 function performBaseInstallation()
 {
+  checkLoadConfig
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
     echo "Already installed or existing installation is in progress, exiting..."
     exit 1
@@ -1431,6 +1987,7 @@ function performBaseInstallation()
   updateMOTD
   performSuggestedSecUpdates
   installLogNotify "Install Dependencies"
+  installMailUtils
   installDependencies
   pullBaseServicesDockerImages
   installLogNotify "Init DH Params"
@@ -1523,6 +2080,36 @@ function installLogNotify()
   if [ "$IS_INSTALLING" = "true" ]; then
     echo $(date)" - $log_message" >> ${HSHQ_BASE_DIR}/${HSHQ_TIMESTAMP_LOG_NAME}
   fi
+}
+
+function showSimpleBackupMenu()
+{
+  set +e
+  utilmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Configure Backup" \
+  "2" "Mount Existing Backup Disk" \
+  "3" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  case $menures in
+    0)
+	  return 1 ;;
+    1)
+      showConfigureSimpleBackupMenu
+      return 1 ;;
+    2)
+      showMountBackupDriveMenu
+      return 1 ;;
+    3)
+	  return 0 ;;
+  esac
 }
 
 function showConfigureSimpleBackupMenu()
@@ -1694,7 +2281,7 @@ EOF
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     sudo mv /etc/fstab.old /etc/fstab
-    showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup device will not be auto-mounted after a reboot."
+    showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup disk will not be auto-mounted after a reboot."
   else
     sudo rm -f /etc/fstab.old
   fi
@@ -1774,6 +2361,95 @@ EOFBU
   sudo mv $HOME/hshq-backup.json $HSHQ_STACKS_DIR/duplicati/config/
   docker exec duplicati bash -c "mono /app/duplicati/Duplicati.CommandLine.ConfigurationImporter.exe /config/hshq-backup.json --import-metadata=false --server-datafolder=/config"
   showMessageBox "SUCCESS" "Your backup is configured. It will run automatically starting at $mydate, or you can trigger it manually. You will recieve a daily email in your admin email account ($EMAIL_ADMIN_EMAIL_ADDRESS) after each backup. You can view/edit the configuration in https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN ."
+}
+
+function showMountBackupDriveMenu()
+{
+  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
+    return
+  fi
+  sudo cat /etc/fstab | grep $HSHQ_BACKUP_DIR > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR in /etc/fstab. Please unmount this filesystem and remove it from /etc/fstab, returning..."
+    return
+  fi
+  mkdir -p $HSHQ_BACKUP_DIR
+  if ! [ -z "$(ls -A $HSHQ_BACKUP_DIR)" ]; then
+    showMessageBox "ERROR" "The backup directory ($HSHQ_BACKUP_DIR) is not empty, returning..."
+    return
+  fi
+
+  dbackmenu=$(cat << EOF
+
+$hshqlogo
+
+EOF
+)
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  diskarr=($(sudo hwinfo --disk --short | tail +2))
+  curListNum=1
+  scsbm_menu_items=( --title "Select Disk/Partition" --radiolist "$dbackmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
+  for curDisk in "${diskarr[@]}"
+  do
+    curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
+    curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
+    findmnt | grep $curDiskID  > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      continue
+    fi
+    curDiskPartitions=($(lsblk --noheadings --raw -o NAME,SIZE,TYPE $curDiskID))
+    for curDiskPart in "${curDiskPartitions[@]}"
+    do
+      curDiskPartName=$(echo $curDiskPart | cut -d" " -f1)
+      curDiskPartSize=$(echo $curDiskPart | cut -d" " -f2)
+      curDiskPartType=$(echo $curDiskPart | cut -d" " -f3)
+      if [ "$curDiskPartType" = "part" ]; then
+        scsbm_menu_items+=( "$curDiskPartName  $curDiskPartSize  ($curDiskName)" )
+        scsbm_menu_items+=( "|" )
+        scsbm_menu_items+=( "off" )
+        ((curListNum++))
+      fi
+    done
+  done
+  IFS=$OIFS
+
+  if [ $curListNum -le 1 ]; then
+    showMessageBox "ERROR" "There are no available disks for this operation, returning..."
+    return
+  fi
+  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    return
+  fi
+  selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
+  if [ -z "$selDisk" ]; then
+    showMessageBox "ERROR" "No partition was selected, returning..."
+    return
+  fi
+  sudo mount /dev/$selDisk $HSHQ_BACKUP_DIR
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was an error mounting this partition, returning..."
+    return
+  fi
+  newPart=/dev/$selDisk
+  newPartID=$(sudo blkid -s UUID -o value $newPart)
+  sudo cp /etc/fstab /etc/fstab.old
+  echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  if [ -z $newPartID ]; then
+    echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  else
+    echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
+  fi
+  sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo mv /etc/fstab.old /etc/fstab
+    showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup disk will not be auto-mounted after a reboot."
+  else
+    sudo rm -f /etc/fstab.old
+  fi
 }
 
 # Stacks Functions
@@ -2158,6 +2834,28 @@ function deleteListOfStacks()
   removeSudoTimeoutInstall
   restartAllCaddyContainers
   outputStackListsScriptServer
+}
+
+function clearRedisTempDataByStackName()
+{
+  stackName="$1"
+  if ! [ -d $HSHQ_NONBACKUP_DIR/$stackName/redis ]; then
+    echo "ERROR: Could not find corresponding redis directory"
+    return
+  fi
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  stackStatus=$(getStackStatusByName "$stackName" "$portainerToken")
+  if ! [ "$stackStatus" = "1" ]; then
+    echo "ERROR: This stack is not currently running"
+    return
+  fi
+  echo "Stopping $stackName..."
+  startStopStack "$stackName" stop "$portainerToken"
+  echo "Clearing redis data..."
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/$stackName/redis/*
+  echo "Starting $stackName..."
+  startStopStack "$stackName" start "$portainerToken"
+  echo "Complete!"
 }
 
 # VPN Setup
@@ -3163,7 +3861,7 @@ function main()
   sudo docker network prune -f
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -3539,7 +4237,7 @@ function startWazuhAgent()
   sudo apt-mark hold wazuh-agent
   sudo systemctl daemon-reload
   set +e
-  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
+  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
   fi
@@ -5004,7 +5702,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/etc/postfix/tls/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/postfix/tls/${CERTS_ROOT_CA_NAME}.crt:ro
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/config:/etc/postfix/config
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/sasl:/etc/postfix/sasl
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/scripts:/etc/postfix/scripts
@@ -7483,6 +8181,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
   msg_body=$msg_body"ConnectionType = HomeServer VPN\n"
   msg_body=$msg_body"EmailAddress = $EMAIL_ADMIN_EMAIL_ADDRESS\n"
   msg_body=$msg_body"PublicKey = $pub_key\n"
+  msg_body=$msg_body"PresharedKey = \n"
   msg_body=$msg_body"DomainName = $domain_name\n"
   msg_body=$msg_body"HomeServerName = $HOMESERVER_NAME\n"
   msg_body=$msg_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
@@ -7934,9 +8633,10 @@ function performNetworkInvite()
     ;;
   esac
 
-  # Perform application steps
+  # Perform invitation steps
+  tmp_preshared_key=$(wg genpsk)
   if [ -z "$preshared_key" ]; then
-    preshared_key=$(wg genpsk)
+    preshared_key="$tmp_preshared_key"
   fi
   wgPortalAuth="$(getWGPortalAuth)"
   loadSSHKey
@@ -8035,7 +8735,7 @@ function performNetworkInvite()
       mail_body=$mail_body"EndpointPort = $RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
-      mail_body=$mail_body"PresharedKey = $preshared_key\n"
+      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"HomeServerName = $HOMESERVER_NAME\n"
       mail_body=$mail_body"ExternalPrefix = $EXT_DOMAIN_PREFIX\n"
       mail_body=$mail_body"InternalPrefix = $INT_DOMAIN_PREFIX\n"
@@ -8061,7 +8761,7 @@ function performNetworkInvite()
       mail_body=$mail_body"MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU\n\n"
       mail_body=$mail_body"[Peer]\n"
       mail_body=$mail_body"PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      mail_body=$mail_body"PresharedKey = $preshared_key\n"
+      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"AllowedIPs = $RELAYSERVER_WG_VPN_SUBNET\n"
       mail_body=$mail_body"Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\n"
       mail_body=$mail_body"PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE\n"
@@ -8123,7 +8823,7 @@ function performNetworkInvite()
       mail_body=$mail_body"ClientIP = $new_ip\n"
       mail_body=$mail_body"ClientPublicKey = $pub_key\n"
       mail_body=$mail_body"EndpointPublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      mail_body=$mail_body"PresharedKey = $preshared_key\n"
+      mail_body=$mail_body"PresharedKey = $tmp_preshared_key\n"
       mail_body=$mail_body"MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU\n"
       mail_body=$mail_body"\n####################### Base Config End ########################\n"
       mail_body=$mail_body"\n$INVITATION_LAST_LINE\n\n"
@@ -8170,7 +8870,7 @@ function performNetworkInvite()
       fi
       wg_config=$wg_config"[Peer]\n"
       wg_config=$wg_config"PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY\n"
-      wg_config=$wg_config"PresharedKey = $preshared_key\n"
+      wg_config=$wg_config"PresharedKey = $tmp_preshared_key\n"
       wg_config=$wg_config"AllowedIPs = $allowed_ips\n"
       wg_config=$wg_config"Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT\n"
       wg_config=$wg_config"PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE\n"
@@ -9263,6 +9963,7 @@ function checkDeleteStackAndDirectory()
     done
     IFS=$OLDIFS
   fi
+  performPostStackRemoval $stack_name
   set +e
   if ! [ -z $cdsad_curE ]; then
     set -e
@@ -9412,6 +10113,21 @@ function checkIsIPPrivate()
     fi
   done
   echo "false"
+}
+
+function setStaticIPToCurrentRestore()
+{
+  curHostIP=$HOMESERVER_HOST_IP
+  curHostRange=$HOMESERVER_HOST_RANGE
+  setStaticIPToCurrent
+  outputConfigPortainer
+  generateCert portainer portainer $HOMESERVER_HOST_IP
+  generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$curHostIP:$PORTAINER_LOCAL_HTTPS_PORT%';"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT' where url like '%$curHostIP:$SCRIPTSERVER_LOCALHOST_PORT%';"
+
+  sudo sed -i "s|$curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT|$HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT|g" $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo sed -i "s|$curHostRange --dport $SCRIPTSERVER_LOCALHOST_PORT|$HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT|g" $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
 }
 
 function setStaticIPToCurrent()
@@ -9922,6 +10638,7 @@ function restartAllStacksDialog()
 
 function restartAllStacks()
 {
+  skipRestart="$1"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   startStopStack uptimekuma stop "$portainerToken"
 
@@ -9943,25 +10660,7 @@ function restartAllStacks()
     return
   fi
   rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
-
-  rsn_numTries=1
-  rsn_totalTries=5
-  rsn_retVal=1
-  rstackNamesQry=""
-  while [ $rsn_numTries -le $rsn_totalTries ]
-  do
-    rstackNamesQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
-    rsn_retVal=$?
-    if [ $rsn_retVal -eq 0 ]; then
-      break
-    fi
-    ((rsn_numTries++))
-  done
-  if [ $rsn_retVal -ne 0 ]; then
-    echo "ERROR: Could not get list of stack names in Portainer..." 1>&2
-    return
-  fi
-  rstackNames=($(echo $rstackNamesQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
 
   numItems=$((${#rstackIDs[@]} - 1))
   for curID in $(seq 0 $numItems);
@@ -9995,6 +10694,13 @@ function restartAllStacks()
   fi
   for curID in $(seq 0 $numItems);
   do
+    if ! [ -z "$skipRestart" ]; then
+      echo "$skipRestart" | grep ,${rstackNames[$curID]} > /dev/null 2>&1 || echo "$skipRestart" | grep ${rstackNames[$curID]}, > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        echo "Skipping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+        continue
+      fi
+    fi
     echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
     startStopStackByID ${rstackIDs[$curID]} start $portainerToken
     sleep 3
@@ -10672,6 +11378,18 @@ function checkValidString()
   fi
 }
 
+function checkValidDirectory()
+{
+  check_string=$1
+  if [ $(checkValidString "$check_string" "/") = "false" ]; then
+    echo "false"
+  fi
+  if [[ ${check_string:0:1} != "/" ]]; then
+    echo "false"
+  fi
+  echo "true"
+}
+
 function checkValidBaseDomain()
 {
   check_domain=$1
@@ -11086,6 +11804,7 @@ function loadDirectoryStructure()
   HSHQ_SSL_DIR=$HSHQ_DATA_DIR/ssl
   HSHQ_STACKS_DIR=$HSHQ_DATA_DIR/stacks
   HSHQ_WIREGUARD_DIR=$HSHQ_DATA_DIR/wireguard
+  HSHQ_RESTORE_DIR=$HOME/hshqrestore
 
   HSHQ_WRAP_SCRIPT=$HOME/$HSHQ_WRAP_FILENAME
   HSHQ_LIB_SCRIPT=$HSHQ_LIB_DIR/$HSHQ_LIB_FILENAME
@@ -13057,6 +13776,15 @@ PIPED_DATABASE_USER=
 PIPED_DATABASE_USER_PASSWORD=
 # Piped (Service Details) END
 
+# GrampsWeb (Service Details) BEGIN
+GRAMPSWEB_INIT_ENV=true
+GRAMPSWEB_ADMIN_USERNAME=
+GRAMPSWEB_ADMIN_PASSWORD=
+GRAMPSWEB_ADMIN_EMAIL_ADDRESS=
+GRAMPSWEB_SECRET_KEY=
+GRAMPSWEB_REDIS_PASSWORD=
+# GrampsWeb (Service Details) END
+
 # Service Details END
 EOFCF
   set -e
@@ -13064,6 +13792,9 @@ EOFCF
 
 function checkUpdateVersion()
 {
+  if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+    return
+  fi
   is_update_performed=false
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     is_update_performed=true
@@ -13349,6 +14080,18 @@ function checkUpdateVersion()
     echo "Updating to Version 83..."
     version83Update
     HSHQ_VERSION=83
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 84 ]; then
+    echo "Updating to Version 84..."
+    version84Update
+    HSHQ_VERSION=84
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 85 ]; then
+    echo "Updating to Version 85..."
+    version85Update
+    HSHQ_VERSION=85
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -15030,6 +15773,40 @@ function version83Update()
   set -e
 }
 
+function version84Update()
+{
+  set +e
+  outputWGDockInternetScript
+  outputDockerWireGuardCaddyScript
+  set -e
+}
+
+function version85Update()
+{
+  set +e
+  updateLogrotateConfig
+  if sudo test -f $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf; then
+    sudo sed -i "s/.*Shared agent configuration here.*/\  <rootcheck>\n    <ignore>\/var\/lib\/docker\/overlay2<\/ignore>\n  <\/rootcheck>/" $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf
+  fi
+  if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
+    echo "Updating wazuh stack..."
+    updateStackEnv wazuh mfFixCACertPath
+  fi
+  echo "Updating authelia stack..."
+  updateStackEnv authelia mfFixCACertPath
+  updateSysctl true
+  outputCreateWGDockerNetworksScript
+  outputAllScriptServerScripts
+  outputStackListsScriptServer
+  checkAddAllNewSvcs
+  set -e
+}
+
+function mfFixCACertPath()
+{
+  sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
+}
+
 function sendRSExposeScripts()
 {
   cat <<EOFCD > $HOME/addLECertDomains.sh
@@ -15863,6 +16640,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
   checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
 }
 
 function checkAddServiceToConfig()
@@ -15997,7 +16775,7 @@ function nukeHSHQ()
   sudo docker network prune -f
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -16264,7 +17042,7 @@ EOFPT
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   util="docker|docker"
-  if ! [ "$isRunUpdate" = "false" ] && ! [ "$(isProgramInstalled $util)" = "false" ]; then
+  if ( ! [ "$isRunUpdate" = "false" ] && ! [ "$(isProgramInstalled $util)" = "false" ] ) || [ "IS_PERFORM_RESTORE" = "true" ]; then
     sudo $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
     # Just in case
     cur_ssh_port=$(grep "^Port" /etc/ssh/sshd_config)
@@ -16378,8 +17156,8 @@ function main()
     docker container restart \$curcaddy
   done
 
-  docker ps -a --filter name=coturn --format "{{.Names}}" > /dev/null 2>&1
-  if [ \$? -eq 0 ]; then
+  isCoturn=\$(docker ps -a --filter name=coturn --format "{{.Names}}")
+  if ! [ -z "\$isCoturn" ]; then
     docker container restart coturn
   fi
 }
@@ -16834,34 +17612,7 @@ EOFWG
   outputUpdateEndpointIPsScript
   sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
   sudo ln -s $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scriptsdir=$HSHQ_SCRIPTS_DIR
-
-function main()
-{
-  sudo ls \$wgdir/internet/*.conf | while read conf
-  do
-    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
-    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
-    CONN=\$(getConfigVar \#MTU)
-    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
-    fi
-  done
-}
-function getConfigVar()
-{
-  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  outputCreateWGDockerNetworksScript
   sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service >/dev/null <<EOFWG
 [Unit]
 Description=Check or create Docker networks for WireGuard interfaces and private IP ranges
@@ -16989,6 +17740,11 @@ function up()
 
 function down()
 {
+  isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
+  if ! [ -z "\$isCurl" ]; then
+    docker container stop \${NETWORK_NAME}-curl > /dev/null 2>&1
+    docker container rm \${NETWORK_NAME}-curl > /dev/null 2>&1
+  fi
   ip link del \$NETWORK_NAME
   echo "Connection: \$NETWORK_NAME is down"
   if ! [ -z \$DOCKER_NETWORK_SUBNET ]; then
@@ -17009,10 +17765,18 @@ function restart()
 
 function status()
 {
+  # Checking the status will start a curl container.
+  # So if this is called when the connection is set
+  # to a down state, then the container will not be
+  # cleaned up.
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
   CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
   while_check "\$CMD" "\$CHECK"
-  VPNIP=\$(docker run --rm --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 -fsSL --max-time 5 https://api.ipify.org)
+  isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
+  if [ -z "\$isCurl" ]; then
+    docker run -d --name=\${NETWORK_NAME}-curl --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 tail -f /dev/null > /dev/null 2>&1
+  fi
+  VPNIP=\$(docker exec \${NETWORK_NAME}-curl curl -fsSL --max-time 5 https://api.ipify.org)
   IP=\$(curl --silent https://api.ipify.org)
   if [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
     rsip=\$EXT_DOMAIN
@@ -17066,6 +17830,38 @@ function getConfigVar()
 main "\$@"
 EOFWG
   sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh
+}
+
+function outputCreateWGDockerNetworksScript()
+{
+  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
+#!/bin/bash
+set +e
+
+wgdir=$HSHQ_WIREGUARD_DIR
+scriptsdir=$HSHQ_SCRIPTS_DIR
+
+function main()
+{
+  sudo ls \$wgdir/internet/*.conf | while read conf
+  do
+    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
+    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
+    MTU=\$(getConfigVar \#MTU)
+    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
+    fi
+  done
+}
+function getConfigVar()
+{
+  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+}
+
+main "\$@"
+EOFWG
+  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
 }
 
 function outputUpdateEndpointIPsScript()
@@ -17183,6 +17979,15 @@ function addLogMessage()
 main "\$@"
 EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
+}
+
+function enableAllWGVPNInterfaces()
+{
+  sudo ls /etc/wireguard | while read fname
+  do
+    bname=$(basename $fname .conf)
+    enableWGInterfaceQuick $bname
+  done
 }
 
 function enableWGInterfaceQuick()
@@ -17498,16 +18303,6 @@ EOFCA
 function initDHParams()
 {
   openssl dhparam -out $HSHQ_SSL_DIR/dhparam.pem $CERTS_INTERNAL_DHPARAMS_KEYLENGTH
-#  cat <<EOFDH > $HSHQ_SSL_DIR/dhparam.pem
-#-----BEGIN DH PARAMETERS-----
-#MIIBCAKCAQEA8NP8HQHwCifBetSY2KEby8sxVVm7jNMa0m9IKMB2hdPOblzTl/SK
-#I720AMEhHKNC3utwYp6fhbyVQ7e+QN/VtrtbW2WsQPny2xhoOp4aUuZGVwzF4boF
-#/FpCO1onyLQ4UYxPdQhoww/O7oLZceha1H4Ltq41NNzHO8KGyT5iC4Np736q/Xzl
-#aRYGH/57ALBD5hxv5ROYiRdEW/8WbEVhvKVxsXU/hHSptlfqvS92OrULaagh3WJf
-#M2IbmwGbw5szBtX18JLyS9yuxHWfb7eIjs1NImPOlo9BpOY15Tel8ObQv3ikGofB
-#ugU5BJtHTbpmzMzL+BdaL7H+uWK1Rhn8RwIBAg==
-#-----END DH PARAMETERS-----
-#EOFDH
   chmod 0444 $HSHQ_SSL_DIR/dhparam.pem
 }
 
@@ -17906,6 +18701,7 @@ function loadPinnedDockerImages()
   IMG_GITEA_APP=gitea/gitea:1.22.1
   IMG_GITLAB_APP=gitlab/gitlab-ce:16.8.4-ce.0
   IMG_GRAFANA=grafana/grafana-oss:11.1.3
+  IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:v24.8.0
   IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.5
   IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.5
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
@@ -18116,6 +18912,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     piped)
       echo "v1" ;;
+    grampsweb)
+      echo "v1" ;;
     ofelia)
       echo "v3" ;;
     sqlpad)
@@ -18240,6 +19038,7 @@ function pullDockerImages()
   pullImage $IMG_PIPED_PROXY
   pullImage $IMG_PIPED_API
   pullImage $IMG_PIPED_CRON
+  pullImage $IMG_GRAMPSWEB
 }
 
 function pullBaseServicesDockerImages()
@@ -19112,6 +19911,74 @@ function initServicesCredentials()
     PIPED_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PIPED_DATABASE_USER_PASSWORD $PIPED_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$GRAMPSWEB_ADMIN_USERNAME" ]; then
+    GRAMPSWEB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_grampsweb"
+    updateConfigVar GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_USERNAME
+  fi
+  if [ -z "$GRAMPSWEB_ADMIN_PASSWORD" ]; then
+    GRAMPSWEB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GRAMPSWEB_ADMIN_PASSWORD $GRAMPSWEB_ADMIN_PASSWORD
+  fi
+  if [ -z "$GRAMPSWEB_ADMIN_EMAIL_ADDRESS" ]; then
+    GRAMPSWEB_ADMIN_EMAIL_ADDRESS=$GRAMPSWEB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar GRAMPSWEB_ADMIN_EMAIL_ADDRESS $GRAMPSWEB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$GRAMPSWEB_SECRET_KEY" ]; then
+    GRAMPSWEB_SECRET_KEY=$(pwgen -c -n 43 1)
+    updateConfigVar GRAMPSWEB_SECRET_KEY $GRAMPSWEB_SECRET_KEY
+  fi
+  if [ -z "$GRAMPSWEB_REDIS_PASSWORD" ]; then
+    GRAMPSWEB_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar GRAMPSWEB_REDIS_PASSWORD $GRAMPSWEB_REDIS_PASSWORD
+  fi
+}
+
+function checkCreateNonbackupDirs()
+{
+  mkdir -p $HSHQ_NONBACKUP_DIR
+  mkdir -p $HSHQ_BUILD_DIR
+  mkdir -p $HSHQ_NONBACKUP_DIR/adguard
+  mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
+  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils
+  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
+  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
+  mkdir -p $HSHQ_NONBACKUP_DIR/duplicati
+  mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
+  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon
+  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
+  mkdir -p $HSHQ_NONBACKUP_DIR/searxng
+  mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/peertube
+  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
+  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab
+  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/discourse
+  mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/shlink
+  mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/firefly
+  mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/kasm
+  mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
+  mkdir -p $HSHQ_NONBACKUP_DIR/netdata
+  mkdir -p $HSHQ_NONBACKUP_DIR/netdata/cache
+  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf
+  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
+  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
+  mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant
+  mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/wallabag
+  mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/piped
+  mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
 }
 
 function installBaseStacks()
@@ -19162,6 +20029,7 @@ function initServiceVars()
   checkAddSvc "SVCD_GITEA=gitea,gitea,primary,user,Gitea,gitea,le"
   checkAddSvc "SVCD_GITLAB=gitlab,gitlab,primary,user,Gitlab,gitlab,hshq"
   checkAddSvc "SVCD_GRAFANA=sysutils,grafana,primary,admin,Grafana,grafana,hshq"
+  checkAddSvc "SVCD_GRAMPSWEB=grampsweb,grampsweb,primary,user,GrampsWeb,grampsweb,le"
   checkAddSvc "SVCD_GUACAMOLE=guacamole,guacamole,primary,admin,Guacamole,guacamole,hshq"
   checkAddSvc "SVCD_HEIMDALL=heimdall,heimdall,other,user,Heimdall,heimdall,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_APP=homeassistant,homeassistant,primary,admin,HomeAssistant,homeassistant,hshq"
@@ -19340,6 +20208,8 @@ function installStackByName()
       installFileDrop $is_integrate ;;
     piped)
       installPiped $is_integrate ;;
+    grampsweb)
+      installGrampsWeb $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -19476,6 +20346,8 @@ function performUpdateStackByName()
       performUpdateFileDrop "$portainerToken" ;;
     piped)
       performUpdatePiped "$portainerToken" ;;
+    piped)
+      performUpdateGrampsWeb "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -19512,6 +20384,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_FILEDROP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FRESHRSS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITEA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_GRAMPSWEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEIMDALL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - home.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN\n"
@@ -19662,6 +20535,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_VPN}-Admin" https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -19772,6 +20646,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0 "huginn.png"
   insertIntoHeimdallDB "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0 "filedrop.png"
   insertIntoHeimdallDB "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0 "piped.png"
+  insertIntoHeimdallDB "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0 "grampsweb.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -19859,6 +20734,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -19871,19 +20747,19 @@ function insertServicesUptimeKuma()
 
 function getLetsEncryptCertsDefault()
 {
-  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN"
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN"
 }
 
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,drawio,guacamole,kasm,stirlingpdf,piped
-  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
+  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,kasm,stirlingpdf,piped
+  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb
 }
 
 function getScriptImageByContainerName()
@@ -20360,10 +21236,27 @@ function getScriptImageByContainerName()
     "uptimekuma")
       container_image=$IMG_UPTIMEKUMA
       ;;
+    "grampsweb-app")
+      container_image=$IMG_GRAMPSWEB
+      ;;
+    "grampsweb-redis")
+      container_image=$IMG_REDIS
+      ;;
     *)
       ;;
   esac
   echo "$container_image"
+}
+
+function performPostStackRemoval()
+{
+  case "$1" in
+    "wazuh")
+      removeWazuhAgent
+      ;;
+    *)
+      ;;
+  esac
 }
 
 # Stacks Installation/Update Functions
@@ -20629,27 +21522,14 @@ function installAdGuard()
   fi
   set -e
   mkdir $HSHQ_STACKS_DIR/adguard
-  mkdir $HSHQ_NONBACKUP_DIR/adguard
   mkdir $HSHQ_STACKS_DIR/adguard/conf
-  mkdir $HSHQ_NONBACKUP_DIR/adguard/work
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   outputConfigAdGuard
   generateCert adguard adguard
 
-  sudo systemctl stop systemd-resolved > /dev/null 2>&1
-  sudo systemctl disable systemd-resolved > /dev/null 2>&1
-  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo tee /etc/resolv.conf >/dev/null <<EOFR
-nameserver 127.0.0.1
-EOFR
-  np_path="/etc/netplan/*"
-  for cur_np in "$np_path"
-  do
-    sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
-    sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
-  done
-  sudo netplan apply > /dev/null 2>&1
+  prepAdguardInstallation
 
   installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
   retval=$?
@@ -20988,6 +21868,23 @@ function performUpdateAdGuard()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+function prepAdguardInstallation()
+{
+  sudo systemctl stop systemd-resolved > /dev/null 2>&1
+  sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+  np_path="/etc/netplan/*"
+  for cur_np in "$np_path"
+  do
+    sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
+    sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
+  done
+  sudo netplan apply > /dev/null 2>&1
+}
+
 # SysUtils
 function installSysUtils()
 {
@@ -21022,8 +21919,7 @@ function installSysUtils()
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/etc
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/var
   mkdir $HSHQ_STACKS_DIR/sysutils/prometheus
-  mkdir $HSHQ_NONBACKUP_DIR/sysutils
-  mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   generateCert influxdb influxdb
@@ -25023,11 +25919,7 @@ function installWazuh()
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/filebeat-etc
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/filebeat-var
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/indexer-data
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
-  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   if [ -z "$WAZUH_API_USERNAME" ]; then
@@ -25074,23 +25966,21 @@ function installWazuh()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  echo "Wazuh installed, sleeping 5 seconds..."
-  sleep 5
+  echo "Wazuh manager installed..."
+  maxACount=300
+  curACount=1
+  while [ $curACount -lt $maxACount ]
+  do
+    if sudo test -f $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf; then
+      break
+    fi
+    echo "Waiting for agent.conf to initialize ($curACount seconds)..."
+    sleep 1
+    ((curACount++))
+  done
+  sudo sed -i "s/.*Shared agent configuration here.*/\  <rootcheck>\n    <ignore>\/var\/lib\/docker\/overlay2<\/ignore>\n  <\/rootcheck>/" $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf
 
-  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
-  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
-  sudo apt-mark hold wazuh-agent
-  sudo systemctl daemon-reload
-  set +e
-  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf
-  if [ $? -ne 0 ]; then
-    sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
-  fi
-  set -e
-  sudo systemctl enable wazuh-agent
-  sudo systemctl start wazuh-agent
+  installWazuhAgent
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WAZUH.$HOMESERVER_DOMAIN {\n"
@@ -25145,7 +26035,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/etc/ssl/root-ca.pem:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/ssl/root-ca.pem:ro
       - \${HSHQ_SSL_DIR}/wazuh.manager.crt:/etc/ssl/filebeat.pem
       - \${HSHQ_SSL_DIR}/wazuh.manager.key:/etc/ssl/filebeat.key
       - \${HSHQ_STACKS_DIR}/wazuh/wazuh-cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
@@ -25184,7 +26074,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
       - \${HSHQ_SSL_DIR}/wazuh.indexer.crt:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
       - \${HSHQ_SSL_DIR}/wazuh.indexer.key:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
       - \${HSHQ_SSL_DIR}/wazuh.admin.crt:/usr/share/wazuh-indexer/certs/admin.pem
@@ -25209,7 +26099,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
       - \${HSHQ_SSL_DIR}/wazuh.dashboard.crt:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
       - \${HSHQ_SSL_DIR}/wazuh.dashboard.key:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
       - \${HSHQ_STACKS_DIR}/wazuh/wazuh-dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
@@ -25643,17 +26533,9 @@ EOFWZ
     <disabled>yes</disabled>
   </cluster>
 
-</ossec_config>
-
-<ossec_config>
   <localfile>
     <log_format>syslog</log_format>
     <location>/var/ossec/logs/active-responses.log</location>
-  </localfile>
-
-  <localfile>
-    <log_format>syslog</log_format>
-    <location>/var/log/docker/*</location>
   </localfile>
 
 </ossec_config>
@@ -25841,6 +26723,32 @@ function performUpdateWazuh()
 function mfUpdateWazuhStackJavaMem()
 {
   sed -i "s|OPENSEARCH_JAVA_OPTS=.*|OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g|" $HOME/wazuh.env
+}
+
+function installWazuhAgent()
+{
+  curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
+  echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo WAZUH_MANAGER="$SUB_WAZUH.$HOMESERVER_DOMAIN" DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$WAZUH_AGENT_VERSION
+  sudo apt-mark hold wazuh-agent
+  sudo systemctl daemon-reload
+  set +e
+  sudo grep "/var/log/docker/" /var/ossec/etc/ossec.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
+  fi
+  set -e
+  sudo systemctl enable wazuh-agent
+  sudo systemctl start wazuh-agent
+}
+
+function removeWazuhAgent()
+{
+  sudo systemctl stop wazuh-agent
+  sudo systemctl disable wazuh-agent
+  sudo systemctl daemon-reload
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
 }
 
 # Collabora
@@ -28070,8 +28978,8 @@ function installDuplicati()
   domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
   mkdir $HSHQ_STACKS_DIR/duplicati
   mkdir $HSHQ_STACKS_DIR/duplicati/config
-  mkdir $HSHQ_NONBACKUP_DIR/duplicati
-  mkdir $HSHQ_NONBACKUP_DIR/duplicati/restore
+  checkCreateNonbackupDirs
+
   initServicesCredentials
   echo "Installing Duplicati..."
   outputConfigDuplicati
@@ -28209,9 +29117,7 @@ function installMastodon()
   mkdir $HSHQ_STACKS_DIR/mastodon/web
   sudo chown 991:991 $HSHQ_STACKS_DIR/mastodon/system
   chmod 777 $HSHQ_STACKS_DIR/mastodon/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon/redis
-  mkdir $HSHQ_NONBACKUP_DIR/mastodon/static
+  checkCreateNonbackupDirs
 
   MASTODON_SECRET_KEY_BASE=$(openssl rand -hex 64)
   MASTODON_OTP_SECRET=$(openssl rand -hex 64)
@@ -29115,8 +30021,7 @@ function installSearxNG()
   mkdir $HSHQ_STACKS_DIR/searxng
   mkdir $HSHQ_STACKS_DIR/searxng/caddy
   mkdir $HSHQ_STACKS_DIR/searxng/web
-  mkdir $HSHQ_NONBACKUP_DIR/searxng
-  mkdir $HSHQ_NONBACKUP_DIR/searxng/redis
+  checkCreateNonbackupDirs
 
   if [ -z "$SEARXNG_REDIS_PASSWORD" ]; then
     SEARXNG_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -30477,7 +31382,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro
       - \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro
       - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
       - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
@@ -31178,9 +32083,7 @@ function installPeerTube()
   mkdir $HSHQ_STACKS_DIR/peertube/dbexport
   mkdir $HSHQ_STACKS_DIR/peertube/data
   chmod 777 $HSHQ_STACKS_DIR/peertube/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/peertube
-  mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
-  mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
+  checkCreateNonbackupDirs
 
   initServicesCredentials
 
@@ -32150,8 +33053,7 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
@@ -32182,8 +33084,7 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab
-  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
+  checkCreateNonbackupDirs
 
   mv $HOME/gitlab.rb $HSHQ_STACKS_DIR/gitlab/app/config/gitlab.rb
   mv $HOME/gitlab-postconfigure.sh $HSHQ_STACKS_DIR/gitlab/app/config/gitlab-postconfigure.sh
@@ -32760,8 +33661,7 @@ function installDiscourse()
   mkdir $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_STACKS_DIR/discourse/app
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
-  mkdir $HSHQ_NONBACKUP_DIR/discourse
-  mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
+  checkCreateNonbackupDirs
 
   initServicesCredentials
   if [ -z "$DISCOURSE_DATABASE_USER_PASSWORD" ]; then
@@ -33469,8 +34369,7 @@ function installShlink()
   mkdir $HSHQ_STACKS_DIR/shlink/db
   mkdir $HSHQ_STACKS_DIR/shlink/dbexport
   mkdir $HSHQ_STACKS_DIR/shlink/web
-  mkdir $HSHQ_NONBACKUP_DIR/shlink
-  mkdir $HSHQ_NONBACKUP_DIR/shlink/redis
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/shlink/dbexport
 
   initServicesCredentials
@@ -33801,8 +34700,7 @@ function installFirefly()
   mkdir $HSHQ_STACKS_DIR/firefly/db
   mkdir $HSHQ_STACKS_DIR/firefly/dbexport
   mkdir $HSHQ_STACKS_DIR/firefly/data
-  mkdir $HSHQ_NONBACKUP_DIR/firefly
-  mkdir $HSHQ_NONBACKUP_DIR/firefly/redis
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/firefly/dbexport
 
   initServicesCredentials
@@ -35351,8 +36249,7 @@ function installKasm()
 
   mkdir $HSHQ_STACKS_DIR/kasm
   mkdir $HSHQ_STACKS_DIR/kasm/profiles
-  mkdir $HSHQ_NONBACKUP_DIR/kasm
-  mkdir $HSHQ_NONBACKUP_DIR/kasm/data
+  checkCreateNonbackupDirs
 
   outputConfigKasm
   installStack kasm kasm "" $HOME/kasm.env
@@ -36469,8 +37366,7 @@ function installNetdata()
   mkdir $HSHQ_STACKS_DIR/netdata
   mkdir $HSHQ_STACKS_DIR/netdata/config
   mkdir $HSHQ_STACKS_DIR/netdata/lib
-  mkdir $HSHQ_NONBACKUP_DIR/netdata
-  mkdir $HSHQ_NONBACKUP_DIR/netdata/cache
+  checkCreateNonbackupDirs
 
   outputConfigNetdata
   installStack netdata netdata "" $HOME/netdata.env
@@ -36830,9 +37726,7 @@ function installStirlingPDF()
 
   mkdir $HSHQ_STACKS_DIR/stirlingpdf
   mkdir $HSHQ_STACKS_DIR/stirlingpdf/configs
-  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf
-  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
-  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
+  checkCreateNonbackupDirs
 
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
@@ -36971,8 +37865,7 @@ function installBarAssistant()
   mkdir $HSHQ_STACKS_DIR/bar-assistant/app
   mkdir $HSHQ_STACKS_DIR/bar-assistant/meilisearch
   mkdir $HSHQ_STACKS_DIR/bar-assistant/web
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
-  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
+  checkCreateNonbackupDirs
 
   if [ -z "$BARASSISTANT_REDIS_PASSWORD" ]; then
     BARASSISTANT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -37778,8 +38671,7 @@ function installWallabag()
   mkdir $HSHQ_STACKS_DIR/wallabag/db
   mkdir $HSHQ_STACKS_DIR/wallabag/dbexport
   mkdir $HSHQ_STACKS_DIR/wallabag/images
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag
-  mkdir $HSHQ_NONBACKUP_DIR/wallabag/redis
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/wallabag/dbexport
 
   initServicesCredentials
@@ -39538,11 +40430,8 @@ function installFileDrop()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
-  docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
-  retVal=$?
-  sudo rm -fr $HSHQ_BUILD_DIR/filedrop
-  if [ $retVal -ne 0 ]; then
+  buildFileDropImage
+  if [ $? -ne 0 ]; then
     return 1
   fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
@@ -39655,6 +40544,16 @@ function performUpdateFileDrop()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+function buildFileDropImage()
+{
+  set +e
+  git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
+  docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
+  retVal=$?
+  sudo rm -fr $HSHQ_BUILD_DIR/filedrop
+  return $retVal
+}
+
 # Piped
 function installPiped()
 {
@@ -39693,8 +40592,7 @@ function installPiped()
   mkdir $HSHQ_STACKS_DIR/piped/config
   mkdir $HSHQ_STACKS_DIR/piped/cron
   mkdir $HSHQ_STACKS_DIR/piped/web
-  mkdir $HSHQ_NONBACKUP_DIR/piped
-  mkdir $HSHQ_NONBACKUP_DIR/piped/proxy
+  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/piped/dbexport
 
   initServicesCredentials
@@ -40103,6 +41001,270 @@ function performUpdatePiped()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# GrampsWeb
+function installGrampsWeb()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory grampsweb "GrampsWeb"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_GRAMPSWEB
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/grampsweb
+  mkdir $HSHQ_STACKS_DIR/grampsweb/redis
+  mkdir $HSHQ_STACKS_DIR/grampsweb/users
+  mkdir $HSHQ_STACKS_DIR/grampsweb/index
+  mkdir $HSHQ_STACKS_DIR/grampsweb/thumbcache
+  mkdir $HSHQ_STACKS_DIR/grampsweb/cache
+  mkdir $HSHQ_STACKS_DIR/grampsweb/secret
+  mkdir $HSHQ_STACKS_DIR/grampsweb/db
+  mkdir $HSHQ_STACKS_DIR/grampsweb/media
+  mkdir $HSHQ_STACKS_DIR/grampsweb/tmp
+
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $GRAMPSWEB_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $GRAMPSWEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  if ! [ "$GRAMPSWEB_INIT_ENV" = "true" ]; then
+    sendEmail -s "GrampsWeb Admin Login Info" -b "GrampsWeb Admin Username: $GRAMPSWEB_ADMIN_USERNAME\nGrampsWeb Admin Password: $GRAMPSWEB_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    GRAMPSWEB_INIT_ENV=true
+    updateConfigVar GRAMPSWEB_INIT_ENV $GRAMPSWEB_INIT_ENV
+  fi
+  outputConfigGrampsWeb
+  installStack grampsweb grampsweb-app "Listening at: http://0.0.0.0:5000" $HOME/grampsweb.env
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
+  docker exec -it grampsweb-app python3 -m gramps_webapi user add --fullname "$HOMESERVER_NAME Admin" --email "$GRAMPSWEB_ADMIN_EMAIL_ADDRESS" --role 5 "$GRAMPSWEB_ADMIN_USERNAME" "$GRAMPSWEB_ADMIN_PASSWORD" > /dev/null 2>&1
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(1,'EMAIL_HOST','mailu-front');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(2,'EMAIL_PORT','465');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(3,'EMAIL_HOST_USER','$EMAIL_SMTP_EMAIL_ADDRESS');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(4,'EMAIL_HOST_PASSWORD','$EMAIL_SMTP_PASSWORD');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(6,'BASE_URL','https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(7,'EMAIL_USE_TLS','0');"
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  startStopStack grampsweb stop "$portainerToken"
+  startStopStack grampsweb start "$portainerToken"
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://grampsweb-app:5000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_GRAMPSWEB $MANAGETLS_GRAMPSWEB "$is_integrate_hshq" $NETDEFAULT_GRAMPSWEB "$inner_block"
+  insertSubAuthelia $SUB_GRAMPSWEB.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll grampsweb "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" "grampsweb.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigGrampsWeb()
+{
+  cat <<EOFPI > $HOME/grampsweb-compose.yml
+$STACK_VERSION_PREFIX grampsweb $(getScriptStackVersion grampsweb)
+
+services:
+
+  grampsweb-app:
+    image: $(getScriptImageByContainerName grampsweb-app)
+    container_name: grampsweb-app
+    hostname: grampsweb-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - grampsweb-redis
+    networks:
+      - dock-grampsweb-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-grampsweb-users:/app/users
+      - v-grampsweb-index:/app/indexdir
+      - v-grampsweb-thumbcache:/app/thumbnail_cache
+      - v-grampsweb-cache:/app/cache
+      - v-grampsweb-secret:/app/secret
+      - v-grampsweb-db:/root/.gramps/grampsdb
+      - v-grampsweb-media:/app/media
+      - v-grampsweb-tmp:/tmp
+
+  grampsweb-celery:
+    image: $(getScriptImageByContainerName grampsweb-app)
+    container_name: grampsweb-celery
+    hostname: grampsweb-celery
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: celery -A gramps_webapi.celery worker --loglevel=INFO
+    depends_on:
+      - grampsweb-redis
+    networks:
+      - dock-grampsweb-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-grampsweb-users:/app/users
+      - v-grampsweb-index:/app/indexdir
+      - v-grampsweb-thumbcache:/app/thumbnail_cache
+      - v-grampsweb-cache:/app/cache
+      - v-grampsweb-secret:/app/secret
+      - v-grampsweb-db:/root/.gramps/grampsdb
+      - v-grampsweb-media:/app/media
+      - v-grampsweb-tmp:/tmp
+
+  grampsweb-redis:
+    image: $(getScriptImageByContainerName grampsweb-redis)
+    container_name: grampsweb-redis
+    hostname: grampsweb-redis
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-grampsweb-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-grampsweb-redis:/bitnami/redis/data
+
+volumes:
+  v-grampsweb-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/redis
+  v-grampsweb-users:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/users
+  v-grampsweb-index:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/index
+  v-grampsweb-thumbcache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/thumbcache
+  v-grampsweb-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/cache
+  v-grampsweb-secret:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/secret
+  v-grampsweb-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/db
+  v-grampsweb-media:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/media
+  v-grampsweb-tmp:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/grampsweb/tmp
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-grampsweb-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFPI
+
+  cat <<EOFPI > $HOME/grampsweb.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+GRAMPSWEB_SECRET_KEY=$GRAMPSWEB_SECRET_KEY
+GRAMPSWEB_TREE=GrampsWeb Tree
+GRAMPSWEB_CELERY_CONFIG__broker_url=redis://:$GRAMPSWEB_REDIS_PASSWORD@grampsweb-redis:6379/0
+GRAMPSWEB_CELERY_CONFIG__result_backend=redis://:$GRAMPSWEB_REDIS_PASSWORD@grampsweb-redis:6379/0
+GRAMPSWEB_RATELIMIT_STORAGE_URI=redis://:$GRAMPSWEB_REDIS_PASSWORD@grampsweb-redis:6379/1
+REDIS_PASSWORD=$GRAMPSWEB_REDIS_PASSWORD
+EOFPI
+
+}
+
+function performUpdateGrampsWeb()
+{
+  perform_stack_name=grampsweb
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/gramps-project/grampsweb:v24.8.0,bitnami/redis:7.0.5
+      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v24.8.0,ghcr.io/gramps-project/grampsweb:v24.8.0"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Script-server
 function installScriptServer()
 {
@@ -40133,7 +41295,7 @@ function installScriptServer()
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/scripts
   mkdir -p $HSHQ_STACKS_DIR/script-server/conf/theme
   echo "Installing python3-tornado..."
-  performAptInstall python3-tornado -y > /dev/null 2>&1
+  performAptInstall python3-tornado > /dev/null 2>&1
   initServicesCredentials
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   outputConfigScriptServer
@@ -41173,7 +42335,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "cat conf/updateStackList.txt",
+        "script": "cat conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME",
         "shell": true
       },
       "pass_as": "argument"
@@ -41383,6 +42545,90 @@ EOFSC
         }
       },
       "secure": true,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearTempRedisData.sh
+#!/bin/bash
+
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+selstack=\$(getArgumentValue selstack "\$@")
+
+set +e
+echo "Clearing out temp data for \${selstack}..."
+clearRedisTempDataByStackName "\${selstack}"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/clearTempRedisData.json
+{
+  "name": "07 Clear Service Temp Data",
+  "script_path": "conf/scripts/clearTempRedisData.sh",
+  "description": "Clear Temp Data For Selected Service. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will stop the selected stack, delete all data from its respective Redis database, then restart the service. The use case for this function is in the event of a sudden power outage or some other unforseen circumstance, the Redis database could become corrupted and render the entire service unusable. The Redis database for each of these services functions as a caching mechanism, and can be safely cleared out if necessary.",
+  "group": "$group_id_services",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select stack",
+      "required": true,
+      "param": "-selstack=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "cat conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME",
+        "shell": true
+      },
       "pass_as": "argument"
     }
   ]
@@ -44994,6 +46240,13 @@ function outputStackListsScriptServer()
   sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME
   echo $(getStacksToUpdate) | sed "s|,|\n|g" > $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
   sort -o $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME
+
+  redislist=($(find $HSHQ_NONBACKUP_DIR/ -maxdepth 2 -type d -name redis | sort))
+  rm -f $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
+  for curdir in "${redislist[@]}"
+  do
+    echo $(echo "$curdir" | rev | cut -d"/" -f2 | rev) >> $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
+  done
 }
 
 # SQLPad
