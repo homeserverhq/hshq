@@ -21518,7 +21518,8 @@ function installAdGuard()
   set -e
   mkdir $HSHQ_STACKS_DIR/adguard
   mkdir $HSHQ_STACKS_DIR/adguard/conf
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/adguard
+  mkdir $HSHQ_NONBACKUP_DIR/adguard/work
 
   initServicesCredentials
   outputConfigAdGuard
@@ -21914,7 +21915,8 @@ function installSysUtils()
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/etc
   mkdir $HSHQ_STACKS_DIR/sysutils/influxdb/var
   mkdir $HSHQ_STACKS_DIR/sysutils/prometheus
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/sysutils
+  mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
 
   initServicesCredentials
   generateCert influxdb influxdb
@@ -25914,7 +25916,11 @@ function installWazuh()
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/filebeat-etc
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/filebeat-var
   mkdir $HSHQ_STACKS_DIR/wazuh/volumes/indexer-data
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/wazuh
+  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes
+  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
+  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
+  mkdir $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
 
   initServicesCredentials
   if [ -z "$WAZUH_API_USERNAME" ]; then
@@ -28973,7 +28979,8 @@ function installDuplicati()
   domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
   mkdir $HSHQ_STACKS_DIR/duplicati
   mkdir $HSHQ_STACKS_DIR/duplicati/config
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/duplicati
+  mkdir $HSHQ_NONBACKUP_DIR/duplicati/restore
 
   initServicesCredentials
   echo "Installing Duplicati..."
@@ -29112,7 +29119,9 @@ function installMastodon()
   mkdir $HSHQ_STACKS_DIR/mastodon/web
   sudo chown 991:991 $HSHQ_STACKS_DIR/mastodon/system
   chmod 777 $HSHQ_STACKS_DIR/mastodon/dbexport
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/mastodon
+  mkdir $HSHQ_NONBACKUP_DIR/mastodon/redis
+  mkdir $HSHQ_NONBACKUP_DIR/mastodon/static
 
   MASTODON_SECRET_KEY_BASE=$(openssl rand -hex 64)
   MASTODON_OTP_SECRET=$(openssl rand -hex 64)
@@ -30016,7 +30025,8 @@ function installSearxNG()
   mkdir $HSHQ_STACKS_DIR/searxng
   mkdir $HSHQ_STACKS_DIR/searxng/caddy
   mkdir $HSHQ_STACKS_DIR/searxng/web
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/searxng
+  mkdir $HSHQ_NONBACKUP_DIR/searxng/redis
 
   if [ -z "$SEARXNG_REDIS_PASSWORD" ]; then
     SEARXNG_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -32078,7 +32088,9 @@ function installPeerTube()
   mkdir $HSHQ_STACKS_DIR/peertube/dbexport
   mkdir $HSHQ_STACKS_DIR/peertube/data
   chmod 777 $HSHQ_STACKS_DIR/peertube/dbexport
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/peertube
+  mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
+  mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
 
   initServicesCredentials
 
@@ -33048,7 +33060,8 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/gitlab
+  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
 
   initServicesCredentials
   if [ -z "$GITLAB_ROOT_PASSWORD" ]; then
@@ -33079,7 +33092,8 @@ function installGitlab()
   mkdir $HSHQ_STACKS_DIR/gitlab/db
   mkdir $HSHQ_STACKS_DIR/gitlab/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitlab/dbexport
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/gitlab
+  mkdir $HSHQ_NONBACKUP_DIR/gitlab/redis
 
   mv $HOME/gitlab.rb $HSHQ_STACKS_DIR/gitlab/app/config/gitlab.rb
   mv $HOME/gitlab-postconfigure.sh $HSHQ_STACKS_DIR/gitlab/app/config/gitlab-postconfigure.sh
@@ -33656,7 +33670,8 @@ function installDiscourse()
   mkdir $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_STACKS_DIR/discourse/app
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/discourse
+  mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
 
   initServicesCredentials
   if [ -z "$DISCOURSE_DATABASE_USER_PASSWORD" ]; then
@@ -34364,8 +34379,9 @@ function installShlink()
   mkdir $HSHQ_STACKS_DIR/shlink/db
   mkdir $HSHQ_STACKS_DIR/shlink/dbexport
   mkdir $HSHQ_STACKS_DIR/shlink/web
-  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/shlink/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/shlink
+  mkdir $HSHQ_NONBACKUP_DIR/shlink/redis
 
   initServicesCredentials
   if [ -z "$SHLINK_REDIS_PASSWORD" ]; then
@@ -34695,8 +34711,9 @@ function installFirefly()
   mkdir $HSHQ_STACKS_DIR/firefly/db
   mkdir $HSHQ_STACKS_DIR/firefly/dbexport
   mkdir $HSHQ_STACKS_DIR/firefly/data
-  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/firefly/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/firefly
+  mkdir $HSHQ_NONBACKUP_DIR/firefly/redis
 
   initServicesCredentials
   if [ -z "$FIREFLY_REDIS_PASSWORD" ]; then
@@ -36244,7 +36261,8 @@ function installKasm()
 
   mkdir $HSHQ_STACKS_DIR/kasm
   mkdir $HSHQ_STACKS_DIR/kasm/profiles
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/kasm
+  mkdir $HSHQ_NONBACKUP_DIR/kasm/data
 
   outputConfigKasm
   installStack kasm kasm "" $HOME/kasm.env
@@ -37361,7 +37379,8 @@ function installNetdata()
   mkdir $HSHQ_STACKS_DIR/netdata
   mkdir $HSHQ_STACKS_DIR/netdata/config
   mkdir $HSHQ_STACKS_DIR/netdata/lib
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/netdata
+  mkdir $HSHQ_NONBACKUP_DIR/netdata/cache
 
   outputConfigNetdata
   installStack netdata netdata "" $HOME/netdata.env
@@ -37721,7 +37740,9 @@ function installStirlingPDF()
 
   mkdir $HSHQ_STACKS_DIR/stirlingpdf
   mkdir $HSHQ_STACKS_DIR/stirlingpdf/configs
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf
+  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
+  mkdir $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
 
   outputConfigStirlingPDF
   installStack stirlingpdf stirlingpdf "" $HOME/stirlingpdf.env
@@ -37860,7 +37881,8 @@ function installBarAssistant()
   mkdir $HSHQ_STACKS_DIR/bar-assistant/app
   mkdir $HSHQ_STACKS_DIR/bar-assistant/meilisearch
   mkdir $HSHQ_STACKS_DIR/bar-assistant/web
-  checkCreateNonbackupDirs
+  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant
+  mkdir $HSHQ_NONBACKUP_DIR/bar-assistant/redis
 
   if [ -z "$BARASSISTANT_REDIS_PASSWORD" ]; then
     BARASSISTANT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -38666,8 +38688,9 @@ function installWallabag()
   mkdir $HSHQ_STACKS_DIR/wallabag/db
   mkdir $HSHQ_STACKS_DIR/wallabag/dbexport
   mkdir $HSHQ_STACKS_DIR/wallabag/images
-  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/wallabag/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/wallabag
+  mkdir $HSHQ_NONBACKUP_DIR/wallabag/redis
 
   initServicesCredentials
   if [ -z "$WALLABAG_ENV_SECRET" ]; then
@@ -40587,8 +40610,9 @@ function installPiped()
   mkdir $HSHQ_STACKS_DIR/piped/config
   mkdir $HSHQ_STACKS_DIR/piped/cron
   mkdir $HSHQ_STACKS_DIR/piped/web
-  checkCreateNonbackupDirs
   chmod 777 $HSHQ_STACKS_DIR/piped/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/piped
+  mkdir $HSHQ_NONBACKUP_DIR/piped/proxy
 
   initServicesCredentials
   outputConfigPiped
