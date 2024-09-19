@@ -1472,11 +1472,6 @@ function initConfig()
   fi
   if [ -z "$GROUPID" ]; then
     GROUPID=$(id -g)
-    # The group ID should always be 1000 on a fresh install.
-    if [ $GROUPID -ne 1000 ]; then
-      showMessageBox "Bad Group ID" "The group ID doesn't match ($GROUPID)"
-      exit 1
-    fi
     updateConfigVar GROUPID $GROUPID
   fi
   if [ -z "$XDG_RUNTIME_DIR" ]; then
