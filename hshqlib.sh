@@ -32388,12 +32388,17 @@ function installHomeAssistant()
   mkdir $HSHQ_STACKS_DIR/homeassistant/media
   mkdir $HSHQ_STACKS_DIR/homeassistant/nodered
   chmod 777 $HSHQ_STACKS_DIR/homeassistant/dbexport
+  sudo chown 1000:1000 $HSHQ_STACKS_DIR/homeassistant/nodered
 
   initServicesCredentials
   generateCert homeassistant-app "homeassistant-app,host.docker.internal"
   generateCert homeassistant-configurator homeassistant-configurator
   generateCert homeassistant-nodered homeassistant-nodered
   outputConfigHomeAssistant
+
+  # Ensure NodeRed data directory and settings file permissions are set to 1000:1000
+  sudo chown 1000:1000 $HOME/noderedsettings.conf
+  sudo mv $HOME/noderedsettings.conf $HSHQ_STACKS_DIR/homeassistant/nodered/settings.js
 
   installStack homeassistant homeassistant-app "legacy-services successfully started" $HOME/homeassistant.env
   retval=$?
@@ -32634,7 +32639,7 @@ UID=$USERID
 GID=$GROUPID
 EOFHA
 
-  cat <<EOFCF > $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf
+  cat <<EOFCF > $HOME/noderedsettings.conf
 {
     "PORT": 443,
     "BASEPATH": "/hass-config",
