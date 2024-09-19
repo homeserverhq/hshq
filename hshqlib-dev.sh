@@ -529,7 +529,12 @@ EOF
   restartAllStacks "duplicati,syncthing"
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_IP
   initCronJobs
-
+  # Add RelayServer fingerprint
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
+    ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successfully connected to RelayServer!'
+    unloadSSHKey
+  fi
   removeSudoTimeoutInstall
   performExitFunctions
   echo "Restore Complete!"
