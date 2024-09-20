@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=85
+HSHQ_SCRIPT_VERSION=86
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -3842,7 +3842,6 @@ function main()
   sudo systemctl stop runOnBootRoot
   sudo systemctl disable runOnBootRoot
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
-  sudo \\\$HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo \\\$HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
@@ -4837,28 +4836,6 @@ EOFBS
   sudo ln -s \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRoot
-
-  sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-ip rule delete priority 10
-
-ip rule delete priority 15
-while [ \\\$? -eq 0 ]
-do
-  ip rule delete priority 15
-done
-
-ip rule delete priority 20
-while [ \\\$? -eq 0 ]
-do
-  ip rule delete priority 20
-done
-
-ip route flush table 42
-
-EOFWG
-  sudo chmod 0500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
 
 }
 
@@ -14089,6 +14066,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=85
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 86 ]; then
+    echo "Updating to Version 86..."
+    version86Update
+    HSHQ_VERSION=86
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -15797,6 +15780,30 @@ function version85Update()
   set -e
 }
 
+function version86Update()
+{
+  # Move the priorities in the RPDB from 10,20 to 1000,2000
+  # to give space for other changes that someone might want to apply.
+  # Also, removed entries for private IP ranges (priority 15), as they are superfluous.
+  set +e
+  outputWGDockInternetScript
+  outputMaintenanceScripts
+  set +e
+  sudo ip rule delete priority 10 > /dev/null 2>&1
+  sudo ip rule delete priority 15 > /dev/null 2>&1
+  while [ $? -eq 0 ]
+  do
+    sudo ip rule delete priority 15 > /dev/null 2>&1
+  done
+  sudo ip rule delete priority 20 > /dev/null 2>&1
+  while [ $? -eq 0 ]
+  do
+    sudo ip rule delete priority 20 > /dev/null 2>&1
+  done
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh > /dev/null 2>&1
+  set -e
+}
+
 function mfFixCACertPath()
 {
   sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
@@ -17333,37 +17340,16 @@ set +e
 scriptsdir=$HSHQ_SCRIPTS_DIR
 function main()
 {
-  addDefaultRules
+  CMD="ip rule add suppress_prefixlength 0 table main priority 1000"
+  CHECK=\$(ip rule show | grep -w "suppress_prefixlength")
+  while_check "\$CMD" "\$CHECK"
 
-  CMD="ip rule add from $NET_PRIVATEIP_SUBNET table 42 priority 20"
+  CMD="ip rule add from $NET_PRIVATEIP_SUBNET table 42 priority 2000"
   CHECK=\$(ip rule show | grep -w "from $NET_PRIVATEIP_SUBNET lookup 42")
   while_check "\$CMD" "\$CHECK"
 
   CMD="ip route add blackhole default metric 3 table 42"
   CHECK=\$(ip route show table 42 2>/dev/null | grep -w "blackhole")
-  while_check "\$CMD" "\$CHECK"
-}
-
-function addDefaultRules()
-{
-  CMD="ip rule add suppress_prefixlength 0 table main priority 10"
-  CHECK=\$(ip rule show | grep -w "suppress_prefixlength")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip rule add from all to 127.0.0.0/8 table main priority 15"
-  CHECK=\$(ip rule show | grep -w "from all to 127.0.0.0/8")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip rule add from all to 10.0.0.0/8 table main priority 15"
-  CHECK=\$(ip rule show | grep -w "from all to 10.0.0.0/8")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip rule add from all to 172.16.0.0/12 table main priority 15"
-  CHECK=\$(ip rule show | grep -w "from all to 172.16.0.0/12")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip rule add from all to 192.168.0.0/16 table main priority 15"
-  CHECK=\$(ip rule show | grep -w "from all to 192.168.0.0/16")
   while_check "\$CMD" "\$CHECK"
 }
 
@@ -17388,18 +17374,12 @@ EOFWG
   sudo tee $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh >/dev/null <<EOFWG
 #!/bin/bash
 set +e
-ip rule delete priority 10
+ip rule delete priority 1000
 
-ip rule delete priority 15
+ip rule delete priority 2000
 while [ \$? -eq 0 ]
 do
-  ip rule delete priority 15
-done
-
-ip rule delete priority 20
-while [ \$? -eq 0 ]
-do
-  ip rule delete priority 20
+  ip rule delete priority 2000
 done
 
 ip route flush table 42
@@ -17705,7 +17685,7 @@ function up()
     return
   fi
 
-  CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 20"
+  CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 2000"
   CHECK=\$(ip rule show | grep -w "from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID")
   while_check "\$CMD" "\$CHECK"
 
@@ -17743,7 +17723,7 @@ function down()
   ip link del \$NETWORK_NAME
   echo "Connection: \$NETWORK_NAME is down"
   if ! [ -z \$DOCKER_NETWORK_SUBNET ]; then
-    CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 20"
+    CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 2000"
     CHECK=\$(ip rule show | grep -w "from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID")
     while_check "\$CMD" "\$CHECK"
   fi
