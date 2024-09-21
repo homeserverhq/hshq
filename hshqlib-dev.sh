@@ -15831,7 +15831,10 @@ function version87Update()
     stackStatus=$(getStackStatusByName paperless "$portainerToken")
     mkdir -p $HSHQ_NONBACKUP_DIR/paperless
     mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
-    updateStackEnv paperless outputConfigPaperless "$portainerToken"
+    if [ "$stackStatus" = "1" ]; then
+      startStopStack paperless stop "$portainerToken"
+    fi
+    updateStackEnv paperless mvFixRedisDir "$portainerToken"
     sudo rm -fr $HSHQ_STACKS_DIR/paperless/redis
     if ! [ "$stackStatus" = "1" ]; then
       startStopStack paperless stop "$portainerToken"
@@ -39378,6 +39381,12 @@ function performUpdatePaperless()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+function mvFixRedisDir()
+{
+  outputConfigPaperless
+  docker volume rm paperless_v-paperless-redis
+}
+
 # Speedtest Tracker Local
 function installSpeedtestTrackerLocal()
 {
@@ -40699,6 +40708,7 @@ function installPiped()
     insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png"
     restartAllCaddyContainers
     checkAddDBSqlPad piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 

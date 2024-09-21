@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=86
+HSHQ_SCRIPT_VERSION=87
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -678,9 +678,10 @@ EOF
   IFS=$(echo -en "\n\b")
   dupback_menu_items=( --title "Select Directory" --radiolist "$dbackupmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
   dirarr=($(ls $backupDirTL))
+  cd ~
   for curDir in "${dirarr[@]}"
   do
-    if [ "$curDir" = "lost+found" ]; then
+    if [ "$curDir" = "lost+found" ] || ! [ -d "$curDir" ]; then
       continue
     fi
     dupback_menu_items+=( "$curDir" )
@@ -709,17 +710,24 @@ EOF
   else
     mkdir -p $HSHQ_RESTORE_DIR
   fi
-  confirmRestore=$(promptUserInputMenu "" "Confirm" "The restore process is ready to start. You will be prompted for the password that you used to encrypt your data. It could take awhile to perform the restoration (15-45 minutes depending on how much data). Enter the word 'restore' below to continue:")
-  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
+  dup_pw=$(promptPasswordMenu "Enter Passphrase" "Enter the passphrase that you used to encrypt your Duplicati backup data: ")
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The decryption process is ready to start. It could take anywhere from 15 minutes to many hours to decrypt the data from the encrypted state, depending on how much data. After this step, you will be prompted for additional information. So check back in an hour or so to complete the full server restore process. Enter the word 'decrypt' below to continue:")
+  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "decrypt" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
+  sudo rm -fr /tmp/dupconfig
+  mkdir /tmp/dupconfig
   docker container stop duplicati-restore > /dev/null 2>&1
   docker container rm duplicati-restore > /dev/null 2>&1
-  docker run -d --name=duplicati-restore -v $backupDirTL/$selBackupDir:/backup -v $HSHQ_RESTORE_DIR:/restore $IMG_DUPLICATI > /dev/null 2>&1
-  docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --restore-path=/restore --overwrite=true --restore-permissions"
+  docker run -d --name=duplicati-restore -v /tmp/dupconfig:/config -v $backupDirTL/$selBackupDir:/backup -v $HSHQ_RESTORE_DIR:/restore $IMG_DUPLICATI > /dev/null 2>&1
+  echo "Recreating duplicati database..."
+  docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
+  echo "Database recreated, restoring files..."
+  docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
   docker container stop duplicati-restore > /dev/null 2>&1
   docker container rm duplicati-restore > /dev/null 2>&1
+  sudo rm -fr /tmp/dupconfig
   echo "Data Successfully Restored!"
   if ! [ -z "$umountDisk" ]; then
     sudo umount $umountDisk
@@ -10737,7 +10745,10 @@ function updateStackEnv()
 {
   updateStackName=$1
   updateModFunction=$2
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  portainerToken=$3
+  if [ -z "$portainerToken" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   updateStackID=$(getStackID $updateStackName "$portainerToken")
   if [ -z "$updateStackID" ]; then
     echo "ERROR: Could not find stack ID for $updateStackName"
@@ -14072,6 +14083,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=86
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 87 ]; then
+    echo "Updating to Version 87..."
+    version87Update
+    HSHQ_VERSION=87
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -15802,6 +15819,27 @@ function version86Update()
   done
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh > /dev/null 2>&1
   set -e
+}
+
+function version87Update()
+{
+  if [ -d $HSHQ_STACKS_DIR/paperless/redis ]; then
+    # Move paperless redis to nonbackup directory
+    echo "Updating paperless stack..."
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    # Stack status: 1=running, 2=stopped
+    stackStatus=$(getStackStatusByName paperless "$portainerToken")
+    mkdir -p $HSHQ_NONBACKUP_DIR/paperless
+    mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
+    if [ "$stackStatus" = "1" ]; then
+      startStopStack paperless stop "$portainerToken"
+    fi
+    updateStackEnv paperless mvFixRedisDir "$portainerToken"
+    sudo rm -fr $HSHQ_STACKS_DIR/paperless/redis
+    if ! [ "$stackStatus" = "1" ]; then
+      startStopStack paperless stop "$portainerToken"
+    fi
+  fi
 }
 
 function mfFixCACertPath()
@@ -19952,6 +19990,8 @@ function checkCreateNonbackupDirs()
   mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
   mkdir -p $HSHQ_NONBACKUP_DIR/wallabag
   mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/paperless
+  mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
   mkdir -p $HSHQ_NONBACKUP_DIR/piped
   mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
 }
@@ -39073,6 +39113,8 @@ function installPaperless()
   mkdir $HSHQ_STACKS_DIR/paperless/export
   mkdir $HSHQ_STACKS_DIR/paperless/consume
   chmod 777 $HSHQ_STACKS_DIR/paperless/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/paperless
+  mkdir $HSHQ_NONBACKUP_DIR/paperless/redis
 
   initServicesCredentials
   if [ -z "$PAPERLESS_SECRET_KEY" ]; then
@@ -39259,7 +39301,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/paperless/redis
+      device: \${HSHQ_NONBACKUP_DIR}/paperless/redis
 
 networks:
   dock-proxy-net:
@@ -39337,6 +39379,12 @@ function performUpdatePaperless()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mvFixRedisDir()
+{
+  outputConfigPaperless
+  docker volume rm paperless_v-paperless-redis
 }
 
 # Speedtest Tracker Local
@@ -40660,6 +40708,7 @@ function installPiped()
     insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png"
     restartAllCaddyContainers
     checkAddDBSqlPad piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
