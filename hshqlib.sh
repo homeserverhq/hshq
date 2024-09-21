@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=87
+HSHQ_SCRIPT_VERSION=88
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -32659,7 +32659,7 @@ UID=$USERID
 GID=$GROUPID
 EOFHA
 
-  cat <<EOFCF > $HOME/noderedsettings.conf
+  cat <<EOFCF > $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf
 {
     "PORT": 443,
     "BASEPATH": "/hass-config",
@@ -32671,7 +32671,7 @@ EOFHA
 }
 EOFCF
 
-  cat <<EOFCF > $HSHQ_STACKS_DIR/homeassistant/nodered/settings.js
+  cat <<EOFCF > $HOME/noderedsettings.conf
 module.exports = {
     flowFile: 'flows.json',
     flowFilePretty: true,
