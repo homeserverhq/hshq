@@ -53,3 +53,4 @@ bash hshq.sh
  - Console-based management UI
  - Web-based management UI
  - Simple and streamlined backup/restore procedures
+ - 100% open source - no strings attached
