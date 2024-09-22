@@ -38,8 +38,8 @@ bash hshq.sh
  - Tunnel/masquerade outgoing network traffic for specific docker containers
  - No open ports on home router
  - Host email server and/or websites (on the public internet) from home, even behind multiple layers of NAT/CGNAT
- - By default, all services are only available on your private network
- - Access with any type of device (desktop/laptop/cellphone/tablet)
+ - By default, all services (besides email) are only available on your private network
+ - Access with any type of device (desktop/laptop/cellphone/tablet) from anywhere
  - Add your own custom services
  - Safe and secure infrastructure
  - Production ready
