@@ -54,6 +54,7 @@ bash hshq.sh
  - Console-based management UI
  - Web-based management UI
  - Simple and streamlined backup/restore procedures
+ - Add unlimited domains, unlimited devices, unlimited services - you're only limited by hardware resources
  - 100% open source - no strings attached
 
 ## FAQ
@@ -67,7 +68,7 @@ bash hshq.sh
 
   ***Q: Only Ubuntu 22.04 is supported, any plans for 24.04?***
 
-  **A:** Yes, 24.04 is on the near-term roadmap. We will only focus on the LTS releases. Some installation issues came up when 24.04 was first released, but they were not thoroughly investigated, so the issue was sidelined for the time being. We also have about <a href="https://wiki.homeserverhq.com/foss-projects" target="_blank">80 other open-source projects</a> to keep track of for updates, so its a mixed-bag of priorities. Our main goal is production-grade stability for the average non-IT person - even the slightest little error can wreak havoc.
+  **A:** Yes, 24.04 is on the near-term roadmap. We will only focus on the LTS releases. Some installation issues came up when 24.04 was first released, but they were not thoroughly investigated, so the issue was sidelined for the time being. We also have about <a href="https://wiki.homeserverhq.com/foss-projects" target="_blank">80 other open-source projects</a> to keep track of for updates, so its a mixed-bag of priorities. Our main goal with respect to the codebase is production-grade stability for the average non-IT person - even the slightest little error can wreak havoc.
 
   ***Q: Does this cost money?***
 
@@ -75,4 +76,4 @@ bash hshq.sh
   
   ***Q: I have other questions. Where do I get help?***
 
-  **A:** As mentioned in the previous answer, help/support can be obtained via a <a href="https://accounts.homeserverhq.com/product/homeserverhq-membership-40/" target="_blank">Professional Support Subscription</a>, which currently costs $40 per year. You could be a complete novice with a "dumb" question or a seasoned expert with a very complicated inquiry. All questions are welcome and will be treated with the highest level of professionalism. Regardless of how "dumb" you might think a question is, there's a good chance that someone else might want to know the same thing. So just by asking, you're helping out others. In other words, there's no such thing as a dumb question - *only dumb people for not asking*.
+  **A:** As mentioned in the previous answer, help/support can be obtained via a <a href="https://accounts.homeserverhq.com/product/homeserverhq-membership-40/" target="_blank">Professional Support Subscription</a>, which currently costs $40 per year. This is the sole revenue source for this platform, there is no corporate backing with a hidden agenda. Purchasing a subscription is completely optional and has no bearing on the operational capabilities of the infrastructure. It is merely a place to go to obtain help. You could be a complete novice with a "dumb" question or a seasoned expert with a very complicated inquiry. All questions are welcome and will be treated with the highest level of professionalism. Regardless of how "dumb" you might think a question is, there's a good chance that someone else might want to know the same thing. So just by asking, you're helping out others. In other words, there's no such thing as a dumb question - *only dumb people for not asking*.
