@@ -80,7 +80,7 @@ bash hshq.sh
 
   ***Q: I want to have this, but I have no idea what I'm doing. Where do I start?***
 
-  **A:** Go to the <a href="https://wiki.homeserverhq.com/getting-started" target="_blank">Getting Started</a> section on the Wiki and walkthrough each of the provided topics. There are accompanying videoos to assist as well. If you have read through everything and watched the videos and something still isn't clear, then you might have to sign up for a support membership to ask. It's impossible to know what is unclear unless you convey it in the form of a question. This will allow us to better address these ambiguities for everyone going forward.
+  **A:** Go to the <a href="https://wiki.homeserverhq.com/getting-started" target="_blank">Getting Started</a> section on the Wiki and walkthrough each of the provided topics. There are accompanying videos to assist as well. If you have read through everything and watched the videos and something still isn't clear, then you might have to sign up for a support membership to ask. It's impossible to know what is unclear unless you convey it in the form of a question. This will allow us to better address these ambiguities for everyone going forward.
 
   ***Q: Can I test this out before buying anything?***
 
