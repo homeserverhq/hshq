@@ -3950,6 +3950,8 @@ set -e
 
 TZ=$TZ
 USERNAME=\$(id -u -n)
+USERID=\$(id -u)
+GROUPID=\$(id -g)
 cd ~
 RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
 RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
@@ -4190,6 +4192,8 @@ function startStopStack()
 
 function restorePortainer()
 {
+  sed -i "s|^UID=.*|UID=\${USERID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+  sed -i "s|^GID=.*|GID=\${GROUPID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   RELAYSERVER_PORTAINER_TOKEN="\$(getPortainerToken -u $RELAYSERVER_PORTAINER_ADMIN_USERNAME -p $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"
 }
@@ -4212,6 +4216,8 @@ EOFR
 
   oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
   sed -i "s|\$oldIP|\$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
+  sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
+  sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_NONBACKUP_DIR/adguard/work
   startStopStack adguard stop
   startStopStack adguard start
 }
@@ -5410,8 +5416,7 @@ networks:
 EOFAC
 
   cat <<EOFAC > \$HOME/adguard.env
-UID=\$USERID
-GID=\$GROUPID
+NOTHING=NOTHING
 EOFAC
 
   cat <<EOFAD > \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
@@ -7091,6 +7096,9 @@ function uploadVPNInstallScripts()
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
       sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
+      if [ $is_err -eq 0 ]; then
+        showMessageBox "User Created" "The user $nonroot_username was succesfully created. Ensure to use this username going forward (if reprompted)."
+      fi
       loadSSHKey
     else
       loadSSHKey
@@ -7110,10 +7118,21 @@ function uploadVPNInstallScripts()
     fi
     if [ $is_err -eq 0 ]; then
       echo "Checking for existing installation..."
+      set +e
       # Ensure there is not already an existing installation on the RelayServer
       isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d /home/$RELAYSERVER_REMOTE_USERNAME/hshq ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
       is_err=$?
+      if [ $is_err -ne 0 ]; then
+        if [ -z "$nonroot_username" ]; then
+          showMessageBox "ERROR" "There was an unknown error checking for an existing installation. You will be reprompted for login info."
+        else
+          showMessageBox "ERROR" "There was an unknown error checking for an existing installation. You will be reprompted for login info. It appears you just created a new user, $nonroot_username, so ensure to use this username on subsequent prompts."
+        fi
+        remote_pw=""
+        continue
+      fi
       unloadSSHKey
+      set +e
       if [ "$isHSHQDir" = "true" ]; then
         errmenu=$(cat << EOF
 $hshqlogo
