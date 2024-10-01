@@ -12649,7 +12649,7 @@ function notifyMyNetworkTransferRelayServer()
     doms_list=${doms_list}${curDom}"\n"
   done
   mgr_email_body="$users_email_body"
-  if ! [ -z "doms_list" ]; then
+  if ! [ -z "$doms_list" ]; then
     mgr_email_body=${mgr_email_body}"The following domains also need the DNS records to be updated\n"
     mgr_email_body=${mgr_email_body}"with the new RelayServer IP Address ($new_rs_ip): \n${doms_list}"
   fi
