@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=88
+HSHQ_SCRIPT_VERSION=89
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -1296,6 +1296,7 @@ function installDependencies()
       performAptInstall brave-browser
       if ! [ -z "$CERTS_ROOT_CA_NAME" ]; then
         mkdir -p $HOME/.pki
+        mkdir -p $HOME/.pki/nssdb
         certutil -d sql:$HOME/.pki/nssdb -A -t "CT,C,C" -n "$HOMESERVER_NAME Root CA" -i /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
       fi
     fi
@@ -3397,18 +3398,37 @@ function transferHostedVPN()
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return 0
   fi
+  temp_pw=""
+  while [ -z "$temp_pw" ]
+  do
+    temp_pw=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
+    if [ $? -ne 0 ]; then
+      exit 3
+    fi
+    echo "$temp_pw" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      temp_pw=""
+      continue
+    fi
+  done
+  temp_pw=""
+  setSudoTimeoutInstall
   # Pause syncthing RelayServer
   jsonbody="{\"paused\": true}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   outputRelayServerInstallSetupScript
   outputRelayServerInstallTransferScript
+  # Remove old RelayIP with no update
+  removeHomeNetIP $RELAYSERVER_SERVER_IP false
+
   uploadVPNInstallScripts true
   sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
   loadSSHKey
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/rsbackup.tar.gz $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   unloadSSHKey
   sudo rm -f $HOME/rsbackup.tar.gz
-  showMessageBox "Upload Success" "The scripts and data have been uploaded to the RelayServer host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. Press okay to begin monitoring for a successful connection transfer."
+  showMessageBox "Upload Success" "The scripts and data have been uploaded to the RelayServer host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. After the installation has completed and the server has fully rebooted, press okay to begin monitoring for a successful connection transfer."
   set +e
   totalTries=720
   numTries=1
@@ -3472,6 +3492,7 @@ function transferHostedVPN()
   ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successful! IP Address is: $(curl --silent https://api.ipify.org)'
   unloadSSHKey
   notifyMyNetworkTransferRelayServer "$RELAYSERVER_SERVER_IP"
+  removeSudoTimeoutInstall
 }
 
 function outputRelayServerInstallSetupScript()
@@ -3929,6 +3950,8 @@ set -e
 
 TZ=$TZ
 USERNAME=\$(id -u -n)
+USERID=\$(id -u)
+GROUPID=\$(id -g)
 cd ~
 RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
 RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
@@ -4169,6 +4192,8 @@ function startStopStack()
 
 function restorePortainer()
 {
+  sed -i "s|^UID=.*|UID=\${USERID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+  sed -i "s|^GID=.*|GID=\${GROUPID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   RELAYSERVER_PORTAINER_TOKEN="\$(getPortainerToken -u $RELAYSERVER_PORTAINER_ADMIN_USERNAME -p $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"
 }
@@ -4191,6 +4216,8 @@ EOFR
 
   oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
   sed -i "s|\$oldIP|\$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
+  sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
+  sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_NONBACKUP_DIR/adguard/work
   startStopStack adguard stop
   startStopStack adguard start
 }
@@ -5389,8 +5416,7 @@ networks:
 EOFAC
 
   cat <<EOFAC > \$HOME/adguard.env
-UID=\$USERID
-GID=\$GROUPID
+NOTHING=NOTHING
 EOFAC
 
   cat <<EOFAD > \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
@@ -7070,6 +7096,9 @@ function uploadVPNInstallScripts()
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
       sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
+      if [ $is_err -eq 0 ]; then
+        showMessageBox "User Created" "The user $nonroot_username was succesfully created. Ensure to use this username going forward (if reprompted)."
+      fi
       loadSSHKey
     else
       loadSSHKey
@@ -7089,10 +7118,21 @@ function uploadVPNInstallScripts()
     fi
     if [ $is_err -eq 0 ]; then
       echo "Checking for existing installation..."
+      set +e
       # Ensure there is not already an existing installation on the RelayServer
       isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d /home/$RELAYSERVER_REMOTE_USERNAME/hshq ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
       is_err=$?
+      if [ $is_err -ne 0 ]; then
+        if [ -z "$nonroot_username" ]; then
+          showMessageBox "ERROR" "There was an unknown error checking for an existing installation. You will be reprompted for login info."
+        else
+          showMessageBox "ERROR" "There was an unknown error checking for an existing installation. You will be reprompted for login info. It appears you just created a new user, $nonroot_username, so ensure to use this username on subsequent prompts."
+        fi
+        remote_pw=""
+        continue
+      fi
       unloadSSHKey
+      set +e
       if [ "$isHSHQDir" = "true" ]; then
         errmenu=$(cat << EOF
 $hshqlogo
@@ -11546,6 +11586,7 @@ function removeHomeNetIP()
     echo $HOMENET_ADDITIONAL_IPS | sed "s|$remove_ip","||g" >/dev/null
     echo $HOMENET_ADDITIONAL_IPS | sed "s|","$remove_ip||g" >/dev/null
     updateConfigVar HOMENET_ADDITIONAL_IPS $HOMENET_ADDITIONAL_IPS
+    removeAdditionalIPFromIPTables $remove_ip
     if [ "$is_update_iptables" = "true" ] && [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
       outputIPTablesScripts false
     fi
@@ -14089,6 +14130,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=87
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 89 ]; then
+    echo "Updating to Version 89..."
+    version89Update
+    HSHQ_VERSION=89
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -15842,6 +15889,13 @@ function version87Update()
   fi
 }
 
+function version89Update()
+{
+  set +e
+  outputIPTablesScripts false
+  set -e
+}
+
 function mfFixCACertPath()
 {
   sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
@@ -16879,6 +16933,21 @@ EOFBS
   outputPingGatewayBootscript
 }
 
+function removeAdditionalIPFromIPTables()
+{
+  remIP=$1
+  if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
+    default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+    ports_list=$(getExposedPortsList)
+    portsArr=($(echo $ports_list | tr "," "\n"))
+    for cur_port in "${portsArr[@]}"
+    do
+      iptables -D DOCKER-USER -s $remIP -m conntrack --ctorigdstport $cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    done
+    iptables -D INPUT -p tcp -m tcp -i $default_iface -s $remIP --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
+  fi
+}
+
 function outputIPTablesScripts()
 {
   isRunUpdate=$1
@@ -17058,21 +17127,43 @@ EOFPO
     else
       sudo tee -a $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFPO
   # Special case when HomeServer is on non-private network
+  HOMENET_ADDITIONAL_IPS=$HOMENET_ADDITIONAL_IPS
+  OLDIFS=\$IFS
+  IFS=','
+  HAI=(\$HOMENET_ADDITIONAL_IPS)
+  IFS=\$OLDIFS
   for cur_port in "\${portsArr[@]}"
   do
-    iptables -D DOCKER-USER -s $HOMENET_ADDITIONAL_IPS -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
-    iptables -I DOCKER-USER -s $HOMENET_ADDITIONAL_IPS -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+    for curHIP in "\${HAI[@]}"
+    do
+      iptables -D DOCKER-USER -s \$curHIP -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+      iptables -I DOCKER-USER -s \$curHIP -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT
+    done
+  done
+  for curHIP in "\${HAI[@]}"
+  do
+    iptables -C INPUT -p tcp -m tcp -i $default_iface -s \$curHIP --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $default_iface -s \$curHIP --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
   done
   iptables -t raw -I PREROUTING -s 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,224.0.0.0/4 -i $default_iface -j DROP
-  iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
 EOFPO
       sudo tee -a $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh >/dev/null <<EOFPT
   # Special case when HomeServer is on non-private network
+  HOMENET_ADDITIONAL_IPS=$HOMENET_ADDITIONAL_IPS
+  OLDIFS=\$IFS
+  IFS=','
+  HAI=(\$HOMENET_ADDITIONAL_IPS)
+  IFS=\$OLDIFS
   for cur_port in "\${portsArr[@]}"
   do
-    iptables -D DOCKER-USER -s $HOMENET_ADDITIONAL_IPS -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    for curHIP in "\${HAI[@]}"
+    do
+      iptables -D DOCKER-USER -s \$curHIP -m conntrack --ctorigdstport \$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    done
   done
-  iptables -D INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
+  for curHIP in "\${HAI[@]}"
+  do
+    iptables -D INPUT -p tcp -m tcp -i $default_iface -s \$curHIP --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1
+  done
 EOFPT
     fi
     add_rule="iptables -t raw -A chain-icmp -p icmp -m icmp --icmp-type echo-request -i $default_iface -j DROP"
