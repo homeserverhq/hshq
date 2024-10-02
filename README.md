@@ -88,7 +88,7 @@ bash hshq.sh
 
   ***Q: Can this run in a virtual machine (VM)?***
 
-  **A:** Yes and No. It has been extensively tested on a Proxmox hypervisor with no problems - it works perfectly. With Windows as the host OS, some problems with respect to networking have been identified, so a Linux-based host is highly recommended. As long as the VM's operating system is on the supported list (currently only Ubuntu 22.04), then it should work in just about any environment, but its impossible to know without confirmed tests.
+  **A:** Yes and No. It has been extensively tested on a Proxmox hypervisor with no problems - it works perfectly. With Windows as the host OS, some problems with respect to networking have occurred, so a Linux-based host is highly recommended. As long as the VM's operating system is on the supported list (currently only Ubuntu 22.04), then it should work in just about any environment, but its impossible to know without confirmed tests.
 
   ***Q: Is this IPV4 or IPV6?***
 
