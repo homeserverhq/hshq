@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=89
+HSHQ_SCRIPT_VERSION=90
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -1388,6 +1388,9 @@ function addToDisabledServices()
   atds_curE=${-//[^e]/}
   set +e
   dis_svc=$1
+  if [ "$DISABLED_SERVICES" = "none" ]; then
+    return
+  fi
   echo $DISABLED_SERVICES | grep $dis_svc > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     if [ -z "$DISABLED_SERVICES" ]; then
@@ -1494,8 +1497,10 @@ function initConfig()
       DISABLED_SERVICES=$DS_MEM_12
     elif [ $total_ram -lt 16 ]; then
       DISABLED_SERVICES=$DS_MEM_16
-    elif [ $total_ram -lt 24 ]; then
-      DISABLED_SERVICES=$DS_MEM_24
+    elif [ $total_ram -lt 22 ]; then
+      DISABLED_SERVICES=$DS_MEM_22
+    elif [ $total_ram -lt 28 ]; then
+      DISABLED_SERVICES=$DS_MEM_28
     else
       DISABLED_SERVICES=$DS_MEM_32
     fi
@@ -2606,6 +2611,7 @@ function installAllAvailableStacks()
       return
     fi
   fi
+  set -e
   echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
   setSudoTimeoutInstall
   getUpdateAssets
@@ -11596,19 +11602,21 @@ function removeHomeNetIP()
 function isServiceDisabled()
 {
   check_svc_disabled="$1"
+  isd_curE=${-//[^e]/}
   set +e
   if grep -q "$check_svc_disabled" <<< "$HSHQ_REQUIRED_STACKS"; then
-    echo "false"
-    set -e
-    return
+    isd_RetVal="false"
+  elif [ "$DISABLED_SERVICES" = "minimal" ]; then
+    isd_RetVal="true"
+  elif [ "$DISABLED_SERVICES" = "none" ]; then
+    isd_RetVal="false"
+  else
+    isd_RetVal="$(isItemInCSVList $check_svc_disabled $DISABLED_SERVICES)"
   fi
-  if [ "$DISABLED_SERVICES" = "minimal" ]; then
-    echo "true"
+  if ! [ -z $isd_curE ]; then
     set -e
-    return
   fi
-  set -e
-  echo "$(isItemInCSVList $check_svc_disabled $DISABLED_SERVICES)"
+  echo "$isd_RetVal"
 }
 
 function isItemInCSVList()
@@ -14256,6 +14264,7 @@ function version22Update()
   if [ "$(isServiceDisabled clamav)" = "true" ]; then
     is_antivirus_commented_out="#"
   fi
+  set -e
   cat <<EOFMC > $HOME/mailu-compose.yml
 
 services:
@@ -20864,8 +20873,9 @@ function initServiceDefaults()
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_24=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,kasm,stirlingpdf,piped
-  DS_MEM_32=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,kasm,stirlingpdf,piped
+  DS_MEM_28=gitlab,discourse,netdata,jupyter
+  DS_MEM_32=none
 }
 
 function getScriptImageByContainerName()
@@ -25503,6 +25513,7 @@ function outputConfigMailu()
     is_antivirus_commented_out="#"
     is_antivirus_env="none"
   fi
+  set -e
   cat <<EOFMC > $HOME/mailu-compose.yml
 $STACK_VERSION_PREFIX mailu $(getScriptStackVersion mailu)
 
@@ -27176,6 +27187,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
 
   if ! [ "$(isServiceDisabled clamav)" = "true" ]; then
+    set -e
     docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_antivirus
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_mode --value="daemon"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_host --value="antivirus"
@@ -27185,6 +27197,7 @@ function installNextcloud()
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_infected_action --value="delete"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus enabled --value="yes"
   fi
+  set -e
   docker exec -u www-data nextcloud-app php occ db:add-missing-indices
   docker exec -u www-data nextcloud-app php occ background:cron
 
@@ -46874,9 +46887,10 @@ function installHeimdall()
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(4,4,'${domain_noext}');"
 
   if ! [ "$(isServiceDisabled searxng)" = "true" ]; then
+    set -e
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO setting_user(setting_id,user_id,uservalue) VALUES(3,2,1);"
   fi
-
+  set -e
   insertServicesHeimdall
   installStack heimdall heimdall "$stack_loaded_text" $HOME/heimdall.env
   retval=$?
