@@ -50,8 +50,8 @@ bash hshq.sh
  - No IT experience needed
  - Simple installation 
  - Add multiple domains
- - Installs apps
- - Updates apps 
+ - Installs apps (on demand, nothing automatic)
+ - Updates apps (on demand, nothing automatic)
  - Console-based management UI
  - Web-based management UI
  - Simple and streamlined backup/restore procedures
