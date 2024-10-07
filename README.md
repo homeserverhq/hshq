@@ -49,7 +49,8 @@ bash hshq.sh
  - Bring you own equipment
  - No IT experience needed
  - Simple installation 
- - Add multiple domains
+ - Add multiple domains to the same HomeServer
+ - Add multiple HomeServers to the same primary RelayServer
  - Installs apps (on demand, nothing automatic)
  - Updates apps (on demand, nothing automatic)
  - Console-based management UI
