@@ -35,7 +35,7 @@ bash hshq.sh
  - Auto-monitor supported services
  - Auto-HTTPS
  - Privately network with other HomeServers
- - Tunnel/masquerade outgoing network traffic for specific docker containers
+ - Tunnel/masquerade outgoing network traffic for specific docker networks (not container network piggybacking)
  - No open ports on home router
  - Host email server and/or websites (on the public internet) from home, even behind multiple layers of NAT/CGNAT
  - By default, all services (besides email) are only available on your private network
