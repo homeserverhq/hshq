@@ -41,6 +41,7 @@ bash hshq.sh
  - By default, all services (besides email) are only available on your private network
  - Access with any type of device (desktop/laptop/cellphone/tablet) from anywhere
  - Add your own custom services
+ - Port forwarding from RelayServer to internal host (single port or range of ports)
  - Safe and secure infrastructure
  - Production ready
  - Federation /<a href="https://en.wikipedia.org/wiki/ActivityPub" target="_blank"> ActivityPub</a>  ready
