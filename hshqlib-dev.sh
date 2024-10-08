@@ -3256,6 +3256,7 @@ function setupHostedVPN()
   updateConfigVar SMTP_RELAY_USERNAME $SMTP_RELAY_USERNAME
   SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   updateConfigVar SMTP_RELAY_PASSWORD $SMTP_RELAY_PASSWORD
+  setupPortForwardingDB
 
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf >/dev/null <<EOFCF
@@ -9580,6 +9581,7 @@ function removeMyNetworkPrimaryVPN()
   docker container stop uptimekuma >/dev/null
   docker container stop heimdall >/dev/null
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    sqlite3 $HSHQ_DB "drop table portforwarding;"
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
     echo "Removing ClientDNS instances..."
@@ -10419,7 +10421,6 @@ function initHSHQDB()
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
   sqlite3 $HSHQ_DB "create table lecertdomains(Domain text primary key,BaseDomain text not null);"
   sqlite3 $HSHQ_DB "create table exposedomains(Domain text primary key,BaseDomain text not null);"
-  setupPortForwardingDB
   chmod 600 $HSHQ_DB
 }
 
@@ -13291,6 +13292,9 @@ function clearQueryLogAndStatsAdguardRS()
 # Port Forwarding
 function setupPortForwardingDB()
 {
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    return
+  fi
   isPFTable=$(sqlite3 $HSHQ_DB "SELECT name FROM sqlite_master WHERE type='table' AND name='portforwarding';")
   if [ -z "$isPFTable" ]; then
     curdt=$(getCurrentDate)
@@ -13334,7 +13338,7 @@ function setupPortForwardingDB()
   fi
 }
 
-function uploadPortForwardingScripts()
+function version91UploadPortForwardingScripts()
 {
     # Upload add/remove scripts to RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -16376,7 +16380,7 @@ function version91Update()
   set +e
   sudo -v
   setupPortForwardingDB
-  uploadPortForwardingScripts
+  version91UploadPortForwardingScripts
   outputAllScriptServerScripts
   version91WazuhUpdate
   set -e
