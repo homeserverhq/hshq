@@ -16378,6 +16378,7 @@ function version91Update()
   setupPortForwardingDB
   uploadPortForwardingScripts
   outputAllScriptServerScripts
+  version91WazuhUpdate
   set -e
 }
 
@@ -26587,7 +26588,21 @@ function installWazuh()
     ((curACount++))
   done
   sudo sed -i "s/.*Shared agent configuration here.*/\  <rootcheck>\n    <ignore>\/var\/lib\/docker\/overlay2<\/ignore>\n  <\/rootcheck>/" $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf
+  sudo tee -a $HSHQ_STACKS_DIR/wazuh/volumes/etc/rules/local_rules.xml >/dev/null <<EOFRU
 
+<group name="ossec,">
+  <rule id="651" level="13" overwrite="yes">
+    <if_sid>650</if_sid>
+    <options>alert_by_email</options>
+    <field name="parameters.program">firewall-drop</field>
+    <field name="command">add</field>
+    <description>Host Blocked by firewall-drop Active Response</description>
+    <group>active_response,pci_dss_11.4,gpg13_4.13,gdpr_IV_35.7.d,nist_800_53_SI.4,tsc_CC6.1,tsc_CC6.8,tsc_CC7.2,tsc_CC7.3,tsc_CC7.4,</group>
+  </rule>
+</group>
+
+EOFRU
+  docker exec -it wazuh.manager service wazuh-manager restart > /dev/null 2>&1
   installWazuhAgent
 
   inner_block=""
@@ -27062,15 +27077,6 @@ EOFWZ
     <timeout_allowed>yes</timeout_allowed>
   </command>
 
-  <!--
-  <active-response>
-    <command>firewall-drop</command>
-    <location>localhost</location>
-    <rules_id>5710</rules_id>
-    <timeout>1000</timeout>
-  </active-response>
-  -->
-
   <!-- Log analysis -->
   <localfile>
     <log_format>command</log_format>
@@ -27147,6 +27153,16 @@ EOFWZ
   </localfile>
 
 </ossec_config>
+
+<ossec_config>
+  <active-response>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <rules_id>5763</rules_id>
+    <timeout>300</timeout>
+  </active-response>
+</ossec_config>
+
 EOFWZ
 
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-indexer/wazuh_indexer.yml
@@ -27357,6 +27373,67 @@ function removeWazuhAgent()
   sudo systemctl disable wazuh-agent
   sudo systemctl daemon-reload
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
+}
+
+function version91WazuhUpdate()
+{
+  vnwu_curE=${-//[^e]/}
+  set +e
+  grep "<rules_id>5763</rules_id>" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo tee -a $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf >/dev/null <<EOFWZ
+
+<ossec_config>
+  <active-response>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <rules_id>5763</rules_id>
+    <timeout>300</timeout>
+  </active-response>
+</ossec_config>
+
+EOFWZ
+  fi
+
+  grep "<rules_id>5763</rules_id>" $HSHQ_STACKS_DIR/wazuh/volumes/etc/ossec.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo tee -a $HSHQ_STACKS_DIR/wazuh/volumes/etc/ossec.conf >/dev/null <<EOFWZ
+
+<ossec_config>
+  <active-response>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <rules_id>5763</rules_id>
+    <timeout>300</timeout>
+  </active-response>
+</ossec_config>
+
+EOFWZ
+  fi
+
+  grep "firewall-drop" $HSHQ_STACKS_DIR/wazuh/volumes/etc/rules/local_rules.xml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo tee -a $HSHQ_STACKS_DIR/wazuh/volumes/etc/rules/local_rules.xml >/dev/null <<EOFRU
+
+<group name="ossec,">
+  <rule id="651" level="13" overwrite="yes">
+    <if_sid>650</if_sid>
+    <options>alert_by_email</options>
+    <field name="parameters.program">firewall-drop</field>
+    <field name="command">add</field>
+    <description>Host Blocked by firewall-drop Active Response</description>
+    <group>active_response,pci_dss_11.4,gpg13_4.13,gdpr_IV_35.7.d,nist_800_53_SI.4,tsc_CC6.1,tsc_CC6.8,tsc_CC7.2,tsc_CC7.3,tsc_CC7.4,</group>
+  </rule>
+</group>
+
+EOFRU
+  fi
+  echo "Restarting Wazuh manager, please wait..."
+  docker exec -it wazuh.manager service wazuh-manager restart > /dev/null 2>&1
+  set +e
+  if ! [ -z $vnwu_curE ]; then
+    set -e
+  fi
 }
 
 # Collabora
