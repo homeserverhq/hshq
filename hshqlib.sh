@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=90
+HSHQ_SCRIPT_VERSION=91
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -73,6 +73,10 @@ function init()
   NET_MAILU_INT_BRIDGE_NAME=br-mailu-int
   NET_MAILU_INT_SUBNET=172.16.8.0/24
   NET_MAILU_INT_SUBNET_PREFIX=172.16.8
+  SYNCTHING_DISC_PORT=21027
+  SYNCTHING_SYNC_PORT=22000
+  COTURN_PRIMARY_PORT=3478
+  COTURN_SECONDARY_PORT=5349
   MAX_DOCKER_PULL_TRIES=10
   MENU_WIDTH=85
   MENU_HEIGHT=25
@@ -1087,7 +1091,7 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 
 # Reserve for Coturn and any other ports above 10000
-net.ipv4.ip_local_reserved_ports = 10000,14100-14200,22000,21027,55000
+net.ipv4.ip_local_reserved_ports = 10000,14100-14200,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,55000
 
 # See https://community.home-assistant.io/t/zeroconf-error/153883
 
@@ -2876,7 +2880,7 @@ function setupVPNConnection()
     performAptInstall wireguard-tools > /dev/null 2>&1
   fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "none" ]; then
-    initWireGuardDB
+    initHSHQDB
     vpnmenu=$(cat << EOF
 
 $hshqlogo
@@ -3252,6 +3256,7 @@ function setupHostedVPN()
   updateConfigVar SMTP_RELAY_USERNAME $SMTP_RELAY_USERNAME
   SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   updateConfigVar SMTP_RELAY_PASSWORD $SMTP_RELAY_PASSWORD
+  setupPortForwardingDB
 
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf >/dev/null <<EOFCF
@@ -3874,6 +3879,7 @@ function main()
     bname=\\\$(basename \\\$fname .conf)
     removeWGInterfaceQuick \\\$bname
   done
+  sudo run-parts --regex '.*sh\\\$' \\\$HSHQ_SCRIPTS_DIR/root/portforwarding
   sudo systemctl stop runOnBootRoot
   sudo systemctl disable runOnBootRoot
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
@@ -4674,11 +4680,12 @@ function outputScripts()
   outputBootScripts
   outputCaddyScripts
   outputRelayedDomainsScript
+  outputPortforwardingScripts
 }
 
 function outputBootScripts()
 {
-  exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,22000,21027
+  exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
 set +e
@@ -4697,7 +4704,7 @@ EOFBS
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
   for cur_port in "\\\${portsArr[@]}"
@@ -4823,7 +4830,7 @@ fi
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
   for cur_port in "\\\${portsArr[@]}"
@@ -5100,6 +5107,134 @@ function removeRelayedDomains()
 main "\\\$@"
 EOFRD
   chmod 0500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh
+}
+
+function outputPortforwardingScripts()
+{
+  sudo mkdir -p \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding
+
+  sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh >/dev/null <<EOFCD
+#!/bin/bash
+set +e
+
+ID=\\\$1
+ExtStart=\\\$2
+ExtEnd=\\\$3
+IntStart=\\\$4
+IntEnd=\\\$5
+Protocol=\\\$6
+IPAddress=\\\$7
+RELAYSERVER_PF_ADD_DIR=\$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
+RELAYSERVER_PF_REMOVE_DIR=\$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding
+RELAYSERVER_WG_SV_IP=$RELAYSERVER_WG_SV_IP
+RELAYSERVER_WG_INTERFACE_NAME=$RELAYSERVER_WG_INTERFACE_NAME
+DEFAULT_IFACE=\\\$(ip route | grep -e "^default" | awk -F'dev ' '{print \\\$2}' | xargs | cut -d" " -f1)
+
+function main()
+{
+  tee \\\$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\\\${ID}.sh >/dev/null <<EOFSC
+#!/bin/bash
+set +e
+
+function main()
+{
+  case "\\\$Protocol" in
+    tcp)
+      addTCP
+    ;;
+    udp)
+      addUDP
+    ;;
+    both)
+      addTCP
+      addUDP
+    ;;
+    *)
+    ;;
+  esac
+}
+
+function addTCP()
+{
+  iptables -C PREROUTING -t nat -i \\\$DEFAULT_IFACE -p tcp --dport \\\$ExtStart:\\\$ExtEnd -j DNAT --to-destination \\\$IPAddress:\\\$IntStart-\\\$IntEnd/\\\$ExtStart > /dev/null 2>&1 || iptables -A PREROUTING -t nat -i \\\$DEFAULT_IFACE -p tcp --dport \\\$ExtStart:\\\$ExtEnd -j DNAT --to-destination \\\$IPAddress:\\\$IntStart-\\\$IntEnd/\\\$ExtStart
+  iptables -C FORWARD -i \\\$DEFAULT_IFACE -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p tcp -d \\\$IPAddress --dport \\\$IntStart:\\\$IntEnd --syn -m conntrack --ctstate NEW -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i \\\$DEFAULT_IFACE -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p tcp -d \\\$IPAddress --dport \\\$IntStart:\\\$IntEnd --syn -m conntrack --ctstate NEW -j ACCEPT
+  iptables -C FORWARD -i \\\$RELAYSERVER_WG_INTERFACE_NAME -o \\\$DEFAULT_IFACE -p tcp -s \\\$IPAddress --sport \\\$IntStart:\\\$IntEnd -m state --state ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i \\\$RELAYSERVER_WG_INTERFACE_NAME -o \\\$DEFAULT_IFACE -p tcp -s \\\$IPAddress --sport \\\$IntStart:\\\$IntEnd -m state --state ESTABLISHED,RELATED -j ACCEPT
+  iptables -C POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p tcp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart > /dev/null 2>&1 || iptables -A POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p tcp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart
+}
+
+function addUDP()
+{
+  iptables -C PREROUTING -t nat -i \\\$DEFAULT_IFACE -p udp --dport \\\$ExtStart:\\\$ExtEnd -j DNAT --to-destination \\\$IPAddress:\\\$IntStart-\\\$IntEnd/\\\$ExtStart > /dev/null 2>&1 || iptables -A PREROUTING -t nat -i \\\$DEFAULT_IFACE -p udp --dport \\\$ExtStart:\\\$ExtEnd -j DNAT --to-destination \\\$IPAddress:\\\$IntStart-\\\$IntEnd/\\\$ExtStart
+  iptables -C FORWARD -i \\\$DEFAULT_IFACE -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp -d \\\$IPAddress --dport \\\$IntStart:\\\$IntEnd -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i \\\$DEFAULT_IFACE -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp -d \\\$IPAddress --dport \\\$IntStart:\\\$IntEnd -j ACCEPT
+  iptables -C POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart > /dev/null 2>&1 || iptables -A POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart
+}
+
+main "\\\\\\\$@"
+EOFSC
+  chmod 744 \\\$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\\\${ID}.sh
+  \\\$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\\\${ID}.sh
+
+  tee \\\$RELAYSERVER_PF_REMOVE_DIR/pfRem-\\\${ID}.sh >/dev/null <<EOFSC
+#!/bin/bash
+set +e
+
+function main()
+{
+  case "\\\$Protocol" in
+    tcp)
+      remTCP
+    ;;
+    udp)
+      remUDP
+    ;;
+    both)
+      remTCP
+      remUDP
+    ;;
+    *)
+    ;;
+  esac
+}
+
+function remTCP()
+{
+  iptables -D PREROUTING -t nat -i \\\$DEFAULT_IFACE -p tcp --dport \\\$ExtStart:\\\$ExtEnd -j DNAT --to-destination \\\$IPAddress:\\\$IntStart-\\\$IntEnd/\\\$ExtStart > /dev/null 2>&1
+  iptables -D FORWARD -i \\\$DEFAULT_IFACE -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p tcp -d \\\$IPAddress --dport \\\$IntStart:\\\$IntEnd --syn -m conntrack --ctstate NEW -j ACCEPT > /dev/null 2>&1
+  iptables -D FORWARD -i \\\$RELAYSERVER_WG_INTERFACE_NAME -o \\\$DEFAULT_IFACE -p tcp -s \\\$IPAddress --sport \\\$IntStart:\\\$IntEnd -m state --state ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1
+  iptables -D POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p tcp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart > /dev/null 2>&1
+}
+
+function remUDP()
+{
+  iptables -D PREROUTING -t nat -i \\\$DEFAULT_IFACE -p udp --dport \\\$ExtStart:\\\$ExtEnd -j DNAT --to-destination \\\$IPAddress:\\\$IntStart-\\\$IntEnd/\\\$ExtStart > /dev/null 2>&1
+  iptables -D FORWARD -i \\\$DEFAULT_IFACE -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp -d \\\$IPAddress --dport \\\$IntStart:\\\$IntEnd -j ACCEPT > /dev/null 2>&1
+  iptables -D POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart > /dev/null 2>&1
+}
+
+main "\\\\\\\$@"
+EOFSC
+  chmod 744 \\\$RELAYSERVER_PF_REMOVE_DIR/pfRem-\\\${ID}.sh
+
+}
+
+main "\\\$@"
+
+EOFCD
+  sudo chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh
+  sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh >/dev/null <<EOFCD
+#!/bin/bash
+set +e
+
+ID=\\\$1
+RELAYSERVER_PF_REMOVE_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding
+RELAYSERVER_PF_ADD_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
+
+\\\$RELAYSERVER_PF_REMOVE_DIR/pfRem-\\\${ID}.sh
+rm -f \\\$RELAYSERVER_PF_REMOVE_DIR/pfRem-\\\${ID}.sh
+rm -f \\\$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\\\${ID}.sh
+EOFCD
+  sudo chmod 500 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh
+
 }
 
 function getPortainerToken()
@@ -6895,9 +7030,9 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "22000:22000/tcp"
-      - "22000:22000/udp"
-      - "21027:21027/udp"
+      - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
+      - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
+      - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
       - "127.0.0.1:8384:8384"
     environment:
       - PUID=0
@@ -6941,9 +7076,9 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "22000:22000/tcp"
-      - "22000:22000/udp"
-      - "21027:21027/udp"
+      - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
+      - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
+      - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
       - "127.0.0.1:8384:8384"
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -7103,7 +7238,7 @@ function uploadVPNInstallScripts()
       sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
-        showMessageBox "User Created" "The user $nonroot_username was succesfully created. Ensure to use this username going forward (if reprompted)."
+        showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
       fi
       loadSSHKey
     else
@@ -7359,12 +7494,12 @@ function connectVPN()
     # Remote Syncthing
     RELAYSERVER_SYNCTHING_DEVICE_ID=$(ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID'")
     updateConfigVar RELAYSERVER_SYNCTHING_DEVICE_ID $RELAYSERVER_SYNCTHING_DEVICE_ID
-    jsonbody="{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\", \\\"name\\\": \\\"$HOMESERVER_NAME HomeServer\\\",\\\"addresses\\\": [\\\"tcp://$SUB_SYNCTHING.$HOMESERVER_DOMAIN:22000\\\"], \\\"compression\\\": \\\"metadata\\\", \\\"certName\\\": \\\"\\\", \\\"skipIntroductionRemovals\\\": false,\\\"introducedBy\\\": \\\"\\\",\\\"paused\\\": false,\\\"allowedNetworks\\\": [],\\\"autoAcceptFolders\\\": false,\\\"maxSendKbps\\\": 0,\\\"maxRecvKbps\\\": 0,\\\"ignoredFolders\\\": [],\\\"maxRequestKiB\\\": 0,\\\"untrusted\\\": false,\\\"remoteGUIPort\\\": 0}"
+    jsonbody="{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\", \\\"name\\\": \\\"$HOMESERVER_NAME HomeServer\\\",\\\"addresses\\\": [\\\"tcp://$SUB_SYNCTHING.$HOMESERVER_DOMAIN:$SYNCTHING_SYNC_PORT\\\"], \\\"compression\\\": \\\"metadata\\\", \\\"certName\\\": \\\"\\\", \\\"skipIntroductionRemovals\\\": false,\\\"introducedBy\\\": \\\"\\\",\\\"paused\\\": false,\\\"allowedNetworks\\\": [],\\\"autoAcceptFolders\\\": false,\\\"maxSendKbps\\\": 0,\\\"maxRecvKbps\\\": 0,\\\"ignoredFolders\\\": [],\\\"maxRequestKiB\\\": 0,\\\"untrusted\\\": false,\\\"remoteGUIPort\\\": 0}"
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
     jsonbody="{\\\"id\\\": \\\"$RELAYSERVER_SYNCTHING_FOLDER_ID\\\", \\\"label\\\": \\\"RelayServer Backup\\\",\\\"filesystemType\\\": \\\"basic\\\", \\\"path\\\": \\\"/relayserver/\\\", \\\"type\\\": \\\"sendonly\\\",\\\"devices\\\": [{\\\"deviceID\\\": \\\"$RELAYSERVER_SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"},{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"}], \\\"rescanIntervalS\\\": 3600,\\\"fsWatcherEnabled\\\": true,\\\"fsWatcherDelayS\\\": 10,\\\"ignorePerms\\\": false,\\\"autoNormalize\\\": true,\\\"minDiskFree\\\": {\\\"value\\\": 1,\\\"unit\\\": \\\"%\\\"},\\\"versioning\\\": {\\\"type\\\": \\\"\\\",\\\"params\\\": {},\\\"cleanupIntervalS\\\": 3600,\\\"fsPath\\\": \\\"\\\",\\\"fsType\\\": \\\"basic\\\"},\\\"copiers\\\": 0,\\\"pullerMaxPendingKiB\\\": 0,\\\"hashers\\\": 0,\\\"order\\\": \\\"random\\\",\\\"ignoreDelete\\\": false,\\\"scanProgressIntervalS\\\": 0,\\\"pullerPauseS\\\": 0,\\\"maxConflicts\\\": 10,\\\"disableSparseFiles\\\": false,\\\"disableTempIndexes\\\": false,\\\"paused\\\": false,\\\"weakHashThresholdPct\\\": 25,\\\"markerName\\\": \\\".stfolder\\\",\\\"copyOwnershipFromParent\\\": false,\\\"modTimeWindowS\\\": 0,\\\"maxConcurrentWrites\\\": 2,\\\"disableFsync\\\": false,\\\"blockPullOrder\\\": \\\"standard\\\",\\\"copyRangeMethod\\\": \\\"standard\\\",\\\"caseSensitiveFS\\\": false,\\\"junctionsAsDirs\\\": false,\\\"syncOwnership\\\": false,\\\"sendOwnership\\\": true,\\\"syncXattrs\\\": false,\\\"sendXattrs\\\": false,\\\"xattrFilter\\\": {\\\"entries\\\": [],\\\"maxSingleEntrySize\\\": 1024,\\\"maxTotalSize\\\": 4096}}"
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
     # Local Syncthing
-    jsonbody="{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\", \"name\": \"$RELAYSERVER_NAME\",\"addresses\": [\"tcp://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:22000\"], \"compression\": \"metadata\", \"certName\": \"\", \"skipIntroductionRemovals\": false,\"introducedBy\": \"\",\"paused\": false,\"allowedNetworks\": [],\"autoAcceptFolders\": false,\"maxSendKbps\": 0,\"maxRecvKbps\": 0,\"ignoredFolders\": [],\"maxRequestKiB\": 0,\"untrusted\": false,\"remoteGUIPort\": 0}"
+    jsonbody="{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\", \"name\": \"$RELAYSERVER_NAME\",\"addresses\": [\"tcp://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$SYNCTHING_SYNC_PORT\"], \"compression\": \"metadata\", \"certName\": \"\", \"skipIntroductionRemovals\": false,\"introducedBy\": \"\",\"paused\": false,\"allowedNetworks\": [],\"autoAcceptFolders\": false,\"maxSendKbps\": 0,\"maxRecvKbps\": 0,\"ignoredFolders\": [],\"maxRequestKiB\": 0,\"untrusted\": false,\"remoteGUIPort\": 0}"
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices
     jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/folders
@@ -9447,6 +9582,14 @@ function removeMyNetworkPrimaryVPN()
   docker container stop uptimekuma >/dev/null
   docker container stop heimdall >/dev/null
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    sqlite3 $HSHQ_DB "drop table portforwarding;"
+    docker ps | grep "wazuh.manager" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      rsID=$(docker exec -it wazuh.manager bash -c "/var/ossec/bin/manage_agents -l" | grep "RelayServer" | xargs | cut -d"," -f1 | cut -d" " -f2| xargs)
+      if ! [ -z "$rsID" ]; then
+        docker exec wazuh.manager bash -c "/var/ossec/bin/manage_agents -r $rsID" > /dev/null 2>&1
+      fi
+    fi
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
     echo "Removing ClientDNS instances..."
@@ -10275,7 +10418,7 @@ function getCurrentGateway()
   ip route | grep -e "^default" | awk '{print $3}'
 }
 
-function initWireGuardDB()
+function initHSHQDB()
 {
   rm -f $HSHQ_DB
   sqlite3 $HSHQ_DB "create table connections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
@@ -13154,6 +13297,375 @@ function clearQueryLogAndStatsAdguardRS()
   http --verify=no POST https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/control/stats_reset "Authorization: Basic $basic_auth" >/dev/null
 }
 
+# Port Forwarding
+function setupPortForwardingDB()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    return
+  fi
+  isPFTable=$(sqlite3 $HSHQ_DB "SELECT name FROM sqlite_master WHERE type='table' AND name='portforwarding';")
+  if [ -z "$isPFTable" ]; then
+    curdt=$(getCurrentDate)
+    sqlite3 $HSHQ_DB "create table portforwarding(ID integer not null primary key autoincrement, PFType text, Name text, ExtStart integer, ExtEnd integer, IntStart integer, IntEnd integer, Protocol text, InternalHost text, IPAddress text, LastUpdated datetime);"
+
+    # Email SMTP (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-EmailSMTP', 25, 25, 0, 0, 'both','','','$curdt');"
+
+    # DNS Server (need both)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-DNS', 53, 53, 0, 0, 'both','','','$curdt');"
+
+    # HTTP (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-HTTP', 80, 80, 0, 0, 'both','','','$curdt');"
+
+    # HTTPS (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-HTTPS', 443, 443, 0, 0, 'both','','','$curdt');"
+
+    # Email Submission (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-EmailSubmit', 587, 587, 0, 0, 'both','','','$curdt');"
+
+    # WireGuard Portal (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-WGPortal', 8323, 8323, 0, 0, 'both','','','$curdt');"
+
+    # Syncthing Web (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingWeb', 8384, 8384, 0, 0, 'both','','','$curdt');"
+
+    # Portainer (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-Portainer', $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, 0, 0, 'both','','','$curdt');"
+
+    # SSH (do both protocols, even though only need TCP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
+
+    # Syncthing Sync (need both)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingSync', $SYNCTHING_SYNC_PORT, $SYNCTHING_SYNC_PORT, 0, 0, 'both','','','$curdt');"
+
+    # Syncthing Discovery (do both protocols, even though only need UDP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingDiscovery', $SYNCTHING_DISC_PORT, $SYNCTHING_DISC_PORT, 0, 0, 'both','','','$curdt');"
+
+    # WireGuard (do both protocols, even though only need UDP)
+    sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-WireGuard', $RELAYSERVER_WG_PORT, $RELAYSERVER_WG_PORT, 0, 0, 'both','','','$curdt');"
+  fi
+}
+
+function version91UploadPortForwardingScripts()
+{
+    # Upload add/remove scripts to RelayServer
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    notifyRSLogin
+    tee $HOME/addPortForward.sh >/dev/null <<EOFCD
+#!/bin/bash
+set +e
+
+ID=\$1
+ExtStart=\$2
+ExtEnd=\$3
+IntStart=\$4
+IntEnd=\$5
+Protocol=\$6
+IPAddress=\$7
+RELAYSERVER_PF_ADD_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
+RELAYSERVER_PF_REMOVE_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding
+RELAYSERVER_WG_SV_IP=$RELAYSERVER_WG_SV_IP
+RELAYSERVER_WG_INTERFACE_NAME=$RELAYSERVER_WG_INTERFACE_NAME
+DEFAULT_IFACE=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+
+function main()
+{
+  tee \$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\${ID}.sh >/dev/null <<EOFSC
+#!/bin/bash
+set +e
+
+function main()
+{
+  case "\$Protocol" in
+    tcp)
+      addTCP
+    ;;
+    udp)
+      addUDP
+    ;;
+    both)
+      addTCP
+      addUDP
+    ;;
+    *)
+    ;;
+  esac
+}
+
+function addTCP()
+{
+  iptables -C PREROUTING -t nat -i \$DEFAULT_IFACE -p tcp --dport \$ExtStart:\$ExtEnd -j DNAT --to-destination \$IPAddress:\$IntStart-\$IntEnd/\$ExtStart > /dev/null 2>&1 || iptables -A PREROUTING -t nat -i \$DEFAULT_IFACE -p tcp --dport \$ExtStart:\$ExtEnd -j DNAT --to-destination \$IPAddress:\$IntStart-\$IntEnd/\$ExtStart
+  iptables -C FORWARD -i \$DEFAULT_IFACE -o \$RELAYSERVER_WG_INTERFACE_NAME -p tcp -d \$IPAddress --dport \$IntStart:\$IntEnd --syn -m conntrack --ctstate NEW -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i \$DEFAULT_IFACE -o \$RELAYSERVER_WG_INTERFACE_NAME -p tcp -d \$IPAddress --dport \$IntStart:\$IntEnd --syn -m conntrack --ctstate NEW -j ACCEPT
+  iptables -C FORWARD -i \$RELAYSERVER_WG_INTERFACE_NAME -o \$DEFAULT_IFACE -p tcp -s \$IPAddress --sport \$IntStart:\$IntEnd -m state --state ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i \$RELAYSERVER_WG_INTERFACE_NAME -o \$DEFAULT_IFACE -p tcp -s \$IPAddress --sport \$IntStart:\$IntEnd -m state --state ESTABLISHED,RELATED -j ACCEPT
+  iptables -C POSTROUTING -t nat -o \$RELAYSERVER_WG_INTERFACE_NAME -p tcp --dport \$IntStart:\$IntEnd -d \$IPAddress -j SNAT --to-source \$RELAYSERVER_WG_SV_IP:\$ExtStart-\$ExtEnd/\$IntStart > /dev/null 2>&1 || iptables -A POSTROUTING -t nat -o \$RELAYSERVER_WG_INTERFACE_NAME -p tcp --dport \$IntStart:\$IntEnd -d \$IPAddress -j SNAT --to-source \$RELAYSERVER_WG_SV_IP:\$ExtStart-\$ExtEnd/\$IntStart
+}
+
+function addUDP()
+{
+  iptables -C PREROUTING -t nat -i \$DEFAULT_IFACE -p udp --dport \$ExtStart:\$ExtEnd -j DNAT --to-destination \$IPAddress:\$IntStart-\$IntEnd/\$ExtStart > /dev/null 2>&1 || iptables -A PREROUTING -t nat -i \$DEFAULT_IFACE -p udp --dport \$ExtStart:\$ExtEnd -j DNAT --to-destination \$IPAddress:\$IntStart-\$IntEnd/\$ExtStart
+  iptables -C FORWARD -i \$DEFAULT_IFACE -o \$RELAYSERVER_WG_INTERFACE_NAME -p udp -d \$IPAddress --dport \$IntStart:\$IntEnd -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i \$DEFAULT_IFACE -o \$RELAYSERVER_WG_INTERFACE_NAME -p udp -d \$IPAddress --dport \$IntStart:\$IntEnd -j ACCEPT
+  iptables -C POSTROUTING -t nat -o \$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \$IntStart:\$IntEnd -d \$IPAddress -j SNAT --to-source \$RELAYSERVER_WG_SV_IP:\$ExtStart-\$ExtEnd/\$IntStart > /dev/null 2>&1 || iptables -A POSTROUTING -t nat -o \$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \$IntStart:\$IntEnd -d \$IPAddress -j SNAT --to-source \$RELAYSERVER_WG_SV_IP:\$ExtStart-\$ExtEnd/\$IntStart
+}
+
+main "\\\$@"
+EOFSC
+  chmod 744 \$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\${ID}.sh
+  \$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\${ID}.sh
+
+  tee \$RELAYSERVER_PF_REMOVE_DIR/pfRem-\${ID}.sh >/dev/null <<EOFSC
+#!/bin/bash
+set +e
+
+function main()
+{
+  case "\$Protocol" in
+    tcp)
+      remTCP
+    ;;
+    udp)
+      remUDP
+    ;;
+    both)
+      remTCP
+      remUDP
+    ;;
+    *)
+    ;;
+  esac
+}
+
+function remTCP()
+{
+  iptables -D PREROUTING -t nat -i \$DEFAULT_IFACE -p tcp --dport \$ExtStart:\$ExtEnd -j DNAT --to-destination \$IPAddress:\$IntStart-\$IntEnd/\$ExtStart > /dev/null 2>&1
+  iptables -D FORWARD -i \$DEFAULT_IFACE -o \$RELAYSERVER_WG_INTERFACE_NAME -p tcp -d \$IPAddress --dport \$IntStart:\$IntEnd --syn -m conntrack --ctstate NEW -j ACCEPT > /dev/null 2>&1
+  iptables -D FORWARD -i \$RELAYSERVER_WG_INTERFACE_NAME -o \$DEFAULT_IFACE -p tcp -s \$IPAddress --sport \$IntStart:\$IntEnd -m state --state ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1
+  iptables -D POSTROUTING -t nat -o \$RELAYSERVER_WG_INTERFACE_NAME -p tcp --dport \$IntStart:\$IntEnd -d \$IPAddress -j SNAT --to-source \$RELAYSERVER_WG_SV_IP:\$ExtStart-\$ExtEnd/\$IntStart > /dev/null 2>&1
+}
+
+function remUDP()
+{
+  iptables -D PREROUTING -t nat -i \$DEFAULT_IFACE -p udp --dport \$ExtStart:\$ExtEnd -j DNAT --to-destination \$IPAddress:\$IntStart-\$IntEnd/\$ExtStart > /dev/null 2>&1
+  iptables -D FORWARD -i \$DEFAULT_IFACE -o \$RELAYSERVER_WG_INTERFACE_NAME -p udp -d \$IPAddress --dport \$IntStart:\$IntEnd -j ACCEPT > /dev/null 2>&1
+  iptables -D POSTROUTING -t nat -o \$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \$IntStart:\$IntEnd -d \$IPAddress -j SNAT --to-source \$RELAYSERVER_WG_SV_IP:\$ExtStart-\$ExtEnd/\$IntStart > /dev/null 2>&1
+}
+
+main "\\\$@"
+EOFSC
+  chmod 744 \$RELAYSERVER_PF_REMOVE_DIR/pfRem-\${ID}.sh
+
+}
+
+main "\$@"
+
+EOFCD
+    chmod 500 $HOME/addPortForward.sh
+    tee $HOME/removePortForward.sh >/dev/null <<EOFCD
+#!/bin/bash
+set +e
+
+ID=\$1
+RELAYSERVER_PF_REMOVE_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding
+RELAYSERVER_PF_ADD_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
+
+\$RELAYSERVER_PF_REMOVE_DIR/pfRem-\${ID}.sh
+rm -f \$RELAYSERVER_PF_REMOVE_DIR/pfRem-\${ID}.sh
+rm -f \$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\${ID}.sh
+EOFCD
+    chmod 500 $HOME/removePortForward.sh
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/addPortForward.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    scp -P $RELAYSERVER_SSH_PORT $HOME/removePortForward.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo mkdir -p $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding; sudo chown root:root ~/addPortForward.sh; sudo chown root:root ~/removePortForward.sh; sudo mv ~/addPortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh; sudo mv ~/removePortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh"
+    unloadSSHKey
+    rm -f $HOME/addPortForward.sh
+    rm -f $HOME/removePortForward.sh
+  fi
+}
+
+function addPortForwardingRule()
+{
+  Name="$1"
+  ExtStart=$2
+  ExtEnd=$3
+  IntStart=$4
+  IntEnd=$5
+  Protocol=$6
+  InternalHost=$7
+  IPAddress=$8
+  PFType="User"
+  curdt=$(getCurrentDate)
+
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "You are not hosting a RelayServer, returning..."
+    return 1
+  fi
+  # Check if name is valid
+  if [ $(checkValidStringUpperLowerNumbers "$Name" "-") = "false" ]; then
+    echo "Invalid Name: $Name. It must consist of a-z (upper or lowercase), 0-9, and/or -"
+    return 2
+  fi
+  if [ ${#Name} -ge 32 ]; then
+    echo "Name is too long, must be less than 32 characters, returning..."
+    return 3
+  fi
+  # Check if ranges are valid
+  if [ $ExtStart -le 0 ] || [ $ExtStart -ge 65536 ]; then
+    echo "Invalid External Start Port: $ExtStart, returning..."
+    return 4
+  fi
+  if [ $ExtEnd -le 0 ] || [ $ExtEnd -ge 65536 ]; then
+    echo "Invalid External End Port: $ExtEnd, returning..."
+    return 5
+  fi
+  if [ $IntStart -le 0 ] || [ $IntStart -ge 65536 ]; then
+    echo "Invalid Internal Start Port: $IntStart, returning..."
+    return 6
+  fi
+  if [ $IntEnd -le 0 ] || [ $IntEnd -ge 65536 ]; then
+    echo "Invalid Internal End Port: $IntEnd, returning..."
+    return 7
+  fi
+  if [ $ExtStart -gt $ExtEnd ]; then
+    echo "External Start Port is greater than External End Port, returning..."
+    return 8
+  fi
+  if [ $IntStart -gt $IntEnd ]; then
+    echo "External Start Port is greater than External End Port, returning..."
+    return 9
+  fi
+  if [ $(($ExtEnd - $ExtStart)) -ne $(($IntEnd - $IntStart)) ]; then
+    echo "The port ranges for External vs Internal are not of equal size, returning..."
+    return 10
+  fi
+  # Check to see if ranges intersect
+  case "$Protocol" in
+    tcp)
+      checkTCP=$(checkPortForwardingIntersect tcp $ExtStart $ExtEnd)
+    ;;
+    udp)
+      checkUDP=$(checkPortForwardingIntersect udp $ExtStart $ExtEnd)
+    ;;
+    both)
+      checkTCP=$(checkPortForwardingIntersect tcp $ExtStart $ExtEnd)
+      if ! [ -z "$checkTCP" ]; then
+        break
+      fi
+      checkUDP=$(checkPortForwardingIntersect udp $ExtStart $ExtEnd)
+    ;;
+    *)
+      echo "Unknown protocol, returning..."
+      return 11
+    ;;
+  esac
+  if ! [ -z "$checkTCP" ]; then
+    echo "$checkTCP"
+    return 12
+  fi
+  if ! [ -z "$checkUDP" ]; then
+    echo "$checkUDP"
+    return 13
+  fi
+
+  if ! [ -z "$InternalHost" ]; then
+    InternalHostID=$(echo $InternalHost | cut -d"-" -f1)
+    InternalHostName=$(echo $InternalHost | cut -d"-" -f2)
+  fi
+  # Check for valid IP Address or InternalHost
+  useThisIP=""
+  if ! [ -z "$IPAddress" ] && ! [ "$IPAddress" = "0.0.0.0" ]; then
+    if [ "$(checkValidIPAddress $IPAddress)" = "true" ]; then
+      useThisIP=$IPAddress
+      InternalHostName=""
+    else
+      echo "Invalid IP address, returning..."
+      return 14
+    fi
+  else
+    if [ -z "$InternalHost" ]; then
+      echo "Invalid hostname, returning..."
+      return 15
+    fi
+    useThisIP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$InternalHostID;")
+    if ! [ "$(checkValidIPAddress $useThisIP)" = "true" ]; then
+      echo "Invalid IP address, returning..."
+      return 16
+    fi
+    IPAddress=$useThisIP
+  fi
+  # Check if IP is in VPN range
+  if ! [ "$(isIPInSubnet $useThisIP $RELAYSERVER_WG_VPN_SUBNET)" = "true" ]; then
+    echo "IP address is not in range, IP: $useThisIP, VPN Subnet: $RELAYSERVER_WG_VPN_SUBNET, returning..."
+    return 17
+  fi
+
+  pfID=$(sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('$PFType', '$Name', $ExtStart, $ExtEnd, $IntStart, $IntEnd, '$Protocol','$InternalHostName','$IPAddress','$curdt');select last_insert_rowid();")
+  loadSSHKey
+  pfResult=$(ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh $pfID $ExtStart $ExtEnd $IntStart $IntEnd $Protocol $useThisIP")
+  retVal=$?
+  unloadSSHKey
+  if [ $retVal -ne 0 ]; then
+    echo "There was a problem adding this port forwarding rule: $pfResult"
+    echo
+    echo "Ensure to delete the rule before trying again."
+    return 18
+  fi
+}
+
+function removePortForwardingRule()
+{
+  pfID=$1
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "You are not hosting a RelayServer, returning..."
+    return 1
+  fi
+  loadSSHKey
+  pfResult=$(ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh $pfID")
+  retVal=$?
+  unloadSSHKey
+  if [ $retVal -ne 0 ]; then
+    echo "There was a problem removing this port forwarding rule: $pfResult"
+    echo
+    echo "The rule was not removed."
+    return 2
+  fi
+  sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from portforwarding where ID=$pfID;"
+}
+
+function checkPortForwardingIntersect()
+{
+  pfProto=$1
+  pfStartPort=$2
+  pfEndPort=$3
+  OIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  pfRows=($(sqlite3 $HSHQ_DB "select Name,PFType,ExtStart,ExtEnd,Protocol,LastUpdated from portforwarding where Protocol in ('$pfProto','both');"))
+  for curPF in "${pfRows[@]}"
+  do
+    curPFName=$(echo "$curPF" | cut -d "|" -f1)
+    curPFType=$(echo "$curPF" | cut -d "|" -f2)
+    curPFExtStart=$(echo "$curPF" | cut -d "|" -f3)
+    curPFExtEnd=$(echo "$curPF" | cut -d "|" -f4)
+    curPFProto=$(echo "$curPF" | cut -d "|" -f5)
+    curPFLastUpdated=$(echo "$curPF" | cut -d "|" -f6)
+    if ([ $pfStartPort -ge $curPFExtStart ] && [ $pfStartPort -le $curPFExtEnd ]) ||
+       ([ $pfEndPort -ge $curPFExtStart ] && [ $pfEndPort -le $curPFExtEnd ]) ||
+       ([ $curPFExtStart -ge $pfStartPort ] && [ $curPFExtStart -le $pfEndPort ]) ||
+       ([ $curPFExtEnd -ge $pfStartPort ] && [ $curPFExtEnd -le $pfEndPort ]); then
+      if [ "$curPFType" = "System" ]; then
+        echo "The range $pfStartPort-$pfEndPort intersects with an existing System Reserved entry - Name: $curPFName, PortRange: $curPFExtStart-$curPFExtEnd, Protocol: $curPFProto, LastUpdated: $curPFLastUpdated"
+      elif [ "$curPFType" = "User" ]; then
+        echo "The range $pfStartPort-$pfEndPort intersects with an existing User entry - Name: $curPFName, PortRange: $curPFExtStart-$curPFExtEnd, Protocol: $curPFProto, LastUpdated: $curPFLastUpdated"
+      else
+        echo "The range $pfStartPort-$pfEndPort intersects with an existing (Unknown Type) entry - Name: $curPFName, PortRange: $curPFExtStart-$curPFExtEnd, Protocol: $curPFProto, LastUpdated: $curPFLastUpdated"
+      fi
+      IFS=$OIFS
+      return
+    fi
+  done
+  IFS=$OIFS
+}
+
 # Initialization
 function createInitialEnv()
 {
@@ -14144,6 +14656,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=89
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 91 ]; then
+    echo "Updating to Version 91..."
+    version91Update
+    HSHQ_VERSION=91
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -15129,11 +15647,7 @@ function version46Update()
     echo -e "As soon as you recieve this email, then log into https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN"
     echo -e "with the new creditials and re-run the Perform Update HSHQ function."
     echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n"
-    is_continue=""
-    while ! [ "$is_continue" = "ok" ]
-    do
-      read -p "Enter 'ok' to continue: " is_continue
-    done
+    notifyRSLogin
     set -e
     getUpdateAssets
     set +e
@@ -15210,11 +15724,7 @@ function version52Update()
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
-    is_continue=""
-    while ! [ "$is_continue" = "ok" ]
-    do
-      read -p "Enter 'ok' to continue: " is_continue
-    done
+    notifyRSLogin
     loadSSHKey
     set +e
     rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
@@ -15273,7 +15783,7 @@ EOFSC
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\$(echo \$ports_list | tr "," "\n"))
   for cur_port in "\${portsArr[@]}"
@@ -15381,7 +15891,7 @@ EOFSC
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,22000,21027
+  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\$(echo \$ports_list | tr "," "\n"))
   for cur_port in "\${portsArr[@]}"
@@ -15469,22 +15979,14 @@ EOFBS
     if [ $? -ne 0 ]; then
       # Reinstall coturn with new ports
       echo -e "\n\n\nCoturn must be reinstalled due to a change in the port range.\nThis will result in the reverse proxy (Caddy) being restarted,\nand this web page will desync as a result. Ensure to refresh \nthe web page when this occurs, in order to continue the update."
-      is_continue=""
-      while ! [ "$is_continue" = "ok" ]
-      do
-        read -p "Enter 'ok' to continue: " is_continue
-      done
+      notifyRSLogin
       deleteListOfStacks true coturn
       installListOfServices coturn
     fi
   fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
-    is_continue=""
-    while ! [ "$is_continue" = "ok" ]
-    do
-      read -p "Enter 'ok' to continue: " is_continue
-    done
+    notifyRSLogin
     loadSSHKey
     set +e
     tee $HOME/onBootRoot.sh >/dev/null <<EOFBS
@@ -15505,11 +16007,7 @@ EOFBS
   HSHQ_VERSION=53
   updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   echo -e "\n\n\nThis update requires a reboot of the HomeServer.\n"
-  is_continue=""
-  while ! [ "$is_continue" = "ok" ]
-  do
-    read -p "Enter 'ok' to continue: " is_continue
-  done
+  notifyRSLogin
   performExitFunctions false
   sudo reboot
 }
@@ -15518,11 +16016,7 @@ function version54Update()
 {
   set +e
   echo -e "\n\n\nThis update requires restarting Script-server, which will exit the\nscript and halt any subsequent updates. Please ensure to re-run the\nupdate process after it has completed.\n"
-  is_continue=""
-  while ! [ "$is_continue" = "ok" ]
-  do
-    read -p "Enter 'ok' to continue: " is_continue
-  done
+  notifyRSLogin
   outputAllScriptServerScripts
   outputIPTablesScripts false
   default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
@@ -15588,11 +16082,7 @@ EOFRS
   outputAllScriptServerScripts
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
-    is_continue=""
-    while ! [ "$is_continue" = "ok" ]
-    do
-      read -p "Enter 'ok' to continue: " is_continue
-    done
+    notifyRSLogin
     loadSSHKey
     set +e
     cat <<EOFHC > $HOME/groups.conf
@@ -15695,11 +16185,7 @@ function version68Update()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
-    is_continue=""
-    while ! [ "$is_continue" = "ok" ]
-    do
-      read -p "Enter 'ok' to continue: " is_continue
-    done
+    notifyRSLogin
     tee $HOME/resetCaddyContainer.sh >/dev/null <<EOFCD
 #!/bin/bash
 RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_NONBACKUP_DIR
@@ -15762,11 +16248,7 @@ function version75Update()
     sudo apt-mark hold wazuh-agent
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
       echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
-      is_continue=""
-      while ! [ "$is_continue" = "ok" ]
-      do
-        read -p "Enter 'ok' to continue: " is_continue
-      done
+      notifyRSLogin
       loadSSHKey
       ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo apt update; sudo apt install -y --only-upgrade wazuh-agent=$WAZUH_AGENT_VERSION; sudo apt-mark hold wazuh-agent"
       unloadSSHKey
@@ -15789,11 +16271,7 @@ function version78Update()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\nUpdating the mail relay postfix image on the RelayServer.\n"
     echo -e "\n\n\nThe mail relay postfix image requires an update on the RelayServer which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\nAfter this update has completed, go to Portainer on the RelayServer and stop/start the mail-relay stack.\n"
-    is_continue=""
-    while ! [ "$is_continue" = "ok" ]
-    do
-      read -p "Enter 'ok' to continue: " is_continue
-    done
+    notifyRSLogin
     loadSSHKey
     ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"
     unloadSSHKey
@@ -15902,6 +16380,17 @@ function version89Update()
 {
   set +e
   outputIPTablesScripts false
+  set -e
+}
+
+function version91Update()
+{
+  set +e
+  sudo -v
+  setupPortForwardingDB
+  version91UploadPortForwardingScripts
+  outputAllScriptServerScripts
+  version91WazuhUpdate
   set -e
 }
 
@@ -16722,6 +17211,15 @@ function installHostNTPServer()
   sudo systemctl restart ntp > /dev/null 2>&1
 }
 
+function notifyRSLogin()
+{
+  is_continue=""
+  while ! [ "$is_continue" = "ok" ]
+  do
+    read -p "Enter 'ok' to continue: " is_continue
+  done
+}
+
 function checkAddAllNewSvcs()
 {
   checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
@@ -16902,7 +17400,7 @@ function nukeHSHQ()
 
 function getExposedPortsList()
 {
-  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,22000,21027,3478,5349,$PORTAINER_LOCAL_HTTPS_PORT"
+  echo "53,1400,1900,1935,7359,10000,4443,8020,143,587,993,110,25,465,995,514,55000,1514,1515,9200,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$PORTAINER_LOCAL_HTTPS_PORT"
 }
 
 function outputBootScripts()
@@ -26102,7 +26600,21 @@ function installWazuh()
     ((curACount++))
   done
   sudo sed -i "s/.*Shared agent configuration here.*/\  <rootcheck>\n    <ignore>\/var\/lib\/docker\/overlay2<\/ignore>\n  <\/rootcheck>/" $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf
+  sudo tee -a $HSHQ_STACKS_DIR/wazuh/volumes/etc/rules/local_rules.xml >/dev/null <<EOFRU
 
+<group name="ossec,">
+  <rule id="651" level="13" overwrite="yes">
+    <if_sid>650</if_sid>
+    <options>alert_by_email</options>
+    <field name="parameters.program">firewall-drop</field>
+    <field name="command">add</field>
+    <description>Host Blocked by firewall-drop Active Response</description>
+    <group>active_response,pci_dss_11.4,gpg13_4.13,gdpr_IV_35.7.d,nist_800_53_SI.4,tsc_CC6.1,tsc_CC6.8,tsc_CC7.2,tsc_CC7.3,tsc_CC7.4,</group>
+  </rule>
+</group>
+
+EOFRU
+  docker exec -it wazuh.manager service wazuh-manager restart > /dev/null 2>&1
   installWazuhAgent
 
   inner_block=""
@@ -26577,15 +27089,6 @@ EOFWZ
     <timeout_allowed>yes</timeout_allowed>
   </command>
 
-  <!--
-  <active-response>
-    <command>firewall-drop</command>
-    <location>localhost</location>
-    <rules_id>5710</rules_id>
-    <timeout>1000</timeout>
-  </active-response>
-  -->
-
   <!-- Log analysis -->
   <localfile>
     <log_format>command</log_format>
@@ -26662,6 +27165,16 @@ EOFWZ
   </localfile>
 
 </ossec_config>
+
+<ossec_config>
+  <active-response>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <rules_id>5763</rules_id>
+    <timeout>300</timeout>
+  </active-response>
+</ossec_config>
+
 EOFWZ
 
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-indexer/wazuh_indexer.yml
@@ -26872,6 +27385,67 @@ function removeWazuhAgent()
   sudo systemctl disable wazuh-agent
   sudo systemctl daemon-reload
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
+}
+
+function version91WazuhUpdate()
+{
+  vnwu_curE=${-//[^e]/}
+  set +e
+  grep "<rules_id>5763</rules_id>" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo tee -a $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf >/dev/null <<EOFWZ
+
+<ossec_config>
+  <active-response>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <rules_id>5763</rules_id>
+    <timeout>300</timeout>
+  </active-response>
+</ossec_config>
+
+EOFWZ
+  fi
+
+  grep "<rules_id>5763</rules_id>" $HSHQ_STACKS_DIR/wazuh/volumes/etc/ossec.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo tee -a $HSHQ_STACKS_DIR/wazuh/volumes/etc/ossec.conf >/dev/null <<EOFWZ
+
+<ossec_config>
+  <active-response>
+    <command>firewall-drop</command>
+    <location>local</location>
+    <rules_id>5763</rules_id>
+    <timeout>300</timeout>
+  </active-response>
+</ossec_config>
+
+EOFWZ
+  fi
+
+  grep "firewall-drop" $HSHQ_STACKS_DIR/wazuh/volumes/etc/rules/local_rules.xml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo tee -a $HSHQ_STACKS_DIR/wazuh/volumes/etc/rules/local_rules.xml >/dev/null <<EOFRU
+
+<group name="ossec,">
+  <rule id="651" level="13" overwrite="yes">
+    <if_sid>650</if_sid>
+    <options>alert_by_email</options>
+    <field name="parameters.program">firewall-drop</field>
+    <field name="command">add</field>
+    <description>Host Blocked by firewall-drop Active Response</description>
+    <group>active_response,pci_dss_11.4,gpg13_4.13,gdpr_IV_35.7.d,nist_800_53_SI.4,tsc_CC6.1,tsc_CC6.8,tsc_CC7.2,tsc_CC7.3,tsc_CC7.4,</group>
+  </rule>
+</group>
+
+EOFRU
+  fi
+  echo "Restarting Wazuh manager, please wait..."
+  docker exec -it wazuh.manager service wazuh-manager restart > /dev/null 2>&1
+  set +e
+  if ! [ -z $vnwu_curE ]; then
+    set -e
+  fi
 }
 
 # Collabora
@@ -27147,7 +27721,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi display_join_using_the_jitsi_app --value=1
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi jitsi_server_url --value="https://$SUB_JITSI.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi enabled --value="yes"
-  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:5349\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]"
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install richdocuments
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments wopi_allowlist --value="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8"
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments public_wopi_url --value="https://$SUB_COLLABORA.$HOMESERVER_DOMAIN"
@@ -34160,9 +34734,9 @@ services:
       - dock-proxy-net
       - dock-privateip-net
     ports:
-      - "22000:22000/tcp"
-      - "22000:22000/udp"
-      - "21027:21027/udp"
+      - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
+      - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
+      - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
       - "127.0.0.1:8384:8384"
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -40497,10 +41071,10 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "3478:3478"
-      - "3478:3478/udp"
-      - "5349:5349"
-      - "5349:5349/udp"
+      - "$COTURN_PRIMARY_PORT:$COTURN_PRIMARY_PORT"
+      - "$COTURN_PRIMARY_PORT:$COTURN_PRIMARY_PORT/udp"
+      - "$COTURN_SECONDARY_PORT:$COTURN_SECONDARY_PORT"
+      - "$COTURN_SECONDARY_PORT:$COTURN_SECONDARY_PORT/udp"
       - "14100-14200:14100-14200/udp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -40527,8 +41101,8 @@ TZ=\${TZ}
 EOFRM
 
   cat <<EOFRM > $HSHQ_STACKS_DIR/coturn/turnserver.conf
-listening-port=3478
-tls-listening-port=5349
+listening-port=$COTURN_PRIMARY_PORT
+tls-listening-port=$COTURN_SECONDARY_PORT
 min-port=14100
 max-port=14200
 fingerprint
@@ -40670,7 +41244,7 @@ WS_APP_NAME=$HOMESERVER_NAME FileDrop
 WS_ABUSE_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
 WS_REQUIRE_CRYPTO=1
 TURN_MODE=hmac
-TURN_SERVER=turn:$SUB_COTURN.$HOMESERVER_DOMAIN:5349
+TURN_SERVER=turn:$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT
 TURN_USERNAME=filedrop
 TURN_SECRET=$COTURN_STATIC_SECRET
 STUN_SERVER=
@@ -42384,7 +42958,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Finally, remove the service that failed (02 Services -> 05 Remove Service(s)), then rerun this utility to install the remainder of services. If that same service continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -45719,7 +46293,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Enter the internal mail subdomain",
+      "name": "Select the internal mail subdomain",
       "required": true,
       "param": "-mailsubdomain=",
       "same_arg_param": true,
@@ -46218,6 +46792,294 @@ EOFSC
       "pass_as": "argument"
     }
   ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addPortForwardRule.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+pfName=\$(getArgumentValue pfName "\$@")
+pfExtStart=\$(getArgumentValue pfExtStart "\$@")
+pfExtEnd=\$(getArgumentValue pfExtEnd "\$@")
+pfIntStart=\$(getArgumentValue pfIntStart "\$@")
+pfIntEnd=\$(getArgumentValue pfIntEnd "\$@")
+pfProtocol=\$(getArgumentValue pfProtocol "\$@")
+pfInternalHost=\$(getArgumentValue pfInternalHost "\$@")
+pfIPAddress=\$(getArgumentValue pfIPAddress "\$@")
+
+set +e
+echo "Adding port forwarding rule (\$pfName)..."
+strRes=\$(addPortForwardingRule "\$pfName" \$pfExtStart \$pfExtEnd \$pfIntStart \$pfIntEnd \$pfProtocol "\$pfInternalHost" "\$pfIPAddress")
+retVal=\$?
+if [ \$retVal -ne 0 ]; then
+  echo "ERROR: \$strRes"
+fi
+set -e
+performExitFunctions false
+exit \$retVal
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addPortForwardRule.json
+{
+  "name": "08 Add Port Forwarding Rule",
+  "script_path": "conf/scripts/addPortForwardRule.sh",
+  "description": "Adds a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a port forwarding rule to the RelayServer. This will forward any packets arriving at the RelayServer to the selected internal host on the selected port or range of ports. If only a single port, then use the same value for Start and End. External is the value(s) which the RelayServer will listen on, and Internal is the mapped ports on the internal host. If a range of ports, then the SIZE of the range must be the same for both External and Internal (the start and end values between External and Internal CAN be diffferent). For the destination IP, you can either select from the internal domain list (as a convenience) or manually enter the IP address. If there is a non-zero value for the IP address, then the selected internal domain will be entirely ignored. If manually entering the IP address, it must be inside your VPN subnet range.",
+  "group": "$group_id_relayserver",
+  "parameters": [
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter rule name",
+      "required": true,
+      "param": "-pfName=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter External Start Port",
+      "required": true,
+      "param": "-pfExtStart=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 1,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter External End Port",
+      "required": true,
+      "param": "-pfExtEnd=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 1
+      },
+      "default": "",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter Internal Start Port",
+      "required": true,
+      "param": "-pfIntStart=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 1,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter Internal End Port",
+      "required": true,
+      "param": "-pfIntEnd=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 1
+      },
+      "default": "",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select Protocol (tcp/udp/both)",
+      "required": true,
+      "param": "-pfProtocol=",
+      "same_arg_param": true,
+      "type": "list",
+      "default": "both",
+      "values": [
+        "tcp",
+        "udp",
+        "both"
+      ],
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the destination internal domain",
+      "required": false,
+      "param": "-pfInternalHost=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select ID,'-',DomainName from hsvpn_connections where IsPrimary=true;\" | sed 's/|//g'",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter destination IP address",
+      "required": false,
+      "param": "-pfIPAddress=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "0.0.0.0",
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removePortForwardRule.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+pfRemRule=\$(getArgumentValue pfRemRule "\$@")
+pfRemID=\$(echo "\$pfRemRule" | cut -d"-" -f1)
+
+set +e
+echo "Removing port forwarding rule (\$pfRemRule)..."
+strRes=\$(removePortForwardingRule \$pfRemID)
+
+retVal=\$?
+if [ \$retVal -ne 0 ]; then
+  echo "ERROR: \$strRes"
+fi
+set -e
+performExitFunctions false
+exit \$retVal
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removePortForwardRule.json
+{
+  "name": "09 Remove Port Forwarding Rule",
+  "script_path": "conf/scripts/removePortForwardRule.sh",
+  "description": "Removes a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected  port forwarding rule from the RelayServer.",
+  "group": "$group_id_relayserver",
+  "parameters": [
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the rule to remove",
+      "required": false,
+      "param": "-pfRemRule=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select ID,'-',Name,' (',ExtStart,'-',ExtEnd,'/',Protocol,')' from portforwarding where PFType='User' order by ID asc;\" | sed 's/|//g'",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllPortforwards.sh
+#!/bin/bash
+
+source $HSHQ_LIB_SCRIPT lib
+
+echo "  | ID | PFType | Name | ExtStart | ExtEnd | IntStart | IntEnd | Protocol | InternalHost | IPAddress | LastUpdated |"
+echo "---------------------------------------------------------------------------------------"
+sqlite3 -separator " | " \$HSHQ_DB "select ' ',ID,PFType,Name,ExtStart,ExtEnd,IntStart,IntEnd,Protocol,InternalHost,IPAddress,LastUpdated,' ' from portforwarding order by ID;"
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/displayAllPortforwards.json
+{
+  "name": "10 Display Port Forwarding Rules",
+  "script_path": "conf/scripts/displayAllPortforwards.sh",
+  "description": "Display all port forwarding rules. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all port forwarding rules and System Reserved ports on the RelayServer to the console.",
+  "group": "$group_id_relayserver"
 }
 
 EOFSC
