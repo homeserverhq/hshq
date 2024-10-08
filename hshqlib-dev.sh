@@ -3879,6 +3879,7 @@ function main()
     bname=\\\$(basename \\\$fname .conf)
     removeWGInterfaceQuick \\\$bname
   done
+  sudo run-parts --regex '.*sh\\\$' \\\$HSHQ_SCRIPTS_DIR/root/portforwarding
   sudo systemctl stop runOnBootRoot
   sudo systemctl disable runOnBootRoot
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
@@ -5168,7 +5169,7 @@ function addUDP()
   iptables -C POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart > /dev/null 2>&1 || iptables -A POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart
 }
 
-main "\\\\\$@"
+main "\\\\\\\$@"
 EOFSC
   chmod 744 \\\$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\\\${ID}.sh
   \\\$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\\\${ID}.sh
@@ -5210,7 +5211,7 @@ function remUDP()
   iptables -D POSTROUTING -t nat -o \\\$RELAYSERVER_WG_INTERFACE_NAME -p udp --dport \\\$IntStart:\\\$IntEnd -d \\\$IPAddress -j SNAT --to-source \\\$RELAYSERVER_WG_SV_IP:\\\$ExtStart-\\\$ExtEnd/\\\$IntStart > /dev/null 2>&1
 }
 
-main "\\\\\$@"
+main "\\\\\\\$@"
 EOFSC
   chmod 744 \\\$RELAYSERVER_PF_REMOVE_DIR/pfRem-\\\${ID}.sh
 
@@ -7237,7 +7238,7 @@ function uploadVPNInstallScripts()
       sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
-        showMessageBox "User Created" "The user $nonroot_username was succesfully created. Ensure to use this username going forward (if reprompted)."
+        showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
       fi
       loadSSHKey
     else
@@ -9582,6 +9583,13 @@ function removeMyNetworkPrimaryVPN()
   docker container stop heimdall >/dev/null
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sqlite3 $HSHQ_DB "drop table portforwarding;"
+    docker ps | grep "wazuh.manager" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      rsID=$(docker exec -it wazuh.manager bash -c "/var/ossec/bin/manage_agents -l" | grep "RelayServer" | xargs | cut -d"," -f1 | cut -d" " -f2| xargs)
+      if ! [ -z "$rsID" ]; then
+        docker exec wazuh.manager bash -c "/var/ossec/bin/manage_agents -r $rsID" > /dev/null 2>&1
+      fi
+    fi
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
     echo "Removing ClientDNS instances..."
@@ -42950,7 +42958,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Finally, remove the service that failed (02 Services -> 05 Remove Service(s)), then rerun this utility to install the remainder of services. If that same service continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
