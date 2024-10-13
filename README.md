@@ -88,6 +88,10 @@ bash hshq.sh
 
   **A:** Yes, and in fact this is highly recommended. It is something that you can do right now for less than $5 if your servers are only up for a couple of days. Basically, you are going to simulate your HomeServer equipment with a virtual private server (VPS) from a cloud provider. <a href="https://wiki.homeserverhq.com/en/tutorials/setup-demo" target="_blank">This link</a> provides a walkthrough of setting up both HomeServer and RelayServer VPS's using a sample provider.
 
+ ***Q: My ISP does not allow port forwarding nor a static IP, can I still host from home?***
+ 
+ **A:** Yes, you can host from anywhere, regardless of your circumstances. This is probabaly our largest contribution to the community. You will have to rent a VPS as a RelayServer, which is pretty cheap - between $5-$10 per month. But it will perform the function as the front-end to your entire infrastructure. If you watch the [Architecture video](https://videos.homeserverhq.com/w/hfkskbtNyh6gpTiGVxgS7c), you'll get a better idea of what role the RelayServer fulfills.
+
   ***Q: Can this run in a virtual machine (VM)?***
 
   **A:** Yes and No. It has been extensively tested on a Proxmox hypervisor with no problems - it works perfectly. With Windows as the host OS, some problems with respect to networking have been reported, so a Linux-based host is highly recommended. As long as the VM's operating system is on the supported list (currently only Ubuntu 22.04), then it should work in just about any environment, but its impossible to know without confirmed tests.
