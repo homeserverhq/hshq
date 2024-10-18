@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=12
+HSHQ_WRAPPER_SCRIPT_VERSION=13
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -260,7 +260,7 @@ EOF
 
   if [ "$is_download_lib" = "true" ]; then
     echo "Downloading latest version..."
-    wget -q -O $HSHQ_LIB_TMP $HSHQ_LIB_URL
+    wget -q4 -O $HSHQ_LIB_TMP $HSHQ_LIB_URL
     if [ $? -ne 0 ]; then
       rm -f $HSHQ_LIB_TMP
       if [ -f $HSHQ_LIB_SCRIPT ]; then
@@ -281,7 +281,7 @@ EOF
         hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
         if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
           is_download_wrap=true
-          wget -q -O $HSHQ_WRAP_TMP $HSHQ_WRAP_URL
+          wget -q4 -O $HSHQ_WRAP_TMP $HSHQ_WRAP_URL
           if [ $? -ne 0 ]; then
             rm -f $HSHQ_WRAP_TMP
             rm -f $HSHQ_LIB_TMP
@@ -318,7 +318,7 @@ EOF
       rm -f $HSHQ_LIB_TMP
       exit 1
     fi
-    wget -q -O $HOME/lib-${hshq_lib_dl_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_lib_dl_version}.sig
+    wget -q4 -O $HOME/lib-${hshq_lib_dl_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_lib_dl_version}.sig
     if [ $? -eq 0 ]; then
       echo "Signature downloaded (lib-${hshq_lib_dl_version}.sig)..."
     else
@@ -335,7 +335,7 @@ EOF
       is_download_lib=false
     fi
     if [ "$is_download_wrap" = "true" ] && [ "$is_download_lib" = "true" ]; then
-      wget -q -O $HOME/wrap-${hshq_wrap_dl_version}.sig $HSHQ_SIG_BASE_URL/wrap-${hshq_wrap_dl_version}.sig
+      wget -q4 -O $HOME/wrap-${hshq_wrap_dl_version}.sig $HSHQ_SIG_BASE_URL/wrap-${hshq_wrap_dl_version}.sig
       if [ $? -eq 0 ]; then
         echo "Signature downloaded (wrap-${hshq_wrap_dl_version}.sig)..."
       else
