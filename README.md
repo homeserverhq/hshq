@@ -12,7 +12,7 @@
 
 ### One-line Start Installation
 ```
-wget -q -N https://homeserverhq.com/hshq.sh && bash hshq.sh
+wget -q4N https://homeserverhq.com/hshq.sh && bash hshq.sh
 ```
 
 ### Manual Installation
