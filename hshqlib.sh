@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=91
+HSHQ_SCRIPT_VERSION=92
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -260,7 +260,7 @@ EOF
   set -e
   case $menures in
     0)
-	  return 0 ;;
+      return 0 ;;
     1)
       checkLoadConfig
       initConfig
@@ -296,9 +296,9 @@ EOF
       set +e
       showRestoreMenu
       set +e
-	  return 1 ;;
+      return 1 ;;
     6)
-	  return 0 ;;
+      return 0 ;;
   esac
 }
 
@@ -390,13 +390,13 @@ EOF
   fi
   case $menures in
     0)
-	  return 0 ;;
+      return 0 ;;
     1)
-	  showRestoreEncryptedMenu ;;
+      showRestoreEncryptedMenu ;;
     2)
-	  showRestoreUnencryptedMenu ;;
+      showRestoreUnencryptedMenu ;;
     3)
-	  return 0 ;;
+      return 0 ;;
   esac
 }
 
@@ -417,13 +417,13 @@ EOF
   fi
   case $menures in
     0)
-	  return 0 ;;
+      return 0 ;;
     1)
-	  showRestoreMountDriveMenu ;;
+      showRestoreMountDriveMenu ;;
     2)
-	  showRestoreSelectEncryptedDirectoryMenu ;;
+      showRestoreSelectEncryptedDirectoryMenu ;;
     3)
-	  return 0 ;;
+      return 0 ;;
   esac
 }
 
@@ -1019,7 +1019,7 @@ function checkWrapperVersion()
   curWrapV=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
   if ! [ -z "$curWrapV" ]; then
     if [ $curWrapV -lt 5 ]; then
-      showMessageBox "Update Wrapper" "It appears you are using a deprecated version of the wrapper script. Please run the command: 'wget -q -N https://homeserverhq.com/hshq.sh' to obtain the latest version as soon as possible."
+      showMessageBox "Update Wrapper" "It appears you are using a deprecated version of the wrapper script. Please run the command: 'wget -q4N https://homeserverhq.com/hshq.sh' to obtain the latest version as soon as possible."
     fi
   fi
   set -e
@@ -42006,7 +42006,7 @@ function installScriptServer()
   set +e
   retVal=0
   if ! [ -f $HOME/script-server.zip ]; then
-    wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
+    wget -q4 -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
     retVal=$?
   fi
   if [ $retVal -ne 0 ] || ! [ -f $HOME/script-server.zip ]; then
@@ -43656,14 +43656,14 @@ if [ \$this_ver_lib -eq 0 ]; then
 fi
 
 if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
-  wget -q -O \$HSHQ_WRAP_TMP \$HSHQ_WRAP_URL
+  wget -q4 -O \$HSHQ_WRAP_TMP \$HSHQ_WRAP_URL
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_WRAP_TMP
     echo "ERROR: Could not obtain current version of wrapper script."
     exit
   fi
   hshq_wrap_dl_version=\$(sed -n 2p \$HSHQ_WRAP_TMP | cut -d"=" -f2)
-  wget -q -O $HOME/wrap-\${hshq_wrap_dl_version}.sig \$HSHQ_SIG_BASE_URL/wrap-\${hshq_wrap_dl_version}.sig
+  wget -q4 -O $HOME/wrap-\${hshq_wrap_dl_version}.sig \$HSHQ_SIG_BASE_URL/wrap-\${hshq_wrap_dl_version}.sig
   verifyFile \$HSHQ_WRAP_TMP $HOME/wrap-\${hshq_wrap_dl_version}.sig
   ver_res=\$?
   rm -f $HOME/wrap-\${hshq_wrap_dl_version}.sig
@@ -43683,14 +43683,14 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
 fi
 
 if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
-  wget -q -O \$HSHQ_LIB_TMP \$HSHQ_LIB_URL
+  wget -q4 -O \$HSHQ_LIB_TMP \$HSHQ_LIB_URL
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_LIB_TMP
     echo "ERROR: Could not obtain current version of lib script."
     exit
   fi
   hshq_lib_dl_version=\$(sed -n 2p \$HSHQ_LIB_TMP | cut -d"=" -f2)
-  wget -q -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
+  wget -q4 -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
   verifyFile \$HSHQ_LIB_TMP $HOME/lib-\${hshq_lib_dl_version}.sig
   ver_res=\$?
   rm -f $HOME/lib-\${hshq_lib_dl_version}.sig
