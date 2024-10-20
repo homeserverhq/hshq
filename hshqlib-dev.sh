@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=92
+HSHQ_SCRIPT_VERSION=93
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -5507,8 +5507,9 @@ EOFR
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
-  sudo netplan apply > /dev/null 2>&1
-
+  set +e
+  which netplan && sudo netplan apply > /dev/null 2>&1
+  set -e
   installStack adguard adguard "entering tls listener loop on" \$HOME/adguard.env
 }
 
@@ -7568,7 +7569,8 @@ EOF
         email_msg="Your new RelayServer has been configured. Below is your first WireGuard User Connection Info:\n\n================ WireGuard Configuration ================\n${rs_wg_user_conf}\n=======================================================\n"
         sendEmail -s "New RelayServer" -b "$email_msg" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
         clear
-        echo -e "\n\n============= User WireGuard Configuration ============\n"
+        echo -e "\n\n$(getDNSRecordsInfo $HOMESERVER_DOMAIN)\n\n"
+        echo -e "============= User WireGuard Configuration ============\n"
         echo -e """""$rs_wg_user_conf""""\n"
         echo -e "=======================================================\n"
         echo -e "_______________________________________________________"
@@ -9457,16 +9459,19 @@ function performNetworkJoin()
         docker container start heimdall >/dev/null
         rm -f $dns_file
       fi
+      echo "Creating WireGuard config..."
       JOINED_DB_ID=$db_id
       rm -f $join_base_config_file
       sudo mv $join_wireguard_config_file $HSHQ_WIREGUARD_DIR/vpn/${interface_name}.conf
       sudo chown root:root $HSHQ_WIREGUARD_DIR/vpn/${interface_name}.conf
       sudo chmod 0400 $HSHQ_WIREGUARD_DIR/vpn/${interface_name}.conf
       sudo cp $HSHQ_WIREGUARD_DIR/vpn/${interface_name}.conf /etc/wireguard/${interface_name}.conf
+      echo "Installing CA certificate..."
       sudo mv $join_rootca_file $HSHQ_SSL_DIR/$join_rootca_name
       sudo chmod 0444 $HSHQ_SSL_DIR/$join_rootca_name
       sudo cp $HSHQ_SSL_DIR/$join_rootca_name /usr/local/share/ca-certificates/
       sudo update-ca-certificates
+      echo "Updating services due to new CA certificate..."
       if [ "$IS_INSTALLED" = "true" ]; then
         docker ps | grep nextcloud-app > /dev/null 2>&1
         if [ $? -eq 0 ]; then
