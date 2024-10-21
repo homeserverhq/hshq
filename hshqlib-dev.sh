@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=93
+HSHQ_SCRIPT_VERSION=94
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -2054,6 +2054,7 @@ function postInstallation()
   #sendEmail -s "Configuration File" -b "$mail_msg" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
   sendRootCAEmail true
+  emailFormattedCredentials
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     #echo "Emailing DNS Info..."
     #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
@@ -2908,7 +2909,12 @@ EOF
       #  ;;
       2)
         PRIMARY_VPN_SETUP_TYPE=manual
-        showMessageBox "DNS Server" "Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally."
+        # Determine if this is a private IP, and if so, let the user know about networking.
+        showMsg="Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally. "
+        if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
+          showMsg=$showMsg"You will also need to ensure the device from which you are accessing the HomeServer is on the same local private network ($HOMESERVER_HOST_RANGE), and if you have any firewalls for your HomeServer, that the following ports have been opened: 443 (https),$SSH_PORT(ssh),$SCRIPTSERVER_LOCALHOST_PORT(Script-server),$PORTAINER_LOCAL_HTTPS_PORT(Portainer)"
+        fi
+        showMessageBox "DNS Server" "$showMsg"
         ;;
     esac
     updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
@@ -3903,8 +3909,6 @@ function main()
   sudo systemctl stop docker
   sudo systemctl start docker
   sudo rm -fr \\\$HSHQ_BASE_DIR
-  sudo rm -fr \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
-  sudo rm -fr \$HOME/$RS_INSTALL_FRESH_SCRIPT_NAME
   sudo rm -f \$HOME/$NUKE_SCRIPT_NAME
   sudo rm -fr \$HOME/.ssh/*
   sudo rm -f $HSHQ_SCRIPT_OPEN
@@ -7575,8 +7579,9 @@ EOF
         echo -e "=======================================================\n"
         echo -e "_______________________________________________________"
         echo -e "The installation script has been uploaded. Please log in to"
-        echo -e "the RelayServer and perform the installation, by entering the"
-        echo -e "command 'bash install.sh', and follow the prompts.\n"
+        echo -e "the RelayServer with your newly created username ($RELAYSERVER_REMOTE_USERNAME),"
+        echo -e "and perform the installation by entering the command"
+        echo -e "'bash install.sh', and follow the prompts.\n"
         echo -e "Ensure to copy your new WireGuard configuration above for your first user.\n"
         echo -e "AFTER the RelayServer has completed the installation, and AFTER the server"
         echo -e "has FULLY rebooted, enter 'integrate' to finish the integration. When this"
@@ -11800,6 +11805,16 @@ function getSvcCredentialsVW()
   echo "$abbrev,,login,$svc_name,,,0,$login_uri,$username,$password,"
 }
 
+function getFmtCredentials()
+{
+  svc_name=$1
+  login_uri=$2
+  abbrev=$3
+  username=$4
+  password=$5
+  echo "$svc_name, $username, $password, $login_uri"
+}
+
 function sendRootCAEmail()
 {
   is_sudo=$1
@@ -14667,6 +14682,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=91
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 94 ]; then
+    echo "Updating to Version 94..."
+    version94Update
+    HSHQ_VERSION=94
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16396,6 +16417,13 @@ function version91Update()
   version91UploadPortForwardingScripts
   outputAllScriptServerScripts
   version91WazuhUpdate
+  set -e
+}
+
+function version94Update()
+{
+  set +e
+  outputAllScriptServerScripts
   set -e
 }
 
@@ -21184,6 +21212,82 @@ function emailUserVaultwardenCredentials()
   strInstructions="Vaultwarden User Import Instructions:\n\n"
   strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager."
   sendEmail -s "Vaultwarden User Login Import" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $vw_email
+}
+
+function emailFormattedCredentials()
+{
+  strOutput="Be careful keeping this in your mailbox, it contains all of your Admin passwords in plain text! If you intend to install and use Vaultwarden, then you will receive an email once it is installed, and it will contain this information in a format that you can easily import into your vault. You can also resend yourself this email later from within Script-server, i.e. 01 Misc Utils -> 11 Email All Credentials\n\n\n\n"
+  strOutput=$strOutput"Service Name, Username, Password, URL(s)\n"
+  strOutput=$strOutput"_________________________________________________________________________\n\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-Admin" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_GUACAMOLE" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_UPTIMEKUMA" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SQLPAD" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SYNCTHING" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_CODESERVER" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_HOMEASSISTANT_TASMOADMIN" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-Admin" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-Users" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-HomeServers" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-RelayServer" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GITEA}-Admin" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $GITEA_ADMIN_USERNAME $GITEA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GITEA}-User" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_GITLAB" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_OPENLDAP_MANAGER" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_MATRIX_ELEMENT_PRIVATE" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-User" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PEERTUBE}-Admin" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PEERTUBE_ADMIN_USERNAME $PEERTUBE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PEERTUBE}-User" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_COLLABORA}-Admin" https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $COLLABORA_ADMIN_USERNAME $COLLABORA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NEXTCLOUD}-Admin" https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NEXTCLOUD_ADMIN_USERNAME $NEXTCLOUD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NEXTCLOUD}-User" https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DISCOURSE}-Admin" https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_VAULTWARDEN}-Admin" https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV admin $VAULTWARDEN_ADMIN_TOKEN)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CALIBRE_WEB}-Admin" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CALIBRE_WEB}-User" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FRESHRSS}-Admin" https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KEILA}-Admin" https://$SUB_KEILA.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WALLABAG}-Admin" https://$SUB_WALLABAG.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JUPYTER}-Admin" https://$SUB_JUPYTER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $JUPYTER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PAPERLESS}-Admin" https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN/accounts/login/ $HOMESERVER_ABBREV $PAPERLESS_ADMIN_USERNAME $PAPERLESS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SPEEDTEST_TRACKER_LOCAL}-Admin" https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SPEEDTEST_TRACKER_VPN}-Admin" https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
+  # RelayServer
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-RelayServer" https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PORTAINER}-RelayServer" https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RSPAMD}-RelayServer" https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SYNCTHING}-RelayServer" https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FILEBROWSER}-RelayServer" https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
+  fi
+  strOutput=${strOutput}"\n\n"
+  sendEmail -s "All Services Login Info" -b "$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function insertServicesHeimdall()
@@ -42849,6 +42953,52 @@ EOFSC
         }
       },
       "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailCredentialsFormatted.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+configpw=\$(getArgumentValue configpw "\$@")
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+set +e
+echo "Emailing login credentials for all services..."
+emailFormattedCredentials
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailCredentialsFormatted.json
+{
+  "name": "11 Email All Credentials",
+  "script_path": "conf/scripts/emailCredentialsFormatted.sh",
+  "description": "Emails all login credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a human-readable format, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "group": "$group_id_misc",
+  "parameters": [
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
       "pass_as": "argument"
     }
   ]
