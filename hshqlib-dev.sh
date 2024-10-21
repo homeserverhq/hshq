@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=94
+HSHQ_SCRIPT_VERSION=95
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -3979,6 +3979,10 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
+  if [ \$USERID = "0" ]; then
+    echo "This script should be run as a non-root user. Exiting..."
+    exit 1
+  fi
   RELAYSERVER_SERVER_IP=\$(getHostIP)
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
@@ -4335,7 +4339,11 @@ function main()
   shift "\$((\$OPTIND -1))"
   if [ -f $HSHQ_SCRIPT_OPEN ]; then
     echo "Installation already in progess, exiting..."
-    exit 1
+    exit 2
+  fi
+  if [ \$USERID = "0" ]; then
+    echo "This script should be run as a non-root user. Exiting..."
+    exit 3
   fi
   if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -43770,7 +43778,7 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
@@ -43880,6 +43888,8 @@ set -e
 performExitFunctions false
 
 EOFSC
+
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/performUpdateHSHQ.json
 {
