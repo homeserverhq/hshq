@@ -3893,6 +3893,10 @@ function main()
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFRE
+[Resolve]
+DNS=9.9.9.9 149.112.112.112
+EOFRE
   sudo systemctl enable systemd-resolved > /dev/null 2>&1
   sudo systemctl start systemd-resolved > /dev/null 2>&1
   sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
