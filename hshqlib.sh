@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=95
+HSHQ_SCRIPT_VERSION=96
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -107,7 +107,7 @@ function init()
   initServiceDefaults
   loadPinnedDockerImages
   loadDirectoryStructure
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
   hshqlogo=$(cat << EOF
@@ -4232,8 +4232,9 @@ EOFR
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
-  sudo netplan apply > /dev/null 2>&1
-
+  set +e
+  which netplan && sudo netplan apply > /dev/null 2>&1
+  set -e
   oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
   sed -i "s|\$oldIP|\$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
@@ -6715,9 +6716,14 @@ networks:
     external: true
 EOFCC
 
+  connIP=\$(getConnectingIPAddress)
+  privSubnets="${RELAYSERVER_WG_HS_IP}/32 ${RELAYSERVER_WG_USER_IP}/32"
+  if ! [ -z "\$connIP" ]; then
+    privSubnets=\$privSubnets" \${connIP}/32"
+  fi
   cat <<EOFCC > \$HOME/caddy.env
 CERT_RENEW_INTERVAL=1h
-PRIVATE_SUBNETS=${RELAYSERVER_WG_HS_IP}/32 ${RELAYSERVER_WG_USER_IP}/32 \$(getConnectingIPAddress)/32
+PRIVATE_SUBNETS=\$privSubnets
 INTERNAL_SUBNETS=10.0.0.0/8
 NET_WEBPROXY_SUBNET_PREFIX=$NET_WEBPROXY_SUBNET_PREFIX
 HTTP_USER=$RELAYSERVER_CADDYDNS_ADMIN_USERNAME
