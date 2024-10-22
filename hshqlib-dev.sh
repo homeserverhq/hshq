@@ -4404,7 +4404,12 @@ function getHostIP()
 
 function getConnectingIPAddress()
 {
-  echo \$(echo \$SSH_CLIENT | xargs | cut -d" " -f1)
+  cIP=\$(echo \$SSH_CLIENT | xargs | cut -d" " -f1)
+  if [ "\$(checkValidIPAddress \$cIP)" = "true" ]; then
+    echo "\$cIP"
+  else
+    echo ""
+  fi
 }
 
 function checkIsIPPrivate()
@@ -4438,6 +4443,25 @@ function isIPInSubnet()
   set +e
   if ! [ -z \$iiis_curE ]; then
     set -e
+  fi
+}
+
+function checkValidIPAddress()
+{
+  ip=\$(echo \$1 | cut -d "/" -f1)
+  stat=1
+  if [[ \$ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\$ ]]; then
+    OIFS=\$IFS
+    IFS='./'
+    ip=(\$ip)
+    IFS=\$OIFS
+    [[ \${ip[0]} -le 255 && \${ip[1]} -le 255 && \${ip[2]} -le 255 && \${ip[3]} -le 255 ]]
+    stat=\$?
+  fi
+  if [ \$stat -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
   fi
 }
 
