@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=96
+HSHQ_SCRIPT_VERSION=97
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -4048,7 +4048,7 @@ function haltAndWaitForConfirmation()
   echo
   echo "============================================================"
   echo "This server has been prepped for transfer. Please modify"
-  echo "your DNS A record to point to this new IP Address:"
+  echo "your DNS A records to point to this new IP Address:"
   echo
   echo "\$RELAYSERVER_SERVER_IP"
   echo
@@ -8633,9 +8633,6 @@ function createMyNetworkUserInvite()
   if [ -z "$pub_key" ]; then
     priv_key=$(wg genkey)
     pub_key=$(echo $priv_key | wg pubkey)
-  fi
-  if [ -z "$pre_key" ]; then
-    pre_key=$(wg genpsk)
   fi
   msg_body=""
   msg_body=$msg_body"$APPLICATION_FIRST_LINE\n"
