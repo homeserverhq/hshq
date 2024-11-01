@@ -11444,13 +11444,13 @@ function waitForStack()
   if [ -z $sleep_interval ]; then
     sleep_interval=5
   fi
-  isFound="false"
+  isStackReady="false"
   i=0
   while [ $i -le $max_interval ]
   do
     findtext=$(docker logs $containerName 2>&1 | grep "$searchText")
     if ! [ -z "$findtext" ]; then
-      isFound="true"
+      isStackReady="true"
       break
     fi
     echo "Container not ready, sleeping $sleep_interval second(s), total wait=$i seconds..."
@@ -11462,7 +11462,6 @@ function waitForStack()
   if ! [ -z $wfs_curE ]; then
     set -e
   fi
-  echo "$isFound"
 }
 
 function showMessageBox()
@@ -29031,8 +29030,8 @@ function performUpdateNextcloud()
 
 function performMaintenanceNextcloud()
 {
-  wfsNextcloudRes="$(waitForStack "ready to handle connections" nextcloud-app 600 5)"
-  if [ "$wfsNextcloudRes" = "true" ]; then
+  waitForStack "ready to handle connections" nextcloud-app 600 5
+  if [ "$isStackReady" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
     docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
   else
