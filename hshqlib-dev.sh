@@ -1994,7 +1994,6 @@ function performBaseInstallation()
   set -e
   echo "Setting static IP..."
   setStaticIPToCurrent
-  disableCloudInitNetwork
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
@@ -10364,14 +10363,6 @@ function checkIsIPPrivate()
   echo "false"
 }
 
-function disableCloudInitNetwork()
-{
-  sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
-network: {config: disabled}
-EOFCI
-  sudo netplan apply
-}
-
 function setStaticIPToCurrentRestore()
 {
   curHostIP=$HOMESERVER_HOST_IP
@@ -10431,6 +10422,11 @@ EOFSI
   chmod 0600 $HOME/00-installer-config.yaml
   sudo chown root:root $HOME/00-installer-config.yaml
   sudo mv -f $HOME/00-installer-config.yaml /etc/netplan/00-installer-config.yaml
+  # Disable cloud-init
+  sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
+network: {config: disabled}
+EOFCI
+  sudo rm /etc/netplan/50-cloud-init.yaml
   sudo netplan apply
 }
 
@@ -16577,7 +16573,6 @@ function version98Update()
   checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT="
   checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
   initServicesCredentials
-  disableCloudInitNetwork
   outputPingGatewayBootscript
 }
 
