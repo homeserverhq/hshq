@@ -1503,10 +1503,8 @@ function initConfig()
       DISABLED_SERVICES=$DS_MEM_16
     elif [ $total_ram -lt 22 ]; then
       DISABLED_SERVICES=$DS_MEM_22
-    elif [ $total_ram -lt 28 ]; then
-      DISABLED_SERVICES=$DS_MEM_28
     else
-      DISABLED_SERVICES=$DS_MEM_32
+      DISABLED_SERVICES=$DS_MEM_28
     fi
     updateConfigVar DISABLED_SERVICES $DISABLED_SERVICES
   fi
@@ -5552,7 +5550,7 @@ EOFR
   set +e
   which netplan && sudo netplan apply > /dev/null 2>&1
   set -e
-  installStack adguard adguard "entering tls listener loop on" \$HOME/adguard.env
+  installStack adguard adguard "entering listener loop proto=tls" \$HOME/adguard.env
 }
 
 function outputConfigAdGuard()
@@ -10289,7 +10287,7 @@ function getNonPrivateConnectingIP()
       str_res=${str_res}" ${rsip}/32"
     fi
     set +e
-    echo "$str_res" | grep "$HOMESERVER_HOST_IP"
+    echo "$str_res" | grep "$HOMESERVER_HOST_IP" > /dev/null 2>&1
     if [ $? -ne 0 ] && ! [ -z "$HOMESERVER_HOST_IP" ]; then
       str_res=${str_res}" ${HOMESERVER_HOST_IP}/32"
     fi
@@ -14079,7 +14077,7 @@ WAZUH_USERS_KIBANARO_PASSWORD=
 WAZUH_USERS_LOGSTASH_PASSWORD=
 WAZUH_USERS_READALL_PASSWORD=
 WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD=
-WAZUH_AGENT_VERSION=4.7.5-1
+WAZUH_AGENT_VERSION=4.9.1-1
 # Wazuh (Service Details) END
 
 # Collabora (Service Details) BEGIN
@@ -21674,10 +21672,9 @@ function initServiceDefaults()
 
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,kasm,stirlingpdf,piped
-  DS_MEM_28=gitlab,discourse,netdata,jupyter
-  DS_MEM_32=gitlab,netdata
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,photoprism,kasm,stirlingpdf,piped
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm
 }
 
 function getScriptImageByContainerName()
@@ -22459,7 +22456,7 @@ function installAdGuard()
 
   prepAdguardInstallation
 
-  installStack adguard adguard "entering tls listener loop on" $HOME/adguard.env
+  installStack adguard adguard "entering listener loop proto=tls" $HOME/adguard.env
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing AdGuard"
@@ -26292,8 +26289,8 @@ function installMailu()
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   sudo mv $HSHQ_STACKS_DIR/mailu/dovecot-override.conf $HSHQ_STACKS_DIR/mailu/overrides/dovecot/dovecot.conf
   sudo mv $HSHQ_STACKS_DIR/mailu/custom.inc.php $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php
-  sudo mv $HSHQ_STACKS_DIR/mailu/external_relay.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/external_relay.conf
-  sudo mv $HSHQ_STACKS_DIR/mailu/ip_whitelist.map $HSHQ_STACKS_DIR/mailu/overrides/rspamd/ip_whitelist.map
+  sudo mv $HSHQ_STACKS_DIR/mailu/external_relay.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/local/
+  sudo mv $HSHQ_STACKS_DIR/mailu/ip_whitelist.map $HSHQ_STACKS_DIR/mailu/overrides/rspamd/local/
   sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/local/ip_whitelist.map
   sudo chmod 644 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/local/ip_whitelist.map
   sudo mv $HSHQ_STACKS_DIR/mailu/ip_blacklist.map $HSHQ_STACKS_DIR/mailu/overrides/rspamd/local/ip_blacklist.map
@@ -26980,7 +26977,7 @@ function installWazuh()
 </group>
 
 EOFRU
-  docker exec -it wazuh.manager service wazuh-manager restart > /dev/null 2>&1
+  docker container restart wazuh.manager > /dev/null 2>&1
   installWazuhAgent
 
   inner_block=""
@@ -28110,8 +28107,6 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set integration_mastodon use_popup --value="1"
   docker exec -u www-data nextcloud-app php occ config:app:set integration_mastodon oauth_instance_url --value="https://$SUB_MASTODON.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set integration_mastodon enabled --value="yes"
-  docker exec -u www-data nextcloud-app php occ --no-warnings app:install workflow_media_converter
-  docker exec -u www-data nextcloud-app php occ --no-warnings app:install drawio
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install riotchat
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install previewgenerator
   docker exec -u www-data nextcloud-app php occ config:app:set riotchat custom_json --value="{\"disable_guests\":true,\"piwik\":false,\"settingDefaults\":{\"language\":\"en\"},\"disable_custom_urls\":true,\"disable_login_language_selector\":true,\"disable_3pid_login\": true,\"default_server_config\":{\"m.homeserver\":{\"base_url\":\"https:\/\/$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN\",\"server_name\":\"$HOMESERVER_DOMAIN\"}},\"brand\":\"Nextcloud\",\"branding\":{\"authHeaderLogoUrl\":\"\/core\/img\/logo\/logo.svg?v=0\"},\"showLabsSettings\":true,\"sso_immediate_redirect\":false,\"jitsi\": {\"preferred_domain\": \"$SUB_JITSI.$HOMESERVER_DOMAIN\"},\"roomDirectory\": {\"servers\": [\"$HOMESERVER_DOMAIN\"]},\"default_theme\": \"dark\"}"
@@ -30284,6 +30279,7 @@ function installMastodon()
   generateCert mastodon-elasticsearch mastodon-elasticsearch
   outputMastdonMigrate $(getScriptImageByContainerName mastodon-db) $(getScriptImageByContainerName mastodon-redis) $(getScriptImageByContainerName mastodon-app)
   cp $HOME/mastodon.env $HSHQ_STACKS_DIR/mastodon/stack.env
+  sed -i "s|^TZ=.*|TZ=${TZ}|g" $HSHQ_STACKS_DIR/mastodon/stack.env
   migrateMastodon
   installStack mastodon mastodon-app "Listening on http" $HOME/mastodon.env 5
   retval=$?
@@ -30628,6 +30624,9 @@ LDAP_BIND_DN=$LDAP_READONLY_USER_BIND_DN
 LDAP_PASSWORD=$LDAP_READONLY_USER_PASSWORD
 LDAP_UID=uid
 LDAP_SEARCH_FILTER=(&(|(%{uid}=%{email})(%{mail}=%{email}))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY
+ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$MASTODON_ARE_KEY_DERIVATION_SALT
+ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$MASTODON_ARE_PRIMARY_KEY
 EOFMD
 
   cat <<EOFMD > $HSHQ_STACKS_DIR/mastodon/web/nginx.conf
@@ -31904,7 +31903,6 @@ function installPhotoPrism()
     sleep 10
     i=$((i+10))
   done
-  set -e
   if [ $isFound == "F" ]; then
     docker compose -f $HOME/photoprism-compose-tmp.yml down -v
     echo "ERROR: PhotoPrism did not start up correctly..."
@@ -31918,7 +31916,7 @@ function installPhotoPrism()
     return $retval
   fi
   rm -f $HOME/photoprism-compose-tmp.yml
-
+  set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -32266,7 +32264,6 @@ function installGuacamole()
     sleep 5
     i=$((i+5))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "Guacamole did not start up correctly..."
     docker compose -f $HOME/guacamole-compose-tmp.yml down -v
@@ -32281,7 +32278,7 @@ function installGuacamole()
     return $retval
   fi
   rm -f $HOME/guacamole-compose-tmp.yml
-
+  set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -33336,9 +33333,22 @@ function installPeerTube()
     return $retval
   fi
   docker exec peertube-app bash -c "echo $PEERTUBE_ADMIN_PASSWORD | npm run reset-password -- -u root" > /dev/null
-  docker exec -u 999 peertube-app bash -c "npm run plugin:install -- --npm-name peertube-plugin-auth-ldap" > /dev/null
-  docker exec -u 999 peertube-app bash -c "npm run plugin:install -- --npm-name peertube-plugin-livechat" > /dev/null
-  docker exec -u 999 peertube-app bash -c "npm run plugin:install -- --npm-name peertube-theme-dark" > /dev/null
+  echo "Installing plugins..."
+  set +e
+  docker exec -u 999 peertube-app bash -c "timeout 60 npm run plugin:install -- --npm-name peertube-plugin-auth-ldap" > /dev/null
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not install LDAP plugin, exiting..."
+    return 2
+  fi
+  docker exec -u 999 peertube-app bash -c "timeout 60 npm run plugin:install -- --npm-name peertube-plugin-livechat" > /dev/null
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not install LiveChat plugin, continuing..."
+  fi
+  docker exec -u 999 peertube-app bash -c "timeout 60 npm run plugin:install -- --npm-name peertube-theme-dark" > /dev/null
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not install Dark Theme plugin, continuing..."
+  fi
+  set -e
   docker exec peertube-db /dbexport/setupLDAP.sh
   rm -f $HSHQ_STACKS_DIR/peertube/dbexport/setupLDAP.sh
   docker container restart peertube-app
@@ -35430,7 +35440,6 @@ function installCodeServer()
     sleep 5
     i=$((i+5))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "CodeServer did not start up correctly..."
     docker compose -f $HOME/codeserver-compose-tmp.yml down -v
@@ -35439,7 +35448,6 @@ function installCodeServer()
   echo "Codeserver installed, sleeping 10 seconds..."
   sleep 10
   docker exec codeserver code-server --install-extension cweijan.vscode-ssh
-  set -e
   docker compose -f $HOME/codeserver-compose-tmp.yml down -v
   rm -f $HOME/codeserver-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
@@ -35449,7 +35457,7 @@ function installCodeServer()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
+  set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CODESERVER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -48458,14 +48466,13 @@ function installHeimdall()
     sleep 1
     i=$((i+1))
   done
-  set -e
   if [ $isFound == "F" ]; then
     echo "Heimdall did not start up correctly..."
     sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
     exit 1
   fi
   sleep 3
-
+  set -e
   sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
   rm -f $HOME/heimdall-compose-tmp.yml
 
