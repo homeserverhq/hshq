@@ -36524,6 +36524,7 @@ function installDrawIO()
   set +e
   docker container ps | grep nextcloud-app > /dev/null 2>&1
   if [ $? -eq 0 ]; then
+    docker exec -u www-data nextcloud-app php occ --no-warnings app:install drawio
     docker exec -u www-data nextcloud-app php occ --no-warnings config:app:set drawio DrawioUrl --value="https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN"
   fi
   set -e
