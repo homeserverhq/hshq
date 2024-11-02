@@ -1994,6 +1994,7 @@ function performBaseInstallation()
   set -e
   echo "Setting static IP..."
   setStaticIPToCurrent
+  disableCloudInitNetwork
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
@@ -4735,7 +4736,7 @@ run-parts --regex '.*sh\$' \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 EOFBS
   sudo chmod 744 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
 
-  default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+  default_iface=\$(getDefaultIface)
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
   set +e
@@ -4852,7 +4853,7 @@ EOFBS
 # then allow traffic from the gateway, since raw table blocks all private ranges
 def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
 is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
-def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
 if [ "\$is_def_priv" = "true" ]; then
   echo "Default route is in private range, adding allowance to (raw)iptables..."
   sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
@@ -5168,7 +5169,7 @@ RELAYSERVER_PF_ADD_DIR=\$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 RELAYSERVER_PF_REMOVE_DIR=\$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding
 RELAYSERVER_WG_SV_IP=$RELAYSERVER_WG_SV_IP
 RELAYSERVER_WG_INTERFACE_NAME=$RELAYSERVER_WG_INTERFACE_NAME
-DEFAULT_IFACE=\\\$(ip route | grep -e "^default" | awk -F'dev ' '{print \\\$2}' | xargs | cut -d" " -f1)
+DEFAULT_IFACE=\\\$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \\\$2}' | xargs | cut -d" " -f1)
 
 function main()
 {
@@ -6275,11 +6276,16 @@ function installWireGuard()
   installStack clientdns clientdns-wireguard " " \$HOME/clientdns.env
 }
 
+function getDefaultIface()
+{
+  echo \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+}
+
 function outputConfigWireGuard()
 {
   sudo touch \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset
   sudo chmod 600 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/inetusers.ipset
-  default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+  default_iface=\$(getDefaultIface)
   sudo tee \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh >/dev/null <<EOFPU
 #!/bin/bash
 COMMAND=\\\$1
@@ -10269,7 +10275,7 @@ function getHomeServerPrivateRange()
 {
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
     # This function call strangely and erroneously returns nothing sometimes...
-    ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk '{print $1}' | head -1
+    ip route | grep src | grep $(getDefaultIface) | grep / | awk '{print $1}' | head -1
   else
     echo "${HOMESERVER_HOST_IP}/32"
   fi
@@ -10305,11 +10311,16 @@ function getConnectingIPAddress()
 
 function getDefaultRouteIPAddress()
 {
-  ip_addr=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | awk -F'src ' '{print $2}' | xargs | cut -d" " -f1)
+  ip_addr=$(ip route | grep src | grep $(getDefaultIface) | grep / | awk -F'src ' '{print $2}' | xargs | cut -d" " -f1)
   if ! [ "$(checkValidIPAddress $ip_addr)" = "true" ]; then
     ip_addr=$(hostname -I | cut -d" " -f1)
   fi
   echo $ip_addr
+}
+
+function getDefaultIface()
+{
+  echo $(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
 }
 
 function getIPFromHostname()
@@ -10353,6 +10364,14 @@ function checkIsIPPrivate()
   echo "false"
 }
 
+function disableCloudInitNetwork()
+{
+  sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
+network: {config: disabled}
+EOFCI
+  sudo netplan apply
+}
+
 function setStaticIPToCurrentRestore()
 {
   curHostIP=$HOMESERVER_HOST_IP
@@ -10374,7 +10393,7 @@ function setStaticIPToCurrent()
     return
   fi
   cur_ip=$(getDefaultRouteIPAddress)
-  cidr_part=$(ip route | grep src | grep $(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+  cidr_part=$(ip route | grep src | grep $(getDefaultIface) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
   ip_cidr=$cur_ip"/"$cidr_part
   cur_gate=$(getCurrentGateway)
   setStaticIP $ip_cidr $cur_gate
@@ -10393,7 +10412,7 @@ function setStaticIP()
 {
   ip_cidr=$1
   cur_gate=$2
-  adapter_name=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+  adapter_name=$(getDefaultIface)
   cat <<EOFSI > $HOME/00-installer-config.yaml
 network:
   version: 2
@@ -10434,7 +10453,7 @@ function changeHostStaticIP()
   gwGuess=$(sipcalc $newHostIPCIDR | grep "^Usable range" | xargs | cut -d"-" -f2 | xargs)
   newHostGateway=$(promptUserInputMenu "$gwGuess" "New Gateway" "Enter the gateway IP address. This is typically the IP address of your router, the first IP in the range:")
   newHSHostIP=$(echo $newHostIPCIDR | cut -d"/" -f1)
-  default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+  default_iface=$(getDefaultIface)
   set +e
   echo "Setting new static IP on host..."
   setStaticIP $newHostIPCIDR $newHostGateway
@@ -13495,7 +13514,7 @@ RELAYSERVER_PF_ADD_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 RELAYSERVER_PF_REMOVE_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding
 RELAYSERVER_WG_SV_IP=$RELAYSERVER_WG_SV_IP
 RELAYSERVER_WG_INTERFACE_NAME=$RELAYSERVER_WG_INTERFACE_NAME
-DEFAULT_IFACE=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+DEFAULT_IFACE=\$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
 
 function main()
 {
@@ -15925,7 +15944,7 @@ EOFSC
 #!/bin/bash
   set +e
 
-  default_iface=\$(ip route | grep -e "^default" | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+  default_iface=\$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
   SSH_PORT=$RELAYSERVER_SSH_PORT
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
@@ -16166,7 +16185,7 @@ function version54Update()
   notifyRSLogin
   outputAllScriptServerScripts
   outputIPTablesScripts false
-  default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+  default_iface=$(getDefaultIface)
   sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
   generateCert script-server "script-server,host.docker.internal" $HOMESERVER_HOST_IP
   insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true
@@ -16195,7 +16214,7 @@ function version55Update()
     # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
     outputIPTablesScripts false
     if ! [ -z $HOMENET_ADDITIONAL_IPS ]; then
-      default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+      default_iface=$(getDefaultIface)
       sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
     fi
   fi
@@ -16558,6 +16577,8 @@ function version98Update()
   checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT="
   checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
   initServicesCredentials
+  disableCloudInitNetwork
+  outputPingGatewayBootscript
 }
 
 function mfFixCACertPath()
@@ -17610,7 +17631,7 @@ function removeAdditionalIPFromIPTables()
 {
   remIP=$1
   if [ "$HOMESERVER_HOST_ISPRIVATE" = "false" ]; then
-    default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+    default_iface=$(getDefaultIface)
     ports_list=$(getExposedPortsList)
     portsArr=($(echo $ports_list | tr "," "\n"))
     for cur_port in "${portsArr[@]}"
@@ -17624,7 +17645,7 @@ function removeAdditionalIPFromIPTables()
 function outputIPTablesScripts()
 {
   isRunUpdate=$1
-  default_iface=$(ip route | grep -e "^default" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+  default_iface=$(getDefaultIface)
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -18209,7 +18230,7 @@ function outputPingGatewayBootscript()
 timeout_length=30
 ping_count=10
 
-cur_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
+cur_gate=\$(ip route | grep -e "^default" | head -n 1 | awk '{print \$3}')
 timeout \$timeout_length ping -c \$ping_count \$cur_gate > /dev/null
 
 EOFPO
@@ -26955,12 +26976,19 @@ function installWazuh()
     return $retval
   fi
   echo "Wazuh manager installed..."
+  error_text="Fatal glibc error"
   maxACount=300
   curACount=1
+  set +e
   while [ $curACount -lt $maxACount ]
   do
     if sudo test -f $HSHQ_STACKS_DIR/wazuh/volumes/etc/shared/default/agent.conf; then
       break
+    fi
+    finderror=$(docker logs wazuh.manager 2>&1 | grep "$error_text")
+    if ! [ -z "$finderror" ]; then
+      echo "This CPU does not support x86-64-v2, Wazuh cannot be installed, exiting..."
+      return 3
     fi
     echo "Waiting for agent.conf to initialize ($curACount seconds)..."
     sleep 1
@@ -26983,7 +27011,7 @@ function installWazuh()
 EOFRU
   docker container restart wazuh.manager > /dev/null 2>&1
   installWazuhAgent
-
+  set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_WAZUH.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -28174,11 +28202,16 @@ function installNextcloud()
 
   sleep 5
   docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
-
-  # This is dumb. https://github.com/nextcloud/notify_push/issues/355
-  sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
-
   rm -f $HOME/nextcloud-compose-tmp.yml
+
+  if sudo test -d $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin; then
+    # This is dumb. https://github.com/nextcloud/notify_push/issues/355
+    sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
+  else
+    set +e
+    echo "Nextcloud Push plugin was not installed correctly, exiting..."
+    return 5
+  fi
   echo "post_max_size=16G" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
   echo "upload_max_filesize=16G" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
   echo "memory_limit=2G" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
@@ -31544,7 +31577,7 @@ function installJellyfin()
   initServicesCredentials
 
   outputConfigJellyfin
-  installStack jellyfin jellyfin "Startup complete" $HOME/jellyfin.env
+  installStack jellyfin jellyfin "Startup complete" $HOME/jellyfin.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
