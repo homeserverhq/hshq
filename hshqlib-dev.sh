@@ -14134,6 +14134,9 @@ MASTODON_DATABASE_USER=
 MASTODON_DATABASE_USER_PASSWORD=
 MASTODON_REDIS_PASSWORD=
 MASTODON_ELASTICSEARCH_PASSWORD=
+MASTODON_ARE_DETERMINISTIC_KEY=
+MASTODON_ARE_KEY_DERIVATION_SALT=
+MASTODON_ARE_PRIMARY_KEY=
 # Mastodon (Service Details) END
 
 # Dozzle (Service Details) BEGIN
@@ -43775,7 +43778,7 @@ EOFSC
 {
   "name": "03 Update Service(s)",
   "script_path": "conf/scripts/updateServicesFromList.sh",
-  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that you plan to update. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -43854,7 +43857,7 @@ EOFSC
 {
   "name": "04 Update All Available Services",
   "script_path": "conf/scripts/updateAllAvailableServices.sh",
-  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that will be updated. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.",
   "group": "$group_id_services",
   "parameters": [
     {
