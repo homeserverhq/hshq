@@ -62,7 +62,7 @@ bash hshq.sh
 ## FAQ
   ***Q: Why one big bash script?***
 
-  **A:** The source code is composed of two bash scripts, hshq.sh and hshqlib.sh. hshq.sh is a simple wrapper script that invokes hshqlib.sh. hshq.sh will rarely, if ever, change. hshqlib.sh will be regularly updated. By putting (nearly) everything into a single script (hshqlib.sh), it makes it much easier to maintain consistency with versioning as well as <a href="https://wiki.homeserverhq.com/en/tutorials/source-code-verification" target="_blank">code-signing</a>. At around 50k lines (currently), the file is still only about 1.8 MB in size, which makes it very lightweight for downloading newly updated versions. Even though this is rather large for a bash script, it is a function-based approach - there are over 800+ functions.
+  **A:** The source code is composed of two bash scripts, hshq.sh and hshqlib.sh. hshq.sh is a simple wrapper script that invokes hshqlib.sh. hshq.sh will rarely, if ever, change. hshqlib.sh will be regularly updated. By putting (nearly) everything into a single script (hshqlib.sh), it makes it much easier to maintain consistency with versioning as well as <a href="https://wiki.homeserverhq.com/en/tutorials/source-code-verification" target="_blank">code-signing</a>. At around 50k lines (currently), the file is still only about 1.8 MB in size, which makes it very lightweight for downloading newly updated versions. Even though this is rather large for a bash script, it is a function-based approach - there are around 900 functions.
 
   ***Q: Why Linux Ubuntu?***
 
