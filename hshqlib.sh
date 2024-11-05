@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=98
+HSHQ_SCRIPT_VERSION=99
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -11263,7 +11263,7 @@ function installStack()
   ins_retVal=1
   while [ $ins_numTries -le $ins_totalTries ]
   do
-    if [ "$IS_STACK_DEBUG" = "true" ]; then
+    if [ "$IS_STACK_DEBUG" = "true" ] || [ $ins_numTries -eq $ins_totalTries ]; then
       http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
     else
       http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
@@ -14479,6 +14479,15 @@ GRAMPSWEB_SECRET_KEY=
 GRAMPSWEB_REDIS_PASSWORD=
 # GrampsWeb (Service Details) END
 
+# Penpot (Service Details) BEGIN
+PENPOT_INIT_ENV=true
+PENPOT_REDIS_PASSWORD=
+PENPOT_DATABASE_NAME=
+PENPOT_DATABASE_USER=
+PENPOT_DATABASE_USER_PASSWORD=
+PENPOT_SECRET_KEY=
+# Penpot (Service Details) END
+
 # Service Details END
 EOFCF
   set -e
@@ -14822,6 +14831,12 @@ function checkUpdateVersion()
     echo "Updating to Version 98..."
     version98Update
     HSHQ_VERSION=98
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 99 ]; then
+    echo "Updating to Version 99..."
+    version99Update
+    HSHQ_VERSION=99
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -16574,6 +16589,11 @@ function version98Update()
   checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
   initServicesCredentials
   outputPingGatewayBootscript
+}
+
+function version99Update()
+{
+  checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
 }
 
 function mfFixCACertPath()
@@ -19533,6 +19553,7 @@ function loadPinnedDockerImages()
   IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.24
   IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.24
   IMG_MASTODON_APP=tootsuite/mastodon:v4.3.1
+  IMG_MASTODON_STREAMING=tootsuite/mastodon-streaming:v4.3.1
   IMG_MASTODON_WEB=nginx:1.25.3-alpine
   IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.12.2
   IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.83
@@ -19554,6 +19575,9 @@ function loadPinnedDockerImages()
   IMG_PAPERLESS_GOTENBERG=gotenberg/gotenberg:8.12.0
   IMG_PAPERLESS_TIKA=apache/tika:3.0.0.0
   IMG_PEERTUBE_APP=chocobozzz/peertube:v6.3.3-bookworm
+  IMG_PENPOT_BACKEND=penpotapp/backend:2.2.1
+  IMG_PENPOT_FRONTEND=penpotapp/frontend:2.2.1
+  IMG_PENPOT_EXPORTER=penpotapp/exporter:2.2.1
   IMG_PHOTOPRISM_APP=photoprism/photoprism:240915
   IMG_PIPED_FRONTEND=1337kavin/piped-frontend:latest
   IMG_PIPED_PROXY=1337kavin/piped-proxy:latest
@@ -19572,6 +19596,7 @@ function loadPinnedDockerImages()
   IMG_SQLPAD=sqlpad/sqlpad:7.5.1
   IMG_STIRLINGPDF=frooodle/s-pdf:0.31.1
   IMG_SYNCTHING=syncthing/syncthing:1.28.0
+  IMG_TOMCAT=tomcat:11
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.15-alpine
   IMG_VAULTWARDEN_APP=vaultwarden/server:1.32.3-alpine
   IMG_VAULTWARDEN_LDAP=vividboarder/vaultwarden_ldap:2.0.2
@@ -19615,7 +19640,7 @@ function getScriptStackVersion()
     duplicati)
       echo "v2" ;;
     mastodon)
-      echo "v6" ;;
+      echo "v7" ;;
     dozzle)
       echo "v5" ;;
     searxng)
@@ -19708,6 +19733,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     grampsweb)
       echo "v2" ;;
+    penpot)
+      echo "v1" ;;
     ofelia)
       echo "v4" ;;
     sqlpad)
@@ -19834,6 +19861,9 @@ function pullDockerImages()
   pullImage $IMG_PIPED_API
   pullImage $IMG_PIPED_CRON
   pullImage $IMG_GRAMPSWEB
+  pullImage $IMG_PENPOT_BACKEND
+  pullImage $IMG_PENPOT_FRONTEND
+  pullImage $IMG_PENPOT_EXPORTER
 }
 
 function pullBaseServicesDockerImages()
@@ -20787,6 +20817,26 @@ function initServicesCredentials()
     GRAMPSWEB_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar GRAMPSWEB_REDIS_PASSWORD $GRAMPSWEB_REDIS_PASSWORD
   fi
+  if [ -z "$PENPOT_REDIS_PASSWORD" ]; then
+    PENPOT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PENPOT_REDIS_PASSWORD $PENPOT_REDIS_PASSWORD
+  fi
+  if [ -z "$PENPOT_DATABASE_NAME" ]; then
+    PENPOT_DATABASE_NAME=penpotdb
+    updateConfigVar PENPOT_DATABASE_NAME $PENPOT_DATABASE_NAME
+  fi
+  if [ -z "$PENPOT_DATABASE_USER" ]; then
+    PENPOT_DATABASE_USER=penpot-user
+    updateConfigVar PENPOT_DATABASE_USER $PENPOT_DATABASE_USER
+  fi
+  if [ -z "$PENPOT_DATABASE_USER_PASSWORD" ]; then
+    PENPOT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PENPOT_DATABASE_USER_PASSWORD $PENPOT_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$PENPOT_SECRET_KEY" ]; then
+    PENPOT_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar PENPOT_SECRET_KEY $PENPOT_SECRET_KEY
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -20837,6 +20887,8 @@ function checkCreateNonbackupDirs()
   mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
   mkdir -p $HSHQ_NONBACKUP_DIR/piped
   mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
+  mkdir -p $HSHQ_NONBACKUP_DIR/penpot
+  mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
 }
 
 function installBaseStacks()
@@ -20920,6 +20972,7 @@ function initServiceVars()
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
   checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
+  checkAddSvc "SVCD_PENPOT=penpot,penpot,other,user,Penpot,penpot,hshq"
   checkAddSvc "SVCD_PHOTOPRISM=photoprism,photoprism,other,user,PhotoPrism,photoprism,hshq"
   checkAddSvc "SVCD_PIPED_FRONTEND=piped,piped,primary,user,Piped,piped,hshq"
   checkAddSvc "SVCD_PIPED_PROXY=piped,piped-proxy,primary,user,Piped,piped-proxy,hshq"
@@ -21068,6 +21121,8 @@ function installStackByName()
       installPiped $is_integrate ;;
     grampsweb)
       installGrampsWeb $is_integrate ;;
+    penpot)
+      installPenpot $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -21206,6 +21261,8 @@ function performUpdateStackByName()
       performUpdatePiped "$portainerToken" ;;
     grampsweb)
       performUpdateGrampsWeb "$portainerToken" ;;
+    penpot)
+      performUpdatePenpot "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -21264,6 +21321,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PENPOT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
@@ -21395,6 +21453,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -21421,9 +21480,10 @@ function emailUserVaultwardenCredentials()
   strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
   strInstructions="Vaultwarden User Import Instructions:\n\n"
-  strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager."
+  strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager. An additional entry, Penpot has been added. It uses LDAP as well, but requires the email address to be entered rather than the ldap username, so it requires a separate entry."
   sendEmail -s "Vaultwarden User Login Import" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $vw_email
 }
 
@@ -21487,6 +21547,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -21582,6 +21643,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0 "filedrop.png"
   insertIntoHeimdallDB "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0 "piped.png"
   insertIntoHeimdallDB "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0 "grampsweb.png"
+  insertIntoHeimdallDB "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0 "penpot.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -21670,6 +21732,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -21688,13 +21751,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,photoprism,kasm,stirlingpdf,piped
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,photoprism,kasm,stirlingpdf,piped,penpot
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
 }
 
 function getScriptImageByContainerName()
@@ -21848,7 +21911,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_MASTODON_APP
       ;;
     "mastodon-streaming")
-      container_image=$IMG_MASTODON_APP
+      container_image=$IMG_MASTODON_STREAMING
       ;;
     "mastodon-sidekiq")
       container_image=$IMG_MASTODON_APP
@@ -22179,6 +22242,21 @@ function getScriptImageByContainerName()
       ;;
     "grampsweb-redis")
       container_image=$IMG_REDIS
+      ;;
+    "penpot-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "penpot-redis")
+      container_image=$IMG_REDIS
+      ;;
+    "penpot-backend")
+      container_image=$IMG_PENPOT_BACKEND
+      ;;
+    "penpot-frontend")
+      container_image=$IMG_PENPOT_FRONTEND
+      ;;
+    "penpot-exporter")
+      container_image=$IMG_PENPOT_EXPORTER
       ;;
     *)
       ;;
@@ -30355,258 +30433,7 @@ function installMastodon()
 
 function outputConfigMastodon()
 {
-  cat <<EOFMD > $HOME/mastodon-compose.yml
-$STACK_VERSION_PREFIX mastodon $(getScriptStackVersion mastodon)
-
-services:
-  mastodon-db:
-    image: $(getScriptImageByContainerName mastodon-db)
-    container_name: mastodon-db
-    hostname: mastodon-db
-    user: "\${UID}:\${GID}"
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    shm_size: 256mb
-    networks:
-      - int-mastodon-net
-      - dock-dbs-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/dbexport:/dbexport
-    labels:
-      - "ofelia.enabled=true"
-      - "ofelia.job-exec.mastodon-hourly-db.schedule=@every 1h"
-      - "ofelia.job-exec.mastodon-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.mastodon-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.mastodon-hourly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.mastodon-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.mastodon-hourly-db.email-from=Mastodon Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-      - "ofelia.job-exec.mastodon-hourly-db.mail-only-on-error=true"
-      - "ofelia.job-exec.mastodon-monthly-db.schedule=0 0 8 1 * *"
-      - "ofelia.job-exec.mastodon-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.mastodon-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.mastodon-monthly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.mastodon-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.mastodon-monthly-db.email-from=Mastodon Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-      - "ofelia.job-exec.mastodon-monthly-db.mail-only-on-error=false"
-
-  mastodon-redis:
-    image: $(getScriptImageByContainerName mastodon-redis)
-    container_name: mastodon-redis
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-mastodon-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-
-  mastodon-redis-cache:
-    image: $(getScriptImageByContainerName mastodon-redis-cache)
-    container_name: mastodon-redis-cache
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-mastodon-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
-
-  mastodon-app:
-    image: $(getScriptImageByContainerName mastodon-app)
-    container_name: mastodon-app
-    hostname: mastodon-app
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    command: bash -c "rm -f /mastodon/tmp/pids/server.pid; bundle exec rails s -p 3000"
-    depends_on:
-      - mastodon-db
-      - mastodon-redis
-      #- mastodon-elasticsearch
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:3000/health || exit 1']
-    networks:
-      - int-mastodon-net
-      - dock-ext-net
-      - dock-internalmail-net
-      - dock-ldap-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
-      - v-mastodon-static:/mastodon/public
-
-  mastodon-streaming:
-    image: $(getScriptImageByContainerName mastodon-streaming)
-    container_name: mastodon-streaming
-    hostname: mastodon-streaming
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    command: node ./streaming
-    depends_on:
-      - mastodon-db
-      - mastodon-redis
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:4000/api/v1/streaming/health || exit 1']
-    networks:
-      - int-mastodon-net
-      - dock-ext-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-  mastodon-sidekiq:
-    image: $(getScriptImageByContainerName mastodon-sidekiq)
-    container_name: mastodon-sidekiq
-    hostname: mastodon-sidekiq
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    command: bundle exec sidekiq
-    depends_on:
-      - mastodon-db
-      - mastodon-redis
-    healthcheck:
-      test: ['CMD-SHELL', "ps aux | grep '[s]idekiq\ 6' || false"]
-    networks:
-      - int-mastodon-net
-      - dock-ext-net
-      - dock-internalmail-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
-
-  mastodon-web:
-    image: $(getScriptImageByContainerName mastodon-web)
-    container_name: mastodon-web
-    hostname: mastodon-web
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - int-mastodon-net
-      - dock-proxy-net
-    depends_on:
-      - mastodon-app
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/mastodon-web.crt:/etc/nginx/certs/cert.crt
-      - \${HSHQ_SSL_DIR}/mastodon-web.key:/etc/nginx/certs/cert.key
-      - \${HSHQ_STACKS_DIR}/mastodon/web/nginx.conf:/etc/nginx/nginx.conf
-      - v-mastodon-static:/var/www/html:ro
-
-#  mastodon-elasticsearch:
-#    image: $(getScriptImageByContainerName mastodon-elasticsearch)
-#    container_name: mastodon-elasticsearch
-#    hostname: mastodon-elasticsearch
-#    restart: unless-stopped
-#    security_opt:
-#      - no-new-privileges:true
-#    healthcheck:
-#       test: ["CMD-SHELL", "nc -z mastodon-elasticsearch 9200"]
-#    networks:
-#      - int-mastodon-net
-#      - dock-ext-net
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - /etc/ssl/certs:/etc/ssl/certs:ro
-#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#      - \${HSHQ_SSL_DIR}/mastodon-elasticsearch.crt:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.crt
-#      - \${HSHQ_SSL_DIR}/mastodon-elasticsearch.key:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.key
-#      - \${HSHQ_STACKS_DIR}/mastodon/elasticsearch:/usr/share/elasticsearch/data
-#    ulimits:
-#      memlock:
-#        soft: -1
-#        hard: -1
-#      nofile:
-#        soft: 65536
-#        hard: 65536
-#    environment:
-#      - "ELASTIC_PASSWORD=$MASTODON_ELASTICSEARCH_PASSWORD"
-#      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-#      - "xpack.security.enabled=true"
-#      - "xpack.security.transport.ssl.enabled=true"
-#      - "xpack.security.transport.ssl.certificate=/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.crt"
-#      - "xpack.security.transport.ssl.key=/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.key"
-#      - "xpack.watcher.enabled=false"
-#      - "xpack.graph.enabled=false"
-#      - "xpack.ml.enabled=false"
-#      - "ingest.geoip.downloader.enabled=false"
-#      - "bootstrap.memory_lock=true"
-#      - "cluster.name=es-mastodon"
-#      - "discovery.type=single-node"
-
-volumes:
-  v-mastodon-static:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/mastodon/static
-  v-mastodon-redis:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/mastodon/redis
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-ldap-net:
-    name: dock-ldap
-    external: true
-  dock-internalmail-net:
-    name: dock-internalmail
-    external: true
-  dock-ext-net:
-    name: dock-ext
-    external: true
-  dock-dbs-net:
-    name: dock-dbs
-    external: true
-  int-mastodon-net:
-    driver: bridge
-    internal: true
-    ipam:
-      driver: default
-EOFMD
-
+  outputMastodonCompose
   cat <<EOFMD > $HOME/mastodon.env
 TZ=${TZ}
 UID=$USERID
@@ -30810,6 +30637,262 @@ http {
 EOFMD
 }
 
+function outputMastodonCompose()
+{
+  cat <<EOFMD > $HOME/mastodon-compose.yml
+$STACK_VERSION_PREFIX mastodon $(getScriptStackVersion mastodon)
+
+services:
+  mastodon-db:
+    image: $(getScriptImageByContainerName mastodon-db)
+    container_name: mastodon-db
+    hostname: mastodon-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-mastodon-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mastodon/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/mastodon/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.mastodon-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.mastodon-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mastodon-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mastodon-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mastodon-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mastodon-hourly-db.email-from=Mastodon Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mastodon-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.mastodon-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.mastodon-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.mastodon-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.mastodon-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.mastodon-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.mastodon-monthly-db.email-from=Mastodon Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.mastodon-monthly-db.mail-only-on-error=false"
+
+  mastodon-redis:
+    image: $(getScriptImageByContainerName mastodon-redis)
+    container_name: mastodon-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-mastodon-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-mastodon-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
+
+  mastodon-redis-cache:
+    image: $(getScriptImageByContainerName mastodon-redis-cache)
+    container_name: mastodon-redis-cache
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-mastodon-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
+
+  mastodon-app:
+    image: $(getScriptImageByContainerName mastodon-app)
+    container_name: mastodon-app
+    hostname: mastodon-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: bash -c "rm -f /mastodon/tmp/pids/server.pid; bundle exec rails s -p 3000"
+    depends_on:
+      - mastodon-db
+      - mastodon-redis
+      #- mastodon-elasticsearch
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider --proxy=off localhost:3000/health || exit 1']
+    networks:
+      - int-mastodon-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
+      - v-mastodon-static:/mastodon/public
+
+  mastodon-streaming:
+    image: $(getScriptImageByContainerName mastodon-streaming)
+    container_name: mastodon-streaming
+    hostname: mastodon-streaming
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: node ./streaming/index.js
+    depends_on:
+      - mastodon-db
+      - mastodon-redis
+    healthcheck:
+      test: ['CMD-SHELL', "curl -s --noproxy localhost localhost:4000/api/v1/streaming/health | grep -q 'OK' || exit 1"]
+    networks:
+      - int-mastodon-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  mastodon-sidekiq:
+    image: $(getScriptImageByContainerName mastodon-sidekiq)
+    container_name: mastodon-sidekiq
+    hostname: mastodon-sidekiq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: bundle exec sidekiq
+    depends_on:
+      - mastodon-db
+      - mastodon-redis
+    healthcheck:
+      test: ['CMD-SHELL', "ps aux | grep '[s]idekiq\ 6' || false"]
+    networks:
+      - int-mastodon-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
+
+  mastodon-web:
+    image: $(getScriptImageByContainerName mastodon-web)
+    container_name: mastodon-web
+    hostname: mastodon-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-mastodon-net
+      - dock-proxy-net
+    depends_on:
+      - mastodon-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_SSL_DIR}/mastodon-web.crt:/etc/nginx/certs/cert.crt
+      - \${HSHQ_SSL_DIR}/mastodon-web.key:/etc/nginx/certs/cert.key
+      - \${HSHQ_STACKS_DIR}/mastodon/web/nginx.conf:/etc/nginx/nginx.conf
+      - v-mastodon-static:/var/www/html:ro
+
+#  mastodon-elasticsearch:
+#    image: $(getScriptImageByContainerName mastodon-elasticsearch)
+#    container_name: mastodon-elasticsearch
+#    hostname: mastodon-elasticsearch
+#    restart: unless-stopped
+#    security_opt:
+#      - no-new-privileges:true
+#    healthcheck:
+#       test: ["CMD-SHELL", "nc -z mastodon-elasticsearch 9200"]
+#    networks:
+#      - int-mastodon-net
+#      - dock-ext-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${HSHQ_SSL_DIR}/mastodon-elasticsearch.crt:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.crt
+#      - \${HSHQ_SSL_DIR}/mastodon-elasticsearch.key:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.key
+#      - \${HSHQ_STACKS_DIR}/mastodon/elasticsearch:/usr/share/elasticsearch/data
+#    ulimits:
+#      memlock:
+#        soft: -1
+#        hard: -1
+#      nofile:
+#        soft: 65536
+#        hard: 65536
+#    environment:
+#      - "ELASTIC_PASSWORD=$MASTODON_ELASTICSEARCH_PASSWORD"
+#      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+#      - "xpack.security.enabled=true"
+#      - "xpack.security.transport.ssl.enabled=true"
+#      - "xpack.security.transport.ssl.certificate=/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.crt"
+#      - "xpack.security.transport.ssl.key=/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.key"
+#      - "xpack.watcher.enabled=false"
+#      - "xpack.graph.enabled=false"
+#      - "xpack.ml.enabled=false"
+#      - "ingest.geoip.downloader.enabled=false"
+#      - "bootstrap.memory_lock=true"
+#      - "cluster.name=es-mastodon"
+#      - "discovery.type=single-node"
+
+volumes:
+  v-mastodon-static:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/mastodon/static
+  v-mastodon-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/mastodon/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-mastodon-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMD
+
+}
+
 function performUpdateMastodon()
 {
   perform_stack_name=mastodon
@@ -30866,7 +30949,7 @@ function performUpdateMastodon()
       image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.2.10,nginx:1.25.3-alpine,elasticsearch:8.12.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
@@ -30878,18 +30961,34 @@ function performUpdateMastodon()
       echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
       echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$MASTODON_ARE_KEY_DERIVATION_SALT" >> $HSHQ_STACKS_DIR/mastodon/stack.env
       echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$MASTODON_ARE_PRIMARY_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfMigrateMastodon true mfUpdateMastodonV6
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfMigrateMastodon true mfUpdateMastodonV7
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.3.1,nginx:1.25.3-alpine,elasticsearch:8.12.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       image_update_map[2]="tootsuite/mastodon:v4.3.1,tootsuite/mastodon:v4.3.1"
       image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
       image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
+      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.1,tootsuite/mastodon-streaming:v4.3.1"
+      # This update simply fixes the mastodon-streaming issue, i.e. it has its own container and a few aspects of the docker compose needed an update
+      # See https://github.com/mastodon/mastodon/pull/31554/files/51638f89b57613f01b1696b8644478ff4937937b#diff-e45e45baeda1c1e73482975a664062aa56f20c03dd9d64a827aba57775bed0d3
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateMastodonV7
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,tootsuite/mastodon:v4.3.1,nginx:1.25.3-alpine,elasticsearch:8.12.2,tootsuite/mastodon-streaming:v4.3.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      image_update_map[2]="tootsuite/mastodon:v4.3.1,tootsuite/mastodon:v4.3.1"
+      image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+      image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
+      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.1,tootsuite/mastodon-streaming:v4.3.1"
     ;;
     *)
       is_upgrade_error=true
@@ -31052,11 +31151,17 @@ function mfMigrateMastodon()
   migrateMastodon
 }
 
-function mfUpdateMastodonV6()
+function mfUpdateMastodonV7()
 {
-  echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HOME/mastodon.env
-  echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$MASTODON_ARE_KEY_DERIVATION_SALT" >> $HOME/mastodon.env
-  echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$MASTODON_ARE_PRIMARY_KEY" >> $HOME/mastodon.env
+  set +e
+  rm -f $HOME/mastodon-compose.yml
+  outputMastodonCompose
+  grep "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY" $HSHQ_STACKS_DIR/mastodon/stack.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
+    echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$MASTODON_ARE_KEY_DERIVATION_SALT" >> $HSHQ_STACKS_DIR/mastodon/stack.env
+    echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$MASTODON_ARE_PRIMARY_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
+  fi
 }
 
 function clearStaticAssetsMastodon()
@@ -37501,8 +37606,6 @@ EOFGL
 
   cat <<EOFGL > $HOME/mealie.env
 TZ=\${TZ}
-UID=$USERID
-GID=$GROUPID
 PUID=$USERID
 PGID=$GROUPID
 DEFAULT_GROUP=Home
@@ -42734,6 +42837,312 @@ function performUpdateGrampsWeb()
       curImageList=ghcr.io/gramps-project/grampsweb:v24.10.0,bitnami/redis:7.0.5
       image_update_map[0]="ghcr.io/gramps-project/grampsweb:v24.10.0,ghcr.io/gramps-project/grampsweb:v24.10.0"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Penpot
+function installPenpot()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory penpot "$FMLNAME_PENPOT"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_PENPOT_BACKEND
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_PENPOT_FRONTEND
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_PENPOT_EXPORTER
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_TOMCAT
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/penpot
+  mkdir $HSHQ_STACKS_DIR/penpot/db
+  mkdir $HSHQ_STACKS_DIR/penpot/dbexport
+  mkdir $HSHQ_STACKS_DIR/penpot/ssl
+  mkdir $HSHQ_STACKS_DIR/penpot/assets
+  chmod 777 $HSHQ_STACKS_DIR/penpot/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/penpot
+  mkdir $HSHQ_NONBACKUP_DIR/penpot/redis
+
+  initServicesCredentials
+  set +e
+  docker run --rm --name=tomcat -v $HSHQ_STACKS_DIR/penpot/ssl:/certsexport -v /usr/local/share/ca-certificates:/usr/local/share/ca-certificates tomcat:11 bash -c "keytool -importcert -file /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt -alias ${CERTS_ROOT_CA_NAME}.crt -cacerts -storepass changeit -noprompt; cp /opt/java/openjdk/lib/security/cacerts /certsexport/"
+  if ! [ -f $HSHQ_STACKS_DIR/penpot/ssl/cacerts ]; then
+    echo "There was an error generating the java keystore with the added CA certificate, returning..."
+    return 2
+  fi
+  outputConfigPenpot
+  installStack penpot penpot-backend "welcome to penpot" $HOME/penpot.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
+  if ! [ "$PENPOT_INIT_ENV" = "true" ]; then
+    sendEmail -s "Penpot Login Info" -b "Penpot has been installed. It has been configured and integrated with LDAP. However, you must use the email address of the LDAP user rather than the username. The password is the LDAP user's password. Here are the credentials for the LDAP Admin user: \n\nEmail: $EMAIL_ADMIN_EMAIL_ADDRESS\nPassword: $LDAP_ADMIN_USER_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    PENPOT_INIT_ENV=true
+    updateConfigVar PENPOT_INIT_ENV $PENPOT_INIT_ENV
+  fi
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PENPOT.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://penpot-frontend:80 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PENPOT $MANAGETLS_PENPOT "$is_integrate_hshq" $NETDEFAULT_PENPOT "$inner_block"
+  insertSubAuthelia $SUB_PENPOT.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll penpot "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" "penpot.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad penpot "$FMLNAME_PENPOT" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
+  fi
+  docker image rm $IMG_TOMCAT > /dev/null 2>&1
+}
+
+function outputConfigPenpot()
+{
+  cat <<EOFPI > $HOME/penpot-compose.yml
+$STACK_VERSION_PREFIX penpot $(getScriptStackVersion penpot)
+
+services:
+  penpot-db:
+    image: $(getScriptImageByContainerName penpot-db)
+    container_name: penpot-db
+    hostname: penpot-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-penpot-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/penpot/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/penpot/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.penpot-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.penpot-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.penpot-hourly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.penpot-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.penpot-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.penpot-hourly-db.email-from=Penpot Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.penpot-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.penpot-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.penpot-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.penpot-monthly-db.smtp-host=mailu-front"
+      - "ofelia.job-exec.penpot-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.penpot-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.penpot-monthly-db.email-from=Penpot Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.penpot-monthly-db.mail-only-on-error=false"
+
+  penpot-frontend:
+    image: $(getScriptImageByContainerName penpot-frontend)
+    container_name: penpot-frontend
+    hostname: penpot-frontend
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - penpot-backend
+      - penpot-exporter
+    networks:
+      - int-penpot-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-penpot-assets:/opt/data/assets
+
+  penpot-backend:
+    image: $(getScriptImageByContainerName penpot-backend)
+    container_name: penpot-backend
+    hostname: penpot-backend
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - penpot-db
+      - penpot-redis
+    networks:
+      - int-penpot-net
+      - dock-ldap-net
+      - dock-internalmail-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/penpot/ssl/cacerts:/opt/jdk/lib/security/cacerts:ro
+      - v-penpot-assets:/opt/data/assets
+
+  penpot-exporter:
+    image: $(getScriptImageByContainerName penpot-exporter)
+    container_name: penpot-exporter
+    hostname: penpot-exporter
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - penpot-db
+    networks:
+      - int-penpot-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - PENPOT_PUBLIC_URI=http://penpot-frontend
+
+  penpot-redis:
+    image: $(getScriptImageByContainerName penpot-redis)
+    container_name: penpot-redis
+    hostname: penpot-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-penpot-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-penpot-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$PENPOT_REDIS_PASSWORD
+
+volumes:
+  v-penpot-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/penpot/db
+  v-penpot-assets:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/penpot/assets
+  v-penpot-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/penpot/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  int-penpot-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFPI
+
+  cat <<EOFPI > $HOME/penpot.env
+TZ=\${TZ}
+PENPOT_FLAGS=enable-webhooks enable-smtp enable-prepl-server enable-login-with-ldap enable-backend-api-doc disable-login-with-password disable-onboarding
+PENPOT_PUBLIC_URI=https://$SUB_PENPOT.$HOMESERVER_DOMAIN
+PENPOT_TELEMETRY_ENABLED=false
+PENPOT_SECRET_KEY=$PENPOT_SECRET_KEY
+PENPOT_SMTP_DEFAULT_FROM=Penpot $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>
+PENPOT_SMTP_DEFAULT_REPLY_TO=$EMAIL_ADMIN_EMAIL_ADDRESS
+PENPOT_SMTP_HOST=mailu-front
+PENPOT_SMTP_PORT=25
+PENPOT_SMTP_TLS=true
+PENPOT_ASSETS_STORAGE_BACKEND=assets-fs
+PENPOT_STORAGE_ASSETS_FS_DIRECTORY=/opt/data/assets
+PENPOT_DATABASE_URI=postgresql://penpot-db/$PENPOT_DATABASE_NAME
+PENPOT_DATABASE_USERNAME=$PENPOT_DATABASE_USER
+PENPOT_DATABASE_PASSWORD=$PENPOT_DATABASE_USER_PASSWORD
+PENPOT_REDIS_URI=redis://:$PENPOT_REDIS_PASSWORD@penpot-redis/0
+POSTGRES_DB=$PENPOT_DATABASE_NAME
+POSTGRES_USER=$PENPOT_DATABASE_USER
+POSTGRES_PASSWORD=$PENPOT_DATABASE_USER_PASSWORD
+POSTGRES_INITDB_ARGS=--data-checksums
+PENPOT_LDAP_HOST=ldapserver
+PENPOT_LDAP_PORT=389
+PENPOT_LDAP_SSL=false
+PENPOT_LDAP_STARTTLS=true
+PENPOT_LDAP_BASE_DN=ou=people,$LDAP_BASE_DN
+PENPOT_LDAP_BIND_DN=$LDAP_READONLY_USER_BIND_DN
+PENPOT_LDAP_BIND_PASSWORD=$LDAP_READONLY_USER_PASSWORD
+PENPOT_LDAP_USER_QUERY=(&(|(uid=:username)(mail=:username))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+PENPOT_LDAP_ATTRS_USERNAME=uid
+PENPOT_LDAP_ATTRS_EMAIL=mail
+PENPOT_LDAP_ATTRS_FULLNAME=cn
+PENPOT_LDAP_ATTRS_PHOTO=jpegPhoto
+EOFPI
+
+}
+
+function performUpdatePenpot()
+{
+  perform_stack_name=penpot
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,penpotapp/backend:2.2.1,penpotapp/frontend:2.2.1,penpotapp/exporter:2.2.1,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="penpotapp/backend:2.2.1,penpotapp/backend:2.2.1"
+      image_update_map[2]="penpotapp/frontend:2.2.1,penpotapp/frontend:2.2.1"
+      image_update_map[3]="penpotapp/exporter:2.2.1,penpotapp/exporter:2.2.1"
+      image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
       is_upgrade_error=true
@@ -48302,6 +48711,14 @@ SQLPAD_CONNECTIONS__peertube__username=$PEERTUBE_DATABASE_USER
 SQLPAD_CONNECTIONS__peertube__password=$PEERTUBE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__peertube__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__peertube__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__penpot__name=Penpot
+SQLPAD_CONNECTIONS__penpot__driver=postgres
+SQLPAD_CONNECTIONS__penpot__host=penpot-db
+SQLPAD_CONNECTIONS__penpot__database=$PENPOT_DATABASE_NAME
+SQLPAD_CONNECTIONS__penpot__username=$PENPOT_DATABASE_USER
+SQLPAD_CONNECTIONS__penpot__password=$PENPOT_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__penpot__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__penpot__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__photoprism__name=PhotoPrism
 SQLPAD_CONNECTIONS__photoprism__driver=mysql
 SQLPAD_CONNECTIONS__photoprism__host=photoprism-db
