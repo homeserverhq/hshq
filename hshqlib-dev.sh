@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=101
+HSHQ_SCRIPT_VERSION=102
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -14500,6 +14500,9 @@ function checkUpdateVersion()
   fi
   is_update_performed=false
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
+    set +e
+    checkAddAllNewSvcs
+    set -e
     is_update_performed=true
   fi
   if [ $HSHQ_VERSION -lt 11 ]; then
@@ -14651,12 +14654,6 @@ function checkUpdateVersion()
     echo "Updating to Version 50..."
     version50Update
     HSHQ_VERSION=50
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
-  if [ $HSHQ_VERSION -lt 51 ]; then
-    echo "Updating to Version 51..."
-    version51Update
-    HSHQ_VERSION=51
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 52 ]; then
@@ -14831,12 +14828,6 @@ function checkUpdateVersion()
     echo "Updating to Version 98..."
     version98Update
     HSHQ_VERSION=98
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
-  if [ $HSHQ_VERSION -lt 101 ]; then
-    echo "Updating to Version 101..."
-    version101Update
-    HSHQ_VERSION=101
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -15368,7 +15359,6 @@ function version23Update()
 
 function version24Update()
 {
-  checkAddAllNewSvcs
   checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
   checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false"
   checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false"
@@ -15463,20 +15453,17 @@ function version30Update()
 
 function version31Update()
 {
-  checkAddAllNewSvcs
   addToDisabledServices jupyter
 }
 
 function version32Update()
 {
-  checkAddAllNewSvcs
   addToDisabledServices paperless
 }
 
 function version34Update()
 {
   sudo sed -i "/timestamp_timeout/a Defaults passwd_tries=$SUDO_MAX_RETRIES" /etc/sudoers
-  checkAddAllNewSvcs
   addToDisabledServices speedtest-tracker-local
   addToDisabledServices speedtest-tracker-vpn
 }
@@ -15489,7 +15476,6 @@ function version35Update()
 function version37Update()
 {
   sed -i "s|Relay Server|RelayServer|g" $CONFIG_FILE
-  checkAddAllNewSvcs
   CHANGEDETECTION_INIT_ENV=false
   SCRIPTSERVER_INIT_ENV=false
   SCRIPTSERVER_LOCALHOST_PORT=8008
@@ -15550,7 +15536,6 @@ EOFRS
   startStopStack mailu start
   sleep 5
   set -e
-  checkAddAllNewSvcs
   HUGINN_INIT_ENV=false
 }
 
@@ -15781,7 +15766,6 @@ EOFWA
     rm -f $HOME/v41.sh
   fi
   set -e
-  checkAddAllNewSvcs
   outputBootScripts
   fixAutheliaConfig
 }
@@ -15862,7 +15846,6 @@ function version47Update()
 function version48Update()
 {
   set +e
-  checkAddAllNewSvcs
   grep HOMEASSISTANT_CONFIGURATOR_USER $CONFIG_FILE >/dev/null 2>&1
   if [ $? -ne 0 ]; then
     checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
@@ -15886,13 +15869,6 @@ function version50Update()
 {
   set +e
   outputAllScriptServerScripts
-  set -e
-}
-
-function version51Update()
-{
-  set +e
-  checkAddAllNewSvcs
   set -e
 }
 
@@ -16504,7 +16480,6 @@ function version85Update()
   outputCreateWGDockerNetworksScript
   outputAllScriptServerScripts
   outputStackListsScriptServer
-  checkAddAllNewSvcs
   set -e
 }
 
@@ -16581,7 +16556,6 @@ function version94Update()
 function version98Update()
 {
   set +e
-  checkAddAllNewSvcs
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
@@ -16591,13 +16565,6 @@ function version98Update()
   checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
   initServicesCredentials
   outputPingGatewayBootscript
-  set -e
-}
-
-function version101Update()
-{
-  set +e
-  checkAddAllNewSvcs
   set -e
 }
 
