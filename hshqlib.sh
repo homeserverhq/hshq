@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=100
+HSHQ_SCRIPT_VERSION=101
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -14833,6 +14833,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=98
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 101 ]; then
+    echo "Updating to Version 101..."
+    version101Update
+    HSHQ_VERSION=101
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16574,6 +16580,8 @@ function version94Update()
 
 function version98Update()
 {
+  set +e
+  checkAddAllNewSvcs
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
@@ -16583,6 +16591,14 @@ function version98Update()
   checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
   initServicesCredentials
   outputPingGatewayBootscript
+  set -e
+}
+
+function version101Update()
+{
+  set +e
+  checkAddAllNewSvcs
+  set -e
 }
 
 function mfFixCACertPath()
