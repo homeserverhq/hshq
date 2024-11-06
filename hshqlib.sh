@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=99
+HSHQ_SCRIPT_VERSION=100
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -14833,12 +14833,6 @@ function checkUpdateVersion()
     HSHQ_VERSION=98
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 99 ]; then
-    echo "Updating to Version 99..."
-    version99Update
-    HSHQ_VERSION=99
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16591,11 +16585,6 @@ function version98Update()
   outputPingGatewayBootscript
 }
 
-function version99Update()
-{
-  checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
-}
-
 function mfFixCACertPath()
 {
   sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
@@ -17444,6 +17433,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
   checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
+  checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
 }
 
 function checkAddServiceToConfig()
