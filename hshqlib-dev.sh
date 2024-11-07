@@ -15359,11 +15359,6 @@ function version23Update()
 
 function version24Update()
 {
-  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
-  checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false"
-  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false"
   initServicesCredentials
 }
 
@@ -15848,7 +15843,6 @@ function version48Update()
   set +e
   grep HOMEASSISTANT_CONFIGURATOR_USER $CONFIG_FILE >/dev/null 2>&1
   if [ $? -ne 0 ]; then
-    checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
     initServicesCredentials
     # Email to user
     sendEmail -s "HomeAssistant Configurator Login Info" -b "HomeAssistant Configurator Username: $HOMEASSISTANT_CONFIGURATOR_USER\nHomeAssistant Configurator Password: $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
@@ -16393,7 +16387,6 @@ function version73Update()
 
 function version75Update()
 {
-  checkAddVarsToServiceConfig "Wazuh" "WAZUH_AGENT_VERSION=4.7.5-1"
   WAZUH_AGENT_VERSION=4.7.5-1
   if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
     sudo apt update
@@ -16556,13 +16549,6 @@ function version94Update()
 function version98Update()
 {
   set +e
-  checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_PASSWORD="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_DETERMINISTIC_KEY="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
   initServicesCredentials
   outputPingGatewayBootscript
   set -e
@@ -17417,6 +17403,21 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
   checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
+
+  checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_PASSWORD="
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_DETERMINISTIC_KEY="
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT="
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
+  checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
+  checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false"
+  checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false"
+  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false"
+  checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false"
+  checkAddVarsToServiceConfig "Wazuh" "WAZUH_AGENT_VERSION=4.7.5-1"
 }
 
 function checkAddServiceToConfig()
