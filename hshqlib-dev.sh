@@ -14830,6 +14830,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=98
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 102 ]; then
+    echo "Updating to Version 102..."
+    version102Update
+    HSHQ_VERSION=102
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16551,6 +16557,13 @@ function version98Update()
   set +e
   initServicesCredentials
   outputPingGatewayBootscript
+  set -e
+}
+
+function version102Update()
+{
+  set +e
+  initServicesCredentials
   set -e
 }
 
