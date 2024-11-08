@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=102
+HSHQ_SCRIPT_VERSION=103
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -14488,6 +14488,16 @@ PENPOT_DATABASE_USER_PASSWORD=
 PENPOT_SECRET_KEY=
 # Penpot (Service Details) END
 
+# EspoCRM (Service Details) BEGIN
+ESPOCRM_INIT_ENV=false
+ESPOCRM_ADMIN_USERNAME=
+ESPOCRM_ADMIN_PASSWORD=
+ESPOCRM_DATABASE_NAME=
+ESPOCRM_DATABASE_ROOT_PASSWORD=
+ESPOCRM_DATABASE_USER=
+ESPOCRM_DATABASE_USER_PASSWORD=
+# EspoCRM (Service Details) END
+
 # Service Details END
 EOFCF
   set -e
@@ -17416,6 +17426,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
   checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
+  checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD="
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
@@ -19494,6 +19505,7 @@ function loadPinnedDockerImages()
   IMG_EXCALIDRAW_SERVER=excalidraw/excalidraw-room
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
+  IMG_ESPOCRM_APP=espocrm/espocrm:8.4.2-apache
   IMG_FILEBROWSER=filebrowser/filebrowser:v2.31.2
   IMG_FILEDROP=filedrop/filedrop:1
   IMG_FIREFLY=fireflyiii/core:version-6.1.21
@@ -19722,6 +19734,8 @@ function getScriptStackVersion()
       echo "v2" ;;
     penpot)
       echo "v1" ;;
+    espocrm)
+      echo "v1" ;;
     ofelia)
       echo "v4" ;;
     sqlpad)
@@ -19851,6 +19865,7 @@ function pullDockerImages()
   pullImage $IMG_PENPOT_BACKEND
   pullImage $IMG_PENPOT_FRONTEND
   pullImage $IMG_PENPOT_EXPORTER
+  pullImage $IMG_ESPOCRM_APP
 }
 
 function pullBaseServicesDockerImages()
@@ -20283,6 +20298,10 @@ function initServicesCredentials()
   if [ -z "$WORDPRESS_DATABASE_NAME" ]; then
     WORDPRESS_DATABASE_NAME=wordpressdb
     updateConfigVar WORDPRESS_DATABASE_NAME $WORDPRESS_DATABASE_NAME
+  fi
+  if [ -z "$WORDPRESS_DATABASE_ROOT_PASSWORD" ]; then
+    WORDPRESS_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WORDPRESS_DATABASE_ROOT_PASSWORD $WORDPRESS_DATABASE_ROOT_PASSWORD
   fi
   if [ -z "$WORDPRESS_DATABASE_USER" ]; then
     WORDPRESS_DATABASE_USER=wordpress-user
@@ -20824,6 +20843,30 @@ function initServicesCredentials()
     PENPOT_SECRET_KEY=$(pwgen -c -n 32 1)
     updateConfigVar PENPOT_SECRET_KEY $PENPOT_SECRET_KEY
   fi
+  if [ -z "$ESPOCRM_ADMIN_USERNAME" ]; then
+    ESPOCRM_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_espocrm"
+    updateConfigVar ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_USERNAME
+  fi
+  if [ -z "$ESPOCRM_ADMIN_PASSWORD" ]; then
+    ESPOCRM_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ESPOCRM_ADMIN_PASSWORD $ESPOCRM_ADMIN_PASSWORD
+  fi
+  if [ -z "$ESPOCRM_DATABASE_NAME" ]; then
+    ESPOCRM_DATABASE_NAME=espocrmdb
+    updateConfigVar ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_NAME
+  fi
+  if [ -z "$ESPOCRM_DATABASE_ROOT_PASSWORD" ]; then
+    ESPOCRM_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ESPOCRM_DATABASE_ROOT_PASSWORD $ESPOCRM_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$ESPOCRM_DATABASE_USER" ]; then
+    ESPOCRM_DATABASE_USER=espocrm-user
+    updateConfigVar ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER
+  fi
+  if [ -z "$ESPOCRM_DATABASE_USER_PASSWORD" ]; then
+    ESPOCRM_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ESPOCRM_DATABASE_USER_PASSWORD $ESPOCRM_DATABASE_USER_PASSWORD
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -20914,6 +20957,7 @@ function initServiceVars()
   checkAddSvc "SVCD_DOZZLE=dozzle,dozzle,primary,admin,Dozzle,dozzle,hshq"
   checkAddSvc "SVCD_DRAWIO_WEB=drawio,drawio,primary,user,Draw.io,drawio,hshq"
   checkAddSvc "SVCD_DUPLICATI=duplicati,duplicati,home,admin,Duplicati,duplicati,hshq"
+  checkAddSvc "SVCD_ESPOCRM=espocrm,espocrm,primary,user,EspoCRM,espocrm,hshq"
   checkAddSvc "SVCD_EXCALIDRAW_WEB=excalidraw,excalidraw,primary,user,Excalidraw,excalidraw,hshq"
   checkAddSvc "SVCD_EXCALIDRAW_SERVER=excalidraw,excalidraw-server,primary,user,Excalidraw Server,excalidraw-server,hshq"
   checkAddSvc "SVCD_EXCALIDRAW_STORAGE=excalidraw,excalidraw-storage,primary,user,Excalidraw Storage,excalidraw-storage,hshq"
@@ -21110,6 +21154,8 @@ function installStackByName()
       installGrampsWeb $is_integrate ;;
     penpot)
       installPenpot $is_integrate ;;
+    espocrm)
+      installEspoCRM $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -21250,6 +21296,8 @@ function performUpdateStackByName()
       performUpdateGrampsWeb "$portainerToken" ;;
     penpot)
       performUpdatePenpot "$portainerToken" ;;
+    espocrm)
+      performUpdateEspoCRM "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -21279,6 +21327,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ESPOCRM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_STORAGE.$HOMESERVER_DOMAIN\n"
@@ -21441,6 +21490,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -21466,7 +21516,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
   strInstructions="Vaultwarden User Import Instructions:\n\n"
@@ -21631,6 +21681,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0 "piped.png"
   insertIntoHeimdallDB "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0 "grampsweb.png"
   insertIntoHeimdallDB "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0 "penpot.png"
+  insertIntoHeimdallDB "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0 "espocrm.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -21720,6 +21771,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -21738,12 +21790,12 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,photoprism,kasm,stirlingpdf,piped,penpot
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,photoprism,kasm,stirlingpdf,piped,penpot,espocrm
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
 }
 
@@ -22244,6 +22296,18 @@ function getScriptImageByContainerName()
       ;;
     "penpot-exporter")
       container_image=$IMG_PENPOT_EXPORTER
+      ;;
+    "espocrm-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "espocrm-app")
+      container_image=$IMG_ESPOCRM_APP
+      ;;
+    "espocrm-daemon")
+      container_image=$IMG_ESPOCRM_APP
+      ;;
+    "espocrm-websocket")
+      container_image=$IMG_ESPOCRM_APP
       ;;
     *)
       ;;
@@ -33022,10 +33086,6 @@ function installWordPress()
   chmod 777 $HSHQ_STACKS_DIR/wordpress/dbexport
 
   initServicesCredentials
-  if [ -z "$WORDPRESS_DATABASE_ROOT_PASSWORD" ]; then
-    WORDPRESS_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar WORDPRESS_DATABASE_ROOT_PASSWORD $WORDPRESS_DATABASE_ROOT_PASSWORD
-  fi
   outputConfigWordPress
   installStack wordpress wordpress-web "WordPress" $HOME/wordpress.env
   retval=$?
@@ -38066,7 +38126,7 @@ behind-proxy: true
 # - smtp-sender-from is the e-mail address of the sender
 # - smtp-sender-user/smtp-sender-pass are the username and password of the SMTP user (leave blank for no auth)
 #
-smtp-sender-addr: $SMTP_HOSTNAME:25
+smtp-sender-addr: $SMTP_HOSTNAME:$SMTP_HOSTPORT
 smtp-sender-from: $EMAIL_ADMIN_EMAIL_ADDRESS
 # smtp-sender-user:
 # smtp-sender-pass:
@@ -38648,7 +38708,7 @@ function installCalibre()
   
   rm $HSHQ_STACKS_DIR/calibre/web/getencpw.py
   sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE user set name='$CALIBRE_WEB_ADMIN_USERNAME', email='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS', kindle_mail='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS' where id=1;"
-  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='$SMTP_HOSTNAME', mail_port=25, mail_use_ssl=1, mail_from='Calibre-Web $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
+  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='$SMTP_HOSTNAME', mail_port=$SMTP_HOSTPORT, mail_use_ssl=1, mail_from='Calibre-Web $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
   startStopStack calibre start
 
   inner_block=""
@@ -39586,7 +39646,7 @@ MAILS_ENABLED=true
 MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
 MAIL_FROM_NAME=Bar Assistant $HSHQ_ADMIN_NAME
 MAIL_HOST=$SMTP_HOSTNAME
-MAIL_PORT=25
+MAIL_PORT=$SMTP_HOSTPORT
 MAIL_ENCRYPTION=tls
 MAIL_REQUIRE_CONFIRMATION=true
 MAIL_CONFIRM_URL=\${BASE_URL}/confirmation/[id]/[hash]
@@ -39797,14 +39857,14 @@ services:
       - "ofelia.job-exec.freshrss-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.freshrss-hourly-db.command=/exportDB.sh"
       - "ofelia.job-exec.freshrss-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.freshrss-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.freshrss-hourly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.freshrss-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.freshrss-hourly-db.email-from=FreshRSS Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.freshrss-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.freshrss-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.freshrss-monthly-db.command=/exportDB.sh"
       - "ofelia.job-exec.freshrss-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.freshrss-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.freshrss-monthly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.freshrss-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.freshrss-monthly-db.email-from=FreshRSS Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.freshrss-monthly-db.mail-only-on-error=false"
@@ -40040,14 +40100,14 @@ services:
       - "ofelia.job-exec.keila-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.keila-hourly-db.command=/exportDB.sh"
       - "ofelia.job-exec.keila-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.keila-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.keila-hourly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.keila-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.keila-hourly-db.email-from=Keila Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.keila-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.keila-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.keila-monthly-db.command=/exportDB.sh"
       - "ofelia.job-exec.keila-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.keila-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.keila-monthly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.keila-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.keila-monthly-db.email-from=Keila Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.keila-monthly-db.mail-only-on-error=false"
@@ -40117,7 +40177,7 @@ DB_URL=postgres://$KEILA_DATABASE_USER:$KEILA_DATABASE_USER_PASSWORD@keila-db/$K
 URL_HOST=$SUB_KEILA.$HOMESERVER_DOMAIN
 URL_SCHEMA=https
 MAILER_SMTP_HOST=$SMTP_HOSTNAME
-MAILER_SMTP_PORT=25
+MAILER_SMTP_PORT=$SMTP_HOSTPORT
 MAILER_SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
 MAILER_SMTP_PASSWORD=$EMAIL_SMTP_PASSWORD
 MAILER_SMTP_FROM_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
@@ -40288,14 +40348,14 @@ services:
       - "ofelia.job-exec.wallabag-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.wallabag-hourly-db.command=/exportDB.sh"
       - "ofelia.job-exec.wallabag-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.wallabag-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.wallabag-hourly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.wallabag-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.wallabag-hourly-db.email-from=Wallabag Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.wallabag-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.wallabag-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.wallabag-monthly-db.command=/exportDB.sh"
       - "ofelia.job-exec.wallabag-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.wallabag-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.wallabag-monthly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.wallabag-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.wallabag-monthly-db.email-from=Wallabag Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.wallabag-monthly-db.mail-only-on-error=false"
@@ -40993,14 +41053,14 @@ services:
       - "ofelia.job-exec.speedtest-tracker-local-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.speedtest-tracker-local-hourly-db.command=/exportDB.sh"
       - "ofelia.job-exec.speedtest-tracker-local-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-local-hourly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.speedtest-tracker-local-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.speedtest-tracker-local-hourly-db.email-from=SpeedtestTrackerLocal Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.speedtest-tracker-local-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.speedtest-tracker-local-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.speedtest-tracker-local-monthly-db.command=/exportDB.sh"
       - "ofelia.job-exec.speedtest-tracker-local-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-local-monthly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.speedtest-tracker-local-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.speedtest-tracker-local-monthly-db.email-from=SpeedtestTrackerLocal Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.speedtest-tracker-local-monthly-db.mail-only-on-error=false"
@@ -41250,14 +41310,14 @@ services:
       - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.command=/exportDB.sh"
       - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.email-from=SpeedtestTrackerVPN Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.command=/exportDB.sh"
       - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.email-from=SpeedtestTrackerVPN Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.speedtest-tracker-vpn-monthly-db.mail-only-on-error=false"
@@ -42609,11 +42669,11 @@ function installGrampsWeb()
     return $retval
   fi
   docker exec -it grampsweb-app python3 -m gramps_webapi user add --fullname "$HOMESERVER_NAME Admin" --email "$GRAMPSWEB_ADMIN_EMAIL_ADDRESS" --role 5 "$GRAMPSWEB_ADMIN_USERNAME" "$GRAMPSWEB_ADMIN_PASSWORD" > /dev/null 2>&1
-  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(1,'EMAIL_HOST','mailu-front');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(1,'EMAIL_HOST','$SMTP_HOSTNAME');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(2,'EMAIL_PORT','465');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(3,'EMAIL_HOST_USER','$EMAIL_SMTP_EMAIL_ADDRESS');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(4,'EMAIL_HOST_PASSWORD','$EMAIL_SMTP_PASSWORD');"
-  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb HSHQ Admin <$EMAIL_SMTP_EMAIL_ADDRESS>');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb $HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(6,'BASE_URL','https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(7,'EMAIL_USE_TLS','0');"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -42944,15 +43004,15 @@ services:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.penpot-hourly-db.schedule=@every 1h"
       - "ofelia.job-exec.penpot-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.penpot-hourly-db.smtp-host=mailu-front"
-      - "ofelia.job-exec.penpot-hourly-db.smtp-port=25"
+      - "ofelia.job-exec.penpot-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.penpot-hourly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.penpot-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.penpot-hourly-db.email-from=Penpot Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.penpot-hourly-db.mail-only-on-error=true"
       - "ofelia.job-exec.penpot-monthly-db.schedule=0 0 8 1 * *"
       - "ofelia.job-exec.penpot-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.penpot-monthly-db.smtp-host=mailu-front"
-      - "ofelia.job-exec.penpot-monthly-db.smtp-port=25"
+      - "ofelia.job-exec.penpot-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.penpot-monthly-db.smtp-port=$SMTP_HOSTPORT"
       - "ofelia.job-exec.penpot-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
       - "ofelia.job-exec.penpot-monthly-db.email-from=Penpot Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
       - "ofelia.job-exec.penpot-monthly-db.mail-only-on-error=false"
@@ -43086,8 +43146,8 @@ PENPOT_TELEMETRY_ENABLED=false
 PENPOT_SECRET_KEY=$PENPOT_SECRET_KEY
 PENPOT_SMTP_DEFAULT_FROM=Penpot $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>
 PENPOT_SMTP_DEFAULT_REPLY_TO=$EMAIL_ADMIN_EMAIL_ADDRESS
-PENPOT_SMTP_HOST=mailu-front
-PENPOT_SMTP_PORT=25
+PENPOT_SMTP_HOST=$SMTP_HOSTNAME
+PENPOT_SMTP_PORT=$SMTP_HOSTPORT
 PENPOT_SMTP_TLS=true
 PENPOT_ASSETS_STORAGE_BACKEND=assets-fs
 PENPOT_STORAGE_ASSETS_FS_DIRECTORY=/opt/data/assets
@@ -43130,6 +43190,287 @@ function performUpdatePenpot()
       image_update_map[2]="penpotapp/frontend:2.2.1,penpotapp/frontend:2.2.1"
       image_update_map[3]="penpotapp/exporter:2.2.1,penpotapp/exporter:2.2.1"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# EspoCRM
+function installEspoCRM()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory espocrm "$FMLNAME_ESPOCRM"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_ESPOCRM_APP
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_MYSQL
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/espocrm
+  mkdir $HSHQ_STACKS_DIR/espocrm/db
+  mkdir $HSHQ_STACKS_DIR/espocrm/dbexport
+  mkdir $HSHQ_STACKS_DIR/espocrm/app
+  chmod 777 $HSHQ_STACKS_DIR/espocrm/dbexport
+
+  initServicesCredentials
+  set +e
+  outputConfigEspoCRM
+  installStack espocrm espocrm-app "apache2 -D FOREGROUND" $HOME/espocrm.env 5
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
+  if ! [ "$ESPOCRM_INIT_ENV" = "true" ]; then
+    sendEmail -s "EspoCRM Login Info" -b "EspoCRM Admin Username: $ESPOCRM_ADMIN_USERNAME\nPassword: $ESPOCRM_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ESPOCRM_INIT_ENV=true
+    updateConfigVar ESPOCRM_INIT_ENV $ESPOCRM_INIT_ENV
+  fi
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy /ws espocrm-websocket:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://espocrm-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ESPOCRM $MANAGETLS_ESPOCRM "$is_integrate_hshq" $NETDEFAULT_ESPOCRM "$inner_block"
+  insertSubAuthelia $SUB_ESPOCRM.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll espocrm "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" "espocrm.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad espocrm "$FMLNAME_ESPOCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigEspoCRM()
+{
+  cat <<EOFPI > $HOME/espocrm-compose.yml
+$STACK_VERSION_PREFIX espocrm $(getScriptStackVersion espocrm)
+
+services:
+  espocrm-db:
+    image: $(getScriptImageByContainerName espocrm-db)
+    container_name: espocrm-db
+    hostname: espocrm-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-espocrm-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-espocrm-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/espocrm/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.espocrm-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.espocrm-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.espocrm-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.espocrm-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.espocrm-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.espocrm-hourly-db.email-from=EspoCRM Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.espocrm-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.espocrm-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.espocrm-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.espocrm-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.espocrm-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.espocrm-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.espocrm-monthly-db.email-from=EspoCRM Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.espocrm-monthly-db.mail-only-on-error=false"
+
+  espocrm-app:
+    image: $(getScriptImageByContainerName espocrm-app)
+    container_name: espocrm-app
+    hostname: espocrm-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - espocrm-db
+    networks:
+      - int-espocrm-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ldap-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-espocrm-app:/var/www/html
+
+  espocrm-daemon:
+    image: $(getScriptImageByContainerName espocrm-daemon)
+    container_name: espocrm-daemon
+    hostname: espocrm-daemon
+    restart: unless-stopped
+    env_file: stack.env
+    entrypoint: docker-daemon.sh
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - espocrm-db
+    networks:
+      - int-espocrm-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-espocrm-app:/var/www/html
+
+  espocrm-websocket:
+    image: $(getScriptImageByContainerName espocrm-websocket)
+    container_name: espocrm-websocket
+    hostname: espocrm-websocket
+    restart: unless-stopped
+    env_file: stack.env
+    entrypoint: docker-websocket.sh
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - espocrm-db
+    networks:
+      - int-espocrm-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-espocrm-app:/var/www/html
+
+volumes:
+  v-espocrm-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/espocrm/db
+  v-espocrm-app:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/espocrm/app
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-espocrm-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFPI
+
+  cat <<EOFPI > $HOME/espocrm.env
+ESPOCRM_TIME_ZONE=\${TZ}
+ESPOCRM_DATE_FORMAT=YYYY-MM-DD
+ESPOCRM_DATABASE_HOST=espocrm-db
+ESPOCRM_DATABASE_PORT=3306
+ESPOCRM_DATABASE_NAME=$ESPOCRM_DATABASE_NAME
+ESPOCRM_DATABASE_USER=$ESPOCRM_DATABASE_USER
+ESPOCRM_DATABASE_PASSWORD=$ESPOCRM_DATABASE_USER_PASSWORD
+MYSQL_DATABASE=$ESPOCRM_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$ESPOCRM_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$ESPOCRM_DATABASE_USER
+MYSQL_PASSWORD=$ESPOCRM_DATABASE_USER_PASSWORD
+ESPOCRM_ADMIN_USERNAME=$ESPOCRM_ADMIN_USERNAME
+ESPOCRM_ADMIN_PASSWORD=$ESPOCRM_ADMIN_PASSWORD
+ESPOCRM_SITE_URL=https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN
+ESPOCRM_CONFIG_USE_WEB_SOCKET=true
+ESPOCRM_CONFIG_WEB_SOCKET_URL=wss://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ws
+ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBSCRIBER_DSN=tcp://*:7777
+ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBMISSION_DSN=tcp://espocrm-websocket:7777
+ESPOCRM_CONFIG_OUTBOUND_EMAIL_IS_SHARED=false
+ESPOCRM_CONFIG_OUTBOUND_EMAIL_FROM_NAME=EspoCRM $HSHQ_ADMIN_NAME
+ESPOCRM_CONFIG_OUTBOUND_EMAIL_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
+ESPOCRM_CONFIG_SMTP_SERVER=$SMTP_HOSTNAME
+ESPOCRM_CONFIG_SMTP_PORT=$SMTP_HOSTPORT
+ESPOCRM_CONFIG_SMTP_AUTH=false
+ESPOCRM_CONFIG_SMTP_SECURITY=TLS
+ESPOCRM_CONFIG_AUTHENTICATION_METHOD=LDAP
+ESPOCRM_CONFIG_THEME=Dark
+ESPOCRM_CONFIG_LDAP_HOST=ldapserver
+ESPOCRM_CONFIG_LDAP_PORT=389
+ESPOCRM_CONFIG_LDAP_SECURITY=TLS
+ESPOCRM_CONFIG_LDAP_BASE_DN=ou=people,$LDAP_BASE_DN
+ESPOCRM_CONFIG_LDAP_USER_NAME_ATTRIBUTE=uid
+ESPOCRM_CONFIG_LDAP_USER_LOGIN_FILTER=memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN
+ESPOCRM_CONFIG_LDAP_AUTH=true
+ESPOCRM_CONFIG_LDAP_USERNAME=$LDAP_READONLY_USER_BIND_DN
+ESPOCRM_CONFIG_LDAP_PASSWORD=$LDAP_READONLY_USER_PASSWORD
+ESPOCRM_CONFIG_LDAP_ACCOUNT_CANONICAL_FORM=Dn
+ESPOCRM_CONFIG_LDAP_CREATE_ESPO_USER=true
+EOFPI
+
+}
+
+function performUpdateEspoCRM()
+{
+  perform_stack_name=espocrm
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mariadb:10.7.3,espocrm/espocrm:8.4.2-apache
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="espocrm/espocrm:8.4.2-apache,espocrm/espocrm:8.4.2-apache"
     ;;
     *)
       is_upgrade_error=true
@@ -48562,6 +48903,14 @@ SQLPAD_CONNECTIONS__discourse__username=$DISCOURSE_DATABASE_USER
 SQLPAD_CONNECTIONS__discourse__password=$DISCOURSE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__discourse__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__discourse__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__espocrm__name=EspoCRM
+SQLPAD_CONNECTIONS__espocrm__driver=mysql
+SQLPAD_CONNECTIONS__espocrm__host=espocrm-db
+SQLPAD_CONNECTIONS__espocrm__database=$ESPOCRM_DATABASE_NAME
+SQLPAD_CONNECTIONS__espocrm__username=$ESPOCRM_DATABASE_USER
+SQLPAD_CONNECTIONS__espocrm__password=$ESPOCRM_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__espocrm__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__espocrm__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__firefly__name=Firefly
 SQLPAD_CONNECTIONS__firefly__driver=postgres
 SQLPAD_CONNECTIONS__firefly__host=firefly-db
