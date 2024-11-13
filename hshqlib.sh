@@ -19497,7 +19497,7 @@ function loadPinnedDockerImages()
   IMG_COTURN=coturn/coturn:4.6.2
   IMG_DISCOURSE=bitnami/discourse:3.3.2
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v8.7.1
+  IMG_DOZZLE=amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
   IMG_DRAWIO_WEB=jgraph/drawio:24.7.17
@@ -19641,7 +19641,7 @@ function getScriptStackVersion()
     mastodon)
       echo "v7" ;;
     dozzle)
-      echo "v5" ;;
+      echo "v6" ;;
     searxng)
       echo "v5" ;;
     jellyfin)
@@ -31335,29 +31335,35 @@ function performUpdateDozzle()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v5
+      newVer=v6
       curImageList=amir20/dozzle:v4.10.26
-      image_update_map[0]="amir20/dozzle:v4.10.26,amir20/dozzle:v8.7.1"
+      image_update_map[0]="amir20/dozzle:v4.10.26,amir20/dozzle:v6.1.1"
     ;;
     2)
-      newVer=v5
+      newVer=v6
       curImageList=amir20/dozzle:v5.8.1
-      image_update_map[0]="amir20/dozzle:v5.8.1,amir20/dozzle:v8.7.1"
+      image_update_map[0]="amir20/dozzle:v5.8.1,amir20/dozzle:v6.1.1"
     ;;
     3)
-      newVer=v5
+      newVer=v6
       curImageList=amir20/dozzle:v6.0.8
-      image_update_map[0]="amir20/dozzle:v6.0.8,amir20/dozzle:v8.7.1"
+      image_update_map[0]="amir20/dozzle:v6.0.8,amir20/dozzle:v6.1.1"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=amir20/dozzle:v6.1.1
-      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v8.7.1"
+      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.1.1"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=amir20/dozzle:v8.7.1
-      image_update_map[0]="amir20/dozzle:v8.7.1,amir20/dozzle:v8.7.1"
+      image_update_map[0]="amir20/dozzle:v8.7.1,amir20/dozzle:v6.1.1"
+    ;;
+    6)
+      # Reverting back to v6.1.1, since v8.7.1 uses a lot more CPU at idle
+      newVer=v6
+      curImageList=amir20/dozzle:v6.1.1
+      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.1.1"
     ;;
     *)
       is_upgrade_error=true
