@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=103
+HSHQ_SCRIPT_VERSION=104
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -19703,7 +19703,7 @@ function getScriptStackVersion()
     stirlingpdf)
       echo "v5" ;;
     bar-assistant)
-      echo "v3" ;;
+      echo "v4" ;;
     freshrss)
       echo "v3" ;;
     keila)
@@ -28321,7 +28321,8 @@ function installNextcloud()
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus enabled --value="yes"
   fi
   set -e
-  docker exec -u www-data nextcloud-app php occ db:add-missing-indices
+  docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ background:cron
 
   sleep 5
@@ -39482,7 +39483,7 @@ services:
       - bar-assistant-meilisearch
       - bar-assistant-redis
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -39665,11 +39666,11 @@ server {
     client_max_body_size 100M;
 
     location /bar/ {
-        proxy_pass http://bar-assistant-app:3000/;
+        proxy_pass http://bar-assistant-app:8080/;
     }
 
     location /uploads/ {
-        proxy_pass http://bar-assistant-app:3000;
+        proxy_pass http://bar-assistant-app:8080;
     }
 
     location /search/ {
@@ -39720,6 +39721,9 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       image_update_map[3]="barassistant/salt-rim:2.15.0,barassistant/salt-rim:3.2.1"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateBarAssistantV4
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     4)
       newVer=v4
@@ -39757,6 +39761,15 @@ function mfClearMeiliData()
     sleep 3
   fi
   clearMeiliData
+}
+
+function mfUpdateBarAssistantV4()
+{
+  mfClearMeiliData
+  unset isStartStackFromStopped
+  sed -i "s/localhost:3000/localhost:8080/g" $HOME/bar-assistant-compose.yml
+  sed -i "s/bar-assistant-app:3000/bar-assistant-app:8080/g" $HSHQ_STACKS_DIR/bar-assistant/web/nginx.conf
+  sudo chown -R 33:33 $HSHQ_STACKS_DIR/bar-assistant/app
 }
 
 # FreshRSS
@@ -42971,6 +42984,7 @@ function installPenpot()
     insertEnableSvcAll penpot "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" "penpot.png"
     restartAllCaddyContainers
     checkAddDBSqlPad penpot "$FMLNAME_PENPOT" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
+    echo ""
   fi
   docker image rm $IMG_TOMCAT > /dev/null 2>&1
 }
@@ -43264,6 +43278,7 @@ function installEspoCRM()
     insertEnableSvcAll espocrm "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" "espocrm.png"
     restartAllCaddyContainers
     checkAddDBSqlPad espocrm "$FMLNAME_ESPOCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
+    echo ""
   fi
 }
 
@@ -47208,7 +47223,7 @@ EOFSC
 {
   "name": "03 User Device Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the recipient must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
+  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
