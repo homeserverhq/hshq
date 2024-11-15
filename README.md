@@ -111,8 +111,8 @@ For example, to route https traffic, the RelayServer has its own reverse proxy. 
 While https and email have some form of Server Name Indication, not all types of services do, so the typical bastion server-style approach can be applied to any of the remaining ports (or port ranges).
 
 There are simple-to-use tools on the managing HomeServer to perform nearly every common task on the RelayServer in just a few seconds. This includes anything from:
-- Adding/removing a new secondary domain - You can add multiple domains to a single HomeServer
-- Adding/removing an exposed subdomain - Allows web sites to be hosted from an internal HomeServer via the RelayServer
+- Adding/removing a new secondary domain - You can add any number of secondary domains to a single HomeServer
+- Adding/removing an exposed subdomain - Allows web sites to be hosted on the public internet from an internal HomeServer via the RelayServer
 - Adding/removing a port forwarding rule - passes traffic that arrives at a port (or range of ports) on the RelayServer to a port (or range of ports) on a specific internal host
 - Adding/removing a LetsEncrypt certificate request passthrough - this allows LE certificates to be issued to backend services on the HomeServer (which solves the problem that some mobile apps encounter when being accessed internally)
 
