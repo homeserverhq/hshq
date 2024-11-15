@@ -99,7 +99,7 @@ While the integrated systems approach is a significant improvement compared to o
 
 To get a better understanding of how it all works, the best place to start is our <a href="https://wiki.homeserverhq.com/getting-started#homeserverhq-architecture" target="_blank">Architecture video</a>. As illustrated in the video, the main thing to understand is the concept of a two-server setup: a HomeServer and a RelayServer. The HomeServer is the physical equipment in your home where the data resides, and the RelayServer is a lightweight access point so that you can connect to your HomeServer from anywhere. The RelayServer is like your router - it handles all of the incoming and outgoing traffic of your network. But it is a smart router. Rather than doing a simple passthrough like a bastion host, we instead incorporated smarter relay tools to allow for more efficient routing of traffic.
 
-![RelayServerDiagram](https://github.com/user-attachments/assets/7d0f0769-9c2f-4766-aa5d-7e537e2df2b1)
+![RelayServerDiagram](https://github.com/user-attachments/assets/0b5fe940-fbeb-4788-90c8-040eeb5a8dc4)
 
 For example, to route https traffic, the RelayServer has its own reverse proxy. As requests come in, they will be routed appropriately to the correct internal host. This allows for unlimited internal hosts(HomeServers), as well as unlimited domains on a single HomeServer. We also applied the same concept to the email relay. It is a simple <a href="https://www.postfix.org/" target="_blank">Postfix</a> relay that inspects and determines the correct internal host and routes the mail accordingly. The mail relay also has a few added features such as: 
 - Basic spam detection with <a href="https://rspamd.com/" target="_blank">RSpamD</a> - to limit unwanted email from even being forwarded
@@ -120,7 +120,7 @@ When you first set up your RelayServer, you HomeServer creates an outgoing persi
 
 Each time you host on a different network, a new corresponding reverse proxy instance is created to serve that network. This reverse proxy will request certificates from the hosting network, using the <a href="https://smallstep.com/certificates/" target="_blank">SmallStep</a> integration with <a href="https://caddyserver.com/" target="_blank">Caddy</a>. There is a default set of services that are exposed to other networks, but each instance can be customized differently, depending on your preferences for that network. This is where the whole concept of "overlapping private internets" comes from - you can simultaneously host on different networks, while picking and choosing which services to expose on which networks. The reason that a new reverse proxy instance is generated for each new network is because there is currently no such thing as conditional TLS, i.e. conditional based on the IP address of the requestor - no open source projects support this idea.
 
-![Overlapping Internets](https://github.com/user-attachments/assets/4152d3d5-965d-41d4-ae0b-3d14085baf12)
+![OverlappingInternets](https://github.com/user-attachments/assets/a8e28479-f5a0-43a9-93f1-63c5e3aeec29)
 
 All of these processes take place seamlessly in the background, the user is typically never away of anything. The DNS and TLS in most use cases are handled automatically in the background. The only thing that they will see is the occasional automated email informing them of a new HomeServer joining or an existing one leaving. Even as the manager of a network, the process is as simple as a few button clicks. 
 
