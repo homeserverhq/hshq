@@ -2049,7 +2049,7 @@ function postInstallation()
   #mail_msg=""
   #mail_msg=${mail_msg}"Below is a copy of your configuration file:\n\n"
   #mail_msg=${mail_msg}"""$(tail -n +10 $HSHQ_CONFIG_DIR/${CONFIG_FILE_DEFAULT_FILENAME})"""
-  #sendEmail -s "Configuration File" -b "$mail_msg" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+  #sendEmail -s "Configuration File" -b "$mail_msg" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
   sendRootCAEmail true
   emailFormattedCredentials
@@ -2774,7 +2774,7 @@ function updateListOfStacks()
   full_update_report_header="${full_update_report_header}==================================================\n"
   full_update_report_header="${full_update_report_header}Start Time: $report_start_time\n"
   full_update_report_header="${full_update_report_header}  End Time: $report_end_time\n\n"
-  sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+  sendEmail -s "Services Upgrade Report" -b "${full_update_report_header}$full_update_report" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Sending update results to email manager ($EMAIL_ADMIN_EMAIL_ADDRESS). Refer to this for further details."
   outputStackListsScriptServer
   echo "Updating list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
@@ -3434,16 +3434,16 @@ function transferHostedVPN()
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   outputRelayServerInstallSetupScript
   outputRelayServerInstallTransferScript
-  # Remove old RelayIP with no update
-  removeHomeNetIP $RELAYSERVER_SERVER_IP false
-
-  uploadVPNInstallScripts true
   sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
+  old_rsIP=$RELAYSERVER_SERVER_IP
+  uploadVPNInstallScripts true
   loadSSHKey
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/rsbackup.tar.gz $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   unloadSSHKey
   sudo rm -f $HOME/rsbackup.tar.gz
   showMessageBox "Upload Success" "The scripts and data have been uploaded to the RelayServer host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. After the installation has completed and the server has fully rebooted, press okay to begin monitoring for a successful connection transfer."
+  # Remove old RelayIP with no update
+  removeHomeNetIP $old_rsIP false
   set +e
   totalTries=720
   numTries=1
@@ -7617,7 +7617,7 @@ EOF
         set +e
         updateMailuStackRelayHost
         email_msg="Your new RelayServer has been configured. Below is your first WireGuard User Connection Info:\n\n================ WireGuard Configuration ================\n${rs_wg_user_conf}\n=======================================================\n"
-        sendEmail -s "New RelayServer" -b "$email_msg" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+        sendEmail -s "New RelayServer" -b "$email_msg" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
         clear
         echo -e "\n\n$(getDNSRecordsInfo $HOMESERVER_DOMAIN)\n\n"
         echo -e "============= User WireGuard Configuration ============\n"
@@ -7663,7 +7663,7 @@ EOF
         email_msg="Your joined RelayServer has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\n"
         # Set env vars in mailu stack
         set +e
-        sendEmail -s "New RelayServer" -b "$email_msg" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+        sendEmail -s "New RelayServer" -b "$email_msg" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
         showMessageBox "Joined RelayServer" "The RelayServer has been joined. Check your email ($EMAIL_ADMIN_EMAIL_ADDRESS) for further details."
         ;;
       3)
@@ -10111,7 +10111,7 @@ function getSubDomainNoTLD()
 function getAdminEmailName()
 {
   #echo "${HOMESERVER_ABBREV^^} Admin"
-  echo "${HOMESERVER_NAME} Admin"
+  echo "$HSHQ_ADMIN_NAME"
 }
 
 function removeRelayServerAgentFromWazuhManager()
@@ -11954,7 +11954,7 @@ function sendRootCAEmail()
   if [ "$is_sudo" = "true" ]; then
     # This special case is only need during the initial installation due
     # to issues with adding members to groups (mailsenders) within a script.
-    echo -e "$mail_msg" | sudo mailx -s "Public Root Certificate" -a "From: $HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
+    echo -e "$mail_msg" | sudo mailx -s "Public Root Certificate" -a "From: $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
   else
     sendEmail -s "Public Root Certificate" -b "$mail_msg" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der
   fi
@@ -12015,7 +12015,7 @@ function sendEmail()
     return
   fi
   if [ -z "$email_from" ]; then
-    email_from="$HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+    email_from="$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
   fi
   if [ -z "$email_to" ]; then
     email_to=$EMAIL_ADMIN_EMAIL_ADDRESS
@@ -12496,11 +12496,11 @@ function addLECertPathsToRelayServer()
   fi
   newList=${newList%?}
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    sendEmail -s "Add LetsEncrypt Domain" -b "If you have not done so already, you need to contact your RelayServer administrator and ask them to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Add LetsEncrypt Domain" -b "If you have not done so already, you need to contact your RelayServer administrator and ask them to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     return
   fi
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     return
   fi
 
@@ -14061,7 +14061,7 @@ LDAP_BASE_DN=
 LDAP_ADMIN_USER_GROUP_NAME=admins
 LDAP_PRIMARY_USER_GROUP_NAME=primaryusers
 LDAP_BASIC_USER_GROUP_NAME=basicusers
-LDAP_EMAIL_FROM_NAME="LDAP $HSHQ_ADMIN_NAME"
+LDAP_EMAIL_FROM_NAME="LDAP $(getAdminEmailName)"
 LDAP_ACCOUNT_REQUESTS_ENABLED=true
 LDAP_ACCOUNT_REQUESTS_EMAIL=
 # OpenLDAP (Service Details) END
@@ -14489,7 +14489,7 @@ PENPOT_SECRET_KEY=
 # Penpot (Service Details) END
 
 # EspoCRM (Service Details) BEGIN
-ESPOCRM_INIT_ENV=false
+ESPOCRM_INIT_ENV=true
 ESPOCRM_ADMIN_USERNAME=
 ESPOCRM_ADMIN_PASSWORD=
 ESPOCRM_DATABASE_NAME=
@@ -15449,7 +15449,7 @@ function version29Update()
     echo -e "$strSetVersionReport"
     echo -e "\n========================================"
     echo -e "\nCheck your email($EMAIL_ADMIN_EMAIL_ADDRESS) for a copy of these results."
-    sendEmail -s "Stack Versioning Report" -b "$strSetVersionReport" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+    sendEmail -s "Stack Versioning Report" -b "$strSetVersionReport" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   fi
 }
 
@@ -15861,7 +15861,7 @@ function version48Update()
   if [ $? -ne 0 ]; then
     initServicesCredentials
     # Email to user
-    sendEmail -s "HomeAssistant Configurator Login Info" -b "HomeAssistant Configurator Username: $HOMEASSISTANT_CONFIGURATOR_USER\nHomeAssistant Configurator Password: $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "HomeAssistant Configurator Login Info" -b "HomeAssistant Configurator Username: $HOMEASSISTANT_CONFIGURATOR_USER\nHomeAssistant Configurator Password: $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   fi
   if [ -f $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf ]; then
     grep "USERNAME" $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf >/dev/null 2>&1
@@ -21507,7 +21507,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}"\n\n\n\n"
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
   strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
-  sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+  sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function emailUserVaultwardenCredentials()
@@ -21521,7 +21521,7 @@ function emailUserVaultwardenCredentials()
   strOutput=${strOutput}"\n\n"
   strInstructions="Vaultwarden User Import Instructions:\n\n"
   strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager. An additional entry, Penpot has been added. It uses LDAP as well, but requires the email address to be entered rather than the ldap username, so it requires a separate entry."
-  sendEmail -s "Vaultwarden User Login Import" -b "$strInstructions\n\n$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $vw_email
+  sendEmail -s "Vaultwarden User Login Import" -b "$strInstructions\n\n$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $vw_email
 }
 
 function emailFormattedCredentials()
@@ -21598,7 +21598,7 @@ function emailFormattedCredentials()
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   fi
   strOutput=${strOutput}"\n\n"
-  sendEmail -s "All Services Login Info" -b "$strOutput" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+  sendEmail -s "All Services Login Info" -b "$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
 function insertServicesHeimdall()
@@ -30289,7 +30289,7 @@ function installDuplicati()
   sleep 5
   db_name=$HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--accept-any-ssl-certificate','true');"
-  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-from','Duplicati $HSHQ_ADMIN_NAME<$EMAIL_ADMIN_EMAIL_ADDRESS>');"
+  sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-from','Duplicati $(getAdminEmailName)<$EMAIL_ADMIN_EMAIL_ADDRESS>');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-level','all');"
@@ -30458,7 +30458,7 @@ function installMastodon()
   MASTODON_ADMIN_PASSWORD=$(echo $addaccount_res | rev | cut -d" " -f1 | rev)
   updateConfigVar MASTODON_ADMIN_PASSWORD $MASTODON_ADMIN_PASSWORD
 
-  sendEmail -s "Mastodon Login Info" -b "Mastodon Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nMastodon Admin Password: $MASTODON_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "Mastodon Login Info" -b "Mastodon Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nMastodon Admin Password: $MASTODON_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   docker exec mastodon-app tootctl settings registrations close
   docker exec mastodon-app tootctl accounts approve $MASTODON_ADMIN_USERNAME > /dev/null 2>&1
   rm -f $HOME/mastodon-compose-tmp.yml
@@ -30519,7 +30519,7 @@ IP_RETENTION_PERIOD=31556952
 SESSION_RETENTION_PERIOD=31556952
 SMTP_SERVER=$SMTP_HOSTNAME
 SMTP_PORT=$SMTP_HOSTPORT
-SMTP_FROM_ADDRESS=Mastodon $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>
+SMTP_FROM_ADDRESS=Mastodon $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
 ES_ENABLED=false
 ES_HOST=mastodon-elasticsearch
 ES_PORT=9200
@@ -31897,7 +31897,7 @@ function notifyJellyfinLDAPPluginUpdate()
 
 function sendEmailJellyfinLDAPPluginUpdate()
 {
-  sendEmail -s "Jellyfin Version Update" -b "This new version of Jellyfin requires the LDAP plugin to be updated as well. Login as the Jellyfin administrator ($JELLYFIN_ADMIN_USERNAME), and uninstall and reinstall the LDAP Authentication plugin. The new version of the plugin should be version (19.0.0.0). After reinstalling, ensure to restart the jellyfin stack in Portainer." -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  sendEmail -s "Jellyfin Version Update" -b "This new version of Jellyfin requires the LDAP plugin to be updated as well. Login as the Jellyfin administrator ($JELLYFIN_ADMIN_USERNAME), and uninstall and reinstall the LDAP Authentication plugin. The new version of the plugin should be version (19.0.0.0). After reinstalling, ensure to restart the jellyfin stack in Portainer." -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
 }
 
 # FileBrowser
@@ -32072,7 +32072,7 @@ function installPhotoPrism()
   initServicesCredentials
   outputConfigPhotoPrism
   if ! [ "$PHOTOPRISM_INIT_ENV" = "true" ]; then
-    sendEmail -s "PhotoPrism Admin Login Info" -b "PhotoPrism Admin Username: $PHOTOPRISM_ADMIN_USERNAME\nPhotoPrism Admin Password: $PHOTOPRISM_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "PhotoPrism Admin Login Info" -b "PhotoPrism Admin Username: $PHOTOPRISM_ADMIN_USERNAME\nPhotoPrism Admin Password: $PHOTOPRISM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PHOTOPRISM_INIT_ENV=true
     updateConfigVar PHOTOPRISM_INIT_ENV $PHOTOPRISM_INIT_ENV
   fi
@@ -32375,7 +32375,7 @@ function performUpdatePhotoPrism()
       image_update_map[1]="photoprism/photoprism:220901-bullseye,photoprism/photoprism:240915"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdatePhotoPrismV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
-      sendEmail -s "PhotoPrism Admin Login Info" -b "PhotoPrism Admin Username: $PHOTOPRISM_ADMIN_USERNAME\nPhotoPrism Admin Password: $PHOTOPRISM_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+      sendEmail -s "PhotoPrism Admin Login Info" -b "PhotoPrism Admin Username: $PHOTOPRISM_ADMIN_USERNAME\nPhotoPrism Admin Password: $PHOTOPRISM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
       PHOTOPRISM_INIT_ENV=true
       updateConfigVar PHOTOPRISM_INIT_ENV $PHOTOPRISM_INIT_ENV
       return
@@ -32974,7 +32974,7 @@ notifier:
   disable_startup_check: true
   smtp:
     address: smtp://${SMTP_HOSTNAME}:${SMTP_HOSTPORT}
-    sender: "Authelia $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+    sender: "Authelia $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
     identifier: localhost
     subject: "[Authelia] {title}"
     startup_check_address: $EMAIL_ADMIN_EMAIL_ADDRESS
@@ -34153,7 +34153,7 @@ notify:
     verify_ssl: false
     recipient:
       - "$EMAIL_ADMIN_EMAIL_ADDRESS"
-    sender_name: "HomeAssistant $HSHQ_ADMIN_NAME"
+    sender_name: "HomeAssistant $(getAdminEmailName)"
 
 automation: !include automations.yaml
 script: !include scripts.yaml
@@ -34708,7 +34708,7 @@ gitlab_rails['smtp_authentication'] = 'login'
 gitlab_rails['smtp_enable_starttls_auto'] = true
 gitlab_rails['gitlab_email_enabled'] = true
 gitlab_rails['gitlab_email_from'] = '$EMAIL_SMTP_EMAIL_ADDRESS'
-gitlab_rails['gitlab_email_display_name'] = 'Gitlab $HSHQ_ADMIN_NAME'
+gitlab_rails['gitlab_email_display_name'] = 'Gitlab $(getAdminEmailName)'
 gitlab_rails['gitlab_email_reply_to'] = '$EMAIL_ADMIN_EMAIL_ADDRESS'
 gitlab_rails['incoming_email_enabled'] = false
 alertmanager['admin_email'] = '$EMAIL_ADMIN_EMAIL_ADDRESS'
@@ -35010,7 +35010,7 @@ IP_HEADER=X-Forwarded-For
 SIGNUPS_ALLOWED=false
 DOMAIN=https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN
 SMTP_HOST=$SMTP_HOSTNAME
-SMTP_FROM_NAME=Vaultwarden $HSHQ_ADMIN_NAME
+SMTP_FROM_NAME=Vaultwarden $(getAdminEmailName)
 SMTP_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
 SMTP_PORT=$SMTP_HOSTPORT
 SMTP_SECURITY=starttls
@@ -37432,7 +37432,7 @@ GITEA__database__NAME=$GITEA_DATABASE_NAME
 GITEA__database__USER=$GITEA_DATABASE_USER
 GITEA__database__PASSWD=$GITEA_DATABASE_USER_PASSWORD
 GITEA__mailer__ENABLED=true
-GITEA__mailer__FROM=Gitea $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>
+GITEA__mailer__FROM=Gitea $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
 GITEA__mailer__MAILER_TYPE=smtp
 GITEA__mailer__HOST=$SMTP_HOSTNAME
 GITEA__mailer__SMTP_ADDR=$SMTP_HOSTNAME
@@ -37676,7 +37676,7 @@ POSTGRES_DB=$MEALIE_DATABASE_NAME
 TOKEN_TIME=168
 SMTP_HOST=$SMTP_HOSTNAME
 SMTP_PORT=587
-SMTP_FROM_NAME=Mealie $HSHQ_ADMIN_NAME
+SMTP_FROM_NAME=Mealie $(getAdminEmailName)
 SMTP_AUTH_STRATEGY=TLS
 SMTP_FROM_EMAIL=$EMAIL_SMTP_EMAIL_ADDRESS
 SMTP_USER=$EMAIL_SMTP_EMAIL_ADDRESS
@@ -38533,7 +38533,7 @@ function installRemotely()
   addUserMailu alias $REMOTELY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$REMOTELY_INIT_ENV" = "true" ]; then
-    sendEmail -s "Remotely Admin Login Info" -b "Remotely Admin Username: $REMOTELY_ADMIN_EMAIL_ADDRESS\nRemotely Admin Password: $REMOTELY_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Remotely Admin Login Info" -b "Remotely Admin Username: $REMOTELY_ADMIN_EMAIL_ADDRESS\nRemotely Admin Password: $REMOTELY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     REMOTELY_INIT_ENV=true
     updateConfigVar REMOTELY_INIT_ENV $REMOTELY_INIT_ENV
   fi
@@ -38547,7 +38547,7 @@ function installRemotely()
   sleep 10
 
   startStopStack remotely stop
-  sudo sqlite3 $HSHQ_STACKS_DIR/remotely/Remotely.db "update KeyValueRecords set Value='{\"AllowApiLogin\":false,\"BannedDevices\":[],\"DataRetentionInDays\":90,\"DbProvider\":\"SQLite\",\"EnableRemoteControlRecording\":false,\"EnableWindowsEventLog\":false,\"EnforceAttendedAccess\":false,\"ForceClientHttps\":true,\"KnownProxies\":[],\"MaxConcurrentUpdates\":10,\"MaxOrganizationCount\":1,\"MessageOfTheDay\":\"\",\"RedirectToHttps\":false,\"RemoteControlNotifyUser\":true,\"RemoteControlRequiresAuthentication\":true,\"RemoteControlSessionLimit\":5,\"Require2FA\":false,\"ServerUrl\":\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN\",\"SmtpCheckCertificateRevocation\":false,\"SmtpDisplayName\":\"Remotely $HSHQ_ADMIN_NAME\",\"SmtpEmail\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"SmtpHost\":\"$SMTP_HOSTNAME\",\"SmtpLocalDomain\":\"\",\"SmtpPassword\":\"\",\"SmtpPort\":$SMTP_HOSTPORT,\"SmtpUserName\":\"\",\"Theme\":0,\"TrustedCorsOrigins\":[],\"UseHsts\":false,\"UseHttpLogging\":false}';"
+  sudo sqlite3 $HSHQ_STACKS_DIR/remotely/Remotely.db "update KeyValueRecords set Value='{\"AllowApiLogin\":false,\"BannedDevices\":[],\"DataRetentionInDays\":90,\"DbProvider\":\"SQLite\",\"EnableRemoteControlRecording\":false,\"EnableWindowsEventLog\":false,\"EnforceAttendedAccess\":false,\"ForceClientHttps\":true,\"KnownProxies\":[],\"MaxConcurrentUpdates\":10,\"MaxOrganizationCount\":1,\"MessageOfTheDay\":\"\",\"RedirectToHttps\":false,\"RemoteControlNotifyUser\":true,\"RemoteControlRequiresAuthentication\":true,\"RemoteControlSessionLimit\":5,\"Require2FA\":false,\"ServerUrl\":\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN\",\"SmtpCheckCertificateRevocation\":false,\"SmtpDisplayName\":\"Remotely $(getAdminEmailName)\",\"SmtpEmail\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"SmtpHost\":\"$SMTP_HOSTNAME\",\"SmtpLocalDomain\":\"\",\"SmtpPassword\":\"\",\"SmtpPort\":$SMTP_HOSTPORT,\"SmtpUserName\":\"\",\"Theme\":0,\"TrustedCorsOrigins\":[],\"UseHsts\":false,\"UseHttpLogging\":false}';"
   startStopStack remotely start
 
   inner_block=""
@@ -38691,7 +38691,7 @@ function installCalibre()
   addUserMailu alias $CALIBRE_WEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$CALIBRE_WEB_INIT_ENV" = "true" ]; then
-    sendEmail -s "Calibre-Web Admin Login Info" -b "Calibre-Web Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nCalibre-Web Admin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Calibre-Web Admin Login Info" -b "Calibre-Web Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nCalibre-Web Admin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     CALIBRE_WEB_INIT_ENV=true
     updateConfigVar CALIBRE_WEB_INIT_ENV $CALIBRE_WEB_INIT_ENV
   fi
@@ -38715,7 +38715,7 @@ function installCalibre()
   
   rm $HSHQ_STACKS_DIR/calibre/web/getencpw.py
   sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE user set name='$CALIBRE_WEB_ADMIN_USERNAME', email='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS', kindle_mail='$CALIBRE_WEB_ADMIN_EMAIL_ADDRESS' where id=1;"
-  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='$SMTP_HOSTNAME', mail_port=$SMTP_HOSTPORT, mail_use_ssl=1, mail_from='Calibre-Web $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
+  sqlite3 $HSHQ_STACKS_DIR/calibre/web/app.db "UPDATE settings set mail_server='$SMTP_HOSTNAME', mail_port=$SMTP_HOSTPORT, mail_use_ssl=1, mail_from='Calibre-Web $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>', mail_size=26214400, mail_server_type=0, config_calibre_dir='/library', config_theme=1, config_login_type=1, config_ldap_provider_url='ldapserver', config_ldap_port=389, config_ldap_authentication=2, config_ldap_serv_username='$LDAP_READONLY_USER_BIND_DN', config_ldap_serv_password_e='$encpw', config_ldap_encryption=1, config_ldap_cacert_path='/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt', config_ldap_cert_path='/certs/calibre-web.crt', config_ldap_key_path='/certs/calibre-web.key', config_ldap_dn='$LDAP_BASE_DN', config_ldap_user_object='(&(objectclass=person)(uid=%s))', config_ldap_member_user_object='(&(objectclass=person)(uid=%s))', config_ldap_openldap=1, config_ldap_group_object_filter='(&(objectclass=groupOfUniqueNames)(cn=%s))', config_ldap_group_members_field='uniqueMember', config_ldap_group_name='$LDAP_PRIMARY_USER_GROUP_NAME' where id=1;"
   startStopStack calibre start
 
   inner_block=""
@@ -39651,7 +39651,7 @@ ALLOW_REGISTRATION=true
 MAIL_MAILER=smtp
 MAILS_ENABLED=true
 MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
-MAIL_FROM_NAME=Bar Assistant $HSHQ_ADMIN_NAME
+MAIL_FROM_NAME=Bar Assistant $(getAdminEmailName)
 MAIL_HOST=$SMTP_HOSTNAME
 MAIL_PORT=$SMTP_HOSTPORT
 MAIL_ENCRYPTION=tls
@@ -39809,7 +39809,7 @@ function installFreshRSS()
   addUserMailu alias $FRESHRSS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$FRESHRSS_INIT_ENV" = "true" ]; then
-    sendEmail -s "FreshRSS Admin Login Info" -b "FreshRSS Admin Username: $FRESHRSS_ADMIN_USERNAME\nFreshRSS Admin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "FreshRSS Admin Login Info" -b "FreshRSS Admin Username: $FRESHRSS_ADMIN_USERNAME\nFreshRSS Admin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     FRESHRSS_INIT_ENV=true
     updateConfigVar FRESHRSS_INIT_ENV $FRESHRSS_INIT_ENV
   fi
@@ -40052,7 +40052,7 @@ function installKeila()
   addUserMailu alias $KEILA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$KEILA_INIT_ENV" = "true" ]; then
-    sendEmail -s "Keila Admin Login Info" -b "Keila Admin Username: $KEILA_ADMIN_EMAIL_ADDRESS\nKeila Admin Password: $KEILA_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Keila Admin Login Info" -b "Keila Admin Username: $KEILA_ADMIN_EMAIL_ADDRESS\nKeila Admin Password: $KEILA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     KEILA_INIT_ENV=true
     updateConfigVar KEILA_INIT_ENV $KEILA_INIT_ENV
   fi
@@ -40289,7 +40289,7 @@ function installWallabag()
   addUserMailu alias $WALLABAG_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$WALLABAG_INIT_ENV" = "true" ]; then
-    sendEmail -s "Wallabag Admin Login Info" -b "Wallabag Admin Username: $WALLABAG_ADMIN_USERNAME\nWallabag Admin Password: $WALLABAG_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Wallabag Admin Login Info" -b "Wallabag Admin Username: $WALLABAG_ADMIN_USERNAME\nWallabag Admin Password: $WALLABAG_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     WALLABAG_INIT_ENV=true
     updateConfigVar WALLABAG_INIT_ENV $WALLABAG_INIT_ENV
   fi
@@ -40542,7 +40542,7 @@ function installJupyter()
   fi
   set -e
   if ! [ "$JUPYTER_INIT_ENV" = "true" ]; then
-    sendEmail -s "Jupyter Admin Login Info" -b "Jupyter Admin Password: $JUPYTER_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Jupyter Admin Login Info" -b "Jupyter Admin Password: $JUPYTER_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     JUPYTER_INIT_ENV=true
     updateConfigVar JUPYTER_INIT_ENV $JUPYTER_INIT_ENV
   fi
@@ -40700,7 +40700,7 @@ function installPaperless()
   addUserMailu alias $PAPERLESS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$PAPERLESS_INIT_ENV" = "true" ]; then
-    sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PAPERLESS_INIT_ENV=true
     updateConfigVar PAPERLESS_INIT_ENV $PAPERLESS_INIT_ENV
   fi
@@ -40995,7 +40995,7 @@ function installSpeedtestTrackerLocal()
   addUserMailu alias $SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$SPEEDTEST_TRACKER_LOCAL_INIT_ENV" = "true" ]; then
-    sendEmail -s "SpeedtestTrackerLocal Admin Login Info" -b "SpeedtestTrackerLocal Admin Username: $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerLocal Admin Password: $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "SpeedtestTrackerLocal Admin Login Info" -b "SpeedtestTrackerLocal Admin Username: $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerLocal Admin Password: $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     SPEEDTEST_TRACKER_LOCAL_INIT_ENV=true
     updateConfigVar SPEEDTEST_TRACKER_LOCAL_INIT_ENV $SPEEDTEST_TRACKER_LOCAL_INIT_ENV
   fi
@@ -41155,7 +41155,7 @@ MAIL_HOST=$SMTP_HOSTNAME
 MAIL_PORT=$SMTP_HOSTPORT
 MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
-MAIL_FROM_NAME=SpeedtestTrackerLocal $HSHQ_ADMIN_NAME
+MAIL_FROM_NAME=SpeedtestTrackerLocal $(getAdminEmailName)
 
 EOFBA
   set +f
@@ -41252,7 +41252,7 @@ function installSpeedtestTrackerVPN()
   addUserMailu alias $SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$SPEEDTEST_TRACKER_VPN_INIT_ENV" = "true" ]; then
-    sendEmail -s "SpeedtestTrackerVPN Admin Login Info" -b "SpeedtestTrackerVPN Admin Username: $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerVPN Admin Password: $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "SpeedtestTrackerVPN Admin Login Info" -b "SpeedtestTrackerVPN Admin Username: $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerVPN Admin Password: $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     SPEEDTEST_TRACKER_VPN_INIT_ENV=true
     updateConfigVar SPEEDTEST_TRACKER_VPN_INIT_ENV $SPEEDTEST_TRACKER_VPN_INIT_ENV
   fi
@@ -41412,7 +41412,7 @@ MAIL_HOST=$SMTP_HOSTNAME
 MAIL_PORT=$SMTP_HOSTPORT
 MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
-MAIL_FROM_NAME=SpeedtestTrackerVPN $HSHQ_ADMIN_NAME
+MAIL_FROM_NAME=SpeedtestTrackerVPN $(getAdminEmailName)
 
 EOFBA
   set +f
@@ -41502,7 +41502,7 @@ function installChangeDetection()
   initServicesCredentials
 
   if ! [ "$CHANGEDETECTION_INIT_ENV" = "true" ]; then
-    sendEmail -s "Change Detection Admin Login Info" -b "Change Detection Admin Password: $CHANGEDETECTION_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Change Detection Admin Login Info" -b "Change Detection Admin Password: $CHANGEDETECTION_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     CHANGEDETECTION_INIT_ENV=true
     updateConfigVar CHANGEDETECTION_INIT_ENV $CHANGEDETECTION_INIT_ENV
   fi
@@ -41729,7 +41729,7 @@ function installHuginn()
   addUserMailu alias $HUGINN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   if ! [ "$HUGINN_INIT_ENV" = "true" ]; then
-    sendEmail -s "Huginn Admin Login Info" -b "Huginn Admin Username: $HUGINN_ADMIN_USERNAME\nHuginn Admin Password: $HUGINN_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Huginn Admin Login Info" -b "Huginn Admin Username: $HUGINN_ADMIN_USERNAME\nHuginn Admin Password: $HUGINN_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     HUGINN_INIT_ENV=true
     updateConfigVar HUGINN_INIT_ENV $HUGINN_INIT_ENV
   fi
@@ -41881,7 +41881,7 @@ SMTP_PORT=$SMTP_HOSTPORT
 SMTP_USER_NAME=none
 SMTP_ENABLE_STARTTLS_AUTO=true
 SMTP_SSL=false
-EMAIL_FROM_ADDRESS=Huginn $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>
+EMAIL_FROM_ADDRESS=Huginn $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
 SEED_USERNAME=$HUGINN_ADMIN_USERNAME
 SEED_PASSWORD=$HUGINN_ADMIN_PASSWORD
 SEED_EMAIL=$HUGINN_ADMIN_EMAIL_ADDRESS
@@ -42677,7 +42677,7 @@ function installGrampsWeb()
   sleep 5
   addUserMailu alias $GRAMPSWEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   if ! [ "$GRAMPSWEB_INIT_ENV" = "true" ]; then
-    sendEmail -s "GrampsWeb Admin Login Info" -b "GrampsWeb Admin Username: $GRAMPSWEB_ADMIN_USERNAME\nGrampsWeb Admin Password: $GRAMPSWEB_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "GrampsWeb Admin Login Info" -b "GrampsWeb Admin Username: $GRAMPSWEB_ADMIN_USERNAME\nGrampsWeb Admin Password: $GRAMPSWEB_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     GRAMPSWEB_INIT_ENV=true
     updateConfigVar GRAMPSWEB_INIT_ENV $GRAMPSWEB_INIT_ENV
   fi
@@ -42692,7 +42692,7 @@ function installGrampsWeb()
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(2,'EMAIL_PORT','465');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(3,'EMAIL_HOST_USER','$EMAIL_SMTP_EMAIL_ADDRESS');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(4,'EMAIL_HOST_PASSWORD','$EMAIL_SMTP_PASSWORD');"
-  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb $HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(6,'BASE_URL','https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(7,'EMAIL_USE_TLS','0');"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -42965,7 +42965,7 @@ function installPenpot()
     return $retval
   fi
   if ! [ "$PENPOT_INIT_ENV" = "true" ]; then
-    sendEmail -s "Penpot Login Info" -b "Penpot has been installed. It has been configured and integrated with LDAP. However, you must use the email address of the LDAP user rather than the username. The password is the LDAP user's password. Here are the credentials for the LDAP Admin user: \n\nEmail: $EMAIL_ADMIN_EMAIL_ADDRESS\nPassword: $LDAP_ADMIN_USER_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Penpot Login Info" -b "Penpot has been installed. It has been configured and integrated with LDAP. However, you must use the email address of the LDAP user rather than the username. The password is the LDAP user's password. Here are the credentials for the LDAP Admin user: \n\nEmail: $EMAIL_ADMIN_EMAIL_ADDRESS\nPassword: $LDAP_ADMIN_USER_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PENPOT_INIT_ENV=true
     updateConfigVar PENPOT_INIT_ENV $PENPOT_INIT_ENV
   fi
@@ -43164,7 +43164,7 @@ PENPOT_FLAGS=enable-webhooks enable-smtp enable-prepl-server enable-login-with-l
 PENPOT_PUBLIC_URI=https://$SUB_PENPOT.$HOMESERVER_DOMAIN
 PENPOT_TELEMETRY_ENABLED=false
 PENPOT_SECRET_KEY=$PENPOT_SECRET_KEY
-PENPOT_SMTP_DEFAULT_FROM=Penpot $HSHQ_ADMIN_NAME <$EMAIL_ADMIN_EMAIL_ADDRESS>
+PENPOT_SMTP_DEFAULT_FROM=Penpot $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
 PENPOT_SMTP_DEFAULT_REPLY_TO=$EMAIL_ADMIN_EMAIL_ADDRESS
 PENPOT_SMTP_HOST=$SMTP_HOSTNAME
 PENPOT_SMTP_PORT=$SMTP_HOSTPORT
@@ -43256,7 +43256,7 @@ function installEspoCRM()
     return $retval
   fi
   if ! [ "$ESPOCRM_INIT_ENV" = "true" ]; then
-    sendEmail -s "EspoCRM Login Info" -b "EspoCRM Admin Username: $ESPOCRM_ADMIN_USERNAME\nPassword: $ESPOCRM_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "EspoCRM Login Info" -b "EspoCRM Admin Username: $ESPOCRM_ADMIN_USERNAME\nPassword: $ESPOCRM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     ESPOCRM_INIT_ENV=true
     updateConfigVar ESPOCRM_INIT_ENV $ESPOCRM_INIT_ENV
   fi
@@ -43457,7 +43457,7 @@ ESPOCRM_CONFIG_WEB_SOCKET_URL=wss://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ws
 ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBSCRIBER_DSN=tcp://*:7777
 ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBMISSION_DSN=tcp://espocrm-websocket:7777
 ESPOCRM_CONFIG_OUTBOUND_EMAIL_IS_SHARED=false
-ESPOCRM_CONFIG_OUTBOUND_EMAIL_FROM_NAME=EspoCRM $HSHQ_ADMIN_NAME
+ESPOCRM_CONFIG_OUTBOUND_EMAIL_FROM_NAME=EspoCRM $(getAdminEmailName)
 ESPOCRM_CONFIG_OUTBOUND_EMAIL_FROM_ADDRESS=$EMAIL_SMTP_EMAIL_ADDRESS
 ESPOCRM_CONFIG_SMTP_SERVER=$SMTP_HOSTNAME
 ESPOCRM_CONFIG_SMTP_PORT=$SMTP_HOSTPORT
@@ -43576,7 +43576,7 @@ function installScriptServer()
   sleep 3
   fullResetScriptServer
   if ! [ "$SCRIPTSERVER_INIT_ENV" = "true" ]; then
-    sendEmail -s "Script-server Login Info" -b "Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\nScript-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n" -f "$HSHQ_ADMIN_NAME <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Script-server Login Info" -b "Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\nScript-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     SCRIPTSERVER_INIT_ENV=true
     updateConfigVar SCRIPTSERVER_INIT_ENV $SCRIPTSERVER_INIT_ENV
   fi
@@ -43622,7 +43622,7 @@ EOFHS
     "destinations": [
       {
         "type": "email",
-        "from": "Script-server ${HSHQ_ADMIN_NAME}<$EMAIL_SMTP_EMAIL_ADDRESS>",
+        "from": "Script-server $(getAdminEmailName)<$EMAIL_SMTP_EMAIL_ADDRESS>",
         "to": "$EMAIL_ADMIN_EMAIL_ADDRESS",
         "server": "$SUB_POSTFIX.$HOMESERVER_DOMAIN",
         "auth_enabled": false,
@@ -50918,7 +50918,7 @@ function installUptimeKuma()
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(2,'User','$USERS_COLOR_CODE','$curdt');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(3,'RelayServer','$RELAYSERVER_COLOR_CODE','$curdt');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO tag(id,name,color,created_date) VALUES(4,'HomeServers','$HOMESERVERS_COLOR_CODE','$curdt');"
-  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO notification(id,name,active,user_id,is_default,config) VALUES(1,'Service Alerts',1,1,1,'{\"name\":\"Service Alerts\",\"type\":\"smtp\",\"isDefault\":true,\"smtpSecure\":false,\"smtpHost\":\"$SMTP_HOSTNAME\",\"smtpPort\":$SMTP_HOSTPORT,\"smtpFrom\":\"\\\"Uptime Kuma $HSHQ_ADMIN_NAME\\\" <$EMAIL_ADMIN_EMAIL_ADDRESS>\",\"smtpTo\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"applyExisting\":true}');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO notification(id,name,active,user_id,is_default,config) VALUES(1,'Service Alerts',1,1,1,'{\"name\":\"Service Alerts\",\"type\":\"smtp\",\"isDefault\":true,\"smtpSecure\":false,\"smtpHost\":\"$SMTP_HOSTNAME\",\"smtpPort\":$SMTP_HOSTPORT,\"smtpFrom\":\"\\\"Uptime Kuma $(getAdminEmailName)\\\" <$EMAIL_ADMIN_EMAIL_ADDRESS>\",\"smtpTo\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"applyExisting\":true}');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('keepDataPeriodDays',30,'general');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('primaryBaseURL','https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN','general');"
   insertServicesUptimeKuma
