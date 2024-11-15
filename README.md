@@ -114,6 +114,8 @@ There are simple-to-use tools on the managing HomeServer to perform nearly every
 - Adding/removing a port forwarding rule - passes traffic that arrives at a port (or range of ports) on the RelayServer to a port (or range of ports) on a specific internal host
 - Adding/removing a LetsEncrypt certificate request passthrough - this allows LE certificates to be issued to backend services on the HomeServer (which solves the problem that some mobile apps encounter when being accessed internally)
 
+![image](https://github.com/user-attachments/assets/3b56b48e-fced-46db-85d1-0c63eac2f56a)
+
 The networking features described so far are somewhat known and typical regarding the concept of a generic relay server. However, when looking at our internal networking infrastructure, some really cool concepts emerged. A large amount of credit is given to the elegant and versitile design pattern of WireGuard. The split-tunnelling capabilities coupled with the peer-to-peer nature of the protocol allows for very advanced networking techniques, yet requires only a few lines of simple and straightforward configuration.
 
 When you first set up your RelayServer, you HomeServer creates an outgoing persistent tunnel to the RelayServer. This connection is the means in which mail is delivered as well as server-to-server communications within your private network - it is your PrimaryVPN. When you invite another HomeServer to host on your network, you are providing them with a tunnel into your network as well, and the RelayServer is the central access point for all of the connections. On the other side of the coin, when you join someone else's network, you are provided a tunnel into THEIR network, which ingresses via THEIR RelayServer.
