@@ -97,6 +97,8 @@ There are also numerous other smaller integrations as well, i.e. <a href="https:
 
 While the integrated systems approach is a significant improvement compared to other projects, the networking aspect puts HomeServerHQ into a class by itself. There is no other project on the planet that has anything like it - it's all entirely novel. To understand some of the background, we took the concept(s) of <a href="https://www.cloudflare.com/products/tunnel/" target="_blank">Cloudflare Tunnels</a>, combined with the <a href="https://www.wireguard.com/" target="_blank">WireGuard</a> capabilities expressed in <a href="https://tailscale.com/" target="_blank">Tailscale</a>/<a href="https://github.com/juanfont/headscale" target="_blank">Headscale</a>, as well as some influences from <a href="https://gitlab.com/cyber5k/mistborn" target="_blank">Stormblest/mistborn</a> and the <a href="https://homelabos.com/docs/setup/bastion/" target="_blank">Cloud Bastion server</a> concept in HomeLabOS. We originally set out to simply find a way around the self-hosting NAT/CGNAT issue(s) in an IPV4 world. But it turned into a much deeper and worthwhile exploration in which these novel concepts emerged.
 
+***The reason why this approach is significantly safer and more secure than any other method is quite simple - NOTHING is exposed to the public internet. It is all PRIVATE networking and the data resides safe and sound in your home.***
+
 To get a better understanding of how it all works, the best place to start is our <a href="https://wiki.homeserverhq.com/getting-started#homeserverhq-architecture" target="_blank">Architecture video</a>. As illustrated in the video, the main thing to understand is the concept of a two-server setup: a HomeServer and a RelayServer. The HomeServer is the physical equipment in your home where the data resides, and the RelayServer is a lightweight access point so that you can connect to your HomeServer from anywhere. The RelayServer is like your router - it handles all of the incoming and outgoing traffic of your network. But it is a smart router. Rather than doing a simple passthrough like a bastion host, we instead incorporated smarter relay tools to allow for more efficient routing of traffic.
 
 ![RelayServerDiagram](https://github.com/user-attachments/assets/0b5fe940-fbeb-4788-90c8-040eeb5a8dc4)
@@ -124,7 +126,7 @@ Each time you host on a different network, a new corresponding reverse proxy ins
 
 ![OverlappingInternets](https://github.com/user-attachments/assets/a8e28479-f5a0-43a9-93f1-63c5e3aeec29)
 
-All of these processes take place seamlessly in the background, the user is typically never away of anything. The DNS and TLS in most use cases are handled automatically in the background. The only thing that they will see is the occasional automated email informing them of a new HomeServer joining or an existing one leaving. Even as the manager of a network, the process is as simple as a few button clicks. 
+All of these processes take place seamlessly in the background, the user is typically never away of anything. The DNS and TLS in most use cases are handled automatically in the background. The only thing that they will see is the occasional automated email informing them of a new HomeServer joining or an existing one leaving. Even as the manager of a network, the process is as simple as a few button clicks.
 
 ## FAQ
   <ins>***Q: Why one big bash script?***</ins>
