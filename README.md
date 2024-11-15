@@ -86,9 +86,8 @@ Any new service is automatically:
 - Imported into <a href="https://www.portainer.io/" target="_blank">Portainer</a> as a stack ![image](https://github.com/user-attachments/assets/d46a5636-23d6-4c6b-9b32-9c046420c5ee)
 - Added to <a href="https://caddyserver.com/" target="_blank">Caddy</a> in order to access via https ![image](https://github.com/user-attachments/assets/1b3b6882-c5ab-49a8-a973-21b8870dbf40)
 - Put behind <a href="https://www.authelia.com/" target="_blank">Authelia</a> for added protection ![image](https://github.com/user-attachments/assets/f8664118-9d38-454e-8c93-b618e20b1a56)
-- Added to <a href="https://github.com/louislam/uptime-kuma" target="_blank">UptimeKuma</a> for monitoring the up/down status ![image](https://github.com/user-attachments/assets/58242590-cf04-4be5-b408-70aa0ff89796)
+- Added to <a href="https://github.com/louislam/uptime-kuma" target="_blank">UptimeKuma</a> for monitoring the up/down status ![image](https://github.com/user-attachments/assets/6eaec5ea-6b2c-4052-acc6-e84ffa923fd6)
 - Added to <a href="https://github.com/linuxserver/Heimdall" target="_blank">Heimdall</a> - a beautiful home page with icons for all of the services ![image](https://github.com/user-attachments/assets/d174062c-9e96-450a-a4db-0452cc7122bb)
-
 
 Almost half of the supported services use either <a href="https://www.mysql.com/" target="_blank">MySQL</a>/<a href="https://mariadb.org/" target="_blank">MariaDB</a> or <a href="https://www.postgresql.org/" target="_blank">Postgres</a> for their backend storage. So, these database containers are not only added to an internal network and viewable/queryable via <a href="https://getsqlpad.com/en/introduction/" target="_blank">SQLPad</a>, but the database contents are also exported to flat file on an hourly basis with <a href="https://github.com/mcuadros/ofelia" target="_blank">Ofelia</a>.
 ![image](https://github.com/user-attachments/assets/bcbf0bdd-ae14-4239-a50b-3e3283aee926)
