@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=104
+HSHQ_SCRIPT_VERSION=105
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -14846,6 +14846,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=102
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 105 ]; then
+    echo "Updating to Version 105..."
+    version105Update
+    HSHQ_VERSION=105
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16574,6 +16580,18 @@ function version102Update()
 {
   set +e
   initServicesCredentials
+  set -e
+}
+
+function version105Update()
+{
+  # Seriously, who replies to emails underneath rather than above?
+  set +e
+  sudo grep reply_mode $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sudo sed -i "s|?>|\$config['reply_mode'] = 1;\n?>|" $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php
+    docker container restart mailu-webmail > /dev/null 2>&1
+  fi
   set -e
 }
 
@@ -26573,6 +26591,7 @@ EOFRS
 <?php
 \$config['show_images'] = 3;
 \$config['timezone'] = '$TZ';
+\$config['reply_mode'] = 1;
 ?>
 EOFRO
 
