@@ -36,7 +36,7 @@ HomeServerHQ on the other hand is a polished Cadillac, with all of the features 
 
 For a more in-depth analysis on why it is such a big jump, see the subsequent discussions following this comparison table.
 
-Feature | <a href="https://www.homeserverhq.com/" target="_blank"> HomeServerHQ </a> | <a href="https://www.cloudron.io/" target="_blank"> Cloudron </a> | <a href="https://yunohost.org/" target="_blank"> YunoHost </a> | <a href="https://homelabos.com/" target="_blank"> HomeLabOS </a> | <a href="https://umbrel.com/" target="_blank"> Umbrel </a> | <a href="https://casaos.io/" target="_blank"> CasaOS </a>
+Feature | <a href="https://www.homeserverhq.com/" target="_blank"> HomeServerHQ </a> | <a href="https://github.com/cloudron-io" target="_blank"> Cloudron </a> | <a href="https://github.com/YunoHost/yunohost" target="_blank"> YunoHost </a> | <a href="https://gitlab.com/NickBusey/HomelabOS/" target="_blank"> HomeLabOS </a> | <a href="https://github.com/getumbrel/umbrel" target="_blank"> Umbrel </a> | <a href="https://github.com/IceWhaleTech/CasaOS" target="_blank"> CasaOS </a>
 :------ | :------: | :------: | :------: | :------: | :------: | :------: 
 Fully configured email server | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x:
 Fully configured VPN | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
