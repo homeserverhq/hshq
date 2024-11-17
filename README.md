@@ -26,15 +26,7 @@ bash hshq.sh
 ```
 ## Comparison of Features
 
-First of all, it is important to note that anyone who works on and publishes open source software should be held in high regard. In most cases, this is done by hard-working professionals in their off-time, they contribute freely with no thought of reward, often times not even given a thank you. So if you ever have the chance, pay it forward.
-
-That being said, ***competition drives innovation***.
-
-It is difficult to compare our project with others that are related because it is such a quantum leap ahead. If you combined all of the features and capabilities of the other projects in the comparison table below, they would in totality only amount to a small subset of HomeServerHQ's. On these prior attempts, you are being handed a box of parts. If you have an IT background and be willing to spend the next few months and a few hundred hours, you would be lucky to scrape together a go-cart. On top of that, the more you work on it, the more often it breaks down. 
-
-HomeServerHQ on the other hand is a polished Cadillac, with all of the features and amenities that a self-hoster would expect, highly safe and secure, ready to drive off the lot. Once the installation has completed, you are...done with the installation. You could be a soccer mom with zero IT experience, and just roll past the kids on their go-carts.
-
-For a more in-depth analysis on why it is such a big jump, see the subsequent discussions following this comparison table.
+For a more in-depth analysis of the differences, see the subsequent discussions following this comparison table.
 
 Feature | <a href="https://www.homeserverhq.com/" target="_blank"> HomeServerHQ </a> | <a href="https://github.com/cloudron-io" target="_blank"> Cloudron </a> | <a href="https://github.com/YunoHost/yunohost" target="_blank"> YunoHost </a> | <a href="https://gitlab.com/NickBusey/HomelabOS/" target="_blank"> HomeLabOS </a> | <a href="https://github.com/getumbrel/umbrel" target="_blank"> Umbrel </a> | <a href="https://github.com/IceWhaleTech/CasaOS" target="_blank"> CasaOS </a>
 :------ | :------: | :------: | :------: | :------: | :------: | :------: 
