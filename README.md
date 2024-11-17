@@ -10,6 +10,14 @@
 
 > To verify source code, see <a href="https://wiki.homeserverhq.com/tutorials/source-code-verification" target="_blank">https://wiki.homeserverhq.com/tutorials/source-code-verification</a> 
 
+## Table of Contents
+- [One-line Start Installation](#one-line-start-installation)
+- [Manual Installation](#manual-installation)
+- [Comparison of Features](#comparison-of-features)
+  - [Home Server](#home-server)
+  - [Networking](#networking)
+- [FAQ](#faq)
+
 ### One-line Start Installation
 ```
 wget -q4N https://homeserverhq.com/hshq.sh && bash hshq.sh
@@ -20,7 +28,7 @@ To perform the installation directly via GitHub (in case the webserver is unavai
 ```
 cd ~
 mkdir -p hshq hshq/data hshq/data/lib
-wget -qN4 https://raw.githubusercontent.com/homeserverhq/hshq/main/hshq.sh
+wget -q4N https://raw.githubusercontent.com/homeserverhq/hshq/main/hshq.sh
 wget -q4 -O hshq/data/lib/hshqlib.sh https://raw.githubusercontent.com/homeserverhq/hshq/main/hshqlib.sh
 bash hshq.sh
 ```
