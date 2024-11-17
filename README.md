@@ -13,17 +13,18 @@
 ## Table of Contents
 - [One-line Start Installation](#one-line-start-installation)
 - [Manual Installation](#manual-installation)
+- [Setup A Demo](#setup-a-demo)
 - [Comparison of Features](#comparison-of-features)
   - [Home Server](#home-server)
   - [Networking](#networking)
 - [FAQ](#faq)
 
-### One-line Start Installation
+## One-line Start Installation
 ```
 wget -q4N https://homeserverhq.com/hshq.sh && bash hshq.sh
 ```
 
-### Manual Installation
+## Manual Installation
 To perform the installation directly via GitHub (in case the webserver is unavailable), run the following commands as the first non-root user (ID=1000) on a fresh Ubuntu 22.04 installation:
 ```
 cd ~
@@ -32,6 +33,10 @@ wget -q4N https://raw.githubusercontent.com/homeserverhq/hshq/main/hshq.sh
 wget -q4 -O hshq/data/lib/hshqlib.sh https://raw.githubusercontent.com/homeserverhq/hshq/main/hshqlib.sh
 bash hshq.sh
 ```
+
+## Setup a Demo
+#### See https://wiki.homeserverhq.com/en/tutorials/setup-demo for instructions on how to setup a demo environment.
+
 ## Comparison of Features
 
 For a more in-depth analysis of the differences, see the subsequent discussions following this comparison table.
