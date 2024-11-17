@@ -49,7 +49,7 @@ Federation /<a href="https://en.wikipedia.org/wiki/ActivityPub" target="_blank">
 Cryptographically-signed source code | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x:
 Bring you own equipment | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:
 No IT experience needed | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
-Simple installation | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x:
+Simple installation | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :heavy_check_mark: | :heavy_check_mark:
 Add multiple domains to the same HomeServer | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
 Add multiple HomeServers to the same primary RelayServer | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
 Installs apps | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:
