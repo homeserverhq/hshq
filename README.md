@@ -55,6 +55,7 @@ Tunnel/masquerade outgoing network traffic for specific docker containers | :hea
 No ports open on home router | :heavy_check_mark: | :x: | :x: | :heavy_check_mark: | :x: | :x:
 Host email server and/or websites from home  (on the public internet), even behind multiple layers of NAT/CGNAT | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
 Access with any type of device (desktop/laptop/cellphone/tablet) from anywhere | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :x:
+Add unlimited devices to your VPN | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
 Add your own custom services | :heavy_check_mark: | :x: | :x: | :x: | :x: | :heavy_check_mark:
 Safe and secure infrastructure | :heavy_check_mark: | :x: | :x: | :x: | :x: | :x:
 Production ready | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :heavy_check_mark: | :x:
