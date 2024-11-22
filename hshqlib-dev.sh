@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=105
+HSHQ_SCRIPT_VERSION=106
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -3906,6 +3906,7 @@ EOFRE
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
+  sudo apt-mark unhold wazuh-agent
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -4294,6 +4295,11 @@ function startWazuhAgent()
   if [ \$? -ne 0 ]; then
     sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
   fi
+  sudo tee /var/ossec/etc/authd.pass >/dev/null <<EOFWZ
+$WAZUH_MANAGER_AUTH_PASSWORD
+EOFWZ
+  sudo chmod 640 /var/ossec/etc/authd.pass
+  sudo chown root:wazuh /var/ossec/etc/authd.pass
   set -e
   sudo systemctl enable wazuh-agent
   sudo systemctl start wazuh-agent
@@ -5407,6 +5413,11 @@ function startWazuhAgent()
   if [ \$? -ne 0 ]; then
     sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
   fi
+  sudo tee /var/ossec/etc/authd.pass >/dev/null <<EOFWZ
+$WAZUH_MANAGER_AUTH_PASSWORD
+EOFWZ
+  sudo chmod 640 /var/ossec/etc/authd.pass
+  sudo chown root:wazuh /var/ossec/etc/authd.pass
   set -e
   sudo systemctl enable wazuh-agent
   sudo systemctl start wazuh-agent
@@ -14093,6 +14104,7 @@ WAZUH_USERS_LOGSTASH_PASSWORD=
 WAZUH_USERS_READALL_PASSWORD=
 WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD=
 WAZUH_AGENT_VERSION=4.9.1-1
+WAZUH_MANAGER_AUTH_PASSWORD=
 # Wazuh (Service Details) END
 
 # Collabora (Service Details) BEGIN
@@ -14850,6 +14862,12 @@ function checkUpdateVersion()
     echo "Updating to Version 105..."
     version105Update
     HSHQ_VERSION=105
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 106 ]; then
+    echo "Updating to Version 106..."
+    version106Update
+    HSHQ_VERSION=106
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -16595,6 +16613,44 @@ function version105Update()
   set -e
 }
 
+function version106Update()
+{
+  # Adding password auth to Wazuh manager for agent enrollment
+  # Excellent article - https://neodyme.io/en/blog/wazuh_rce/#the-target-wazuh
+  if [ -d /var/ossec/etc ]; then
+    sudo tee /var/ossec/etc/authd.pass >/dev/null <<EOFWZ
+$WAZUH_MANAGER_AUTH_PASSWORD
+EOFWZ
+    sudo chmod 640 /var/ossec/etc/authd.pass
+    sudo chown root:wazuh /var/ossec/etc/authd.pass
+    sudo systemctl restart wazuh-agent
+  fi
+
+  if sudo test -d $HSHQ_STACKS_DIR/wazuh/volumes/etc; then
+    sudo tee $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass >/dev/null <<EOFWZ
+$WAZUH_MANAGER_AUTH_PASSWORD
+EOFWZ
+    sudo chmod 640 $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass
+    sudo chown root:999 $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass
+    sudo sed -i "s/<use_password>no<\/use_password>/<use_password>yes<\/use_password>/" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
+    docker container restart wazuh.manager > /dev/null 2>&1
+  fi
+
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    tee $HOME/authd.pass >/dev/null <<EOFWZ
+$WAZUH_MANAGER_AUTH_PASSWORD
+EOFWZ
+    chmod 640 $HOME/authd.pass
+    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
+    notifyRSLogin
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent"
+    unloadSSHKey
+    rm -f $HOME/authd.pass
+  fi
+}
+
 function mfFixCACertPath()
 {
   sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
@@ -17460,6 +17516,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false"
   checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false"
   checkAddVarsToServiceConfig "Wazuh" "WAZUH_AGENT_VERSION=4.7.5-1"
+  checkAddVarsToServiceConfig "Wazuh" "WAZUH_MANAGER_AUTH_PASSWORD="
 }
 
 function checkAddServiceToConfig()
@@ -17595,6 +17652,7 @@ function nukeHSHQ()
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
+  sudo apt-mark unhold wazuh-agent
   sudo systemctl daemon-reload
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
@@ -20160,6 +20218,10 @@ function initServicesCredentials()
   if [ -z "$WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD" ]; then
     WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD $WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD
+  fi
+  if [ -z "$WAZUH_MANAGER_AUTH_PASSWORD" ]; then
+    WAZUH_MANAGER_AUTH_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WAZUH_MANAGER_AUTH_PASSWORD $WAZUH_MANAGER_AUTH_PASSWORD
   fi
   if [ -z "$COLLABORA_ADMIN_USERNAME" ]; then
     COLLABORA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_collabora"
@@ -27152,6 +27214,14 @@ function installWazuh()
 </group>
 
 EOFRU
+
+  sudo tee $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass >/dev/null <<EOFWZ
+$WAZUH_MANAGER_AUTH_PASSWORD
+EOFWZ
+  sudo chmod 640 $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass
+  sudo chown root:999 $HSHQ_STACKS_DIR/wazuh/volumes/etc/authd.pass
+  sudo sed -i "s/<use_password>no<\/use_password>/<use_password>yes<\/use_password>/" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
+
   docker container restart wazuh.manager > /dev/null 2>&1
   installWazuhAgent
   set -e
@@ -27492,33 +27562,11 @@ EOFWZ
     <skip_nfs>yes</skip_nfs>
   </sca>
 
-  <vulnerability-detector>
+  <vulnerability-detection>
     <enabled>yes</enabled>
-    <interval>5m</interval>
-    <min_full_scan_interval>6h</min_full_scan_interval>
-    <run_on_start>yes</run_on_start>
-
-    <!-- Ubuntu OS vulnerabilities -->
-    <provider name="canonical">
-      <enabled>yes</enabled>
-      <os>jammy</os>
-      <update_interval>1h</update_interval>
-    </provider>
-
-    <!-- Windows OS vulnerabilities -->
-    <provider name="msu">
-      <enabled>yes</enabled>
-      <update_interval>1h</update_interval>
-    </provider>
-
-    <!-- Aggregate vulnerabilities -->
-    <provider name="nvd">
-      <enabled>yes</enabled>
-      <update_from_year>2010</update_from_year>
-      <update_interval>1h</update_interval>
-    </provider>
-
-  </vulnerability-detector>
+    <index-status>yes</index-status>
+    <feed-update-interval>60m</feed-update-interval>
+  </vulnerability-detection>
 
   <!-- File integrity monitoring -->
   <syscheck>
@@ -27929,6 +27977,11 @@ function installWazuhAgent()
   if [ $? -ne 0 ]; then
     sudo sed -i "/<\/ossec_config>/{s//  <localfile>\n    <log_format>syslog<\/log_format>\n    <location>\/var\/log\/docker\/*<\/location>\n  <\/localfile>\n\n<\/ossec_config>/;:p;n;bp}" /var/ossec/etc/ossec.conf
   fi
+  sudo tee /var/ossec/etc/authd.pass >/dev/null <<EOFWZ
+$WAZUH_MANAGER_AUTH_PASSWORD
+EOFWZ
+  sudo chmod 640 /var/ossec/etc/authd.pass
+  sudo chown root:wazuh /var/ossec/etc/authd.pass
   set -e
   sudo systemctl enable wazuh-agent
   sudo systemctl start wazuh-agent
@@ -27948,8 +28001,9 @@ function removeWazuhAgent()
 {
   sudo systemctl stop wazuh-agent
   sudo systemctl disable wazuh-agent
-  sudo systemctl daemon-reload
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
+  sudo apt-mark unhold wazuh-agent
+  sudo systemctl daemon-reload
 }
 
 function version91WazuhUpdate()
