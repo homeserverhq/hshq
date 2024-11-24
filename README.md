@@ -140,7 +140,7 @@ There are simple-to-use tools on the managing HomeServer to perform nearly every
 - Adding/removing a new secondary domain - You can add any number of secondary domains to a single HomeServer
 - Adding/removing an exposed subdomain - Allows web sites to be hosted on the public internet from an internal HomeServer via the RelayServer
 - Adding/removing a port forwarding rule - passes traffic that arrives at a port (or range of ports) on the RelayServer to a port (or range of ports) on a specific internal host
-- Adding/removing a LetsEncrypt certificate request passthrough - this allows LE certificates to be issued to backend services on the HomeServer (which solves the problem that some mobile apps encounter when being accessed internally)
+- Adding/removing a LetsEncrypt certificate request passthrough - this allows LE certificates to be issued to backend services on the HomeServer (which solves the problem that some mobile apps encounter with certificates signed by a custom CA)
 
 ![image](https://github.com/user-attachments/assets/3b56b48e-fced-46db-85d1-0c63eac2f56a)
 
