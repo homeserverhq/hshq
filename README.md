@@ -38,9 +38,10 @@ bash hshq.sh
 #### See https://wiki.homeserverhq.com/en/tutorials/setup-demo for instructions on how to setup a demo environment.
 
 ## Comparison of Features
+With respect to self-hosting on a home-based server, HomeServerHQ has made significant progress along two avenues - the home server itself and the networking aspect. Thus, the comparison metrics are separated into these two categories accordingly. There is a more in-depth discussion of the differences following each of the comparison tables.
 
-For a more in-depth analysis of the differences, see the subsequent discussions following this comparison table.
-
+### Home Server
+------
 Feature | <a href="https://www.homeserverhq.com/" target="_blank">HSHQ</a> | <a href="https://github.com/cloudron-io" target="_blank">Cloudron</a> | <a href="https://github.com/YunoHost/yunohost" target="_blank">YunoHost</a> | <a href="https://gitlab.com/NickBusey/HomelabOS/" target="_blank">HomeLabOS</a> | <a href="https://github.com/getumbrel/umbrel" target="_blank">Umbrel</a> | <a href="https://github.com/IceWhaleTech/CasaOS" target="_blank">CasaOS</a>
 :------ | :------: | :------: | :------: | :------: | :------: | :------: 
 Fully configured email server | :heavy_check_mark: | :heavy_check_mark: | :x: | :x: | :x: | :x:
@@ -74,11 +75,7 @@ Shiny and Pretty Web UI | :x: | :heavy_check_mark: | :heavy_check_mark: | :x: | 
 Simple and streamlined backup/restore procedures | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :x:
 100% free and open source - no strings attached | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:
 \# of Files in Source Code Repository (Auditing) | 5 | 13724 | 380 | 917 | 775 | 227
-
-To describe the differences more thoroughly, we'll break it into two categories - the first is strictly the home server itself, and the second is the networking aspect.
-
-### Home Server
-
+------
 Probably the most central and useful aspect of an all-in-one approach is the idea of a one-click install. There are thousands of open-source projects that one can install, and clicking a single button to install it is very useful. You may even be enticed by the fancy web interfaces that some of these so called "all-in-one" projects employ - it seems professional and legitimate. However, in just about every case, you could have gotten that far by yourself with about the same amount of work. In general, you are being handed a much bigger workload, in that you have to configure and maintain it yourself. So these shiny and pretty web interfaces are nothing more than lipstick on a pig.
 
 ***HomeServerHQ is a <ins>truly</ins> all-in-one approach - a cohesive integrated system, rather than just a disparate box of parts.*** Let's take an example, such as <a href="https://nextcloud.com/" target="_blank">Nextcloud</a>.
@@ -102,6 +99,27 @@ There are also numerous other smaller integrations as well, i.e. <a href="https:
 ***In short, all configuration options are investigated, and all integration options are exploited.***
 
 ### Networking
+------
+Feature | <a href="https://www.homeserverhq.com/" target="_blank">HSHQ</a> | <a href="https://github.com/tailscale/tailscale" target="_blank">Tailscale</a> | <a href="https://github.com/juanfont/headscale" target="_blank">Headscale</a> | <a href="https://www.cloudflare.com/products/tunnel/" target="_blank">Cloudflare Tunnels</a>
+:------ | :------: | :------: | :------: | :------:
+Setup/Usage difficulty (1-10) | 2 | 4 | 10 | 4
+Decentralized | :heavy_check_mark: | :x:<sup>1</sup> | :heavy_check_mark: | :x:<sup>1</sup>
+100% Open Source | :heavy_check_mark: | :x:<sup>2</sup> | :heavy_check_mark: | :x:
+Host email server | :heavy_check_mark: | :x: | :x: | :x:
+Host public website(s) | :heavy_check_mark: | :x: | :x: | :heavy_check_mark:
+Port forwarding | :heavy_check_mark: | :x: | :x: | :x:
+Connect remotely to private network | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x:
+Unlimited # of users | :heavy_check_mark: | :red_circle:<sup>3</sup> | :heavy_check_mark: | :heavy_check_mark:
+Unlimited # of devices | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark:
+Prohibits unknown third-parties unencrypted access to your network traffic | :heavy_check_mark: | :x: | :heavy_check_mark: | :x:
+
+<sup>1</sup>Tailscale and Cloudflare are architecturally decentralized, yet from a corporate standpoint, there is only <ins>one</ins> Tailscale and <ins>one</ins> Cloudflare.
+
+<sup>2</sup> [Mostly open source](https://tailscale.com/opensource), i.e. Mostly peaceful
+
+<sup>3</sup>It depends on the pricing tier.
+
+------
 
 While the integrated systems approach is a significant improvement compared to other projects, the networking aspect puts HomeServerHQ into a class by itself. There is no other project on the planet that has anything like it - it's all entirely novel. To understand some of the background, we took the concept(s) of <a href="https://www.cloudflare.com/products/tunnel/" target="_blank">Cloudflare Tunnels</a>, combined with the <a href="https://www.wireguard.com/" target="_blank">WireGuard</a> capabilities expressed in <a href="https://tailscale.com/" target="_blank">Tailscale</a>/<a href="https://github.com/juanfont/headscale" target="_blank">Headscale</a>, some influences from <a href="https://gitlab.com/cyber5k/mistborn" target="_blank">Stormblest/mistborn</a>, the <a href="https://homelabos.com/docs/setup/bastion/" target="_blank">Cloud Bastion server</a> component of HomeLabOS, as well as the overall idea of <a href="https://en.wikipedia.org/wiki/Federated_architecture" target="_blank">Federation</a> popularized by <a href="https://matrix.org/" target="_blank">Matrix.org</a>. We originally set out to simply find a way around the self-hosting NAT/CGNAT issue(s) in an IPV4 world. But it turned into a much deeper and worthwhile exploration in which novel concepts emerged.
 
