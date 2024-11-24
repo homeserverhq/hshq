@@ -111,7 +111,7 @@ Port forwarding | :heavy_check_mark: | :x: | :x: | :x:
 Connect remotely to private network | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x:
 Unlimited # of users | :heavy_check_mark: | :red_circle:<sup>3</sup> | :heavy_check_mark: | :heavy_check_mark:
 Unlimited # of devices | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark:
-Prohibits unknown third-parties unencrypted access to your network traffic | :heavy_check_mark: | :x: | :heavy_check_mark: | :x:
+Prohibits unknown third-parties from having unencrypted access to your network traffic | :heavy_check_mark: | :x: | :heavy_check_mark: | :x:
 
 <sup>1</sup>Tailscale and Cloudflare are architecturally decentralized, yet from a corporate standpoint, there is only <ins>one</ins> Tailscale and <ins>one</ins> Cloudflare.
 
