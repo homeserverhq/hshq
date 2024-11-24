@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=106
+HSHQ_SCRIPT_VERSION=107
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -4255,13 +4255,17 @@ function restoreMailRelay()
 
 function restoreWireGuard()
 {
-  sudo cp \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/$RELAYSERVER_WG_INTERFACE_NAME.conf /etc/wireguard/$RELAYSERVER_WG_INTERFACE_NAME.conf
+  sudo mv \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/$RELAYSERVER_WG_INTERFACE_NAME.conf /etc/wireguard/$RELAYSERVER_WG_INTERFACE_NAME.conf
+  # Gotta make it a hard link just as it was before, dummy.
+  sudo ln /etc/wireguard/$RELAYSERVER_WG_INTERFACE_NAME.conf \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/$RELAYSERVER_WG_INTERFACE_NAME.conf
   sudo systemctl enable wg-quick@$RELAYSERVER_WG_INTERFACE_NAME.service
   sudo systemctl start wg-quick@$RELAYSERVER_WG_INTERFACE_NAME.service
   startStopStack wgportal stop
   startStopStack wgportal start
   startStopStack clientdns stop
   startStopStack clientdns start
+  # Let's restart the interface just to make sure
+  sudo systemctl restart wg-quick@$RELAYSERVER_WG_INTERFACE_NAME.service
 }
 
 function restoreCaddy()
@@ -14870,6 +14874,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=106
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 107 ]; then
+    echo "Updating to Version 107..."
+    version107Update
+    HSHQ_VERSION=107
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16649,6 +16659,13 @@ EOFWZ
     unloadSSHKey
     rm -f $HOME/authd.pass
   fi
+}
+
+function version107Update()
+{
+  set +e
+  outputAllScriptServerScripts
+  set -e
 }
 
 function mfFixCACertPath()
@@ -46192,7 +46209,7 @@ EOFSC
 {
   "name": "02 Invite Device to Network",
   "script_path": "conf/scripts/myNetworkInviteDeviceConnection.sh",
-  "description": "Performs a device invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 06 My Network -> 01 Invite to Network function. But if someone emailed you their client device's public key (and interface IP address), or you are adding one of your own devices (cellphone/laptop/tablet) to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated.",
+  "description": "Performs a device invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 06 My Network -> 01 Invite to Network function. But if someone emailed you their client device's public key (and interface IP address), or you are adding one of your own devices (cellphone/laptop/tablet) to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated. If you allow public internet IP masquerade, then this device can masquerade its internet traffic via your RelayServer.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -46241,7 +46258,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Request public internet IP masquerade?",
+      "name": "Allow public internet IP masquerade?",
       "required": true,
       "param": "-requestinternet=",
       "same_arg_param": true,
