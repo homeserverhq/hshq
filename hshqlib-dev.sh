@@ -16124,6 +16124,7 @@ EOFAU
       docker container restart codeserver > /dev/null 2>&1
     fi
   fi
+  outputAllScriptServerScripts
   set -e
 }
 
@@ -45836,7 +45837,7 @@ EOFSC
 {
   "name": "05 Remove Service(s)",
   "script_path": "conf/scripts/removeServicesFromList.sh",
-  "description": "Select the service(s) that you wish to remove. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data related to this service.",
+  "description": "Select the service(s) that you wish to remove. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>**!!! CAUTION !!!**  This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data for the selected service(s).",
   "group": "$group_id_services",
   "parameters": [
     {
