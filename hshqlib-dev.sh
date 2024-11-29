@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=107
+HSHQ_SCRIPT_VERSION=108
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -11653,6 +11653,25 @@ function insertSubAuthelia()
   fi
 }
 
+function insertOIDCClientAuthelia()
+{
+  oidcName="$1"
+  oidcBlock="$2"
+  set +e
+  grep "# Authelia OIDC Client $oidcName" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    replaceTextBlockInFile "# Authelia OIDC Client $oidcName BEGIN" "# Authelia OIDC Client $oidcName END" "$oidcBlock" $HSHQ_STACKS_DIR/authelia/config/configuration.yml false
+  else
+    oidcBlock="${oidcBlock}\n# Authelia OIDC Clients END"
+    replaceTextBlockInFile "# Authelia OIDC Clients END" "# Authelia OIDC Clients END" "$oidcBlock" $HSHQ_STACKS_DIR/authelia/config/configuration.yml false
+  fi
+  docker container restart authelia > /dev/null 2>&1
+  docker ps | grep codeserver > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
 function urlEncode()
 {
   strLength="${#1}"
@@ -14514,6 +14533,18 @@ ESPOCRM_DATABASE_USER=
 ESPOCRM_DATABASE_USER_PASSWORD=
 # EspoCRM (Service Details) END
 
+# Immich (Service Details) BEGIN
+IMMICH_INIT_ENV=true
+IMMICH_ADMIN_USERNAME=
+IMMICH_ADMIN_PASSWORD=
+IMMICH_ADMIN_EMAIL_ADDRESS=
+IMMICH_DATABASE_NAME=
+IMMICH_DATABASE_USER=
+IMMICH_DATABASE_USER_PASSWORD=
+IMMICH_REDIS_PASSWORD=
+IMMICH_CLIENT_SECRET=
+# Immich (Service Details) END
+
 # Service Details END
 EOFCF
   set -e
@@ -14878,6 +14909,12 @@ function checkUpdateVersion()
     echo "Updating to Version 107..."
     version107Update
     HSHQ_VERSION=107
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 108 ]; then
+    echo "Updating to Version 108..."
+    version108Update
+    HSHQ_VERSION=108
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -16668,6 +16705,77 @@ function version107Update()
   set -e
 }
 
+function version108Update()
+{
+  set +e
+  outputAutheliaIDPSecretsV108
+  grep "^identity_providers:" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    auth_add=$(cat <<EOFAU
+identity_providers:
+  oidc:
+    authorization_policies:
+      everyone_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:everyone
+      basicusers_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:basicusers
+      primaryusers_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:primaryusers
+      adminusers_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:admins
+    hmac_secret: |
+      {{- fileContent "/config/secrets/authelia_identity_providers_oidc_hmac_secret.txt" | nindent 6 }}
+    jwks:
+      - key: |
+        {{- fileContent "/config/secrets/jwks-key.pem" | nindent 10 }}
+    clients:
+# Authelia OIDC Clients BEGIN
+# Authelia OIDC Client default BEGIN
+      - client_id: default
+        client_name: default
+        client_secret: '$(htpasswd -bnBC 10 "" $(pwgen -c -n 64 1) | cut -d":" -f2)'
+        public: false
+        authorization_policy: two_factor
+        redirect_uris:
+          - https://home.$HOMESERVER_DOMAIN
+# Authelia OIDC Client default END
+# Authelia OIDC Clients END
+
+...
+EOFAU
+    )
+    sed -i "s/\.\.\.//g" $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+    echo "$auth_add" >> $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+    updateStackEnv authelia modFunAutheliaConfigFilterVar
+    docker ps | grep codeserver > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      docker container restart codeserver > /dev/null 2>&1
+    fi
+  fi
+  set -e
+}
+
+function modFunAutheliaConfigFilterVar()
+{
+  set +e
+  grep "X_AUTHELIA_CONFIG_FILTERS" $HOME/${updateStackName}.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "X_AUTHELIA_CONFIG_FILTERS=template" >> $HOME/${updateStackName}.env
+  fi
+}
+
 function mfFixCACertPath()
 {
   sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
@@ -17518,6 +17626,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
   checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
   checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_CLIENT_SECRET="
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
@@ -19616,6 +19725,9 @@ function loadPinnedDockerImages()
   IMG_HOMEASSISTANT_NODERED=nodered/node-red:4.0.5
   IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.1.3
   IMG_HUGINN_APP=ghcr.io/huginn/huginn:087bcdd8f21ead2dd4e587b554e8248e5ffd4b99
+  IMG_IMMICH_DB=docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0
+  IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v1.121.0
+  IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v1.121.0
   IMG_INFLUXDB=influxdb:2.7.10-alpine
   IMG_INVIDIOUS=quay.io/invidious/invidious:latest
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
@@ -19829,6 +19941,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     espocrm)
       echo "v1" ;;
+    immich)
+      echo "v1" ;;
     ofelia)
       echo "v4" ;;
     sqlpad)
@@ -19959,6 +20073,9 @@ function pullDockerImages()
   pullImage $IMG_PENPOT_FRONTEND
   pullImage $IMG_PENPOT_EXPORTER
   pullImage $IMG_ESPOCRM_APP
+  pullImage $IMG_IMMICH_DB
+  pullImage $IMG_IMMICH_APP
+  pullImage $IMG_IMMICH_ML
 }
 
 function pullBaseServicesDockerImages()
@@ -20964,6 +21081,38 @@ function initServicesCredentials()
     ESPOCRM_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar ESPOCRM_DATABASE_USER_PASSWORD $ESPOCRM_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$IMMICH_ADMIN_USERNAME" ]; then
+    IMMICH_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_immich"
+    updateConfigVar IMMICH_ADMIN_USERNAME $IMMICH_ADMIN_USERNAME
+  fi
+  if [ -z "$IMMICH_ADMIN_PASSWORD" ]; then
+    IMMICH_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar IMMICH_ADMIN_PASSWORD $IMMICH_ADMIN_PASSWORD
+  fi
+  if [ -z "$IMMICH_ADMIN_EMAIL_ADDRESS" ]; then
+    IMMICH_ADMIN_EMAIL_ADDRESS=$IMMICH_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar IMMICH_ADMIN_EMAIL_ADDRESS $IMMICH_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$IMMICH_DATABASE_NAME" ]; then
+    IMMICH_DATABASE_NAME=immichdb
+    updateConfigVar IMMICH_DATABASE_NAME $IMMICH_DATABASE_NAME
+  fi
+  if [ -z "$IMMICH_DATABASE_USER" ]; then
+    IMMICH_DATABASE_USER=immich-user
+    updateConfigVar IMMICH_DATABASE_USER $IMMICH_DATABASE_USER
+  fi
+  if [ -z "$IMMICH_DATABASE_USER_PASSWORD" ]; then
+    IMMICH_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar IMMICH_DATABASE_USER_PASSWORD $IMMICH_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$IMMICH_REDIS_PASSWORD" ]; then
+    IMMICH_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar IMMICH_REDIS_PASSWORD $IMMICH_REDIS_PASSWORD
+  fi
+  if [ -z "$IMMICH_CLIENT_SECRET" ]; then
+    IMMICH_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar IMMICH_CLIENT_SECRET $IMMICH_CLIENT_SECRET
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -21016,6 +21165,9 @@ function checkCreateNonbackupDirs()
   mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
   mkdir -p $HSHQ_NONBACKUP_DIR/penpot
   mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/immich
+  mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
 }
 
 function installBaseStacks()
@@ -21077,6 +21229,7 @@ function initServiceVars()
   checkAddSvc "SVCD_SCRIPTSERVER=script-server,script-server,primary,admin,Script-server,script-server,hshq"
   checkAddSvc "SVCD_HUGINN=huginn,huginn,primary,user,Huginn,huginn,hshq"
   checkAddSvc "SVCD_IMAGES=images,images,other,user,Images,images,hshq"
+  checkAddSvc "SVCD_IMMICH=immich,immich,other,user,Immich,immich,hshq"
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
   checkAddSvc "SVCD_INVIDIOUS=invidious,invidious,primary,user,Invidious,invidious,hshq"
   checkAddSvc "SVCD_ITTOOLS=ittools,ittools,primary,admin,IT Tools,ittools,hshq"
@@ -21253,6 +21406,8 @@ function installStackByName()
       installPenpot $is_integrate ;;
     espocrm)
       installEspoCRM $is_integrate ;;
+    immich)
+      installImmich $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -21395,6 +21550,8 @@ function performUpdateStackByName()
       performUpdatePenpot "$portainerToken" ;;
     espocrm)
       performUpdateEspoCRM "$portainerToken" ;;
+    immich)
+      performUpdateImmich "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -21440,6 +21597,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_IMAGES.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_IMMICH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JITSI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM.$HOMESERVER_DOMAIN\n"
@@ -21588,6 +21746,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_USERNAME $IMMICH_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -21682,6 +21841,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_USERNAME $IMMICH_ADMIN_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -21779,6 +21940,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0 "grampsweb.png"
   insertIntoHeimdallDB "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0 "penpot.png"
   insertIntoHeimdallDB "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0 "espocrm.png"
+  insertIntoHeimdallDB "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0 "immich.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -21869,6 +22031,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -21887,13 +22050,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,sqlpad"
 
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,photoprism,kasm,stirlingpdf,piped,penpot,espocrm
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,guacamole,photoprism,kasm,stirlingpdf,piped,penpot,espocrm,immich
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,immich
 }
 
 function getScriptImageByContainerName()
@@ -22405,6 +22568,18 @@ function getScriptImageByContainerName()
       ;;
     "espocrm-websocket")
       container_image=$IMG_ESPOCRM_APP
+      ;;
+    "immich-db")
+      container_image=$IMG_IMMICH_DB
+      ;;
+    "immich-app")
+      container_image=$IMG_IMMICH_APP
+      ;;
+    "immich-ml")
+      container_image=$IMG_IMMICH_ML
+      ;;
+    "immich-redis")
+      container_image=$IMG_REDIS
       ;;
     *)
       ;;
@@ -32779,6 +32954,7 @@ function installAuthelia()
   mkdir $HSHQ_STACKS_DIR/authelia/config
   mkdir $HSHQ_STACKS_DIR/authelia/config/certs
   mkdir $HSHQ_STACKS_DIR/authelia/config/cacerts
+  mkdir $HSHQ_STACKS_DIR/authelia/config/secrets
   mkdir $HSHQ_STACKS_DIR/authelia/keys
 
   if [ -z "$AUTHELIA_REDIRECTION_URL" ]; then
@@ -32801,6 +32977,8 @@ function installAuthelia()
   rm -f "$HSHQ_SECRETS_DIR/authelia_redis_password.txt"
   echo "$AUTHELIA_REDIS_PASSWORD" > "$HSHQ_SECRETS_DIR/authelia_redis_password.txt"
   chmod 0400 "$HSHQ_SECRETS_DIR/authelia_redis_password.txt"
+  outputAutheliaIDPSecretsV108
+
   generateCert authelia authelia
   generateCert authelia-redis authelia-redis
   outputConfigAuthelia
@@ -33073,6 +33251,47 @@ notifier:
     tls:
       skip_verify: false
       minimum_version: TLS1.2
+
+identity_providers:
+  oidc:
+    authorization_policies:
+      everyone_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:everyone
+      basicusers_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:basicusers
+      primaryusers_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:primaryusers
+      adminusers_auth:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: group:admins
+    hmac_secret: |
+      {{- fileContent "/config/secrets/authelia_identity_providers_oidc_hmac_secret.txt" | nindent 6 }}
+    jwks:
+      - key: |
+        {{- fileContent "/config/secrets/jwks-key.pem" | nindent 10 }}
+    clients:
+# Authelia OIDC Clients BEGIN
+# Authelia OIDC Client default BEGIN
+      - client_id: default
+        client_name: default
+        client_secret: '$(htpasswd -bnBC 10 "" $(pwgen -c -n 64 1) | cut -d":" -f2)'
+        public: false
+        authorization_policy: two_factor
+        redirect_uris:
+          - https://home.$HOMESERVER_DOMAIN
+# Authelia OIDC Client default END
+# Authelia OIDC Clients END
 ...
 EOFAC
 
@@ -33156,6 +33375,18 @@ EOFAE
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
+function outputAutheliaIDPSecretsV108()
+{
+  mkdir -p $HSHQ_STACKS_DIR/authelia/config/secrets
+  if ! [ -f $HSHQ_STACKS_DIR/authelia/config/secrets/authelia_identity_providers_oidc_hmac_secret.txt ]; then
+    echo "$(pwgen -c -n 64 1)" > $HSHQ_STACKS_DIR/authelia/config/secrets/authelia_identity_providers_oidc_hmac_secret.txt
+    chmod 0400 $HSHQ_STACKS_DIR/authelia/config/secrets/authelia_identity_providers_oidc_hmac_secret.txt
+  fi
+  if ! [ -f $HSHQ_STACKS_DIR/authelia/config/secrets/jwks-key.pem ]; then
+    openssl genrsa -out $HSHQ_STACKS_DIR/authelia/config/secrets/jwks-key.pem 2048
   fi
 }
 
@@ -43593,6 +43824,483 @@ function performUpdateEspoCRM()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Immich
+function installImmich()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory immich "$FMLNAME_IMMICH"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_IMMICH_DB
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_IMMICH_APP
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_IMMICH_ML
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+
+  mkdir $HSHQ_STACKS_DIR/immich
+  mkdir $HSHQ_STACKS_DIR/immich/db
+  mkdir $HSHQ_STACKS_DIR/immich/dbexport
+  mkdir $HSHQ_STACKS_DIR/immich/app
+  mkdir $HSHQ_STACKS_DIR/immich/config
+  chmod 777 $HSHQ_STACKS_DIR/immich/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/immich
+  mkdir $HSHQ_NONBACKUP_DIR/immich/redis
+  mkdir $HSHQ_NONBACKUP_DIR/immich/cache
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $IMMICH_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $IMMICH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+
+  IMMICH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $IMMICH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
+  IMMICH_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $IMMICH_CLIENT_SECRET | tr -d ':\n')
+  outputConfigImmich
+  oidcBlock=$(cat $HOME/immich.oidc)
+  rm -f $HOME/immich.oidc
+  insertOIDCClientAuthelia immich "$oidcBlock"
+  set +e
+  installStack immich immich-app "Immich Server is listening on" $HOME/immich.env 3
+  retval=$?
+  if [ $retval -ne 0 ]; then
+    return $retval
+  fi
+  docker exec -u postgres immich-db psql immichdb immich-user -f /dbexport/addadmin.sql > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
+
+  if ! [ "$IMMICH_INIT_ENV" = "true" ]; then
+    sendEmail -s "Immich Login Info" -b "Immich Admin Username: $IMMICH_ADMIN_EMAIL_ADDRESS\nPassword: $IMMICH_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    IMMICH_INIT_ENV=true
+    updateConfigVar IMMICH_INIT_ENV $IMMICH_INIT_ENV
+  fi
+  set +e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_IMMICH.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://immich-app:2283 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_IMMICH $MANAGETLS_IMMICH "$is_integrate_hshq" $NETDEFAULT_IMMICH "$inner_block"
+  insertSubAuthelia $SUB_IMMICH.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll immich "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" "immich.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad immich "$FMLNAME_IMMICH" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
+    echo ""
+  fi
+}
+
+function outputConfigImmich()
+{
+  cat <<EOFPI > $HOME/immich-compose.yml
+$STACK_VERSION_PREFIX immich $(getScriptStackVersion immich)
+
+services:
+  immich-db:
+    image: $(getScriptImageByContainerName immich-db)
+    container_name: immich-db
+    hostname: immich-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: ['postgres','-c','shared_preload_libraries=vectors.so','-c','search_path="$$user", public, vectors','-c','logging_collector=on','-c','max_wal_size=2GB','-c','shared_buffers=512MB','-c','wal_compression=on',]
+    networks:
+      - int-immich-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/immich/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/immich/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.immich-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.immich-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.immich-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.immich-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.immich-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.immich-hourly-db.email-from=Immich Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.immich-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.immich-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.immich-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.immich-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.immich-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.immich-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.immich-monthly-db.email-from=Immich Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.immich-monthly-db.mail-only-on-error=false"
+
+  immich-app:
+    image: $(getScriptImageByContainerName immich-app)
+    # extends:
+    #   file: hwaccel.transcoding.yml
+    #   service: cpu
+    container_name: immich-app
+    hostname: immich-app
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - immich-db
+    networks:
+      - int-immich-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/immich/app:/usr/src/app/upload
+      - \${HSHQ_STACKS_DIR}/immich/config/immich.json:/config/immich.json
+
+  immich-ml:
+    image: $(getScriptImageByContainerName immich-ml)
+    # extends:
+    #   file: hwaccel.ml.yml
+    #   service: cpu
+    container_name: immich-ml
+    hostname: immich-ml
+    restart: unless-stopped
+    env_file: stack.env
+    depends_on:
+      - immich-db
+    networks:
+      - int-immich-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-immich-cache:/cache
+
+  immich-redis:
+    image: $(getScriptImageByContainerName immich-redis)
+    container_name: immich-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-immich-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-immich-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$IMMICH_REDIS_PASSWORD
+
+volumes:
+  v-immich-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/immich/cache
+  v-immich-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/immich/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  int-immich-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFPI
+
+  cat <<EOFPI > $HOME/immich.env
+TZ=\${TZ}
+NO_COLOR=true
+IMMICH_CONFIG_FILE=/config/immich.json
+IMMICH_PROCESS_INVALID_IMAGES=true
+IMMICH_TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+DB_HOSTNAME=immich-db
+DB_DATABASE_NAME=$IMMICH_DATABASE_NAME
+DB_USERNAME=$IMMICH_DATABASE_USER
+DB_PASSWORD=$IMMICH_DATABASE_USER_PASSWORD
+POSTGRES_PASSWORD=$IMMICH_DATABASE_USER_PASSWORD
+POSTGRES_USER=$IMMICH_DATABASE_USER
+POSTGRES_DB=$IMMICH_DATABASE_NAME
+POSTGRES_INITDB_ARGS=--data-checksums
+REDIS_HOSTNAME=immich-redis
+REDIS_PASSWORD=$IMMICH_REDIS_PASSWORD
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+EOFPI
+
+  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/config/immich.json
+{
+  "ffmpeg": {
+    "crf": 23,
+    "threads": 0,
+    "preset": "ultrafast",
+    "targetVideoCodec": "h264",
+    "acceptedVideoCodecs": ["h264"],
+    "targetAudioCodec": "aac",
+    "acceptedAudioCodecs": ["aac", "mp3", "libopus", "pcm_s16le"],
+    "acceptedContainers": ["mov", "ogg", "webm"],
+    "targetResolution": "720",
+    "maxBitrate": "0",
+    "bframes": -1,
+    "refs": 0,
+    "gopSize": 0,
+    "temporalAQ": false,
+    "cqMode": "auto",
+    "twoPass": false,
+    "preferredHwDevice": "auto",
+    "transcode": "required",
+    "tonemap": "hable",
+    "accel": "disabled",
+    "accelDecode": false
+  },
+  "backup": {
+    "database": {
+      "enabled": true,
+      "cronExpression": "0 02 * * *",
+      "keepLastAmount": 14
+    }
+  },
+  "job": {
+    "backgroundTask": {
+      "concurrency": 5
+    },
+    "smartSearch": {
+      "concurrency": 2
+    },
+    "metadataExtraction": {
+      "concurrency": 5
+    },
+    "faceDetection": {
+      "concurrency": 2
+    },
+    "search": {
+      "concurrency": 5
+    },
+    "sidecar": {
+      "concurrency": 5
+    },
+    "library": {
+      "concurrency": 5
+    },
+    "migration": {
+      "concurrency": 5
+    },
+    "thumbnailGeneration": {
+      "concurrency": 3
+    },
+    "videoConversion": {
+      "concurrency": 1
+    },
+    "notifications": {
+      "concurrency": 5
+    }
+  },
+  "logging": {
+    "enabled": true,
+    "level": "log"
+  },
+  "machineLearning": {
+    "enabled": true,
+    "url": "http://immich-ml:3003",
+    "clip": {
+      "enabled": true,
+      "modelName": "ViT-B-32__openai"
+    },
+    "duplicateDetection": {
+      "enabled": true,
+      "maxDistance": 0.01
+    },
+    "facialRecognition": {
+      "enabled": true,
+      "modelName": "buffalo_l",
+      "minScore": 0.7,
+      "maxDistance": 0.5,
+      "minFaces": 3
+    }
+  },
+  "map": {
+    "enabled": true,
+    "lightStyle": "https://tiles.immich.cloud/v1/style/light.json",
+    "darkStyle": "https://tiles.immich.cloud/v1/style/dark.json"
+  },
+  "reverseGeocoding": {
+    "enabled": true
+  },
+  "metadata": {
+    "faces": {
+      "import": false
+    }
+  },
+  "oauth": {
+    "autoLaunch": false,
+    "autoRegister": true,
+    "buttonText": "Login with Authelia",
+    "clientId": "immich",
+    "clientSecret": "$IMMICH_CLIENT_SECRET",
+    "defaultStorageQuota": 0,
+    "enabled": true,
+    "issuerUrl": "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration",
+    "mobileOverrideEnabled": false,
+    "mobileRedirectUri": "",
+    "scope": "openid profile email",
+    "signingAlgorithm": "RS256",
+    "profileSigningAlgorithm": "none",
+    "storageLabelClaim": "preferred_username",
+    "storageQuotaClaim": "immich_quota"
+  },
+  "passwordLogin": {
+    "enabled": true
+  },
+  "storageTemplate": {
+    "enabled": false,
+    "hashVerificationEnabled": true,
+    "template": "{{y}}/{{y}}-{{MM}}-{{dd}}/{{filename}}"
+  },
+  "image": {
+    "thumbnail": {
+      "format": "webp",
+      "size": 250,
+      "quality": 80
+    },
+    "preview": {
+      "format": "jpeg",
+      "size": 1440,
+      "quality": 80
+    },
+    "colorspace": "p3",
+    "extractEmbedded": false
+  },
+  "newVersionCheck": {
+    "enabled": true
+  },
+  "trash": {
+    "enabled": true,
+    "days": 30
+  },
+  "theme": {
+    "customCss": ""
+  },
+  "library": {
+    "scan": {
+      "enabled": true,
+      "cronExpression": "0 0 * * *"
+    },
+    "watch": {
+      "enabled": false
+    }
+  },
+  "server": {
+    "externalDomain": "https://$SUB_IMMICH.$HOMESERVER_DOMAIN/",
+    "loginPageMessage": "Welcome to Immich on $HOMESERVER_NAME!"
+  },
+  "notifications": {
+    "smtp": {
+      "enabled": true,
+      "from": "$HSHQ_ADMIN_NAME Immich <$EMAIL_ADMIN_EMAIL_ADDRESS>",
+      "replyTo": "$EMAIL_ADMIN_EMAIL_ADDRESS",
+      "transport": {
+        "ignoreCert": false,
+        "host": "$SMTP_HOSTNAME",
+        "port": $SMTP_HOSTPORT,
+        "username": "",
+        "password": ""
+      }
+    }
+  },
+  "user": {
+    "deleteDelay": 7
+  }
+}
+EOFIM
+
+  cat <<EOFIM > $HOME/immich.oidc
+# Authelia OIDC Client immich BEGIN
+      - client_id: immich
+        client_name: immich
+        client_secret: '$IMMICH_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: primaryusers_auth
+        redirect_uris:
+          - https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login
+          - https://$SUB_IMMICH.$HOMESERVER_DOMAIN/user-settings
+          - app.immich:///oauth-callback
+        scopes:
+          - openid
+          - profile
+          - email
+        userinfo_signed_response_alg: none
+# Authelia OIDC Client immich END
+EOFIM
+
+  curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
+insert into users(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$HSHQ_ADMIN_NAME Immich',NULL,0,'active','$curdt');
+EOFIM
+}
+
+function performUpdateImmich()
+{
+  perform_stack_name=immich
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-server:v1.121.0,ghcr.io/immich-app/immich-machine-learning:v1.121.0,bitnami/redis:7.0.5
+      image_update_map[0]="docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.121.0,ghcr.io/immich-app/immich-server:v1.121.0"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.121.0,ghcr.io/immich-app/immich-machine-learning:v1.121.0"
+      image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # Script-server
 function installScriptServer()
 {
@@ -49086,6 +49794,14 @@ SQLPAD_CONNECTIONS__huginn__username=$HUGINN_DATABASE_USER
 SQLPAD_CONNECTIONS__huginn__password=$HUGINN_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__huginn__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__huginn__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__immich__name=Immich
+SQLPAD_CONNECTIONS__immich__driver=postgres
+SQLPAD_CONNECTIONS__immich__host=immich-db
+SQLPAD_CONNECTIONS__immich__database=$IMMICH_DATABASE_NAME
+SQLPAD_CONNECTIONS__immich__username=$IMMICH_DATABASE_USER
+SQLPAD_CONNECTIONS__immich__password=$IMMICH_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__immich__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__immich__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__invidious__name=Invidious
 SQLPAD_CONNECTIONS__invidious__driver=postgres
 SQLPAD_CONNECTIONS__invidious__host=invidious-db
