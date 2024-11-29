@@ -11665,6 +11665,7 @@ function insertOIDCClientAuthelia()
     oidcBlock="${oidcBlock}\n# Authelia OIDC Clients END"
     replaceTextBlockInFile "# Authelia OIDC Clients END" "# Authelia OIDC Clients END" "$oidcBlock" $HSHQ_STACKS_DIR/authelia/config/configuration.yml false
   fi
+  sed -i '/^$/{:a;N;s/\n$//;ta}' $HSHQ_STACKS_DIR/authelia/config/configuration.yml
   docker container restart authelia > /dev/null 2>&1
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -20925,6 +20926,10 @@ function initServicesCredentials()
   if [ -z "$PAPERLESS_DATABASE_USER_PASSWORD" ]; then
     PAPERLESS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PAPERLESS_DATABASE_USER_PASSWORD $PAPERLESS_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$PAPERLESS_OIDC_CLIENT_SECRET" ]; then
+    PAPERLESS_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar PAPERLESS_OIDC_CLIENT_SECRET $PAPERLESS_OIDC_CLIENT_SECRET
   fi
   if [ -z "$SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME" ]; then
     SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_speedtest_tracker_local"
@@ -41016,7 +41021,7 @@ function installPaperless()
     PAPERLESS_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PAPERLESS_REDIS_PASSWORD $PAPERLESS_REDIS_PASSWORD
   fi
-  PAPERLESS_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $IMMICH_OIDC_CLIENT_SECRET | tr -d ':\n')
+  PAPERLESS_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $PAPERLESS_OIDC_CLIENT_SECRET | tr -d ':\n')
   set +e
   docker exec mailu-admin flask mailu alias-delete $PAPERLESS_ADMIN_EMAIL_ADDRESS
   sleep 5
@@ -41244,7 +41249,7 @@ PAPERLESS_EMAIL_PORT=$SMTP_HOSTPORT
 PAPERLESS_EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
 PAPERLESS_EMAIL_USE_TLS=true
 PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect
-PAPERLESS_SOCIALACCOUNT_PROVIDERS={"openid_connect":{"SCOPE":["openid","profile","email"],"OAUTH_PKCE_ENABLED":true,"APPS":[{"provider_id":"authelia","name":"Authelia","client_id":"paperless","secret":"$PAPERLESS_OIDC_CLIENT_SECRET","settings":{"server_url":"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN","token_auth_method":"client_secret_basic"}}]}}
+PAPERLESS_SOCIALACCOUNT_PROVIDERS={\"openid_connect\":{\"SCOPE\":[\"openid\",\"profile\",\"email\"],\"OAUTH_PKCE_ENABLED\":true,\"APPS\":[{\"provider_id\":\"authelia\",\"name\":\"Authelia\",\"client_id\":\"paperless\",\"secret\":\"$PAPERLESS_OIDC_CLIENT_SECRET\",\"settings\":{\"server_url\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\",\"token_auth_method\":\"client_secret_basic\"}}]}}
 EOFJT
 
   cat <<EOFIM > $HOME/paperless.oidc
