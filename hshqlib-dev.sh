@@ -14542,7 +14542,7 @@ IMMICH_DATABASE_NAME=
 IMMICH_DATABASE_USER=
 IMMICH_DATABASE_USER_PASSWORD=
 IMMICH_REDIS_PASSWORD=
-IMMICH_CLIENT_SECRET=
+IMMICH_OIDC_CLIENT_SECRET=
 # Immich (Service Details) END
 
 # Service Details END
@@ -17615,7 +17615,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
   checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD="
@@ -17626,7 +17626,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
   checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
   checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_CLIENT_SECRET="
+  checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_OIDC_CLIENT_SECRET="
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
@@ -17643,6 +17643,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false"
   checkAddVarsToServiceConfig "Wazuh" "WAZUH_AGENT_VERSION=4.7.5-1"
   checkAddVarsToServiceConfig "Wazuh" "WAZUH_MANAGER_AUTH_PASSWORD="
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET="
 }
 
 function checkAddServiceToConfig()
@@ -21109,9 +21110,9 @@ function initServicesCredentials()
     IMMICH_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar IMMICH_REDIS_PASSWORD $IMMICH_REDIS_PASSWORD
   fi
-  if [ -z "$IMMICH_CLIENT_SECRET" ]; then
-    IMMICH_CLIENT_SECRET=$(pwgen -c -n 64 1)
-    updateConfigVar IMMICH_CLIENT_SECRET $IMMICH_CLIENT_SECRET
+  if [ -z "$IMMICH_OIDC_CLIENT_SECRET" ]; then
+    IMMICH_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar IMMICH_OIDC_CLIENT_SECRET $IMMICH_OIDC_CLIENT_SECRET
   fi
 }
 
@@ -41015,6 +41016,7 @@ function installPaperless()
     PAPERLESS_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PAPERLESS_REDIS_PASSWORD $PAPERLESS_REDIS_PASSWORD
   fi
+  PAPERLESS_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $IMMICH_OIDC_CLIENT_SECRET | tr -d ':\n')
   set +e
   docker exec mailu-admin flask mailu alias-delete $PAPERLESS_ADMIN_EMAIL_ADDRESS
   sleep 5
@@ -41026,6 +41028,10 @@ function installPaperless()
     updateConfigVar PAPERLESS_INIT_ENV $PAPERLESS_INIT_ENV
   fi
   outputConfigPaperless
+  oidcBlock=$(cat $HOME/paperless.oidc)
+  rm -f $HOME/paperless.oidc
+  insertOIDCClientAuthelia paperless "$oidcBlock"
+  set +e
   installStack paperless paperless-app "celery@paperless-app ready" $HOME/paperless.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -41146,6 +41152,7 @@ services:
     networks:
       - dock-proxy-net
       - dock-internalmail-net
+      - dock-privateip-net
       - int-paperless-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -41153,6 +41160,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.12/site-packages/certifi/cacert.pem:ro
       - v-paperless-data:/usr/src/paperless/data
       - v-paperless-media:/usr/src/paperless/media
       - \${HSHQ_STACKS_DIR}/paperless/export:/usr/src/paperless/export
@@ -41203,6 +41211,9 @@ networks:
   dock-dbs-net:
     name: dock-dbs
     external: true
+  dock-privateip-net:
+    name: dock-privateip
+    external: true
   int-paperless-net:
     driver: bridge
     internal: true
@@ -41232,7 +41243,30 @@ PAPERLESS_EMAIL_HOST=$SMTP_HOSTNAME
 PAPERLESS_EMAIL_PORT=$SMTP_HOSTPORT
 PAPERLESS_EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
 PAPERLESS_EMAIL_USE_TLS=true
+PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect
+PAPERLESS_SOCIALACCOUNT_PROVIDERS={"openid_connect":{"SCOPE":["openid","profile","email"],"OAUTH_PKCE_ENABLED":true,"APPS":[{"provider_id":"authelia","name":"Authelia","client_id":"paperless","secret":"$PAPERLESS_OIDC_CLIENT_SECRET","settings":{"server_url":"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN","token_auth_method":"client_secret_basic"}}]}}
 EOFJT
+
+  cat <<EOFIM > $HOME/paperless.oidc
+# Authelia OIDC Client paperless BEGIN
+      - client_id: paperless
+        client_name: paperless
+        client_secret: '$PAPERLESS_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: primaryusers_auth
+        require_pkce: true
+        pkce_challenge_method: S256
+        redirect_uris:
+          - https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN/accounts/oidc/authelia/login/callback/
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client paperless END
+EOFIM
 
 }
 
@@ -43863,7 +43897,7 @@ function installImmich()
   addUserMailu alias $IMMICH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   IMMICH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $IMMICH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
-  IMMICH_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $IMMICH_CLIENT_SECRET | tr -d ':\n')
+  IMMICH_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $IMMICH_OIDC_CLIENT_SECRET | tr -d ':\n')
   outputConfigImmich
   oidcBlock=$(cat $HOME/immich.oidc)
   rm -f $HOME/immich.oidc
@@ -44174,7 +44208,7 @@ EOFPI
     "autoRegister": true,
     "buttonText": "Login with Authelia",
     "clientId": "immich",
-    "clientSecret": "$IMMICH_CLIENT_SECRET",
+    "clientSecret": "$IMMICH_OIDC_CLIENT_SECRET",
     "defaultStorageQuota": 0,
     "enabled": true,
     "issuerUrl": "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration",
@@ -44255,7 +44289,7 @@ EOFIM
 # Authelia OIDC Client immich BEGIN
       - client_id: immich
         client_name: immich
-        client_secret: '$IMMICH_CLIENT_SECRET_HASH'
+        client_secret: '$IMMICH_OIDC_CLIENT_SECRET_HASH'
         public: false
         authorization_policy: primaryusers_auth
         redirect_uris:
