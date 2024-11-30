@@ -33184,6 +33184,7 @@ REDIS_TLS_KEY_FILE=/tls/authelia-redis.key
 REDIS_TLS_CA_FILE=/tls/${CERTS_ROOT_CA_NAME}.crt
 REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
 REDIS_TLS_AUTH_CLIENTS=no
+X_AUTHELIA_CONFIG_FILTERS=template
 EOFAE
 
   cat <<EOFAC > $HSHQ_STACKS_DIR/authelia/config/configuration.yml
