@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=108
+HSHQ_SCRIPT_VERSION=109
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -21234,7 +21234,7 @@ function initServiceVars()
   checkAddSvc "SVCD_SCRIPTSERVER=script-server,script-server,primary,admin,Script-server,script-server,hshq"
   checkAddSvc "SVCD_HUGINN=huginn,huginn,primary,user,Huginn,huginn,hshq"
   checkAddSvc "SVCD_IMAGES=images,images,other,user,Images,images,hshq"
-  checkAddSvc "SVCD_IMMICH=immich,immich,other,user,Immich,immich,hshq"
+  checkAddSvc "SVCD_IMMICH=immich,immich,other,user,Immich,immich,le"
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
   checkAddSvc "SVCD_INVIDIOUS=invidious,invidious,primary,user,Invidious,invidious,hshq"
   checkAddSvc "SVCD_ITTOOLS=ittools,ittools,primary,admin,IT Tools,ittools,hshq"
@@ -22058,7 +22058,7 @@ function insertServicesUptimeKuma()
 
 function getLetsEncryptCertsDefault()
 {
-  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN"
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN,$SUB_IMMICH.$HOMESERVER_DOMAIN"
 }
 
 function initServiceDefaults()
@@ -36020,7 +36020,7 @@ function installCodeServer()
   fi
   echo "Codeserver installed, sleeping 10 seconds..."
   sleep 10
-  docker exec codeserver code-server --install-extension cweijan.vscode-ssh
+  docker exec codeserver code-server --install-extension kelvin.vscode-sshfs
   docker compose -f $HOME/codeserver-compose-tmp.yml down -v
   rm -f $HOME/codeserver-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
@@ -44383,10 +44383,10 @@ EOFPI
   "library": {
     "scan": {
       "enabled": true,
-      "cronExpression": "0 0 * * *"
+      "cronExpression": "*/15 * * * *"
     },
     "watch": {
-      "enabled": false
+      "enabled": true
     }
   },
   "server": {
