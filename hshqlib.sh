@@ -44044,7 +44044,7 @@ services:
       - int-immich-net
       - dock-proxy-net
       - dock-internalmail-net
-      - dock-ext-net
+      - dock-privateip-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -44068,7 +44068,7 @@ services:
     networks:
       - int-immich-net
       - dock-proxy-net
-      - dock-ext-net
+      - dock-privateip-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -44110,8 +44110,8 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
-  dock-ext-net:
-    name: dock-ext
+  dock-privateip-net:
+    name: dock-privateip
     external: true
   dock-dbs-net:
     name: dock-dbs
