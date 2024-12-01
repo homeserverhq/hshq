@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=109
+HSHQ_SCRIPT_VERSION=110
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -2910,7 +2910,7 @@ EOF
         # Determine if this is a private IP, and if so, let the user know about networking.
         showMsg="Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally. "
         if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
-          showMsg=$showMsg"You will also need to ensure the device from which you are accessing the HomeServer is on the same local private network ($HOMESERVER_HOST_RANGE), and if you have any firewalls for your HomeServer, that the following ports have been opened: 443 (https),$SSH_PORT(ssh),$SCRIPTSERVER_LOCALHOST_PORT(Script-server),$PORTAINER_LOCAL_HTTPS_PORT(Portainer)"
+          showMsg=$showMsg"You will also need to ensure the device from which you are accessing the HomeServer is on the same local private network ($HOMESERVER_HOST_RANGE), and if you have any firewalls around your HomeServer, that the following ports are accessible: 443 (https),$SSH_PORT(ssh),$SCRIPTSERVER_LOCALHOST_PORT(Script-server),$PORTAINER_LOCAL_HTTPS_PORT(Portainer). Do not open these ports on your router, only ensure that you can reach them internally on the HomeServer."
         fi
         showMessageBox "DNS Server" "$showMsg"
         ;;
@@ -14055,22 +14055,10 @@ function checkUpdateVersion()
       return
     fi
   fi
-  if [ $HSHQ_VERSION -lt 47 ]; then
-    echo "Updating to Version 47..."
-    version47Update
-    HSHQ_VERSION=47
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
   if [ $HSHQ_VERSION -lt 48 ]; then
     echo "Updating to Version 48..."
     version48Update
     HSHQ_VERSION=48
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
-  if [ $HSHQ_VERSION -lt 50 ]; then
-    echo "Updating to Version 50..."
-    version50Update
-    HSHQ_VERSION=50
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 52 ]; then
@@ -14107,12 +14095,6 @@ function checkUpdateVersion()
     echo "Updating to Version 59..."
     version59Update
     HSHQ_VERSION=59
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
-  if [ $HSHQ_VERSION -lt 61 ]; then
-    echo "Updating to Version 61..."
-    version61Update
-    HSHQ_VERSION=61
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 64 ]; then
@@ -14235,12 +14217,6 @@ function checkUpdateVersion()
     HSHQ_VERSION=91
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 94 ]; then
-    echo "Updating to Version 94..."
-    version94Update
-    HSHQ_VERSION=94
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
   if [ $HSHQ_VERSION -lt 98 ]; then
     echo "Updating to Version 98..."
     version98Update
@@ -14265,12 +14241,6 @@ function checkUpdateVersion()
     HSHQ_VERSION=106
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 107 ]; then
-    echo "Updating to Version 107..."
-    version107Update
-    HSHQ_VERSION=107
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
   if [ $HSHQ_VERSION -lt 108 ]; then
     echo "Updating to Version 108..."
     version108Update
@@ -14283,7 +14253,10 @@ function checkUpdateVersion()
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ "$is_update_performed" = "true" ]; then
+    set +e
     outputStackListsScriptServer
+    outputAllScriptServerScripts
+    set -e
   fi
 }
 
@@ -14950,7 +14923,6 @@ function version38Update()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
   fi
-  outputAllScriptServerScripts
 
   # Fixes internal mailing issue
   startStopStack mailu stop
@@ -14985,7 +14957,6 @@ function version39Update()
 {
   set +e
   clearAllScriptServerScripts
-  outputAllScriptServerScripts
   set -e
   sqlite3 $HSHQ_DB "create table newconnections(ID integer not null primary key autoincrement,Name text,EmailAddress text,ConnectionType text,NetworkType text,PublicKey text,PresharedKey text,IPAddress text,IsInternet boolean,InterfaceName text,EndpointHostname text,EndpointIP text default null,LastUpdated datetime);"
   sqlite3 $HSHQ_DB "insert into newconnections(ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated) select ID,Name,EmailAddress,ConnectionType,NetworkType,PublicKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,EndpointIP,LastUpdated from connections;"
@@ -15029,7 +15000,6 @@ function version40Update()
 {
   set +e
   clearAllScriptServerScripts
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -15226,7 +15196,6 @@ function version44Update()
   fi
   set +e
   clearAllScriptServerScripts
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -15278,13 +15247,6 @@ function version46Update()
   fi
 }
 
-function version47Update()
-{
-  set +e
-  outputAllScriptServerScripts
-  set -e
-}
-
 function version48Update()
 {
   set +e
@@ -15304,13 +15266,6 @@ function version48Update()
     echo "Restarting HomeAssistant stack (if running)..."
     restartStackIfRunning homeassistant 10
   fi
-}
-
-function version50Update()
-{
-  set +e
-  outputAllScriptServerScripts
-  set -e
 }
 
 function version52Update()
@@ -15541,7 +15496,6 @@ EOFSC
 function version53Update()
 {
   set +e
-  outputAllScriptServerScripts
   outputMaintenanceScripts
   outputDockerWireGuardCaddyScript
   deleteFromRootCron "restartHomeAssistantStack.sh"
@@ -15566,7 +15520,6 @@ EOFBS
   fi
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartHomeAssistantStack.sh
   outputHABandaidScript
-  outputStackListsScriptServer
   updateSysctl false
   if [ -f $HSHQ_STACKS_DIR/coturn/turnserver.conf ]; then
     grep 14100 $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
@@ -15611,7 +15564,6 @@ function version54Update()
   set +e
   echo -e "\n\n\nThis update requires restarting Script-server, which will exit the\nscript and halt any subsequent updates. Please ensure to re-run the\nupdate process after it has completed.\n"
   notifyRSLogin
-  outputAllScriptServerScripts
   outputIPTablesScripts false
   default_iface=$(getDefaultIface)
   sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
@@ -15646,7 +15598,6 @@ function version55Update()
       sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
     fi
   fi
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -15673,7 +15624,6 @@ EOFRS
   sudo chown 101:101 $HOME/mailu-groups.conf
   sudo mv $HOME/mailu-groups.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/groups.conf
   docker container restart mailu-antispam > /dev/null 2>&1
-  outputAllScriptServerScripts
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
     notifyRSLogin
@@ -15699,18 +15649,10 @@ EOFHC
   cp $HSHQ_ASSETS_DIR/images/hslogo.png $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png
 }
 
-function version61Update()
-{
-  set +e
-  outputAllScriptServerScripts
-  set -e
-}
-
 function version64Update()
 {
   set +e
   clearAllScriptServerScripts
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -15799,9 +15741,6 @@ EOFCD
     unloadSSHKey
     rm -f $HOME/resetCaddyContainer.sh
   fi
-  set +e
-  outputAllScriptServerScripts
-  set -e
 }
 
 function version71Update()
@@ -15875,7 +15814,6 @@ function version80Update()
 {
   set +e
   clearAllScriptServerScripts
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -15883,7 +15821,6 @@ function version82Update()
 {
   set +e
   outputUpdateEndpointIPsScript
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -15891,7 +15828,6 @@ function version83Update()
 {
   set +e
   clearAllScriptServerScripts
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -15918,8 +15854,6 @@ function version85Update()
   updateStackEnv authelia mfFixCACertPath
   updateSysctl true
   outputCreateWGDockerNetworksScript
-  outputAllScriptServerScripts
-  outputStackListsScriptServer
   set -e
 }
 
@@ -15981,15 +15915,7 @@ function version91Update()
   sudo -v
   setupPortForwardingDB
   version91UploadPortForwardingScripts
-  outputAllScriptServerScripts
   version91WazuhUpdate
-  set -e
-}
-
-function version94Update()
-{
-  set +e
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -16058,13 +15984,6 @@ EOFWZ
   fi
 }
 
-function version107Update()
-{
-  set +e
-  outputAllScriptServerScripts
-  set -e
-}
-
 function version108Update()
 {
   set +e
@@ -16124,7 +16043,6 @@ EOFAU
       docker container restart codeserver > /dev/null 2>&1
     fi
   fi
-  outputAllScriptServerScripts
   set -e
 }
 
@@ -21756,7 +21674,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_USERNAME $IMMICH_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_EMAIL_ADDRESS $IMMICH_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
@@ -45632,7 +45550,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs all available services that are not on the disabled list. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
