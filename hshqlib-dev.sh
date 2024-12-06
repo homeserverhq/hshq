@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=110
+HSHQ_SCRIPT_VERSION=111
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -14247,6 +14247,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=108
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 111 ]; then
+    echo "Updating to Version 111..."
+    version111Update
+    HSHQ_VERSION=111
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16044,6 +16050,11 @@ EOFAU
     fi
   fi
   set -e
+}
+
+function version111Update()
+{
+  mailuV111Bugfix
 }
 
 function modFunAutheliaConfigFilterVar()
@@ -27031,7 +27042,7 @@ $is_antivirus_commented_out      - dock-proxy-net
 $is_antivirus_commented_out    volumes:
 $is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
 $is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
-$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter/clamav:/var/lib/clamav
+$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/clamav
 
   webdav:
     image: $(getScriptImageByContainerName mailu-webdav)
@@ -27279,8 +27290,8 @@ function mfMailuV4Update()
   sudo rm -fr $HSHQ_STACKS_DIR/mailu/tmpdir
   sudo mv $HSHQ_STACKS_DIR/mailu/multimap.conf $HSHQ_STACKS_DIR/mailu/overrides/rspamd/local/multimap.conf
   sudo rm -f $HSHQ_STACKS_DIR/mailu/filter/bytecode.cld $HSHQ_STACKS_DIR/mailu/filter/bytecode.cvd $HSHQ_STACKS_DIR/mailu/filter/daily.cld $HSHQ_STACKS_DIR/mailu/filter/freshclam.dat $HSHQ_STACKS_DIR/mailu/filter/main.cvd
-  sudo mkdir $HSHQ_STACKS_DIR/mailu/filter/clamav
-  sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/filter/clamav
+  mkdir $HSHQ_STACKS_DIR/mailu/clamav
+  sudo chown 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
   sed -i "s|^LOG_LEVEL=.*|LOG_LEVEL=INFO|g" $HOME/mailu.env
   echo "FULL_TEXT_SEARCH=en" >> $HOME/mailu.env
   echo "API=true" >> $HOME/mailu.env
@@ -27295,6 +27306,37 @@ function mfMailuV4PostUpdate()
   waitForStack "Listening at: http://0.0.0.0:8080" mailu-admin
   docker exec mailu-imap doveadm fts rescan -A > /dev/null 2>&1
   docker exec mailu-imap doveadm user '*'|while read u; do echo "re-indexing $u";docker exec mailu-imap doveadm index -u $u '*'; done > /dev/null 2>&1
+}
+
+function mailuV111Bugfix()
+{
+  # See https://github.com/Mailu/Mailu/issues/3673
+  if sudo test -d ${HSHQ_STACKS_DIR}/mailu/clamav; then
+    return
+  fi
+  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  mailu_stack_id=$(getStackID mailu "$portainerToken")
+  mailu_compose=$HSHQ_STACKS_DIR/portainer/compose/$mailu_stack_id/docker-compose.yml
+  mailu_stack_firstline=$(sudo sed -n 1p $mailu_compose)
+  mailu_stack_ver=$(getVersionFromComposeLine "$mailu_stack_firstline")
+  if [ "$mailu_stack_ver" = "1" ] || [ "$mailu_stack_ver" = "2" ] || [ "$mailu_stack_ver" = "3" ]; then
+    return
+  fi
+  echo "Mailu stack version: v$mailu_stack_ver, fixing a permissions bug, please wait..."
+  startStopStack mailu stop "$portainerToken"
+  updateStackEnv mailu mfMailuV111Bugfix "$portainerToken"
+}
+
+function mfMailuV111Bugfix()
+{
+  rm -f $HOME/mailu-compose.yml
+  outputMailuCompose
+  if sudo test -d $HSHQ_STACKS_DIR/mailu/filter/clamav; then
+    sudo mv $HSHQ_STACKS_DIR/mailu/filter/clamav $HSHQ_STACKS_DIR/mailu/clamav
+  else
+    mkdir $HSHQ_STACKS_DIR/mailu/clamav
+  fi
+  sudo chown -R 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
 }
 
 # Wazuh
@@ -28406,9 +28448,10 @@ function installNextcloud()
     installCoturn
     retval=$?
     if [ $retval -ne 0 ]; then
-      notifyStackInstallFailure Coturn
+      notifyStackInstallFailure coturn
     fi
   fi
+  stack_name=nextcloud
   set -e
   initServicesCredentials
   if [ -z "$NEXTCLOUD_REDIS_PASSWORD" ]; then
@@ -28470,6 +28513,7 @@ function installNextcloud()
     ((curTries++))
   done
   if [ $isFound == "F" ]; then
+    stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
   fi
@@ -28486,6 +28530,8 @@ function installNextcloud()
   # Sometimes there are issues with apps, check the first one to see if there is an error.
   if [ $? -ne 0 ]; then
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    rm -f $HOME/nextcloud*
+    stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
   fi
@@ -28581,6 +28627,7 @@ function installNextcloud()
     sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
   else
     set +e
+    stack_name=nextcloud
     echo "Nextcloud Push plugin was not installed correctly, exiting..."
     return 5
   fi
@@ -28599,6 +28646,7 @@ function installNextcloud()
       docker container rm $curcont
     done
     docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
+    stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
   fi
@@ -42481,7 +42529,7 @@ function installFileDrop()
     installCoturn
     retval=$?
     if [ $retval -ne 0 ]; then
-      notifyStackInstallFailure Coturn
+      notifyStackInstallFailure coturn
     fi
   fi
   set -e
@@ -44346,6 +44394,7 @@ EOFIM
           - openid
           - profile
           - email
+          - groups
         userinfo_signed_response_alg: none
 # Authelia OIDC Client immich END
 EOFIM
