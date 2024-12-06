@@ -27322,7 +27322,6 @@ function mailuV111Bugfix()
   if [ "$mailu_stack_ver" = "1" ] || [ "$mailu_stack_ver" = "2" ] || [ "$mailu_stack_ver" = "3" ]; then
     return
   fi
-  echo "Mailu stack version: v$mailu_stack_ver, fixing a permissions bug, please wait..."
   startStopStack mailu stop "$portainerToken"
   updateStackEnv mailu mfMailuV111Bugfix "$portainerToken"
 }
@@ -27337,6 +27336,7 @@ function mfMailuV111Bugfix()
     mkdir $HSHQ_STACKS_DIR/mailu/clamav
   fi
   sudo chown -R 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
+  sudo rm -fr $HSHQ_STACKS_DIR/mailu/clamav/tmp*
 }
 
 # Wazuh
