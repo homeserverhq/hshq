@@ -26671,6 +26671,8 @@ function installMailu()
   mkdir $HSHQ_STACKS_DIR/mailu
   mkdir $HSHQ_STACKS_DIR/mailu/certs
   mkdir $HSHQ_STACKS_DIR/mailu/redis
+  mkdir $HSHQ_STACKS_DIR/mailu/clamav
+  sudo chown 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
 
   # Generate email certificate if not joining another VPN
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
@@ -26725,6 +26727,7 @@ function installMailu()
   sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/local
   sudo chown 101:101 $HSHQ_STACKS_DIR/mailu/overrides/rspamd/override
   sudo rm -fr $HSHQ_STACKS_DIR/mailu/filter/*
+  sudo rm -fr $HSHQ_STACKS_DIR/mailu/clamav/*
   sleep 5
   echo "Restarting mailu stack..."
   startStopStack mailu start
