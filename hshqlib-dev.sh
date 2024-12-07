@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=111
+HSHQ_SCRIPT_VERSION=112
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -28516,13 +28516,67 @@ function installNextcloud()
     ((curTries++))
   done
   if [ $isFound == "F" ]; then
+    docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
+    rm -f $HOME/nextcloud*
+    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
     stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
   fi
+
+  # Regarding the next section, see the following:
+  #   https://github.com/nextcloud/server/issues/14482
+  #   https://github.com/nextcloud/server/issues/14926
+  #   https://github.com/nextcloud/server/issues/40082
+  #   https://github.com/nextcloud/server/issues/45162
+  # These are just a few, but there are more related.
+  # It doesn't appear as if they will ever fix this,
+  # so certain measures have been put in place to
+  # increase the success rate of installation.
+  if sudo test -f $HSHQ_STACKS_DIR/nextcloud/app/lib/private/App/AppStore/Fetcher/Fetcher.php; then
+    sudo sed -i "s/'timeout' => 60/'timeout' => 600/g" $HSHQ_STACKS_DIR/nextcloud/app/lib/private/App/AppStore/Fetcher/Fetcher.php > /dev/null 2>&1
+  fi
   echo "Sleeping 10 seconds..."
   sleep 10
   set +e
+  # Check to see if apps.json has downloaded
+  numTries=30
+  curTries=1
+  isFound=false
+  while [ $curTries -le $numTries ]
+  do
+    sudo find $HSHQ_STACKS_DIR/nextcloud/app/data -name apps.json | grep . > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      isFound=true
+      break
+    fi
+    if [ $curTries -eq 1 ]; then
+      echo "Issue with apps.json manifest, restarting nextcloud-app and nextcloud-cron containers..."
+      docker container restart nextcloud-app > /dev/null 2>&1
+      docker container restart nextcloud-cron > /dev/null 2>&1
+      sleep 10
+      echo "Calling occ app:update --all, this make take a few minutes, please be patient..."
+      docker exec -u www-data nextcloud-app php occ app:update --all > /dev/null 2>&1
+    fi
+    echo "Nextcloud apps.json manifest not present, attempt ($curTries of $numTries) retrying in 10 seconds..."
+    sleep 10
+    ((curTries++))
+  done
+  if [ "$isFound" = "false" ]; then
+    docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
+    rm -f $HOME/nextcloud*
+    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
+    stack_name=nextcloud
+    echo "ERROR: Nextcloud could not obtain apps manifest, exiting..."
+    return 1
+  fi
+
   ls /usr/local/share/ca-certificates/ | while read cert
   do
     docker exec -u www-data nextcloud-app php occ --no-warnings security:certificates:import /usr/local/share/ca-certificates/$cert
@@ -28533,7 +28587,11 @@ function installNextcloud()
   # Sometimes there are issues with apps, check the first one to see if there is an error.
   if [ $? -ne 0 ]; then
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
+    sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
     rm -f $HOME/nextcloud*
+    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
     stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
@@ -28606,7 +28664,6 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
 
   if ! [ "$(isServiceDisabled clamav)" = "true" ]; then
-    set -e
     docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_antivirus
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_mode --value="daemon"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_host --value="antivirus"
@@ -28630,6 +28687,9 @@ function installNextcloud()
     sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
   else
     set +e
+    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
     stack_name=nextcloud
     echo "Nextcloud Push plugin was not installed correctly, exiting..."
     return 5
@@ -28649,6 +28709,8 @@ function installNextcloud()
       docker container rm $curcont
     done
     docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
+    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
     stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 1
