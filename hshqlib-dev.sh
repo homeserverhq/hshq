@@ -28572,7 +28572,7 @@ function installNextcloud()
       docker container restart nextcloud-app > /dev/null 2>&1
       docker container restart nextcloud-cron > /dev/null 2>&1
       sleep 10
-      echo "Calling occ app:update --all, this make take a few minutes, please be patient..."
+      echo "Calling occ app:update --all, this may take a few minutes, please be patient..."
       docker exec -u www-data nextcloud-app php occ app:update --all > /dev/null 2>&1
     fi
     echo "Nextcloud apps.json manifest not present, attempt ($curTries of $numTries) retrying in 10 seconds..."
