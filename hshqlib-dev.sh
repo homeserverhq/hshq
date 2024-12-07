@@ -28517,14 +28517,9 @@ function installNextcloud()
   done
   if [ $isFound == "F" ]; then
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
-    sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
-    rm -f $HOME/nextcloud*
-    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
-    stack_name=nextcloud
-    echo "ERROR: Nextcloud did not start up correctly, exiting..."
-    return 1
+    performNextcloudInstallFailCleanup
+    echo "ERROR: Nextcloud unknown installation error, exiting..."
+    return 2
   fi
 
   # Regarding the next section, see the following:
@@ -28567,14 +28562,9 @@ function installNextcloud()
   done
   if [ "$isFound" = "false" ]; then
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
-    sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
-    rm -f $HOME/nextcloud*
-    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
-    stack_name=nextcloud
+    performNextcloudInstallFailCleanup
     echo "ERROR: Nextcloud could not obtain apps manifest, exiting..."
-    return 1
+    return 3
   fi
 
   ls /usr/local/share/ca-certificates/ | while read cert
@@ -28587,14 +28577,9 @@ function installNextcloud()
   # Sometimes there are issues with apps, check the first one to see if there is an error.
   if [ $? -ne 0 ]; then
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
-    sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
-    rm -f $HOME/nextcloud*
-    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
-    stack_name=nextcloud
-    echo "ERROR: Nextcloud did not start up correctly, exiting..."
-    return 1
+    performNextcloudInstallFailCleanup
+    echo "ERROR: Nextcloud apps did not install correctly, exiting..."
+    return 4
   fi
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings email "$NEXTCLOUD_ADMIN_EMAIL_ADDRESS"
   docker exec -u www-data nextcloud-app php occ user:setting $NEXTCLOUD_ADMIN_USERNAME settings display_name "${HOMESERVER_ABBREV^^} Nextcloud Admin"
@@ -28673,7 +28658,6 @@ function installNextcloud()
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_infected_action --value="delete"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus enabled --value="yes"
   fi
-  set -e
   docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ background:cron
@@ -28686,12 +28670,8 @@ function installNextcloud()
     # This is dumb. https://github.com/nextcloud/notify_push/issues/355
     sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
   else
-    set +e
-    docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
-    stack_name=nextcloud
-    echo "Nextcloud Push plugin was not installed correctly, exiting..."
+    performNextcloudInstallFailCleanup
+    echo "ERROR: Nextcloud Push plugin was not installed correctly, exiting..."
     return 5
   fi
   echo "post_max_size=16G" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
@@ -28713,7 +28693,7 @@ function installNextcloud()
     docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
     stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
-    return 1
+    return 6
   fi
   set -e
   inner_block=""
@@ -28745,6 +28725,19 @@ function installNextcloud()
   fi
   docker exec -u www-data nextcloud-app php occ app:enable notify_push
   docker exec -u www-data nextcloud-app php occ notify_push:setup https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/push
+}
+
+function performNextcloudInstallFailCleanup()
+{
+  sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
+  rm -f $HOME/nextcloud-compose-tmp.yml
+  rm -f $HOME/nextcloud-compose.yml
+  rm -f $HOME/nextcloud.env
+  rm -f $HOME/nextcloud-json.tmp
+  docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
+  docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
+  docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
+  stack_name=nextcloud
 }
 
 function outputConfigNextcloud()
