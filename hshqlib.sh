@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=113
+HSHQ_SCRIPT_VERSION=114
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -1876,7 +1876,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}#######################################################\n"
   strInstallConfig="${strInstallConfig}===================== General Info ====================\n"
   strInstallConfig="${strInstallConfig}- Root CA URL: http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt\n"
-  strInstallConfig="${strInstallConfig}- Home Page: https://home.$HOMESERVER_DOMAIN\n"
+  strInstallConfig="${strInstallConfig}- Home Page: https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN\n"
   strInstallConfig="${strInstallConfig}- Email Admin Username: $EMAIL_ADMIN_EMAIL_ADDRESS\n"
   strInstallConfig="${strInstallConfig}- Email Admin Password: $EMAIL_ADMIN_PASSWORD\n"
   strInstallConfig="${strInstallConfig}- HomeServer Current SSH Port: $CURRENT_SSH_PORT\n"
@@ -7488,7 +7488,7 @@ function connectVPN()
     addDomainAndWildcardAdguardNoReplaceHS "$domain_name" "$ca_ip"
     addDomainAdguardHS "*.$ext_prefix.$domain_name" "A"
     addDomainAndWildcardIgnoreQuerylogAndStatsHS "$domain_name"
-    insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://home.$domain_name" true
+    insertEnableSvcUptimeKuma uptimekuma "${hs_name}" homeservers "https://$SUB_HSHQSTATUS.$domain_name" true
   fi
   addDomainAdguardHS "*.$int_prefix.$domain_name" "$rs_vpn_ip"
   primary_string=other
@@ -8725,8 +8725,8 @@ function performNetworkInvite()
         echo "ERROR: Invalid domain name."
         return 7
       fi
-      homeserver_name=$(getValueFromConfig "HomeServerName" $apply_file)
-      if [ -z "$homeserver_name" ]; then
+      cur_hs_name=$(getValueFromConfig "HomeServerName" $apply_file)
+      if [ -z "$cur_hs_name" ]; then
         echo "ERROR: Invalid HomeServer name."
         return 7
       fi
@@ -8882,7 +8882,7 @@ function performNetworkInvite()
       if [ "$is_primary" = "true" ]; then
         mail_host_id=$(sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$mail_subdomain');select last_insert_rowid();")
       fi
-      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,MailHostID) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$external_prefix',$mail_host_id);"
+      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,MailHostID) values($db_id,'$cur_hs_name','$isPrimary','$domain_name','$external_prefix',$mail_host_id);"
       echo "Adding DNS entries to AdguardHome..."
       addDomainAndWildcardAdguardHS "$domain_name" "$new_ip"
       addDomainAndWildcardAdguardRS "$domain_name" "$new_ip"
@@ -9021,12 +9021,12 @@ function performNetworkInvite()
       fi
       # Send ourself a copy
       sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body"
-      insertEnableSvcUptimeKuma uptimekuma "${homeserver_name}" homeservers "https://home.$domain_name" true
-      insertEnableSvcHeimdall heimdall "$homeserver_name" homeservers "https://home.$domain_name" "hs2.png" true
+      insertEnableSvcUptimeKuma uptimekuma "${cur_hs_name}" homeservers "https://$SUB_HSHQSTATUS.$domain_name" true
+      insertEnableSvcHeimdall heimdall "$cur_hs_name" homeservers "https://$SUB_HSHQHOME.$domain_name" "hs2.png" true
       # Send update email to other HomeServers on our network
-      notifyMyNetworkHomeServersDNSUpdate add "$homeserver_name" "$domain_name"
+      notifyMyNetworkHomeServersDNSUpdate add "$cur_hs_name" "$domain_name"
       # Send update email to other users on our network
-      notifyMyNetworkUsersDNSUpdate add "$homeserver_name" "$domain_name" "$external_prefix" "$new_ip"
+      notifyMyNetworkUsersDNSUpdate add "$cur_hs_name" "$domain_name" "$external_prefix" "$new_ip"
     ;;
     "HomeServer Internet")
       mail_subj="HomeServer Internet Invitation from $HOMESERVER_NAME, RequestID: $request_id"
@@ -9065,7 +9065,7 @@ function performNetworkInvite()
       mail_body=$mail_body"The public root certificate is attached to this email or downloaded via the following links (must be connected to network first):\n"
       mail_body=$mail_body"Root CA (PEM): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt\n"
       mail_body=$mail_body"Root CA (DER): http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.der\n"
-      mail_body=$mail_body"VPN Owner Home Page: https://home.$HOMESERVER_DOMAIN\n\n"
+      mail_body=$mail_body"VPN Owner Home Page: https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN\n\n"
       if [ "$is_ip_provided" = "false" ]; then
         mail_body=$mail_body"The configuration can be loaded using one of the three following ways: \n"
         mail_body=$mail_body"     1. Copy and paste the configuration INSIDE the ### borders below, or\n"
@@ -9251,8 +9251,8 @@ function performNetworkJoin()
 
   case "$conn_type" in
     "HomeServer VPN")
-      homeserver_name=$(getValueFromConfig "HomeServerName" $join_base_config_file)
-      if [ -z "$homeserver_name" ]; then
+      cur_hs_name=$(getValueFromConfig "HomeServerName" $join_base_config_file)
+      if [ -z "$cur_hs_name" ]; then
         echo "ERROR: Invalid HomeServer name."
         rm -f $join_base_config_file
         return 8
@@ -9514,7 +9514,7 @@ function performNetworkJoin()
       echo -e "$dns_section" > $dns_file
       curdt=$(getCurrentDate)
       db_id=$(sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$preshared_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
-      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$homeserver_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$vpn_subnet','$rs_vpn_ip');"
+      sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,VPN_Subnet,RS_VPN_IP) values($db_id,'$cur_hs_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$vpn_subnet','$rs_vpn_ip');"
       if [ "$IS_INSTALLED" = "true" ]; then
         echo "Updating HomeServer DNS and restarting Heimdall..."
         docker container stop heimdall >/dev/null
@@ -9705,7 +9705,7 @@ function removeMyNetworkPrimaryVPN()
       curPeerDomain=$(echo "$cur_dns" | cut -d "|" -f1)
       curPeerDomainExtPrefix=$(echo "$cur_dns" | cut -d "|" -f2)
       removeRevertDNS $curPeerDomain $curPeerDomainExtPrefix
-      disableSvcHeimdall homeservers https://home.$curPeerDomain false
+      disableSvcHeimdall homeservers https://$SUB_HSHQHOME.$curPeerDomain false
     done
   fi
   docker container start uptimekuma >/dev/null
@@ -9761,7 +9761,7 @@ function removeMyNetworkHomeServerVPNConnection()
   removeRevertDNS $domain_name $domain_ext_prefix
   deleteDomainAndWildcardAdguardRS $domain_name
   deleteDomainAdguardRS "*.$domain_ext_prefix.$domain_name"
-  deleteSvcHeimdall homeservers "https://home.$domain_name" true
+  deleteSvcHeimdall homeservers "https://$SUB_HSHQHOME.$domain_name" true
 
   if [ $is_primary = 1 ]; then
     domains_to_remove=$(sqlite3 $HSHQ_DB "select Domain from mailhostmap where MailHostID=$mail_host_id and IsFirstDomain=true;")
@@ -11567,6 +11567,23 @@ function extractValueFromApplication()
   grep "^${app_var_starts_with}:" $app_file_name | cut -d ":" -f2- | sed 's/^ *//' | sed 's/ *$//' | sed 's/  */ /'
 }
 
+function replaceSingleLineInFile()
+{
+  rslif_curE=${-//[^e]/}
+  block_match_begin="$1"
+  replace_text="$2"
+  r_filename=$3
+  set +e
+  match=$(grep "$block_match_begin" $r_filename)
+  if ! [ -z "$match" ]; then
+    all_text=$(cat $r_filename)
+    echo -e "${all_text%%$block_match_begin*}${replace_text}${all_text##*$block_match_begin}" > $r_filename
+  fi
+  if ! [ -z $rslif_curE ]; then
+    set -e
+  fi
+}
+
 function replaceTextBlockInFile()
 {
   block_match_begin="$1"
@@ -13060,7 +13077,9 @@ function removeRevertDNS()
     deleteDomainAndWildcardAdguardHS "$curDomain"
     deleteDomainAdguardHS "*.$curExtPrefix.$curDomain"
     removeDomainAndWildcardIgnoreQuerylogAndStatsHS "$curDomain"
-    deleteSvcUptimeKuma "https://home.${curDomain}" true
+    # Eventually delete this next line, but we'll leave it in for awhile
+    deleteSvcUptimeKuma "https://$SUB_HSHQHOME.${curDomain}" true
+    deleteSvcUptimeKuma "https://$SUB_HSHQSTATUS.${curDomain}" true
   else
     # Found an alternate, replace it
     curID=$(echo "$new_dns" | cut -d "|" -f1)
@@ -13158,7 +13177,7 @@ function updateHomeServerDNS()
         fi
         addDomainAndWildcardAdguardHS "$curPeerDomain" "$curIP"
         addDomainAdguardHS "*.$curExtPrefix.$curPeerDomain" "A"
-        insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://home.$curPeerDomain" "hs2.png" true
+        insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://$SUB_HSHQHOME.$curPeerDomain" "hs2.png" true
       else
         if [ -z $is_dns_exist ]; then
           # No entry exists, add a new one
@@ -13205,7 +13224,7 @@ function updateHomeServerDNS()
         removeRevertDNS $curPeerDomain $curExtPrefix
       fi
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ] && [ "$primaryDomain" = "$cur_host" ]; then
-        disableSvcHeimdall homeservers "https://home.$curPeerDomain" false
+        disableSvcHeimdall homeservers "https://$SUB_HSHQHOME.$curPeerDomain" false
       fi
     done
   done
@@ -14257,6 +14276,12 @@ function checkUpdateVersion()
     echo "Updating to Version 113..."
     version113Update
     HSHQ_VERSION=113
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 114 ]; then
+    echo "Updating to Version 114..."
+    version114Update
+    HSHQ_VERSION=114
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -16040,7 +16065,7 @@ identity_providers:
         public: false
         authorization_policy: two_factor
         redirect_uris:
-          - https://home.$HOMESERVER_DOMAIN
+          - https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
 # Authelia OIDC Client default END
 # Authelia OIDC Clients END
 
@@ -16066,6 +16091,38 @@ function version111Update()
 function version113Update()
 {
   outputWGDockInternetScript
+}
+
+function version114Update()
+{
+  set +e
+  grep "# sn-sub-${SUB_HSHQSTATUS} BEGIN" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    hshqstatus_block=$(cat <<EOFHS
+# sn-sub-${SUB_HSHQSTATUS} BEGIN
+(sn-sub-${SUB_HSHQSTATUS}) {
+  https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN {
+    import $CADDY_SNIPPET_TLS_HSHQ
+    respond "Good"
+  }
+}
+# sn-sub-${SUB_HSHQSTATUS} END
+EOFHS
+)
+    repl_block="# sn-sub-${SUB_IMAGES} END"
+    res_block="${repl_block}\n\n${hshqstatus_block}"
+    replaceSingleLineInFile "$repl_block" "$res_block" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+    repl_block="import sn-sub-${SUB_IMAGES}"
+    res_block="${repl_block}\nimport sn-sub-${SUB_HSHQSTATUS}"
+    ls $HSHQ_STACKS_DIR/caddy-common/caddyfiles/* | while read cfile
+    do
+      replaceSingleLineInFile "$repl_block" "$res_block" $cfile
+    done
+    restartAllCaddyContainers
+    insertSubAuthelia $SUB_HSHQSTATUS.$HOMESERVER_DOMAIN bypass
+    insertEnableSvcUptimeKuma uptimekuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" true
+    sendEmail -s "HomeServer Status Checks" -b "The HomeServer status checks performed by UptimeKuma have changed the subdomain on which they query from $SUB_HSHQHOME to $SUB_HSHQSTATUS. You should migrate your URLs over in UptimeKuma. But this will only be successful when the HomeServer you are networked with has applied this update (Version 114) as well. So first check each one before changing it.\n\nTo do this, assuming example.com is the domain you want to check, paste https://hshqstatus.example.com into a browser, and it should return a simple response of 'Good'. If this is successful, then update the URL in UptimeKuma. To make this change easily in UptimeKuma, on the left panel, select HomeServers from the Tags menu. This will only show the HomeServers. Then select one from the list, and click the edit button. In the URL, change from https://$SUB_HSHQHOME.example.com to https://$SUB_HSHQSTATUS.example.com.\n\nYou will have to perform this update over time, since not everyone updates on a regular basis. But this change will lighten the load on everyone's server, since querying Heimdall (the current home page) every minute has some heavier cascading effects."
+  fi
 }
 
 function modFunAutheliaConfigFilterVar()
@@ -17829,7 +17886,7 @@ function uploadHomeServerLogo()
   # Add some random string to the filename, to overcome any browser cache issues.
   rand_string=$(pwgen -c -n 8 1)
   cp $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/${HOMESERVER_DOMAIN}-${rand_string}.png
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${HOMESERVER_DOMAIN}-${rand_string}.png' where url='https://home.$HOMESERVER_DOMAIN';"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${HOMESERVER_DOMAIN}-${rand_string}.png' where url='https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN';"
   echo "Restarting Heimdall..."
   docker container restart heimdall > /dev/null 2>&1
   echo "HomeServer logo updated succesfully!"
@@ -21179,6 +21236,8 @@ function initServiceVars()
   checkAddSvc "SVCD_HOMEASSISTANT_CONFIGURATOR=homeassistant,hass-configurator,primary,admin,HomeAssistant-Configurator,hass-configurator,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_NODERED=homeassistant,hass-nodered,primary,admin,HomeAssistant-NodeRed,hass-nodered,hshq"
   checkAddSvc "SVCD_HOMEASSISTANT_TASMOADMIN=homeassistant,hass-tasmoadmin,primary,admin,HomeAssistant-Tasmoadmin,hass-tasmoadmin,hshq"
+  checkAddSvc "SVCD_HSHQHOME=home,home,other,user,Home,home,hshq"
+  checkAddSvc "SVCD_HSHQSTATUS=hshqstatus,hshqstatus,other,user,HSHQStatus,hshqstatus,hshq"
   checkAddSvc "SVCD_SCRIPTSERVER=script-server,script-server,primary,admin,Script-server,script-server,hshq"
   checkAddSvc "SVCD_HUGINN=huginn,huginn,primary,user,Huginn,huginn,hshq"
   checkAddSvc "SVCD_IMAGES=images,images,other,user,Images,images,hshq"
@@ -21549,7 +21608,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_GRAMPSWEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HEIMDALL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMARR.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - home.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_HSHQHOME.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_HSHQSTATUS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN\n"
@@ -21904,7 +21964,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0 "homarr.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
-  insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://home.$HOMESERVER_DOMAIN" 1 "hs1.png"
+  insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
   # RelayServer Tab
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertIntoHeimdallDB "$FMLNAME_ADGUARD" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "adguardhome.png"
@@ -21994,6 +22054,8 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
+
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
     insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
@@ -33065,7 +33127,7 @@ function installAuthelia()
   mkdir $HSHQ_STACKS_DIR/authelia/keys
 
   if [ -z "$AUTHELIA_REDIRECTION_URL" ]; then
-    AUTHELIA_REDIRECTION_URL=home.$HOMESERVER_DOMAIN
+    AUTHELIA_REDIRECTION_URL=$SUB_HSHQHOME.$HOMESERVER_DOMAIN
     updateConfigVar AUTHELIA_REDIRECTION_URL $AUTHELIA_REDIRECTION_URL
   fi
   AUTHELIA_JWT_SECRET=$(pwgen -c -n 32 1)
@@ -33397,7 +33459,7 @@ identity_providers:
         public: false
         authorization_policy: two_factor
         redirect_uris:
-          - https://home.$HOMESERVER_DOMAIN
+          - https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
 # Authelia OIDC Client default END
 # Authelia OIDC Clients END
 ...
@@ -51064,7 +51126,7 @@ function bulkImportHomeServerLinksHeimdall()
     curHSName=$(echo "$curLine" | cut -d "|" -f1)
     curDomain=$(echo "$curLine" | cut -d "|" -f2)
     if ! [ -z "$curDomain" ]; then
-      insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://home.${curDomain}" "hs2.png" false
+      insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://$SUB_HSHQHOME.${curDomain}" "hs2.png" false
     fi
   done
   IFS=$OLDIFS
@@ -51150,7 +51212,6 @@ EOFCF
 # sn-base-domain BEGIN
 (sn-base-domain) {
   https://$HOMESERVER_DOMAIN {
-    import $CADDY_SNIPPET_RIP
     import $CADDY_SNIPPET_TLS_HSHQ
     import safe-header
     header "/.well-known/matrix/*" {
@@ -51167,7 +51228,7 @@ EOFCF
       }
       redir /.well-known/webfinger https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
       redir /.well-known/host-meta https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
-      redir https://home.$HOMESERVER_DOMAIN
+      redir https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
     }
   }
 }
@@ -51175,7 +51236,7 @@ EOFCF
 
 # sn-sub-home BEGIN
 (sn-sub-home) {
-  https://home.$HOMESERVER_DOMAIN {
+  https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN {
     import $CADDY_SNIPPET_TLS_HSHQ
     import $CADDY_SNIPPET_RIP
     import $CADDY_SNIPPET_FWDAUTH
@@ -51204,13 +51265,21 @@ EOFCF
 # sn-sub-${SUB_IMAGES} BEGIN
 (sn-sub-${SUB_IMAGES}) {
   https://$SUB_IMAGES.$HOMESERVER_DOMAIN {
-    import $CADDY_SNIPPET_RIP
     import $CADDY_SNIPPET_TLS_HSHQ
     root * /images
     file_server
   }
 }
 # sn-sub-${SUB_IMAGES} END
+
+# sn-sub-${SUB_HSHQSTATUS} BEGIN
+(sn-sub-${SUB_HSHQSTATUS}) {
+  https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN {
+    import $CADDY_SNIPPET_TLS_HSHQ
+    respond "Good"
+  }
+}
+# sn-sub-${SUB_HSHQSTATUS} END
 EOFCF
 
   cat <<EOFCF > $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
@@ -51219,6 +51288,7 @@ import sn-base-domain
 import sn-sub-home
 import sn-sub-${SUB_FILES}
 import sn-sub-${SUB_IMAGES}
+import sn-sub-${SUB_HSHQSTATUS}
 EOFCF
 
   cp $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary
