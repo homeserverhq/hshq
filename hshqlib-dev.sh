@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=112
+HSHQ_SCRIPT_VERSION=113
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -14253,6 +14253,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=111
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 113 ]; then
+    echo "Updating to Version 113..."
+    version113Update
+    HSHQ_VERSION=113
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16055,6 +16061,11 @@ EOFAU
 function version111Update()
 {
   mailuV111Bugfix
+}
+
+function version113Update()
+{
+  outputWGDockInternetScript
 }
 
 function modFunAutheliaConfigFilterVar()
@@ -17931,15 +17942,6 @@ function main()
     return
   fi
 
-  if ! [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
-    edip=\$(dig \$EXT_DOMAIN +short | grep '^[0-9]')
-    if [ \$? -ne 0 ]; then
-      # Cannot resolve hostname, this happens in boot process during networkd-dispatcher startup
-      echo "Cannot resolve hostname, returning..."
-      return
-    fi
-  fi
-
   shift
   shift
   case "\$COMMAND" in
@@ -17965,6 +17967,15 @@ function while_check()
 
 function up()
 {
+  if ! [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
+    edip=\$(dig \$EXT_DOMAIN +short | grep '^[0-9]')
+    if [ \$? -ne 0 ]; then
+      # Cannot resolve hostname, this happens in boot process during networkd-dispatcher startup
+      echo "Cannot resolve hostname, returning..."
+      return
+    fi
+  fi
+
   if [ -z \$DOCKER_NETWORK_SUBNET ]; then
     echo "Docker network subnet has not been set"
     return
@@ -18025,6 +18036,14 @@ function restart()
 
 function status()
 {
+  if ! [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
+    edip=\$(dig \$EXT_DOMAIN +short | grep '^[0-9]')
+    if [ \$? -ne 0 ]; then
+      # Cannot resolve hostname, this happens in boot process during networkd-dispatcher startup
+      echo "Cannot resolve hostname, returning..."
+      return 4
+    fi
+  fi
   # Checking the status will start a curl container.
   # So if this is called when the connection is set
   # to a down state, then the container will not be
