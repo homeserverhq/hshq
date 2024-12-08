@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=116
+HSHQ_SCRIPT_VERSION=117
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -13958,6 +13958,7 @@ function checkUpdateVersion()
     checkAddAllNewSvcs
     set -e
     is_update_performed=true
+    sudo -v
   fi
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
@@ -15856,12 +15857,16 @@ function version78Update()
 {
   outputPingGatewayBootscript
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    echo -e "\n\nUpdating the mail relay postfix image on the RelayServer.\n"
-    echo -e "\n\n\nThe mail relay postfix image requires an update on the RelayServer which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\nAfter this update has completed, go to Portainer on the RelayServer and stop/start the mail-relay stack.\n"
+    echo -e "\n\nUpdating the mail relay postfix image on the RelayServer."
+    set +e
     notifyRSLogin
-    loadSSHKey
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"
-    unloadSSHKey
+    retVal=$?
+    set -e
+    if [ $retVal -eq 0 ]; then
+      loadSSHKey
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"
+      unloadSSHKey
+    fi
   fi
 }
 
@@ -16025,17 +16030,21 @@ EOFWZ
   fi
 
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    tee $HOME/authd.pass >/dev/null <<EOFWZ
+    set +e
+    notifyRSLogin
+    retVal=$?
+    set -e
+    if [ $retVal -eq 0 ]; then
+      tee $HOME/authd.pass >/dev/null <<EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
-    chmod 640 $HOME/authd.pass
-    echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
-    notifyRSLogin
-    loadSSHKey
-    scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent"
-    unloadSSHKey
-    rm -f $HOME/authd.pass
+      chmod 640 $HOME/authd.pass
+      loadSSHKey
+      scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent"
+      unloadSSHKey
+      rm -f $HOME/authd.pass
+    fi
   fi
 }
 
@@ -16971,11 +16980,38 @@ function installHostNTPServer()
 
 function notifyRSLogin()
 {
+  echo -e "\n\nThe RelayServer requires an update which requires root privileges."
+  echo -e "You will be prompted for your sudo password on the RelayServer.\n"
+  echo -e "Enter either 'update' to perform the update or 'bypass' to ignore it."
+  echo -e "Only choose bypass if you no longer have access to the RelayServer."
+  echo -e "Otherwise, you'll have to manually perform the necessary updates."
   is_continue=""
-  while ! [ "$is_continue" = "ok" ]
+  while ! [ "$is_continue" = "update" ] && ! [ "$is_continue" = "bypass" ]
   do
-    read -p "Enter 'ok' to continue: " is_continue
+    read -p "Enter 'update' to perform the update or 'bypass' to ignore: " is_continue
+    if [ "$is_continue" = "bypass" ]; then
+      is_confirm=""
+      while ! [ "$is_confirm" = "confirm" ] && ! [ "$is_confirm" = "cancel" ]
+      do
+        echo -e "           @@@@@@@@@@ !!! WARNING !!! @@@@@@@@@@"
+        echo -e "This could cause unforseen side effects to your RelayServer."
+        echo -e "Certain functions with your network, etc. might not work properly."
+        echo -e "Only select this option if you no longer have access to this"
+        echo -e "server, and you intend to remove it and create a new one.\n\n"
+        read -p "Enter 'confirm' or 'cancel': " is_confirm
+      done
+      if [ "$is_confirm" = "cancel" ]; then
+        is_continue=""
+      fi
+    fi
   done
+  if [ "$is_continue" = "update" ]; then
+    return 0
+  elif [ "$is_continue" = "bypass" ]; then
+    return 1
+  else
+    return 2
+  fi
 }
 
 function checkAddServiceToConfig()
@@ -34486,7 +34522,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.12/site-packages/certifi/cacert.pem:ro
       - \${HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
       - \${HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
       - \${HSHQ_STACKS_DIR}/homeassistant/config:/config
@@ -34887,7 +34923,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.11/site-packages/certifi/cacert.pem:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.12/site-packages/certifi/cacert.pem:ro
       - \${HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
       - \${HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
       - \${HSHQ_STACKS_DIR}/homeassistant/config:/config
