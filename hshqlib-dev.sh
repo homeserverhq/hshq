@@ -15860,9 +15860,9 @@ function version78Update()
     echo -e "\n\nUpdating the mail relay postfix image on the RelayServer."
     set +e
     notifyRSLogin
-    retVal=$?
+    nrsl_retVal=$?
     set -e
-    if [ $retVal -eq 0 ]; then
+    if [ $nrsl_retVal -eq 0 ]; then
       loadSSHKey
       ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"
       unloadSSHKey
@@ -16032,9 +16032,9 @@ EOFWZ
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     set +e
     notifyRSLogin
-    retVal=$?
+    nrsl_retVal=$?
     set -e
-    if [ $retVal -eq 0 ]; then
+    if [ $nrsl_retVal -eq 0 ]; then
       tee $HOME/authd.pass >/dev/null <<EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
