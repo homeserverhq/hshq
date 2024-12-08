@@ -1744,7 +1744,7 @@ function initConfig()
         continue
       fi
       if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
-        showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must be at least 8 characters, no spaces or dollar signs."
+        showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
         tmp_pw1=abc
         tmp_pw2=def
         continue
@@ -13928,7 +13928,7 @@ function createInitialEnv()
       continue
     fi
     if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
-      showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must be at least 8 characters, no spaces or dollar signs."
+      showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
       tmp_pw1=abc
       tmp_pw2=def
       continue
