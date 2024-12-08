@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=115
+HSHQ_SCRIPT_VERSION=116
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -35,6 +35,7 @@ function init()
   HSHQ_DB=$HOME/hshq/data/config/hshq.db
   CONFIG_FILE_DEFAULT_FILENAME="config.cnf"
   ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME="config.enc"
+  ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME="config-enc.bak"
   RS_INSTALL_SETUP_SCRIPT_NAME=setup.sh
   RS_INSTALL_FRESH_SCRIPT_NAME=install.sh
   RS_INSTALL_TRANSFER_SCRIPT_NAME=transfer.sh
@@ -1738,6 +1739,15 @@ function initConfig()
       if [ $? -ne 0 ]; then exit; fi
       if [ -z "$tmp_pw1" ]; then
         showMessageBox "Password Empty" "The password cannot be empty, please try again."
+        tmp_pw1=abc
+        tmp_pw2=def
+        continue
+      fi
+      if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
+        showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must be at least 8 characters, no spaces or dollar signs."
+        tmp_pw1=abc
+        tmp_pw2=def
+        continue
       fi
       tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
       if [ $? -ne 0 ]; then exit; fi
@@ -11173,9 +11183,10 @@ function decryptConfigFile()
       fi
     fi
   done
-  set -e
-  rm -f $encConfig
+  rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
+  mv $encConfig $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+  set -e
 }
 
 function decryptConfigFileAndLoadEnvNoPrompts()
@@ -11186,7 +11197,8 @@ function decryptConfigFileAndLoadEnvNoPrompts()
   ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
   if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
     openssl enc -d -aes256 -pbkdf2 -pass pass:$decrypt_pass -in $ENC_CONFIG_FILE > $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
-    rm -f $ENC_CONFIG_FILE
+    rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
+    mv $ENC_CONFIG_FILE $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   fi
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
   loadConfigVars
@@ -13913,6 +13925,12 @@ function createInitialEnv()
     if [ $? -ne 0 ]; then exit; fi
     if [ -z "$tmp_pw1" ]; then
       showMessageBox "Password Empty" "The password cannot be empty, please try again."
+      continue
+    fi
+    if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
+      showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must be at least 8 characters, no spaces or dollar signs."
+      tmp_pw1=abc
+      tmp_pw2=def
       continue
     fi
     tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
