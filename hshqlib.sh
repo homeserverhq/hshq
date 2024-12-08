@@ -3926,7 +3926,7 @@ EOFRE
   sudo rm -f \$HOME/$NUKE_SCRIPT_NAME
   sudo rm -fr \$HOME/.ssh/*
   sudo rm -f $HSHQ_SCRIPT_OPEN
-  sudo rm /etc/update-motd.d/88-hshq
+  sudo rm -f /etc/update-motd.d/88-hshq
   if [ -f /etc/motd.old ]; then
     sudo mv /etc/motd.old /etc/motd
   else
@@ -10451,7 +10451,7 @@ EOFSI
   sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
 network: {config: disabled}
 EOFCI
-  sudo rm /etc/netplan/50-cloud-init.yaml
+  sudo rm -f /etc/netplan/50-cloud-init.yaml
   sudo netplan apply
 }
 
@@ -17122,7 +17122,7 @@ function nukeHSHQ()
   sudo rm -fr $HSHQ_BASE_DIR/*.log
   sudo rm -fr $HSHQ_INSTALL_CFG
   sudo rm -fr $HOME/.ssh/*
-  sudo rm /etc/update-motd.d/88-hshq
+  sudo rm -f /etc/update-motd.d/88-hshq
   if [ -f /etc/motd.old ]; then
     sudo mv /etc/motd.old /etc/motd
   else
@@ -17792,7 +17792,7 @@ function initCronJobs()
   echo "*/$WIREGUARD_DNS_REFRESH_RATE * * * * bash $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HOME/rootcron >/dev/null
   sudo crontab $HOME/rootcron
-  sudo rm $HOME/rootcron
+  sudo rm -f $HOME/rootcron
 }
 
 function appendToRoonCron()
@@ -17804,7 +17804,7 @@ function appendToRoonCron()
   if [ $? -ne 0 ]; then
     echo "$cr_string" | sudo tee -a $HOME/rootcron >/dev/null
     sudo crontab $HOME/rootcron
-    sudo rm $HOME/rootcron
+    sudo rm -f $HOME/rootcron
   fi
   set -e
 }
@@ -17819,7 +17819,7 @@ function deleteFromRootCron()
     sudo sed -i "/$cr_string/d" $HOME/rootcron
     sudo crontab $HOME/rootcron
   fi
-  sudo rm $HOME/rootcron
+  sudo rm -f $HOME/rootcron
   set -e
 }
 
