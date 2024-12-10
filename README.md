@@ -129,7 +129,7 @@ To get a better understanding of how it all works, the best place to start is ou
 
 ![RelayServerDiagram](https://github.com/user-attachments/assets/0b5fe940-fbeb-4788-90c8-040eeb5a8dc4)
 
-For example, to route https traffic, the RelayServer has its own reverse proxy. As requests come in, they will be routed appropriately to the correct internal host. This allows for unlimited internal hosts(HomeServers), as well as unlimited domains on a single HomeServer. We also applied the same concept to the email relay. It is a simple <a href="https://www.postfix.org/" target="_blank">Postfix</a> relay that inspects and determines the correct internal host and routes the mail accordingly. The mail relay also has a few added features such as: 
+For example, to route https traffic for any websites that you want to host on the public internet, the RelayServer has its own reverse proxy. As requests come in, they will be routed appropriately to the correct internal host. This allows for unlimited internal hosts(HomeServers), as well as unlimited domains on a single HomeServer. We also applied the same concept to the email relay. It is a simple <a href="https://www.postfix.org/" target="_blank">Postfix</a> relay that inspects and determines the correct internal host and routes the mail accordingly. The mail relay also has a few added features such as: 
 - Basic spam detection with <a href="https://rspamd.com/" target="_blank">RSpamD</a> - to limit unwanted email from even being forwarded
 - Store and Forward - holds the mail for up to 30 days if the internal server cannot be reached
 - Additional virus detection using <a href="https://www.clamav.net/" target="_blank">ClamAV</a> can also be added with a few minor configuration changes
