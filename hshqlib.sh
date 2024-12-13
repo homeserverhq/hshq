@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=117
+HSHQ_SCRIPT_VERSION=118
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -27547,6 +27547,7 @@ function installWazuh()
     finderror=$(docker logs wazuh.manager 2>&1 | grep "$error_text")
     if ! [ -z "$finderror" ]; then
       echo "This CPU does not support x86-64-v2, Wazuh cannot be installed, exiting..."
+      checkDeleteStackAndDirectory wazuh "Wazuh" true true
       return 3
     fi
     echo "Waiting for agent.conf to initialize ($curACount seconds)..."
