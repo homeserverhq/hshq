@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=13
+HSHQ_WRAPPER_SCRIPT_VERSION=14
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -42,8 +42,16 @@ function main()
   actcheckbox=black,yellow
   '
   USERNAME=$(id -u -n)
-  HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
-  HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
+  if [ -f $HOME/hshq/hshq.dev ]; then
+    HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-dev.sh
+    HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-dev
+  elif [ -f $HOME/hshq/hshq.test ]; then
+    HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-test.sh
+    HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-test
+  else
+    HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
+    HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
+  fi
   HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
   HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
@@ -87,8 +95,28 @@ EOF
   done
   shift "$(($OPTIND -1))"
 
-  # Underscores in hostname have shown to be problematic...
   set +e
+  if [[ "$(isProgramInstalled sudo)" = "false" ]]; then
+    if ! [ "$USERNAME" = "root" ]; then
+      echo -e "\n\n================================================================================"
+      echo -e "The command, sudo, is not installed, and you are currently logged in"
+      echo -e "as a non-root user. You must perform the following steps to continue:\n"
+      echo -e "  1) Switch to the root user: 'su root'"
+      echo -e "  2) Install sudo: 'apt update && apt install sudo -y'"
+      echo -e "  3) Add your user to the sudoers group: 'usermod -aG sudo $USERNAME'"
+      echo -e "  4) Exit the terminal session entirely: 'exit', then 'exit' again"
+      echo -e "  5) Log back in and re-run this script: 'bash hshq.sh'"
+      echo -e "\nTo copy these instructions, simply select the text with your mouse,"
+      echo -e "and it will automatically be copied to the clipboard."
+      echo -e "================================================================================"
+      exit 2
+    fi
+    echo "Installing sudo, please wait..."
+    DEBIAN_FRONTEND=noninteractive apt update
+    DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo >/dev/null 2>/dev/null
+  fi
+
+  # Underscores in hostname have shown to be problematic...
   hostname | grep "_" >/dev/null 2>/dev/null
   if [ $? -eq 0 ]; then
     cur_hostname=$(hostname)
