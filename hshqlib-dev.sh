@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=119
+HSHQ_SCRIPT_VERSION=120
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -89,8 +89,14 @@ function init()
   SUDO_MAX_RETRIES=20
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
+  IS_HSHQ_DEV_FILENAME=hshq.dev
+  IS_HSHQ_TEST_FILENAME=hshq.test
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
   HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
+  HSHQ_LIB_DEV_URL=https://homeserverhq.com/hshqlib-dev.sh
+  HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/getversion-dev
+  HSHQ_LIB_TEST_URL=https://homeserverhq.com/hshqlib-test.sh
+  HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/getversion-test
   HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
   HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
@@ -108,9 +114,9 @@ function init()
   initServiceDefaults
   loadPinnedDockerImages
   loadDirectoryStructure
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
-  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
+  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils"
   hshqlogo=$(cat << EOF
 
         #===============================================================#
@@ -1028,20 +1034,35 @@ function checkWrapperVersion()
   set -e
 }
 
+function loadVersionVars()
+{
+  DISTRO_ID=$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ] || [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    IS_HSHQ_DEV_TEST=true
+  fi
+}
+
 function checkSupportedHostOS()
 {
-  if [ -f /etc/lsb-release ]; then
-    DISTRIB_ID=$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
-    DISTRIB_RELEASE=$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
-    if [ "$DISTRIB_ID" = "Ubuntu" ] && [ "$DISTRIB_RELEASE" = "22.04" ]; then
-      return
-    fi
+  loadVersionVars
+  if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
+    return
+  fi
+  if [ "$IS_HSHQ_DEV_TEST" = "true" ] && [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    return
+  fi
+  if [ "$IS_HSHQ_DEV_TEST" = "true" ] && [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+    return
   fi
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   echo "@                   Unsupported Host Operating System                  @"
   echo "@                                                                      @"
   echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
+  echo "@  - Ubuntu 22.04 Jammy Jellyfish                                      @"
+  echo "@  - Ubuntu 24.04 Noble Numbat (Dev)                                   @"
+  echo "@  - Debian 12 Bookworm (Dev)                                          @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   closeHSHQScript
@@ -1217,7 +1238,7 @@ function performSuggestedSecUpdates()
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt purge -y telnet > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y telnet > /dev/null 2>&1
   # Assume the caller will restart sshd - don't want to risk breaking the installation process
   sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
   sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
@@ -1251,7 +1272,7 @@ function installDependencies()
   done
 
   for rem_util in $APT_REMOVE_LIST; do
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y $rem_util
+    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
   done
 
   if ! [ -f /etc/rsyslog.d/docker-logs.conf ]; then
@@ -2004,14 +2025,14 @@ function performBaseInstallation()
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
-  echo "Setting static IP..."
-  setStaticIPToCurrent
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
   installLogNotify "Install Dependencies"
   installMailUtils
   installDependencies
+  echo "Setting static IP..."
+  setStaticIPToCurrent
   pullBaseServicesDockerImages
   installLogNotify "Init DH Params"
   initDHParams
@@ -3697,7 +3718,7 @@ function performSuggestedSecUpdates()
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt purge -y telnet > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y telnet > /dev/null 2>&1
   # Assume the caller will restart sshd - don't want to risk breaking the installation process
   sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
   sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
@@ -3723,7 +3744,7 @@ function installDependencies()
   if [[ "\$(isProgramInstalled needrestart)" = "true" ]]; then
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\\\$nrconf{kernelhints} = -1;/\\\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart > /dev/null 2>&1
+    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   fi
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
@@ -3770,7 +3791,7 @@ EOFSM
   done
 
   for rem_util in \$APT_REMOVE_LIST; do
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y \$rem_util
+    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y \$rem_util
   done
 
   updateSysctl
@@ -3945,7 +3966,7 @@ function isProgramInstalled()
 {
   bin_name=\$(echo \$1 | cut -d"|" -f1)
   lib_name=\$(echo \$1 | cut -d"|" -f2)
-  if [[ -z \$(which \${bin_name}) ]]; then
+  if [[ -z \$(sudo which \${bin_name}) ]]; then
     echo "false"
   else
     echo "true"
@@ -10448,13 +10469,17 @@ EOFSI
   
   chmod 0600 $HOME/00-installer-config.yaml
   sudo chown root:root $HOME/00-installer-config.yaml
+  sudo rm -f /etc/netplan/*
   sudo mv -f $HOME/00-installer-config.yaml /etc/netplan/00-installer-config.yaml
-  # Disable cloud-init
-  sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
+  if sudo test -d /etc/cloud/cloud.cfg.d; then
+    # Disable cloud-init
+    sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
 network: {config: disabled}
 EOFCI
-  sudo rm -f /etc/netplan/50-cloud-init.yaml
-  sudo netplan apply
+  fi
+  # Remove old package
+  sudo apt remove --purge ifupdown -y && sudo rm -rf /etc/network > /dev/null 2>&1
+  sudo netplan apply > /dev/null 2>&1
 }
 
 function changeHostStaticIP()
@@ -12208,7 +12233,24 @@ function getThisVersionWrapper()
 
 function getLatestVersionLib()
 {
-  echo $(curl --silent $HSHQ_LIB_VER_URL)
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo $(curl --silent $HSHQ_LIB_DEV_VER_URL)
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo $(curl --silent $HSHQ_LIB_TEST_VER_URL)
+  else
+    echo $(curl --silent $HSHQ_LIB_VER_URL)
+  fi
+}
+
+function getLatestLibURL()
+{
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo "$HSHQ_LIB_DEV_URL"
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo "$HSHQ_LIB_TEST_URL"
+  else
+    echo "$HSHQ_LIB_URL"
+  fi
 }
 
 function getThisVersionLib()
@@ -17151,9 +17193,14 @@ function nukeHSHQ()
     removeWGInterfaceQuick $bname
   done
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo systemctl enable systemd-resolved > /dev/null 2>&1
-  sudo systemctl start systemd-resolved > /dev/null 2>&1
-  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  sudo systemctl status systemd-resolved > /dev/null 2>&1
+  if [ $? -ne 4 ]; then
+    sudo systemctl enable systemd-resolved > /dev/null 2>&1
+    sudo systemctl start systemd-resolved > /dev/null 2>&1
+    sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  else
+    echo "nameserver 9.9.9.9" | sudo tee /etc/resolv.conf
+  fi
   sudo systemctl restart docker
   sudo docker container prune -f
   sudo docker volume rm $(sudo docker volume ls -q)
@@ -18429,7 +18476,7 @@ function isProgramInstalled()
 {
   bin_name=$(echo $1 | cut -d"|" -f1)
   lib_name=$(echo $1 | cut -d"|" -f2)
-  if [[ -z $(which ${bin_name}) ]]; then
+  if [[ -z $(sudo which ${bin_name}) ]]; then
     echo "false"
   else
     echo "true"
@@ -18439,47 +18486,34 @@ function isProgramInstalled()
 function installDocker()
 {
   set +e
-
-  IS_ROOTLESS_DOCKER=false
-#  if [[ "$(isProgramInstalled docker)" = "false" ]]; then
-#    dockermenu=$(cat << EOF
-#$hshqlogo
-#
-#Select your install method
-#EOF
-#    )
-#    menures=$(whiptail --title "Install Docker" --menu "$dockermenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-#  "1" "Rooted" \
-#  "2" "Rootless - more secure (only available for Ubuntu on bare metal install)" \
-#  "3" "Exit Installation" 3>&1 1>&2 2>&3)
-#    case $menures in
-#      1)
-#        IS_ROOTLESS_DOCKER=false ;;
-#      2)
-#        IS_ROOTLESS_DOCKER=true ;;
-#      3)
-#        exit 2 ;;
-#    esac
-#  fi
-  updateConfigVar IS_ROOTLESS_DOCKER $IS_ROOTLESS_DOCKER
   outputDockerSettings
   util="docker|docker"
   if [[ "$(isProgramInstalled $util)" = "true" ]]; then
     sudo systemctl restart docker
     return 0
   fi
-  if [ "$IS_ROOTLESS_DOCKER" = "true" ]; then
-	installDockerUbuntu2004Rooted
-	installDockerUbuntu2004Rootless
-  else
-    installDockerUbuntu2004Rooted
-  fi
+  loadVersionVars
+  case "$DISTRO_ID" in
+  "ubuntu")
+    if [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
+      installDockerUbuntu2204
+    elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+      installDockerUbuntu2404
+    fi
+    ;;
+  "debian")
+    if [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+      installDockerDebian12
+    fi
+    ;;
+  *)
+    ;;
+  esac
 }
 
 function removeDocker()
 {
   sudo systemctl stop docker
-  sudo DEBIAN_FRONTEND=noninteractive apt purge -y docker-engine docker docker.io docker-ce docker-ce-cli docker-compose
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y --purge docker-engine docker docker.io docker-ce docker-compose
   sudo rm -rf /var/lib/docker /etc/docker
   sudo rm -rf /etc/apparmor.d/docker
@@ -18544,7 +18578,22 @@ EOFRL
 
 }
 
-function installDockerUbuntu2004Rooted()
+function getUbuntu2204DockerCEVersion()
+{
+  echo "5:25.0.5-1~ubuntu.22.04~jammy"
+}
+
+function getUbuntu2404DockerCEVersion()
+{
+  echo "5:27.4.0-1~ubuntu.24.04~noble"
+}
+
+function getDebian12DockerCEVersion()
+{
+  echo "5:27.4.0-1~debian.12~bookworm"
+}
+
+function installDockerUbuntu2204()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   echo "Installing docker, please wait..."
@@ -18556,8 +18605,8 @@ function installDockerUbuntu2004Rooted()
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  performAptInstall docker-ce=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
-  performAptInstall docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
+  performAptInstall docker-ce=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
@@ -18568,24 +18617,56 @@ function installDockerUbuntu2004Rooted()
   sudo systemctl restart docker
 }
 
-function installDockerUbuntu2004Rootless()
+function installDockerUbuntu2404()
 {
+  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
+  echo "Installing docker, please wait..."
+  performAptInstall ca-certificates > /dev/null 2>&1
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall lsb-release > /dev/null 2>&1
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  # Install dependencies for rootless docker (https://linuxhandbook.com/rootless-docker/)
-  performAptInstall uidmap > /dev/null 2>&1
-  performAptInstall dbus-user-session  > /dev/null 2>&1
-  performAptInstall fuse-overlayfs  > /dev/null 2>&1
-  sudo systemctl disable --now docker.service docker.socket
-  # Install the rootless docker package (https://linuxhandbook.com/rootless-docker/)
-  curl -fsSL https://get.docker.com/rootless | sh
-  sudo setcap cap_net_bind_service=ep $HOME/bin/rootlesskit
-  systemctl --user start docker
-  systemctl --user enable docker
-  sudo loginctl enable-linger $(whoami)
-  echo "" >> ~/.bashrc
-  echo "export PATH=$HOME/bin:\$PATH" >> ~/.bashrc
-  echo "export DOCKER_HOST=unix:///run/user/$USERID/docker.sock" >> ~/.bashrc
-  updateConfigVar IS_ROOTLESS_DOCKER true
+  echo "Installing docker, please wait..."
+  performAptInstall docker-ce=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-buildx-plugin > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+  sudo systemctl restart rsyslog
+  sudo systemctl restart docker
+}
+
+function installDockerDebian12()
+{
+  # Install Docker (https://docs.docker.com/engine/install/debian/)
+  echo "Installing docker, please wait..."
+  performAptInstall ca-certificates > /dev/null 2>&1
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall lsb-release > /dev/null 2>&1
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Installing docker, please wait..."
+  performAptInstall docker-ce=$(getDebian12DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$(getDebian12DockerCEVersion) > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-compose > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+  sudo systemctl restart rsyslog
+  sudo systemctl restart docker
 }
 
 function initCertificateAuthority()
@@ -19740,7 +19821,6 @@ CONFIG_ENCRYPTION_PASSPHRASE=$CONFIG_ENCRYPTION_PASSPHRASE
 USERID=
 GROUPID=
 XDG_RUNTIME_DIR=
-IS_ROOTLESS_DOCKER=false
 DEFAULT_NETWORK_POOL=172.16.0.0/12
 DEFAULT_NETWORK_SIZE=24
 DOCKER_METRICS_PORT=8323
@@ -22845,9 +22925,6 @@ function installPortainer()
 function outputConfigPortainer()
 {
   DOCKER_SOCKET="/var/run/docker.sock"
-  if [ "$IS_ROOTLESS_DOCKER" = "true" ]; then
-	  DOCKER_SOCKET='$XDG_RUNTIME_DIR/docker.sock'
-  fi
   if ! [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
     pdocknet=dock-ext
   else
@@ -23377,6 +23454,8 @@ function performUpdateAdGuard()
 
 function prepAdguardInstallation()
 {
+  pai_curE=${-//[^e]/}
+  set +e
   sudo systemctl stop systemd-resolved > /dev/null 2>&1
   sudo systemctl disable systemd-resolved > /dev/null 2>&1
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
@@ -23390,6 +23469,9 @@ EOFR
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
   done
   sudo netplan apply > /dev/null 2>&1
+  if ! [ -z $pai_curE ]; then
+    set -e
+  fi
 }
 
 # SysUtils
@@ -46545,7 +46627,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
 fi
 
 if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
-  wget -q4 -O \$HSHQ_LIB_TMP \$HSHQ_LIB_URL
+  wget -q4 -O \$HSHQ_LIB_TMP \$(getLatestLibURL)
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_LIB_TMP
     echo "ERROR: Could not obtain current version of lib script."
