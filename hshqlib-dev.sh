@@ -50,6 +50,9 @@ function init()
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
+  DOCKER_VERSION_UBUNTU_2204=5:25.0.5-1~ubuntu.22.04~jammy
+  DOCKER_VERSION_UBUNTU_2404=5:27.4.0-1~ubuntu.24.04~noble
+  DOCKER_VERSION_DEBIAN_12=5:27.4.0-1~debian.12~bookworm
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -3900,30 +3903,14 @@ function installDocker()
   sudo usermod -aG docker \$USERNAME
 }
 
-
-function getUbuntu2204DockerCEVersion()
-{
-  echo "5:25.0.5-1~ubuntu.22.04~jammy"
-}
-
-function getUbuntu2404DockerCEVersion()
-{
-  echo "5:27.4.0-1~ubuntu.24.04~noble"
-}
-
-function getDebian12DockerCEVersion()
-{
-  echo "5:27.4.0-1~debian.12~bookworm"
-}
-
 function installDockerUbuntu2204()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  performAptInstall docker-ce=\$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
-  performAptInstall docker-ce-cli=\$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1
@@ -3937,8 +3924,8 @@ function installDockerUbuntu2404()
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  performAptInstall docker-ce=\$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
-  performAptInstall docker-ce-cli=\$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-buildx-plugin > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
@@ -3952,8 +3939,8 @@ function installDockerDebian12()
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  performAptInstall docker-ce=\$(getDebian12DockerCEVersion) > /dev/null 2>&1
-  performAptInstall docker-ce-cli=\$(getDebian12DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
@@ -18698,29 +18685,14 @@ EOFRL
 
 }
 
-function getUbuntu2204DockerCEVersion()
-{
-  echo "5:25.0.5-1~ubuntu.22.04~jammy"
-}
-
-function getUbuntu2404DockerCEVersion()
-{
-  echo "5:27.4.0-1~ubuntu.24.04~noble"
-}
-
-function getDebian12DockerCEVersion()
-{
-  echo "5:27.4.0-1~debian.12~bookworm"
-}
-
 function installDockerUbuntu2204()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  performAptInstall docker-ce=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1
@@ -18734,8 +18706,8 @@ function installDockerUbuntu2404()
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  performAptInstall docker-ce=$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-buildx-plugin > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
@@ -18749,8 +18721,8 @@ function installDockerDebian12()
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  performAptInstall docker-ce=$(getDebian12DockerCEVersion) > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$(getDebian12DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
