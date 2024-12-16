@@ -89,6 +89,10 @@ function init()
   SUDO_MAX_RETRIES=20
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
+  IS_HSHQ_DEV_TEST=false
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ] || [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    IS_HSHQ_DEV_TEST=true
+  fi
   IS_HSHQ_DEV_FILENAME=hshq.dev
   IS_HSHQ_TEST_FILENAME=hshq.test
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
@@ -1039,9 +1043,6 @@ function loadVersionVars()
   DISTRO_ID=$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
-  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ] || [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    IS_HSHQ_DEV_TEST=true
-  fi
 }
 
 function checkSupportedHostOS()
@@ -1644,6 +1645,7 @@ function initConfig()
         showMessageBox "Invalid Time Zone" "The time zone is invalid. Please enter a valid time zone."
         TZ=""
       else
+        echo "$TZ" | sudo tee /etc/timezone
         updateConfigVar TZ $TZ
       fi
       set -e
@@ -3797,34 +3799,20 @@ EOFSM
   updateSysctl
   updateMOTD
   performSuggestedSecUpdates
+  installDocker
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+}
 
-  util="docker|docker"
-  if ! [ "\$(isProgramInstalled \$util)" = "true" ]; then
-    # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
-    echo "Installing docker, please wait..."
-    performAptInstall ca-certificates > /dev/null 2>&1
-    performAptInstall curl > /dev/null 2>&1
-    performAptInstall gnupg > /dev/null 2>&1
-    performAptInstall lsb-release > /dev/null 2>&1
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
-    echo "deb [arch=\$(dpkg --print-architecture) \
-    signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
-    https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | \
-    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    echo "Installing docker, please wait..."
-    performAptInstall docker-ce=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
-    performAptInstall docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
-    performAptInstall containerd.io > /dev/null 2>&1
-    performAptInstall docker-compose > /dev/null 2>&1
-    performAptInstall docker-compose-plugin > /dev/null 2>&1
-    # See https://www.portainer.io/blog/portainer-and-docker-26
-    sudo apt-mark hold docker-ce
-    sudo apt-mark hold docker-ce-cli
-  fi
+function loadVersionVars()
+{
+  DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  IS_HSHQ_DEV_TEST=$IS_HSHQ_DEV_TEST
+}
 
-  sudo usermod -aG docker \$USERNAME
+function outputDockerSettings()
+{
   sudo mkdir -p /etc/docker
   sudo tee /etc/docker/daemon.json >/dev/null <<EOFRL
 {
@@ -3864,9 +3852,111 @@ if \\\$programname == 'docker' then {
 \\\$FileCreateMode 0600
 EOFRL
   fi
+}
+
+function installDocker()
+{
+  set +e
+  outputDockerSettings
+  util="docker|docker"
+  if [[ "\$(isProgramInstalled \$util)" = "true" ]]; then
+    sudo systemctl restart rsyslog
+    sudo systemctl restart docker
+    return 0
+  fi
+  echo "Installing docker, please wait..."
+  performAptInstall ca-certificates > /dev/null 2>&1
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall lsb-release > /dev/null 2>&1
+  loadVersionVars
+  case "\$DISTRO_ID" in
+  "ubuntu")
+    if [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
+      installDockerUbuntu2204
+    elif [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+      installDockerUbuntu2404
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "debian")
+    if [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+      installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  *)
+    ;;
+  esac
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
   sudo systemctl restart rsyslog
   sudo systemctl restart docker
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo usermod -aG docker \$USERNAME
+}
+
+
+function getUbuntu2204DockerCEVersion()
+{
+  echo "5:25.0.5-1~ubuntu.22.04~jammy"
+}
+
+function getUbuntu2404DockerCEVersion()
+{
+  echo "5:27.4.0-1~ubuntu.24.04~noble"
+}
+
+function getDebian12DockerCEVersion()
+{
+  echo "5:27.4.0-1~debian.12~bookworm"
+}
+
+function installDockerUbuntu2204()
+{
+  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  performAptInstall docker-ce=\$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce-cli=\$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-compose > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1
+}
+
+function installDockerUbuntu2404()
+{
+  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  performAptInstall docker-ce=\$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce-cli=\$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-buildx-plugin > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+}
+
+function installDockerDebian12()
+{
+  # Install Docker (https://docs.docker.com/engine/install/debian/)
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  performAptInstall docker-ce=\$(getDebian12DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce-cli=\$(getDebian12DockerCEVersion) > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-compose > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
 }
 
 function outputNukeScript()
@@ -4507,20 +4597,33 @@ function checkValidIPAddress()
   fi
 }
 
+function loadVersionVars()
+{
+  DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  IS_HSHQ_DEV_TEST=$IS_HSHQ_DEV_TEST
+}
+
 function checkSupportedHostOS()
 {
-  if [ -f /etc/lsb-release ]; then
-    DISTRIB_ID=\$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
-    DISTRIB_RELEASE=\$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
-    if [ "\$DISTRIB_ID" = "Ubuntu" ] && [ "\$DISTRIB_RELEASE" = "22.04" ]; then
-      return
-    fi
+  loadVersionVars
+  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
+    return
+  fi
+  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    return
+  fi
+  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+    return
   fi
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   echo "@                   Unsupported Host Operating System                  @"
   echo "@                                                                      @"
   echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
+  echo "@  - Ubuntu 22.04 Jammy Jellyfish                                      @"
+  echo "@  - Ubuntu 24.04 Noble Numbat (Dev)                                   @"
+  echo "@  - Debian 12 Bookworm (Dev)                                          @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   rm -f $HSHQ_SCRIPT_OPEN
@@ -18489,9 +18592,15 @@ function installDocker()
   outputDockerSettings
   util="docker|docker"
   if [[ "$(isProgramInstalled $util)" = "true" ]]; then
+    sudo systemctl restart rsyslog
     sudo systemctl restart docker
     return 0
   fi
+  echo "Installing docker, please wait..."
+  performAptInstall ca-certificates > /dev/null 2>&1
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall lsb-release > /dev/null 2>&1
   loadVersionVars
   case "$DISTRO_ID" in
   "ubuntu")
@@ -18499,16 +18608,27 @@ function installDocker()
       installDockerUbuntu2204
     elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
       installDockerUbuntu2404
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
     fi
     ;;
   "debian")
     if [[ "$DISTRO_VERSION" =~ ^12. ]]; then
       installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
     fi
     ;;
   *)
     ;;
   esac
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+  sudo systemctl restart rsyslog
+  sudo systemctl restart docker
 }
 
 function removeDocker()
@@ -18596,77 +18716,44 @@ function getDebian12DockerCEVersion()
 function installDockerUbuntu2204()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
-  echo "Installing docker, please wait..."
-  performAptInstall ca-certificates > /dev/null 2>&1
-  performAptInstall curl > /dev/null 2>&1
-  performAptInstall gnupg > /dev/null 2>&1
-  performAptInstall lsb-release > /dev/null 2>&1
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  echo "Installing docker, please wait..."
   performAptInstall docker-ce=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
   performAptInstall docker-ce-cli=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
-  performAptInstall docker-compose-plugin > /dev/null 2>&1  
-  # See https://www.portainer.io/blog/portainer-and-docker-26
-  sudo apt-mark hold docker-ce
-  sudo apt-mark hold docker-ce-cli
-  sudo systemctl restart rsyslog
-  sudo systemctl restart docker
+  performAptInstall docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerUbuntu2404()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
-  echo "Installing docker, please wait..."
-  performAptInstall ca-certificates > /dev/null 2>&1
-  performAptInstall curl > /dev/null 2>&1
-  performAptInstall gnupg > /dev/null 2>&1
-  performAptInstall lsb-release > /dev/null 2>&1
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  echo "Installing docker, please wait..."
   performAptInstall docker-ce=$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
   performAptInstall docker-ce-cli=$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-buildx-plugin > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
-  # See https://www.portainer.io/blog/portainer-and-docker-26
-  sudo apt-mark hold docker-ce
-  sudo apt-mark hold docker-ce-cli
-  sudo systemctl restart rsyslog
-  sudo systemctl restart docker
 }
 
 function installDockerDebian12()
 {
   # Install Docker (https://docs.docker.com/engine/install/debian/)
-  echo "Installing docker, please wait..."
-  performAptInstall ca-certificates > /dev/null 2>&1
-  performAptInstall curl > /dev/null 2>&1
-  performAptInstall gnupg > /dev/null 2>&1
-  performAptInstall lsb-release > /dev/null 2>&1
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  echo "Installing docker, please wait..."
   performAptInstall docker-ce=$(getDebian12DockerCEVersion) > /dev/null 2>&1
   performAptInstall docker-ce-cli=$(getDebian12DockerCEVersion) > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
-  # See https://www.portainer.io/blog/portainer-and-docker-26
-  sudo apt-mark hold docker-ce
-  sudo apt-mark hold docker-ce-cli
-  sudo systemctl restart rsyslog
-  sudo systemctl restart docker
 }
 
 function initCertificateAuthority()
@@ -44762,7 +44849,7 @@ function installHomarr()
   rm -f $HOME/homarr.oidc
   insertOIDCClientAuthelia homarr "$oidcBlock"
   set +e
-  installStack homarr homarr-app "Listening on port" $HOME/homarr.env 1
+  installStack homarr homarr-app "Listening on port" $HOME/homarr.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
