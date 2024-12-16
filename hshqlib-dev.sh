@@ -18631,8 +18631,8 @@ function installDockerUbuntu2404()
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  performAptInstall docker-ce=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
-  performAptInstall docker-ce-cli=$(getUbuntu2204DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce=$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$(getUbuntu2404DockerCEVersion) > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-buildx-plugin > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
