@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=118
+HSHQ_SCRIPT_VERSION=119
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -672,7 +672,7 @@ function showRestoreDuplicatiRestoreMenu()
 {
   backupDirTL="$1"
   umountDisk="$2"
-  curListNum=1
+  curListNum=0
   dbackupmenu=$(cat << EOF
 
 $hshqlogo
@@ -682,20 +682,22 @@ EOF
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   dupback_menu_items=( --title "Select Directory" --radiolist "$dbackupmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT )
-  dirarr=($(ls $backupDirTL))
+  dirarr=($(sudo ls $backupDirTL))
   cd ~
   for curDir in "${dirarr[@]}"
   do
-    if [ "$curDir" = "lost+found" ] || ! [ -d "$curDir" ]; then
+    if [ "$curDir" = "lost+found" ]; then
       continue
     fi
-    dupback_menu_items+=( "$curDir" )
-    dupback_menu_items+=( "|" )
-    dupback_menu_items+=( "off" )
-    ((curListNum++))
+    if sudo test -d "$backupDirTL/$curDir"; then
+      dupback_menu_items+=( "$curDir" )
+      dupback_menu_items+=( "|" )
+      dupback_menu_items+=( "off" )
+      ((curListNum++))
+    fi
   done
   IFS=$OLDIFS
-  if [ $curListNum -le 1 ]; then
+  if [ $curListNum -lt 1 ]; then
     showMessageBox "ERROR" "There are no subdirectories for this operation, returning..."
     return
   fi
@@ -14303,6 +14305,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=114
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 119 ]; then
+    echo "Updating to Version 119..."
+    version119Update
+    HSHQ_VERSION=119
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
@@ -16152,6 +16160,12 @@ EOFHS
   fi
 }
 
+function version119Update()
+{
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh
+  outputHABandaidScript
+}
+
 function modFunAutheliaConfigFilterVar()
 {
   set +e
@@ -17466,7 +17480,8 @@ EOFPT
 
 function outputHABandaidScript()
 {
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh >/dev/null <<EOFBS
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartSelectedStacks.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartSelectedStacks.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 # This script is a bandaid solution to fix the startup
@@ -17501,12 +17516,24 @@ function main()
     exit 1
   fi
   restartStackIfRunning homeassistant 15 \$portainerToken > /dev/null
+
+  echo "Restarting caddy stacks..."
+  caddy_arr=(\$(docker ps -a --filter name=caddy- --format "{{.Names}}"))
+  for curcaddy in "\${caddy_arr[@]}"
+  do
+    startStopStack \$curcaddy stop > /dev/null 2>&1
+    docker container stop \$curcaddy > /dev/null 2>&1
+    docker container rm \$curcaddy > /dev/null 2>&1
+    sleep 1
+    startStopStack \$curcaddy start > /dev/null 2>&1
+  done
+
   echo "End restartHomeAssistantStack.sh"
 }
 main
 EOFBS
 
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartSelectedStacks.sh
 }
 
 function outputDockerWireGuardCaddyScript()
