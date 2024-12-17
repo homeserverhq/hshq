@@ -228,8 +228,8 @@ function main()
 
 function showNotInstalledMenu()
 {
-  checkSupportedHostOS
   set +e
+  checkSupportedHostOS
   # Check and capture the user sudo password, only for the installation process.
   # This change was implemented on version 10 of the wrapper (hshq.sh), and 
   # version 68 of the lib (hshqlib.sh), in order to speed up the installation
@@ -1054,21 +1054,37 @@ function checkSupportedHostOS()
   if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
     return
   fi
-  if [ "$IS_HSHQ_DEV_TEST" = "true" ] && [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
-    return
+  IS_DISTRO_EXP=false
+  if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
+      return
+    fi
+    IS_DISTRO_EXP=true
   fi
-  if [ "$IS_HSHQ_DEV_TEST" = "true" ] && [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
-    return
+  if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
+      return
+    fi
+    IS_DISTRO_EXP=true
   fi
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  echo "@                   Unsupported Host Operating System                  @"
-  echo "@                                                                      @"
-  echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@  - Ubuntu 22.04 Jammy Jellyfish                                      @"
-  echo "@  - Ubuntu 24.04 Noble Numbat (Dev)                                   @"
-  echo "@  - Debian 12 Bookworm (Dev)                                          @"
-  echo "@                                                                      @"
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  if [ "$IS_DISTRO_EXP" = "true" ]; then
+    showYesNoMessageBox "Confirm Experimental" "This installation is on the experimental list. It has not been thoroughly tested. Do you wish to continue?"
+    if [ $? -eq 0 ]; then
+      touch $HOME/hshq/hshq.test
+      IS_HSHQ_DEV_TEST=true
+      return
+    fi
+  else
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+    echo "@                   Unsupported Host Operating System                  @"
+    echo "@                                                                      @"
+    echo "@ This installation only supports the following Linux distribution(s): @"
+    echo "@  - Ubuntu 22.04 Jammy Jellyfish                                      @"
+    echo "@  - Ubuntu 24.04 Noble Numbat (Experimental)                          @"
+    echo "@  - Debian 12 Bookworm (Experimental)                                 @"
+    echo "@                                                                      @"
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  fi
   closeHSHQScript
   exit 2
 }
@@ -3922,7 +3938,7 @@ function installDockerUbuntu2404()
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
   performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
@@ -18704,7 +18720,7 @@ function installDockerUbuntu2404()
   sudo install -m 0755 -d /etc/apt/keyrings
   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
-  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
   performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
