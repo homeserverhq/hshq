@@ -92,12 +92,12 @@ function init()
   SUDO_MAX_RETRIES=20
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
+  IS_HSHQ_DEV_FILENAME=hshq.dev
+  IS_HSHQ_TEST_FILENAME=hshq.test
   IS_HSHQ_DEV_TEST=false
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ] || [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
     IS_HSHQ_DEV_TEST=true
   fi
-  IS_HSHQ_DEV_FILENAME=hshq.dev
-  IS_HSHQ_TEST_FILENAME=hshq.test
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
   HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
   HSHQ_LIB_DEV_URL=https://homeserverhq.com/hshqlib-dev.sh
