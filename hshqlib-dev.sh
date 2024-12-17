@@ -121,6 +121,7 @@ function init()
   initServiceDefaults
   loadPinnedDockerImages
   loadDirectoryStructure
+  loadVersionVars
   UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
   RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils"
@@ -255,6 +256,10 @@ function showNotInstalledMenu()
   done
   setSudoTimeoutInstall
   sudo DEBIAN_FRONTEND=noninteractive apt update
+  if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
+    echo "Installing openssh-server, please wait..."
+    performAptInstall openssh-server >/dev/null 2>/dev/null
+  fi
   notinstalledmenu=$(cat << EOF
 
 $hshqlogo
@@ -1043,14 +1048,13 @@ function checkWrapperVersion()
 
 function loadVersionVars()
 {
-  DISTRO_ID=$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
-  DISTRO_NAME=$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
-  DISTRO_VERSION=$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  DISTRO_ID=$(cat /etc/*-release 2> /dev/null | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=$(cat /etc/*-release 2> /dev/null | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=$(cat /etc/*-release 2> /dev/null | grep "^VERSION=" | cut -d"=" -f2 | xargs)
 }
 
 function checkSupportedHostOS()
 {
-  loadVersionVars
   if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
     return
   fi
@@ -1067,8 +1071,20 @@ function checkSupportedHostOS()
     fi
     IS_DISTRO_EXP=true
   fi
+  if [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
+      return
+    fi
+    IS_DISTRO_EXP=true
+  fi
+  if [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^6. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
+      return
+    fi
+    IS_DISTRO_EXP=true
+  fi
   if [ "$IS_DISTRO_EXP" = "true" ]; then
-    showYesNoMessageBox "Confirm Experimental" "This installation is on the experimental list. It has not been thoroughly tested. Do you wish to continue?"
+    showYesNoMessageBox "Confirm Experimental" "This distribution of Linux is on the experimental list. It has not been thoroughly tested. Do you wish to continue?"
     if [ $? -eq 0 ]; then
       touch $HOME/hshq/hshq.test
       IS_HSHQ_DEV_TEST=true
@@ -1079,9 +1095,11 @@ function checkSupportedHostOS()
     echo "@                   Unsupported Host Operating System                  @"
     echo "@                                                                      @"
     echo "@ This installation only supports the following Linux distribution(s): @"
-    echo "@  - Ubuntu 22.04 Jammy Jellyfish                                      @"
-    echo "@  - Ubuntu 24.04 Noble Numbat (Experimental)                          @"
-    echo "@  - Debian 12 Bookworm (Experimental)                                 @"
+    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+    echo "@  - Ubuntu 24.04 (Noble Numbat) [Experimental]                        @"
+    echo "@  - Debian 12 (Bookworm) [Experimental]                               @"
+    echo "@  - Mint 22 (Wilma) [Experimental]                                    @"
+    echo "@  - Mint LMDE 6 (faye) [Experimental]                                 @"
     echo "@                                                                      @"
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   fi
@@ -1484,7 +1502,10 @@ function initConfig()
   # Obviously 120 != 150, but this allows a little leeway.
   # The partitioning structure could be different than expected, so user can bypass this warning.
   total_disk_space=$(($(df / | tail -1 | xargs | cut -d" " -f2) / 1048576))
-  if [ $total_disk_space -lt 120 ]; then
+  if [ $total_disk_space -lt 20 ]; then
+    showMessageBox "Insufficient Disk Space" "You must have at least 20GB of disk space to perform the base installation, exiting..."
+    exit 1
+  elif [ $total_disk_space -lt 120 ]; then
     showYesNoMessageBox "Insufficient Disk Space" "Total size of disk is $total_disk_space GB. You should have at least 150 GB of available space to perform the installation. The process could fail or your server could crash. Are you sure you want to continue?"
     mbres=$?
     if [ $mbres -ne 0 ]; then
@@ -1867,7 +1888,7 @@ function initConfig()
     fi
     updateConfigVar EMAIL_ADMIN_USERNAME $EMAIL_ADMIN_USERNAME
   done
-  if [ -z "$DESKTOP_ENV" ]; then
+  if [ -z "$DESKTOP_ENV" ] && [ "$DISTRO_ID" = "ubuntu" ]; then
     set +e
     guimenu=$(cat << EOF
 
@@ -3586,6 +3607,7 @@ function main()
   echo "Running setup script..."
   outputNukeScript
   set +e
+  loadVersionVars
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
     echo "127.0.1.1 \$new_hostname" | sudo tee -a /etc/hosts
@@ -3888,7 +3910,6 @@ function installDocker()
   performAptInstall curl > /dev/null 2>&1
   performAptInstall gnupg > /dev/null 2>&1
   performAptInstall lsb-release > /dev/null 2>&1
-  loadVersionVars
   case "\$DISTRO_ID" in
   "ubuntu")
     if [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
@@ -3902,6 +3923,16 @@ function installDocker()
     ;;
   "debian")
     if [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+      installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "linuxmint")
+    if [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
+      installDockerUbuntu2404
+    elif [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
       installDockerDebian12
     else
       echo "Linux version not found when installing Docker, exiting..."
@@ -4463,6 +4494,8 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 function main()
 {
   RELAYSERVER_SERVER_IP=\$(getHostIP)
+  loadVersionVars
+  set -e
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   installLogNotify "Begin Main"
   while getopts ':p:i' opt; do
@@ -4602,6 +4635,7 @@ function checkValidIPAddress()
 
 function loadVersionVars()
 {
+  set +e
   DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
@@ -4610,7 +4644,6 @@ function loadVersionVars()
 
 function checkSupportedHostOS()
 {
-  loadVersionVars
   if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
     return
   fi
@@ -4620,13 +4653,22 @@ function checkSupportedHostOS()
   if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
     return
   fi
+  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
+    return
+  fi
+  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
+    return
+  fi
+
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   echo "@                   Unsupported Host Operating System                  @"
   echo "@                                                                      @"
   echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@  - Ubuntu 22.04 Jammy Jellyfish                                      @"
-  echo "@  - Ubuntu 24.04 Noble Numbat (Dev)                                   @"
-  echo "@  - Debian 12 Bookworm (Dev)                                          @"
+  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat) [Experimental]                        @"
+  echo "@  - Debian 12 (Bookworm) [Experimental]                               @"
+  echo "@  - Mint 22 (Wilma) [Experimental]                                    @"
+  echo "@  - Mint LMDE 6 (faye) [Experimental]                                 @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   rm -f $HSHQ_SCRIPT_OPEN
@@ -18604,7 +18646,6 @@ function installDocker()
   performAptInstall curl > /dev/null 2>&1
   performAptInstall gnupg > /dev/null 2>&1
   performAptInstall lsb-release > /dev/null 2>&1
-  loadVersionVars
   case "$DISTRO_ID" in
   "ubuntu")
     if [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
@@ -18618,6 +18659,16 @@ function installDocker()
     ;;
   "debian")
     if [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+      installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "linuxmint")
+    if [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+      installDockerUbuntu2404
+    elif [[ "$DISTRO_VERSION" =~ ^6. ]]; then
       installDockerDebian12
     else
       echo "Linux version not found when installing Docker, exiting..."
