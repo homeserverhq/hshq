@@ -101,7 +101,7 @@ EOF
       echo -e "\n\n================================================================================"
       echo -e "The command, sudo, is not installed, and you are currently logged in"
       echo -e "as a non-root user. You must perform the following steps to continue:\n"
-      echo -e "  1) Switch to the root user: 'su root'"
+      echo -e "  1) Switch to the root user: 'su -'"
       echo -e "  2) Install sudo: 'apt update && apt install sudo -y'"
       echo -e "  3) Add your user to the sudoers group: 'usermod -aG sudo $USERNAME'"
       echo -e "  4) Exit the terminal session entirely: 'exit', then 'exit' again"
