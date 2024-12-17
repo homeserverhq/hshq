@@ -1077,16 +1077,16 @@ function checkSupportedHostOS()
     fi
     IS_DISTRO_EXP=true
   fi
-  if [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^6. ]]; then
+  if false && [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^6. ]]; then
     if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
       return
     fi
     IS_DISTRO_EXP=true
   fi
   if [ "$IS_DISTRO_EXP" = "true" ]; then
-    showYesNoMessageBox "Confirm Experimental" "This distribution of Linux is on the experimental list. It has not been thoroughly tested. Do you wish to continue?"
+    showYesNoMessageBox "Confirm Experimental" "This distribution of Linux is on the experimental list. It has not yet been thoroughly tested. Do you wish to continue?"
     if [ $? -eq 0 ]; then
-      touch $HOME/hshq/hshq.test
+      touch $HOME/hshq/$IS_HSHQ_TEST_FILENAME
       IS_HSHQ_DEV_TEST=true
       return
     fi
@@ -1095,11 +1095,11 @@ function checkSupportedHostOS()
     echo "@                   Unsupported Host Operating System                  @"
     echo "@                                                                      @"
     echo "@ This installation only supports the following Linux distribution(s): @"
-    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
-    echo "@  - Ubuntu 24.04 (Noble Numbat) [Experimental]                        @"
-    echo "@  - Debian 12 (Bookworm) [Experimental]                               @"
-    echo "@  - Mint 22 (Wilma) [Experimental]                                    @"
-    echo "@  - Mint LMDE 6 (faye) [Experimental]                                 @"
+    echo "@                                                                      @"
+    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
+    echo "@  - Ubuntu 24.04 (Noble Numbat)        [Experimental]                 @"
+    echo "@  - Debian 12 (Bookworm)               [Experimental]                 @"
+    echo "@  - Mint 22 (Wilma)                    [Experimental]                 @"
     echo "@                                                                      @"
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   fi
@@ -4656,7 +4656,7 @@ function checkSupportedHostOS()
   if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
     return
   fi
-  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
+  if false && [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
     return
   fi
 
@@ -4664,11 +4664,11 @@ function checkSupportedHostOS()
   echo "@                   Unsupported Host Operating System                  @"
   echo "@                                                                      @"
   echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
-  echo "@  - Ubuntu 24.04 (Noble Numbat) [Experimental]                        @"
-  echo "@  - Debian 12 (Bookworm) [Experimental]                               @"
-  echo "@  - Mint 22 (Wilma) [Experimental]                                    @"
-  echo "@  - Mint LMDE 6 (faye) [Experimental]                                 @"
+  echo "@                                                                      @"
+  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat)        [Experimental]                 @"
+  echo "@  - Debian 12 (Bookworm)               [Experimental]                 @"
+  echo "@  - Mint 22 (Wilma)                    [Experimental]                 @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   rm -f $HSHQ_SCRIPT_OPEN
