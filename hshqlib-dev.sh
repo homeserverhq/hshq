@@ -1308,6 +1308,7 @@ function performAptInstall()
 function installDependencies()
 {
   set +e
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart >/dev/null 2>/dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   # Install utils
