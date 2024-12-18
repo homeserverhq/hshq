@@ -2968,20 +2968,15 @@ EOF
     case $menures in
       1)
         PRIMARY_VPN_SETUP_TYPE=host
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupHostedVPN
         if [ $? -ne 0 ]; then
           return 1
         fi
         ;;
-      #2)
-      #  setupJoinPrimaryVPN
-      #  join_res=$?
-      #  if [ $join_res -ne 0 ]; then
-      #    return 1
-      #  fi
-      #  ;;
       2)
         PRIMARY_VPN_SETUP_TYPE=manual
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         # Determine if this is a private IP, and if so, let the user know about networking.
         showMsg="Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally. "
         if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
@@ -2990,7 +2985,6 @@ EOF
         showMessageBox "DNS Server" "$showMsg"
         ;;
     esac
-    updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
   fi
 }
 
@@ -3624,6 +3618,10 @@ function main()
   else
     cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
   fi
+  if [[ "\$(isProgramInstalled iptables)" = "false" ]]; then
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall iptables > /dev/null 2>&1
+  fi
   sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
 
   set -e
@@ -4157,6 +4155,16 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 1
   fi
+  if [[ "\$(isProgramInstalled curl)" = "false" ]]; then
+    echo -e "\n\nThe utility curl must be installed, please enter your RelayServer password."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall curl > /dev/null 2>&1
+  fi
+  if [[ "\$(isProgramInstalled dig)" = "false" ]]; then
+    echo -e "\n\nThe utility dig must be installed, please enter your RelayServer password."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall dnsutils > /dev/null 2>&1
+  fi
   RELAYSERVER_SERVER_IP=\$(getHostIP)
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
@@ -4506,6 +4514,16 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
+  if [[ "\$(isProgramInstalled curl)" = "false" ]]; then
+    echo -e "\n\nThe utility curl must be installed, please enter your RelayServer password."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall curl > /dev/null 2>&1
+  fi
+  if [[ "\$(isProgramInstalled dig)" = "false" ]]; then
+    echo -e "\n\nThe utility dig must be installed, please enter your RelayServer password."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall dnsutils > /dev/null 2>&1
+  fi
   RELAYSERVER_SERVER_IP=\$(getHostIP)
   loadVersionVars
   set -e
@@ -4539,7 +4557,7 @@ function main()
     install
   else
     if [[ "\$(isProgramInstalled screen)" = "false" ]]; then
-      echo "Installing screen, please wait..."
+      echo -e "\n\nThe utility screen must be installed, please enter your RelayServer password."
       sudo DEBIAN_FRONTEND=noninteractive apt update
       performAptInstall screen > /dev/null 2>&1
     fi
@@ -7815,6 +7833,7 @@ EOF
           return 0
         fi
         PRIMARY_VPN_SETUP_TYPE=host
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupHostedVPN
         if [ $? -ne 0 ]; then
           return 0
@@ -7861,6 +7880,7 @@ EOF
           return 0
         fi
         PRIMARY_VPN_SETUP_TYPE=join
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupJoinPrimaryVPN
         join_res=$?
         if [ $join_res -ne 0 ]; then
@@ -7878,7 +7898,6 @@ EOF
       3)
         return ;;
     esac
-    updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
 }
 
 function showRemovePrimaryVPN()
