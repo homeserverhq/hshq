@@ -4542,17 +4542,6 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
-  if [[ "\$(isProgramInstalled curl)" = "false" ]]; then
-    echo -e "\n\nThe utility curl must be installed, please enter your RelayServer password."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall curl > /dev/null 2>&1
-  fi
-  if [[ "\$(isProgramInstalled dig)" = "false" ]]; then
-    echo -e "\n\nThe utility dig must be installed, please enter your RelayServer password."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall dnsutils > /dev/null 2>&1
-  fi
-  RELAYSERVER_SERVER_IP=\$(getHostIP)
   loadVersionVars
   set -e
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
@@ -4580,6 +4569,17 @@ function main()
   if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   fi
+  if [[ "\$(isProgramInstalled curl)" = "false" ]]; then
+    echo -e "\n\nThe utility curl must be installed, please enter your RelayServer password."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall curl > /dev/null 2>&1
+  fi
+  if [[ "\$(isProgramInstalled dig)" = "false" ]]; then
+    echo -e "\n\nThe utility dig must be installed, please enter your RelayServer password."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall dnsutils > /dev/null 2>&1
+  fi
+  RELAYSERVER_SERVER_IP=\$(getHostIP)
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
     touch $HSHQ_SCRIPT_OPEN
     install
