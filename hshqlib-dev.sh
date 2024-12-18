@@ -122,9 +122,9 @@ function init()
   loadPinnedDockerImages
   loadDirectoryStructure
   loadVersionVars
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils needrestart|needrestart"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
-  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils needrestart|needrestart"
+  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
   hshqlogo=$(cat << EOF
 
         #===============================================================#
@@ -1206,6 +1206,8 @@ function updateLogrotateConfig()
     notifempty
 }
 EOFLR
+  
+  sudo systemctl restart logrotate
   if ! [ -z $ulrc_curE ]; then
     set -e
   fi
@@ -3859,6 +3861,29 @@ EOFSM
   updateMOTD
   performSuggestedSecUpdates
   installDocker
+
+  if sudo test -f /etc/logrotate.d/rsyslog; then
+    # Set max size of syslog to 2G
+    grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      sudo sed -i "/weekly\$/a\        maxsize 2G" /etc/logrotate.d/rsyslog
+    fi
+  fi
+  # Move logrotate into hourly
+  if sudo test -f /etc/cron.daily/logrotate; then
+    sudo mv /etc/cron.daily/logrotate /etc/cron.hourly
+  fi
+  # Set conditions for docker container logs
+  sudo tee /etc/logrotate.d/docker >/dev/null <<EOFLR
+/var/log/docker/*.log {
+    weekly
+    maxsize 100M
+    rotate 4
+    missingok
+    notifempty
+}
+EOFLR
+  sudo systemctl restart logrotate
 
   for rem_util in \$APT_REMOVE_LIST; do
     sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y \$rem_util
@@ -16419,6 +16444,59 @@ function version120Update()
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
+
+  cat <<EOFLO > $HOME/rsUpdateScript.sh
+#!/bin/bash
+
+function main()
+{
+  if sudo test -f /etc/logrotate.d/rsyslog; then
+    # Set max size of syslog to 2G
+    grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      sudo sed -i "/weekly\$/a\        maxsize 2G" /etc/logrotate.d/rsyslog
+    fi
+  fi
+  # Move logrotate into hourly
+  if sudo test -f /etc/cron.daily/logrotate; then
+    sudo mv /etc/cron.daily/logrotate /etc/cron.hourly
+  fi
+  # Set conditions for docker container logs
+  sudo tee /etc/logrotate.d/docker >/dev/null <<EOFLR
+/var/log/docker/*.log {
+    weekly
+    maxsize 100M
+    rotate 4
+    missingok
+    notifempty
+}
+EOFLR
+  sudo systemctl restart logrotate
+}
+main "\$@"
+EOFLO
+  updateRelayServerWithScript
+}
+
+function updateRelayServerWithScript()
+{
+  # This function assumes that a script file
+  # called $HOME/rsUpdateScript.sh has already
+  # been created before executing this function.
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    chmod 500 $HOME/rsUpdateScript.sh
+    set +e
+    notifyRSLogin
+    nrsl_retVal=$?
+    set -e
+    if [ $nrsl_retVal -eq 0 ]; then
+      loadSSHKey
+      scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh; rm -f ~/rsUpdateScript.sh"
+      unloadSSHKey
+    fi
+  fi
+  rm -f $HOME/rsUpdateScript.sh
 }
 
 function modFunAutheliaConfigFilterVar()
