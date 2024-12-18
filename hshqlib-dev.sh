@@ -3813,6 +3813,7 @@ EOFSM
   sudo chown root:mailsenders /usr/bin/mail.mailutils
   sudo chmod 750 /usr/bin/mail.mailutils
 
+  set +e
   # Install Rsyslog
   sudo systemctl status rsyslog > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
@@ -3822,7 +3823,6 @@ EOFSM
     sudo systemctl start rsyslog
   fi
 
-  set +e
   for util in \$UTILS_LIST; do
     if [[ "\$(isProgramInstalled \$util)" = "false" ]]; then
       lib_name=\$(echo \$util | cut -d"|" -f2)
@@ -5761,21 +5761,22 @@ function installAdGuard()
   outputConfigAdGuard
   generateCert adguard adguard
 
+  set +e
   sudo systemctl stop systemd-resolved > /dev/null 2>&1
   sudo systemctl disable systemd-resolved > /dev/null 2>&1
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
   sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
 EOFR
-
-  np_path="/etc/netplan/*"
-  for cur_np in "\$np_path"
-  do
-    sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
-    sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
-  done
-  set +e
-  which netplan && sudo netplan apply > /dev/null 2>&1
+  if sudo test -d /etc/netplan; then
+    np_path="/etc/netplan/*"
+    for cur_np in "\$np_path"
+    do
+      sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
+      sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
+    done
+    which netplan && sudo netplan apply > /dev/null 2>&1
+  fi
   set -e
   installStack adguard adguard "entering listener loop proto=tls" \$HOME/adguard.env
 }
@@ -7513,7 +7514,7 @@ function uploadVPNInstallScripts()
       pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
       pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
-      sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
+      sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
         showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
