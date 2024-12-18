@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=14
+HSHQ_WRAPPER_SCRIPT_VERSION=15
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -245,6 +245,7 @@ EOF
   set +e
   id -nG | grep docker >/dev/null 2>/dev/null
   if [ $? -ne 0 ]; then
+    checkPromptUserPW
     getent group docker >/dev/null || sudo groupadd docker
     sudo usermod -aG docker $USERNAME
     if ! [ -z "$USER_SUDO_PW" ]; then
