@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=14
+HSHQ_WRAPPER_SCRIPT_VERSION=15
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -96,7 +96,7 @@ EOF
   shift "$(($OPTIND -1))"
 
   set +e
-  if [[ "$(isProgramInstalled sudo)" = "false" ]]; then
+  if [[ -z "$(which sudo)" ]]; then
     if ! [ "$USERNAME" = "root" ]; then
       echo -e "\n\n================================================================================"
       echo -e "The command, sudo, is not installed, and you are currently logged in"
@@ -490,7 +490,7 @@ function isProgramInstalled()
 {
   bin_name=$(echo $1 | cut -d"|" -f1)
   lib_name=$(echo $1 | cut -d"|" -f2)
-  if [[ -z $(which ${bin_name}) ]]; then
+  if [[ -z $(sudo which ${bin_name}) ]]; then
     echo "false"
   else
     echo "true"
