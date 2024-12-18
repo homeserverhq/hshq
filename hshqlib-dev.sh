@@ -4562,6 +4562,7 @@ function main()
       continue
     fi
   done
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   set -e
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo -e "\n\nInstalling a few utilities..."
