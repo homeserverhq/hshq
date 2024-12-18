@@ -1283,6 +1283,18 @@ function performSuggestedSecUpdates()
   sudo sed -i "s/^#MaxStartups.*/MaxStartups 10:30:60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#LoginGraceTime.*/LoginGraceTime 60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#AllowTcpForwarding yes.*/AllowTcpForwarding no/" /etc/ssh/sshd_config
+  sudo chown root:root /etc/crontab
+  sudo chmod og-rwx /etc/crontab
+  sudo chown root:root /etc/cron.hourly/
+  sudo chmod og-rwx /etc/cron.hourly/
+  sudo chown root:root /etc/cron.daily/
+  sudo chmod og-rwx /etc/cron.daily/
+  sudo chown root:root /etc/cron.weekly/
+  sudo chmod og-rwx /etc/cron.weekly/
+  sudo chown root:root /etc/cron.monthly/
+  sudo chmod og-rwx /etc/cron.monthly/
+  sudo chown root:root /etc/cron.d/
+  sudo chmod og-rwx /etc/cron.d/
   if ! [ -z $disa_curE ]; then
     set -e
   fi
@@ -3642,6 +3654,8 @@ function main()
   echo "\$USERNAME ALL=(ALL) NOPASSWD: \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/timestamp_timeout/d' /etc/sudoers >/dev/null
   echo "Defaults timestamp_timeout=$SUDO_NORMAL_TIMEOUT" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/logfile=/d' /etc/sudoers >/dev/null
+  echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
 
@@ -3766,6 +3780,18 @@ function performSuggestedSecUpdates()
   sudo sed -i "s/^#MaxStartups.*/MaxStartups 10:30:60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#LoginGraceTime.*/LoginGraceTime 60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#AllowTcpForwarding yes.*/AllowTcpForwarding no/" /etc/ssh/sshd_config
+  sudo chown root:root /etc/crontab
+  sudo chmod og-rwx /etc/crontab
+  sudo chown root:root /etc/cron.hourly/
+  sudo chmod og-rwx /etc/cron.hourly/
+  sudo chown root:root /etc/cron.daily/
+  sudo chmod og-rwx /etc/cron.daily/
+  sudo chown root:root /etc/cron.weekly/
+  sudo chmod og-rwx /etc/cron.weekly/
+  sudo chown root:root /etc/cron.monthly/
+  sudo chmod og-rwx /etc/cron.monthly/
+  sudo chown root:root /etc/cron.d/
+  sudo chmod og-rwx /etc/cron.d/
   if ! [ -z \$disa_curE ]; then
     set -e
   fi
@@ -3782,11 +3808,12 @@ function installDependencies()
   APT_REMOVE_LIST="$APT_REMOVE_LIST"
 
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  if [[ "\$(isProgramInstalled needrestart)" = "true" ]]; then
-    echo "Removing needrestart, please wait..."
+  echo "Removing needrestart, please wait..."
+  if sudo test -f /etc/needrestart/needrestart.conf; then
+    # Modifying this line is probably pointless, since needrestart is being removed AND purged, but just to be certain.
     sudo sed -i "s/#\\\$nrconf{kernelhints} = -1;/\\\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   fi
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
 
@@ -4415,7 +4442,7 @@ EOFR
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
   set +e
-  which netplan && sudo netplan apply > /dev/null 2>&1
+  sudo which netplan && sudo netplan apply > /dev/null 2>&1
   set -e
   oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
   sed -i "s|\$oldIP|\$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
@@ -4578,7 +4605,7 @@ function isProgramInstalled()
 {
   bin_name=\$(echo \$1 | cut -d"|" -f1)
   lib_name=\$(echo \$1 | cut -d"|" -f2)
-  if [[ -z \$(which \${bin_name}) ]]; then
+  if [[ -z \$(sudo which \${bin_name}) ]]; then
     echo "false"
   else
     echo "true"
@@ -5775,7 +5802,7 @@ EOFR
       sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
       sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
     done
-    which netplan && sudo netplan apply > /dev/null 2>&1
+    sudo which netplan && sudo netplan apply > /dev/null 2>&1
   fi
   set -e
   installStack adguard adguard "entering listener loop proto=tls" \$HOME/adguard.env
@@ -14138,8 +14165,11 @@ function createInitialEnv()
   echo "Defaults timestamp_timeout=$SUDO_NORMAL_TIMEOUT" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/passwd_tries/d' /etc/sudoers >/dev/null
   echo "Defaults passwd_tries=$SUDO_MAX_RETRIES" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/logfile=/d' /etc/sudoers >/dev/null
+  echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
+
   mkdir -p $HOME/.ssh
   set +e
   tmp_pw1=""
@@ -14532,6 +14562,12 @@ function checkUpdateVersion()
     echo "Updating to Version 119..."
     version119Update
     HSHQ_VERSION=119
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 120 ]; then
+    echo "Updating to Version 120..."
+    version120Update
+    HSHQ_VERSION=120
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -16387,6 +16423,26 @@ function version119Update()
 {
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh
   outputHABandaidScript
+}
+
+function version120Update()
+{
+  sudo chown root:root /etc/crontab
+  sudo chmod og-rwx /etc/crontab
+  sudo chown root:root /etc/cron.hourly/
+  sudo chmod og-rwx /etc/cron.hourly/
+  sudo chown root:root /etc/cron.daily/
+  sudo chmod og-rwx /etc/cron.daily/
+  sudo chown root:root /etc/cron.weekly/
+  sudo chmod og-rwx /etc/cron.weekly/
+  sudo chown root:root /etc/cron.monthly/
+  sudo chmod og-rwx /etc/cron.monthly/
+  sudo chown root:root /etc/cron.d/
+  sudo chmod og-rwx /etc/cron.d/
+  sudo sed -i '/logfile=/d' /etc/sudoers >/dev/null
+  sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
+  echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
+  echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
 }
 
 function modFunAutheliaConfigFilterVar()
