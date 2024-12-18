@@ -122,9 +122,9 @@ function init()
   loadPinnedDockerImages
   loadDirectoryStructure
   loadVersionVars
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils"
+  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils needrestart|needrestart"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
-  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils"
+  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils needrestart|needrestart"
   hshqlogo=$(cat << EOF
 
         #===============================================================#
@@ -258,7 +258,7 @@ function showNotInstalledMenu()
   sudo DEBIAN_FRONTEND=noninteractive apt update
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
     echo "Installing openssh-server, please wait..."
-    performAptInstall openssh-server >/dev/null 2>/dev/null
+    performAptInstall openssh-server > /dev/null 2>&1
   fi
   notinstalledmenu=$(cat << EOF
 
@@ -1308,9 +1308,10 @@ function performAptInstall()
 function installDependencies()
 {
   set +e
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart >/dev/null 2>/dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   # Install utils
   installHostNTPServer
 
@@ -1320,10 +1321,6 @@ function installDependencies()
       echo "Installing $lib_name, please wait..."
       performAptInstall $lib_name
     fi
-  done
-
-  for rem_util in $APT_REMOVE_LIST; do
-    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
   done
 
   if ! [ -f /etc/rsyslog.d/docker-logs.conf ]; then
@@ -1380,6 +1377,9 @@ function installDependencies()
       fi
     fi
   fi
+  for rem_util in $APT_REMOVE_LIST; do
+    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
+  done
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
 }
@@ -2039,7 +2039,7 @@ function initInstallation()
     echo "Starting installation on RelayServer..."
     sleep 1
     loadSSHKey
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash install.sh -p $USER_RELAY_SUDO_PW"
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -p $USER_RELAY_SUDO_PW"
     unloadSSHKey
   fi
   set -e
@@ -3809,14 +3809,10 @@ function installDependencies()
   APT_REMOVE_LIST="$APT_REMOVE_LIST"
 
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  echo "Removing needrestart, please wait..."
-  if sudo test -f /etc/needrestart/needrestart.conf; then
-    # Modifying this line is probably pointless, since needrestart is being removed AND purged, but just to be certain.
-    sudo sed -i "s/#\\\$nrconf{kernelhints} = -1;/\\\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-  fi
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
 
   performAptInstall ssmtp
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
@@ -3859,14 +3855,14 @@ EOFSM
     fi
   done
 
-  for rem_util in \$APT_REMOVE_LIST; do
-    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y \$rem_util
-  done
-
   updateSysctl
   updateMOTD
   performSuggestedSecUpdates
   installDocker
+
+  for rem_util in \$APT_REMOVE_LIST; do
+    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y \$rem_util
+  done
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
 }
 
@@ -4183,17 +4179,11 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 1
   fi
-  if [[ "\$(isProgramInstalled curl)" = "false" ]]; then
-    echo -e "\n\nThe utility curl must be installed, please enter your RelayServer password."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall curl > /dev/null 2>&1
-  fi
-  if [[ "\$(isProgramInstalled dig)" = "false" ]]; then
-    echo -e "\n\nThe utility dig must be installed, please enter your RelayServer password."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall dnsutils > /dev/null 2>&1
-  fi
-  RELAYSERVER_SERVER_IP=\$(getHostIP)
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo -e "\n\nInstalling a few utilities..."
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall dnsutils > /dev/null 2>&1
+  performAptInstall screen > /dev/null 2>&1
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   sudo tar xvzf \$HOME/rsbackup.tar.gz >/dev/null
@@ -4230,11 +4220,6 @@ function main()
   sudo reboot
 }
 
-function getHostIP()
-{
-  echo \$(curl --silent https://api.ipify.org)
-}
-
 function getIPFromHostname()
 {
   echo \$(dig \$1 +short | grep '^[.0-9]*\$')
@@ -4256,7 +4241,7 @@ function haltAndWaitForConfirmation()
   echo "This server has been prepped for transfer. Please modify"
   echo "your DNS A records to point to this new IP Address:"
   echo
-  echo "\$RELAYSERVER_SERVER_IP"
+  echo "$RELAYSERVER_SERVER_IP"
   echo
   echo "After this has been done, enter 'transfer' to complete"
   echo "the remaining steps of the process."
@@ -4276,11 +4261,11 @@ function haltAndWaitForConfirmation()
   while [ \$numTries -lt \$totalTries ]
   do
     ipFromHostname=\$(getIPFromHostname $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "\$RELAYSERVER_SERVER_IP" = "\$ipFromHostname" ]; then
+    if [ "$RELAYSERVER_SERVER_IP" = "\$ipFromHostname" ]; then
       isMatch=true
       break
     fi
-    echo "(\$numTries/\$totalTries)This host's IP: \$RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
+    echo "(\$numTries/\$totalTries)This host's IP: $RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
     sleep \$sleepSeconds
     ((numTries++))
   done
@@ -4446,7 +4431,7 @@ EOFR
   sudo which netplan && sudo netplan apply > /dev/null 2>&1
   set -e
   oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
-  sed -i "s|\$oldIP|\$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
+  sed -i "s|\$oldIP|$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_NONBACKUP_DIR/adguard/work
   startStopStack adguard stop
@@ -4542,10 +4527,6 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
-  loadVersionVars
-  set -e
-  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
-  installLogNotify "Begin Main"
   while getopts ':p:i' opt; do
     case "\$opt" in
       i)
@@ -4558,6 +4539,10 @@ function main()
     esac
   done
   shift "\$((\$OPTIND -1))"
+  loadVersionVars
+  set -e
+  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
+  installLogNotify "Begin Main"
   if [ -f $HSHQ_SCRIPT_OPEN ]; then
     echo "Installation already in progess, exiting..."
     exit 2
@@ -4566,34 +4551,28 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 3
   fi
-  if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
+  set +e
+  while [ -z "\$USER_RELAY_SUDO_PW" ]
+  do
+    read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  fi
-  if [[ "\$(isProgramInstalled curl)" = "false" ]]; then
-    echo -e "\n\nThe utility curl must be installed, please enter your RelayServer password."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall curl > /dev/null 2>&1
-  fi
-  if [[ "\$(isProgramInstalled dig)" = "false" ]]; then
-    echo -e "\n\nThe utility dig must be installed, please enter your RelayServer password."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall dnsutils > /dev/null 2>&1
-  fi
-  RELAYSERVER_SERVER_IP=\$(getHostIP)
+    if [ \$? -ne 0 ]; then
+      echo "Sorry, try again."
+      USER_RELAY_SUDO_PW=""
+      continue
+    fi
+  done
+  set -e
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo -e "\n\nInstalling a few utilities..."
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall dnsutils > /dev/null 2>&1
+  performAptInstall screen > /dev/null 2>&1
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
     touch $HSHQ_SCRIPT_OPEN
     install
   else
-    if [[ "\$(isProgramInstalled screen)" = "false" ]]; then
-      echo -e "\n\nThe utility screen must be installed, please enter your RelayServer password."
-      sudo DEBIAN_FRONTEND=noninteractive apt update
-      performAptInstall screen > /dev/null 2>&1
-    fi
-    if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
-      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
-    else
-      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i
-    fi
+    screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
   fi
 }
 
@@ -4606,7 +4585,7 @@ function isProgramInstalled()
 {
   bin_name=\$(echo \$1 | cut -d"|" -f1)
   lib_name=\$(echo \$1 | cut -d"|" -f2)
-  if [[ -z \$(sudo which \${bin_name}) ]]; then
+  if [ -z "\$(sudo which \${bin_name})" ]; then
     echo "false"
   else
     echo "true"
@@ -4622,11 +4601,6 @@ function installLogNotify()
 function getIPFromHostname()
 {
   echo \$(dig \$1 +short | grep '^[.0-9]*\$')
-}
-
-function getHostIP()
-{
-  echo \$(curl --silent https://api.ipify.org)
 }
 
 function getConnectingIPAddress()
@@ -6033,7 +6007,7 @@ filtering:
     ids: []
   rewrites:
     - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
-      answer: \$RELAYSERVER_SERVER_IP
+      answer: $RELAYSERVER_SERVER_IP
     - domain: '*.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
       answer: $RELAYSERVER_WG_SV_IP
     - domain: '$HOMESERVER_DOMAIN'
@@ -7884,7 +7858,7 @@ EOF
         echo -e "The installation script has been uploaded. Please log in to"
         echo -e "the RelayServer with your newly created username ($RELAYSERVER_REMOTE_USERNAME),"
         echo -e "and perform the installation by entering the command"
-        echo -e "'bash install.sh', and follow the prompts.\n"
+        echo -e "'bash $RS_INSTALL_FRESH_SCRIPT_NAME', and follow the prompts.\n"
         echo -e "Ensure to copy your new WireGuard configuration above for your first user.\n"
         echo -e "AFTER the RelayServer has completed the installation, and AFTER the server"
         echo -e "has FULLY rebooted, enter 'integrate' to finish the integration. When this"
@@ -19217,9 +19191,9 @@ function createDockerNetworks()
   sudo $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
   docker network create -o com.docker.network.bridge.name=$NET_INTERNALMAIL_BRIDGE_NAME --driver=bridge --subnet $NET_INTERNALMAIL_SUBNET --internal dock-internalmail > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_DBS_BRIDGE_NAME --driver=bridge --subnet $NET_DBS_SUBNET --internal dock-dbs > /dev/null
-  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
-  docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null 2>/dev/null
-  docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null 2>/dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null
 }
 
 function removeDockerNetworks()
