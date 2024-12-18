@@ -4049,16 +4049,25 @@ function main()
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo systemctl enable systemd-resolved > /dev/null 2>&1
-  sudo systemctl start systemd-resolved > /dev/null 2>&1
-  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
-  sudo grep "^nameserver 9.9.9.9" /etc/resolv.conf > /dev/null 2>&1
-  if [ \\\$? -ne 0 ]; then
-    sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFRE
+  # Check if systemd-resolved is installed.
+  # If not, then modify /etc/resolv.conf directly.
+  if [ -f /etc/systemd/resolved.conf ]; then
+    sudo systemctl enable systemd-resolved > /dev/null 2>&1
+    sudo systemctl start systemd-resolved > /dev/null 2>&1
+    sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+    sudo grep "^nameserver 9.9.9.9" /etc/resolv.conf > /dev/null 2>&1
+    if [ \\\$? -ne 0 ]; then
+      sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFRE
 [Resolve]
 DNS=9.9.9.9 149.112.112.112
 EOFRE
-    sudo systemctl restart systemd-resolved > /dev/null 2>&1
+      sudo systemctl restart systemd-resolved > /dev/null 2>&1
+    fi
+  else
+    sudo tee /etc/resolv.conf >/dev/null <<EOFRE
+nameserver 9.9.9.9
+nameserver 149.112.112.112
+EOFRE
   fi
   sudo systemctl restart docker
   sudo docker container prune -f
