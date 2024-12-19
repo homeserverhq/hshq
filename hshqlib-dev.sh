@@ -122,9 +122,9 @@ function init()
   loadPinnedDockerImages
   loadDirectoryStructure
   loadVersionVars
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
+  UTILS_LIST="whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
-  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
+  RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
   hshqlogo=$(cat << EOF
 
         #===============================================================#
@@ -18784,7 +18784,6 @@ function installDocker()
     sudo systemctl restart docker
     return 0
   fi
-  echo "Installing docker, please wait..."
   performAptInstall ca-certificates > /dev/null 2>&1
   performAptInstall curl > /dev/null 2>&1
   performAptInstall gnupg > /dev/null 2>&1
@@ -18901,6 +18900,7 @@ function installDockerUbuntu2204()
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Installing docker, please wait..."
   performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
   performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
@@ -18916,6 +18916,7 @@ function installDockerUbuntu2404()
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Installing docker, please wait..."
   performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
   performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
@@ -18931,6 +18932,7 @@ function installDockerDebian12()
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Installing docker, please wait..."
   performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
