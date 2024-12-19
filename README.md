@@ -6,9 +6,15 @@
 
 ### For full instructions, see <a href="https://wiki.homeserverhq.com/getting-started" target="_blank">https://wiki.homeserverhq.com/getting-started</a>
 
-> Linux Ubuntu 22.04 (fresh installation) is currently the only supported Linux distribution.
+## Supported Distributions
+**Distribution** | 
+:------ | :------:
+Ubuntu 22.04 (Jammy Jellyfish) | Stable
+Ubuntu 24.04 (Noble Numbat) | Experimental
+Debian 12 (Bookworm) | Experimental
+Mint 22 (Wilma) | Experimental
 
-> To verify source code, see <a href="https://wiki.homeserverhq.com/tutorials/source-code-verification" target="_blank">https://wiki.homeserverhq.com/tutorials/source-code-verification</a> 
+### To verify source code, see <a href="https://wiki.homeserverhq.com/tutorials/source-code-verification" target="_blank">https://wiki.homeserverhq.com/tutorials/source-code-verification</a> 
 
 ## Table of Contents
 - [One-line Start Installation](#one-line-start-installation)
@@ -171,14 +177,6 @@ All of these processes take place seamlessly in the background, the user is typi
   2. Audit - It is much easier to view and monitor the changes in ***ONE*** file as opposed to many files, especially across numerous deltas.
   3. Sign Code - As each new version is generated and posted, it is signed with a detached signature. Before a new version is accepted and applied, it is first checked for a valid signature. See <a href="https://wiki.homeserverhq.com/en/tutorials/source-code-verification" target="_blank">this link</a> for more details.
   4. Transfer - At around 50k lines (currently), the file is still only about 1.8 MB in size, which makes it very lightweight for downloading newly updated versions. Even though this is rather large for a bash script, it is a function-based approach - there are around 900 functions.
-
-  <ins>***Q: Why Linux Ubuntu?***</ins>
-
-  **A:** Like it or hate it, Linux Ubuntu is the most prevalent and widely used Linux distribution on the planet. It is well-suited for beginners while also well-accepted (generally) amongst seasoned professionals. It is (arguably) the most stable and supported distribution available, which makes it the logical choice. While there are many detractors for understandable reasons, there are no immediate plans to support other distros. Best attempts have been made to limit the reliance on specifically Ubuntu, it could be adapted to be more generically Debian, but again this is not a high priority item at the moment. If you want another distribution, PR's are welcome.
-
-  <ins>***Q: Only Ubuntu 22.04 is supported, any plans for 24.04?***</ins>
-
-  **A:** Yes, 24.04 is on the near-term roadmap. We will only focus on the LTS releases. Some installation issues came up when 24.04 was first released, but they were not thoroughly investigated, so the issue was sidelined for the time being. We also have about <a href="https://wiki.homeserverhq.com/foss-projects" target="_blank">80 other open-source projects</a> to keep track of for updates, so its a mixed-bag of priorities. Our main goal with respect to the codebase is production-grade stability for the average non-IT person - even the slightest little error can wreak havoc.
 
   <ins>***Q: Does this cost money?***</ins>
 
