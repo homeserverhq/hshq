@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=119
+HSHQ_SCRIPT_VERSION=120
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -50,6 +50,9 @@ function init()
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
+  DOCKER_VERSION_UBUNTU_2204=5:25.0.5-1~ubuntu.22.04~jammy
+  DOCKER_VERSION_UBUNTU_2404=5:27.4.0-1~ubuntu.24.04~noble
+  DOCKER_VERSION_DEBIAN_12=5:27.4.0-1~debian.12~bookworm
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -89,8 +92,18 @@ function init()
   SUDO_MAX_RETRIES=20
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
+  IS_HSHQ_DEV_FILENAME=hshq.dev
+  IS_HSHQ_TEST_FILENAME=hshq.test
+  IS_HSHQ_DEV_TEST=false
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ] || [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    IS_HSHQ_DEV_TEST=true
+  fi
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
   HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
+  HSHQ_LIB_DEV_URL=https://homeserverhq.com/hshqlib-dev.sh
+  HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/getversion-dev
+  HSHQ_LIB_TEST_URL=https://homeserverhq.com/hshqlib-test.sh
+  HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/getversion-test
   HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
   HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
@@ -108,9 +121,10 @@ function init()
   initServiceDefaults
   loadPinnedDockerImages
   loadDirectoryStructure
-  UTILS_LIST="whiptail|whiptail awk|awk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl awk|awk sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io"
+  loadVersionVars
+  UTILS_LIST="whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils"
-  RELAYSERVER_UTILS_LIST="curl|curl awk|awk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher"
+  RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils needrestart|needrestart logrotate|logrotate"
   hshqlogo=$(cat << EOF
 
         #===============================================================#
@@ -215,8 +229,8 @@ function main()
 
 function showNotInstalledMenu()
 {
-  checkSupportedHostOS
   set +e
+  checkSupportedHostOS
   # Check and capture the user sudo password, only for the installation process.
   # This change was implemented on version 10 of the wrapper (hshq.sh), and 
   # version 68 of the lib (hshqlib.sh), in order to speed up the installation
@@ -242,6 +256,10 @@ function showNotInstalledMenu()
   done
   setSudoTimeoutInstall
   sudo DEBIAN_FRONTEND=noninteractive apt update
+  if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
+    echo "Installing openssh-server, please wait..."
+    performAptInstall openssh-server > /dev/null 2>&1
+  fi
   notinstalledmenu=$(cat << EOF
 
 $hshqlogo
@@ -1028,22 +1046,63 @@ function checkWrapperVersion()
   set -e
 }
 
+function loadVersionVars()
+{
+  DISTRO_ID=$(cat /etc/*-release 2> /dev/null | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=$(cat /etc/*-release 2> /dev/null | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=$(cat /etc/*-release 2> /dev/null | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+}
+
 function checkSupportedHostOS()
 {
-  if [ -f /etc/lsb-release ]; then
-    DISTRIB_ID=$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
-    DISTRIB_RELEASE=$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
-    if [ "$DISTRIB_ID" = "Ubuntu" ] && [ "$DISTRIB_RELEASE" = "22.04" ]; then
+  if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
+    return
+  fi
+  IS_DISTRO_EXP=false
+  if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
       return
     fi
+    IS_DISTRO_EXP=true
   fi
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  echo "@                   Unsupported Host Operating System                  @"
-  echo "@                                                                      @"
-  echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
-  echo "@                                                                      @"
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
+      return
+    fi
+    IS_DISTRO_EXP=true
+  fi
+  if [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
+      return
+    fi
+    IS_DISTRO_EXP=true
+  fi
+  if false && [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^6. ]]; then
+    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
+      return
+    fi
+    IS_DISTRO_EXP=true
+  fi
+  if [ "$IS_DISTRO_EXP" = "true" ]; then
+    showYesNoMessageBox "Confirm Experimental" "This distribution of Linux is on the experimental list. It has not yet been thoroughly tested. Do you wish to continue?"
+    if [ $? -eq 0 ]; then
+      touch $HOME/hshq/$IS_HSHQ_TEST_FILENAME
+      IS_HSHQ_DEV_TEST=true
+      return
+    fi
+  else
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+    echo "@                   Unsupported Host Operating System                  @"
+    echo "@                                                                      @"
+    echo "@ This installation only supports the following Linux distribution(s): @"
+    echo "@                                                                      @"
+    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
+    echo "@  - Ubuntu 24.04 (Noble Numbat)        [Experimental]                 @"
+    echo "@  - Debian 12 (Bookworm)               [Experimental]                 @"
+    echo "@  - Mint 22 (Wilma)                    [Experimental]                 @"
+    echo "@                                                                      @"
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  fi
   closeHSHQScript
   exit 2
 }
@@ -1147,6 +1206,8 @@ function updateLogrotateConfig()
     notifempty
 }
 EOFLR
+  
+  sudo systemctl restart logrotate
   if ! [ -z $ulrc_curE ]; then
     set -e
   fi
@@ -1217,13 +1278,25 @@ function performSuggestedSecUpdates()
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt purge -y telnet > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y telnet > /dev/null 2>&1
   # Assume the caller will restart sshd - don't want to risk breaking the installation process
   sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
   sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
   sudo sed -i "s/^#MaxStartups.*/MaxStartups 10:30:60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#LoginGraceTime.*/LoginGraceTime 60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#AllowTcpForwarding yes.*/AllowTcpForwarding no/" /etc/ssh/sshd_config
+  sudo chown root:root /etc/crontab
+  sudo chmod og-rwx /etc/crontab
+  sudo chown root:root /etc/cron.hourly/
+  sudo chmod og-rwx /etc/cron.hourly/
+  sudo chown root:root /etc/cron.daily/
+  sudo chmod og-rwx /etc/cron.daily/
+  sudo chown root:root /etc/cron.weekly/
+  sudo chmod og-rwx /etc/cron.weekly/
+  sudo chown root:root /etc/cron.monthly/
+  sudo chmod og-rwx /etc/cron.monthly/
+  sudo chown root:root /etc/cron.d/
+  sudo chmod og-rwx /etc/cron.d/
   if ! [ -z $disa_curE ]; then
     set -e
   fi
@@ -1237,8 +1310,10 @@ function performAptInstall()
 function installDependencies()
 {
   set +e
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   # Install utils
   installHostNTPServer
 
@@ -1248,10 +1323,6 @@ function installDependencies()
       echo "Installing $lib_name, please wait..."
       performAptInstall $lib_name
     fi
-  done
-
-  for rem_util in $APT_REMOVE_LIST; do
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y $rem_util
   done
 
   if ! [ -f /etc/rsyslog.d/docker-logs.conf ]; then
@@ -1308,6 +1379,9 @@ function installDependencies()
       fi
     fi
   fi
+  for rem_util in $APT_REMOVE_LIST; do
+    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
+  done
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
 }
@@ -1443,7 +1517,10 @@ function initConfig()
   # Obviously 120 != 150, but this allows a little leeway.
   # The partitioning structure could be different than expected, so user can bypass this warning.
   total_disk_space=$(($(df / | tail -1 | xargs | cut -d" " -f2) / 1048576))
-  if [ $total_disk_space -lt 120 ]; then
+  if [ $total_disk_space -lt 20 ]; then
+    showMessageBox "Insufficient Disk Space" "You must have at least 20GB of disk space to perform the base installation, exiting..."
+    exit 1
+  elif [ $total_disk_space -lt 120 ]; then
     showYesNoMessageBox "Insufficient Disk Space" "Total size of disk is $total_disk_space GB. You should have at least 150 GB of available space to perform the installation. The process could fail or your server could crash. Are you sure you want to continue?"
     mbres=$?
     if [ $mbres -ne 0 ]; then
@@ -1623,6 +1700,7 @@ function initConfig()
         showMessageBox "Invalid Time Zone" "The time zone is invalid. Please enter a valid time zone."
         TZ=""
       else
+        echo "$TZ" | sudo tee /etc/timezone
         updateConfigVar TZ $TZ
       fi
       set -e
@@ -1825,7 +1903,7 @@ function initConfig()
     fi
     updateConfigVar EMAIL_ADMIN_USERNAME $EMAIL_ADMIN_USERNAME
   done
-  if [ -z "$DESKTOP_ENV" ]; then
+  if [ -z "$DESKTOP_ENV" ] && [ "$DISTRO_ID" = "ubuntu" ]; then
     set +e
     guimenu=$(cat << EOF
 
@@ -1963,7 +2041,7 @@ function initInstallation()
     echo "Starting installation on RelayServer..."
     sleep 1
     loadSSHKey
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash install.sh -p $USER_RELAY_SUDO_PW"
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -p $USER_RELAY_SUDO_PW"
     unloadSSHKey
   fi
   set -e
@@ -2004,14 +2082,14 @@ function performBaseInstallation()
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
-  echo "Setting static IP..."
-  setStaticIPToCurrent
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
   installLogNotify "Install Dependencies"
   installMailUtils
   installDependencies
+  echo "Setting static IP..."
+  setStaticIPToCurrent
   pullBaseServicesDockerImages
   installLogNotify "Init DH Params"
   initDHParams
@@ -2905,20 +2983,15 @@ EOF
     case $menures in
       1)
         PRIMARY_VPN_SETUP_TYPE=host
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupHostedVPN
         if [ $? -ne 0 ]; then
           return 1
         fi
         ;;
-      #2)
-      #  setupJoinPrimaryVPN
-      #  join_res=$?
-      #  if [ $join_res -ne 0 ]; then
-      #    return 1
-      #  fi
-      #  ;;
       2)
         PRIMARY_VPN_SETUP_TYPE=manual
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         # Determine if this is a private IP, and if so, let the user know about networking.
         showMsg="Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_IP), in order to access your services internally. "
         if [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
@@ -2927,7 +3000,6 @@ EOF
         showMessageBox "DNS Server" "$showMsg"
         ;;
     esac
-    updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
   fi
 }
 
@@ -3544,6 +3616,7 @@ function main()
   echo "Running setup script..."
   outputNukeScript
   set +e
+  loadVersionVars
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
     echo "127.0.1.1 \$new_hostname" | sudo tee -a /etc/hosts
@@ -3559,6 +3632,10 @@ function main()
     cur_ssh_port=22
   else
     cur_ssh_port=\$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
+  fi
+  if [[ "\$(isProgramInstalled iptables)" = "false" ]]; then
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    performAptInstall iptables > /dev/null 2>&1
   fi
   sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
 
@@ -3580,6 +3657,8 @@ function main()
   echo "\$USERNAME ALL=(ALL) NOPASSWD: \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/*.sh" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/timestamp_timeout/d' /etc/sudoers >/dev/null
   echo "Defaults timestamp_timeout=$SUDO_NORMAL_TIMEOUT" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/logfile=/d' /etc/sudoers >/dev/null
+  echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
 
@@ -3697,13 +3776,25 @@ function performSuggestedSecUpdates()
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt purge -y telnet > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y telnet > /dev/null 2>&1
   # Assume the caller will restart sshd - don't want to risk breaking the installation process
   sudo sed -i "s/^#MaxAuthTries.*/MaxAuthTries 4/" /etc/ssh/sshd_config
   sudo sed -i "s/^#Banner none.*/Banner \/etc\/issue.net/" /etc/ssh/sshd_config
   sudo sed -i "s/^#MaxStartups.*/MaxStartups 10:30:60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#LoginGraceTime.*/LoginGraceTime 60/" /etc/ssh/sshd_config
   sudo sed -i "s/^#AllowTcpForwarding yes.*/AllowTcpForwarding no/" /etc/ssh/sshd_config
+  sudo chown root:root /etc/crontab
+  sudo chmod og-rwx /etc/crontab
+  sudo chown root:root /etc/cron.hourly/
+  sudo chmod og-rwx /etc/cron.hourly/
+  sudo chown root:root /etc/cron.daily/
+  sudo chmod og-rwx /etc/cron.daily/
+  sudo chown root:root /etc/cron.weekly/
+  sudo chmod og-rwx /etc/cron.weekly/
+  sudo chown root:root /etc/cron.monthly/
+  sudo chmod og-rwx /etc/cron.monthly/
+  sudo chown root:root /etc/cron.d/
+  sudo chmod og-rwx /etc/cron.d/
   if ! [ -z \$disa_curE ]; then
     set -e
   fi
@@ -3720,13 +3811,10 @@ function installDependencies()
   APT_REMOVE_LIST="$APT_REMOVE_LIST"
 
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  if [[ "\$(isProgramInstalled needrestart)" = "true" ]]; then
-    echo "Removing needrestart, please wait..."
-    sudo sed -i "s/#\\\$nrconf{kernelhints} = -1;/\\\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart > /dev/null 2>&1
-  fi
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
 
   performAptInstall ssmtp
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
@@ -3751,6 +3839,7 @@ EOFSM
   sudo chown root:mailsenders /usr/bin/mail.mailutils
   sudo chmod 750 /usr/bin/mail.mailutils
 
+  set +e
   # Install Rsyslog
   sudo systemctl status rsyslog > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
@@ -3760,7 +3849,6 @@ EOFSM
     sudo systemctl start rsyslog
   fi
 
-  set +e
   for util in \$UTILS_LIST; do
     if [[ "\$(isProgramInstalled \$util)" = "false" ]]; then
       lib_name=\$(echo \$util | cut -d"|" -f2)
@@ -3769,41 +3857,50 @@ EOFSM
     fi
   done
 
-  for rem_util in \$APT_REMOVE_LIST; do
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y \$rem_util
-  done
-
   updateSysctl
   updateMOTD
   performSuggestedSecUpdates
+  installDocker
 
-  util="docker|docker"
-  if ! [ "\$(isProgramInstalled \$util)" = "true" ]; then
-    # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
-    echo "Installing docker, please wait..."
-    performAptInstall ca-certificates > /dev/null 2>&1
-    performAptInstall curl > /dev/null 2>&1
-    performAptInstall gnupg > /dev/null 2>&1
-    performAptInstall lsb-release > /dev/null 2>&1
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
-    echo "deb [arch=\$(dpkg --print-architecture) \
-    signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
-    https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | \
-    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    echo "Installing docker, please wait..."
-    performAptInstall docker-ce=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
-    performAptInstall docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
-    performAptInstall containerd.io > /dev/null 2>&1
-    performAptInstall docker-compose > /dev/null 2>&1
-    performAptInstall docker-compose-plugin > /dev/null 2>&1
-    # See https://www.portainer.io/blog/portainer-and-docker-26
-    sudo apt-mark hold docker-ce
-    sudo apt-mark hold docker-ce-cli
+  if sudo test -f /etc/logrotate.d/rsyslog; then
+    # Set max size of syslog to 2G
+    grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      sudo sed -i "/weekly\$/a\        maxsize 2G" /etc/logrotate.d/rsyslog
+    fi
   fi
+  # Move logrotate into hourly
+  if sudo test -f /etc/cron.daily/logrotate; then
+    sudo mv /etc/cron.daily/logrotate /etc/cron.hourly
+  fi
+  # Set conditions for docker container logs
+  sudo tee /etc/logrotate.d/docker >/dev/null <<EOFLR
+/var/log/docker/*.log {
+    weekly
+    maxsize 100M
+    rotate 4
+    missingok
+    notifempty
+}
+EOFLR
+  sudo systemctl restart logrotate
 
-  sudo usermod -aG docker \$USERNAME
+  for rem_util in \$APT_REMOVE_LIST; do
+    sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y \$rem_util
+  done
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+}
+
+function loadVersionVars()
+{
+  DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  IS_HSHQ_DEV_TEST=$IS_HSHQ_DEV_TEST
+}
+
+function outputDockerSettings()
+{
   sudo mkdir -p /etc/docker
   sudo tee /etc/docker/daemon.json >/dev/null <<EOFRL
 {
@@ -3843,9 +3940,104 @@ if \\\$programname == 'docker' then {
 \\\$FileCreateMode 0600
 EOFRL
   fi
+}
+
+function installDocker()
+{
+  set +e
+  outputDockerSettings
+  util="docker|docker"
+  if [[ "\$(isProgramInstalled \$util)" = "true" ]]; then
+    sudo systemctl restart rsyslog
+    sudo systemctl restart docker
+    return 0
+  fi
+  echo "Installing docker, please wait..."
+  performAptInstall ca-certificates > /dev/null 2>&1
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall lsb-release > /dev/null 2>&1
+  case "\$DISTRO_ID" in
+  "ubuntu")
+    if [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
+      installDockerUbuntu2204
+    elif [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+      installDockerUbuntu2404
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "debian")
+    if [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+      installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "linuxmint")
+    if [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
+      installDockerUbuntu2404
+    elif [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
+      installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  *)
+    ;;
+  esac
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
   sudo systemctl restart rsyslog
   sudo systemctl restart docker
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
+  sudo usermod -aG docker \$USERNAME
+}
+
+function installDockerUbuntu2204()
+{
+  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-compose > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1
+}
+
+function installDockerUbuntu2404()
+{
+  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-buildx-plugin > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+}
+
+function installDockerDebian12()
+{
+  # Install Docker (https://docs.docker.com/engine/install/debian/)
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-compose > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
 }
 
 function outputNukeScript()
@@ -3904,13 +4096,26 @@ function main()
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFRE
+  # Check if systemd-resolved is installed.
+  # If not, then modify /etc/resolv.conf directly.
+  if [ -f /etc/systemd/resolved.conf ]; then
+    sudo systemctl enable systemd-resolved > /dev/null 2>&1
+    sudo systemctl start systemd-resolved > /dev/null 2>&1
+    sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+    sudo grep "^nameserver 9.9.9.9" /etc/resolv.conf > /dev/null 2>&1
+    if [ \\\$? -ne 0 ]; then
+      sudo tee /etc/systemd/resolved.conf >/dev/null <<EOFRE
 [Resolve]
 DNS=9.9.9.9 149.112.112.112
 EOFRE
-  sudo systemctl enable systemd-resolved > /dev/null 2>&1
-  sudo systemctl start systemd-resolved > /dev/null 2>&1
-  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+      sudo systemctl restart systemd-resolved > /dev/null 2>&1
+    fi
+  else
+    sudo tee /etc/resolv.conf >/dev/null <<EOFRE
+nameserver 9.9.9.9
+nameserver 149.112.112.112
+EOFRE
+  fi
   sudo systemctl restart docker
   sudo docker container prune -f
   sudo docker volume rm \\\$(sudo docker volume ls -q)
@@ -3945,7 +4150,7 @@ function isProgramInstalled()
 {
   bin_name=\$(echo \$1 | cut -d"|" -f1)
   lib_name=\$(echo \$1 | cut -d"|" -f2)
-  if [[ -z \$(which \${bin_name}) ]]; then
+  if [[ -z \$(sudo which \${bin_name}) ]]; then
     echo "false"
   else
     echo "true"
@@ -3999,7 +4204,11 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 1
   fi
-  RELAYSERVER_SERVER_IP=\$(getHostIP)
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo -e "\n\nInstalling a few utilities..."
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall dnsutils > /dev/null 2>&1
+  performAptInstall screen > /dev/null 2>&1
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   sudo tar xvzf \$HOME/rsbackup.tar.gz >/dev/null
@@ -4036,11 +4245,6 @@ function main()
   sudo reboot
 }
 
-function getHostIP()
-{
-  echo \$(curl --silent https://api.ipify.org)
-}
-
 function getIPFromHostname()
 {
   echo \$(dig \$1 +short | grep '^[.0-9]*\$')
@@ -4062,7 +4266,7 @@ function haltAndWaitForConfirmation()
   echo "This server has been prepped for transfer. Please modify"
   echo "your DNS A records to point to this new IP Address:"
   echo
-  echo "\$RELAYSERVER_SERVER_IP"
+  echo "$RELAYSERVER_SERVER_IP"
   echo
   echo "After this has been done, enter 'transfer' to complete"
   echo "the remaining steps of the process."
@@ -4082,11 +4286,11 @@ function haltAndWaitForConfirmation()
   while [ \$numTries -lt \$totalTries ]
   do
     ipFromHostname=\$(getIPFromHostname $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ "\$RELAYSERVER_SERVER_IP" = "\$ipFromHostname" ]; then
+    if [ "$RELAYSERVER_SERVER_IP" = "\$ipFromHostname" ]; then
       isMatch=true
       break
     fi
-    echo "(\$numTries/\$totalTries)This host's IP: \$RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
+    echo "(\$numTries/\$totalTries)This host's IP: $RELAYSERVER_SERVER_IP, $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN points to \$ipFromHostname. Trying again in \$sleepSeconds seconds..."
     sleep \$sleepSeconds
     ((numTries++))
   done
@@ -4249,10 +4453,10 @@ EOFR
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
   done
   set +e
-  which netplan && sudo netplan apply > /dev/null 2>&1
+  sudo which netplan && sudo netplan apply > /dev/null 2>&1
   set -e
   oldIP=\$(grep -A 1 "$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml | tail -n 1 | cut -d":" -f2 | xargs)
-  sed -i "s|\$oldIP|\$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
+  sed -i "s|\$oldIP|$RELAYSERVER_SERVER_IP|g" \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf
   sudo chown -R \${USERID}:\${GROUPID} \$RELAYSERVER_HSHQ_NONBACKUP_DIR/adguard/work
   startStopStack adguard stop
@@ -4348,9 +4552,6 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
-  RELAYSERVER_SERVER_IP=\$(getHostIP)
-  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
-  installLogNotify "Begin Main"
   while getopts ':p:i' opt; do
     case "\$opt" in
       i)
@@ -4363,6 +4564,10 @@ function main()
     esac
   done
   shift "\$((\$OPTIND -1))"
+  loadVersionVars
+  set -e
+  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
+  installLogNotify "Begin Main"
   if [ -f $HSHQ_SCRIPT_OPEN ]; then
     echo "Installation already in progess, exiting..."
     exit 2
@@ -4371,22 +4576,34 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 3
   fi
-  if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
+  set +e
+  is_detach=true
+  while [ -z "\$USER_RELAY_SUDO_PW" ]
+  do
+    is_detach=false
+    read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  fi
+    if [ \$? -ne 0 ]; then
+      echo "Sorry, try again."
+      USER_RELAY_SUDO_PW=""
+      continue
+    fi
+  done
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  set -e
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo -e "\n\nInstalling a few utilities..."
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall dnsutils > /dev/null 2>&1
+  performAptInstall screen > /dev/null 2>&1
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
     touch $HSHQ_SCRIPT_OPEN
     install
   else
-    if [[ "\$(isProgramInstalled screen)" = "false" ]]; then
-      echo "Installing screen, please wait..."
-      sudo DEBIAN_FRONTEND=noninteractive apt update
-      performAptInstall screen > /dev/null 2>&1
-    fi
-    if ! [ -z "\$USER_RELAY_SUDO_PW" ]; then
+    if [ "\$is_detach" = "true" ]; then
       screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
     else
-      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i
+      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i -p \$USER_RELAY_SUDO_PW
     fi
   fi
 }
@@ -4400,7 +4617,7 @@ function isProgramInstalled()
 {
   bin_name=\$(echo \$1 | cut -d"|" -f1)
   lib_name=\$(echo \$1 | cut -d"|" -f2)
-  if [[ -z \$(which \${bin_name}) ]]; then
+  if [ -z "\$(sudo which \${bin_name})" ]; then
     echo "false"
   else
     echo "true"
@@ -4416,11 +4633,6 @@ function installLogNotify()
 function getIPFromHostname()
 {
   echo \$(dig \$1 +short | grep '^[.0-9]*\$')
-}
-
-function getHostIP()
-{
-  echo \$(curl --silent https://api.ipify.org)
 }
 
 function getConnectingIPAddress()
@@ -4486,20 +4698,42 @@ function checkValidIPAddress()
   fi
 }
 
+function loadVersionVars()
+{
+  set +e
+  DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  IS_HSHQ_DEV_TEST=$IS_HSHQ_DEV_TEST
+}
+
 function checkSupportedHostOS()
 {
-  if [ -f /etc/lsb-release ]; then
-    DISTRIB_ID=\$(cat /etc/lsb-release | grep DISTRIB_ID | cut -d "=" -f2)
-    DISTRIB_RELEASE=\$(cat /etc/lsb-release | grep DISTRIB_RELEASE | cut -d "=" -f2)
-    if [ "\$DISTRIB_ID" = "Ubuntu" ] && [ "\$DISTRIB_RELEASE" = "22.04" ]; then
-      return
-    fi
+  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
+    return
   fi
+  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    return
+  fi
+  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+    return
+  fi
+  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
+    return
+  fi
+  if false && [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
+    return
+  fi
+
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   echo "@                   Unsupported Host Operating System                  @"
   echo "@                                                                      @"
   echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@  - Linux Ubuntu 22.04 (Jammy)                                        @"
+  echo "@                                                                      @"
+  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat)        [Experimental]                 @"
+  echo "@  - Debian 12 (Bookworm)               [Experimental]                 @"
+  echo "@  - Mint 22 (Wilma)                    [Experimental]                 @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   rm -f $HSHQ_SCRIPT_OPEN
@@ -5561,21 +5795,22 @@ function installAdGuard()
   outputConfigAdGuard
   generateCert adguard adguard
 
+  set +e
   sudo systemctl stop systemd-resolved > /dev/null 2>&1
   sudo systemctl disable systemd-resolved > /dev/null 2>&1
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
   sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
 EOFR
-
-  np_path="/etc/netplan/*"
-  for cur_np in "\$np_path"
-  do
-    sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
-    sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
-  done
-  set +e
-  which netplan && sudo netplan apply > /dev/null 2>&1
+  if sudo test -d /etc/netplan; then
+    np_path="/etc/netplan/*"
+    for cur_np in "\$np_path"
+    do
+      sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
+      sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
+    done
+    sudo which netplan && sudo netplan apply > /dev/null 2>&1
+  fi
   set -e
   installStack adguard adguard "entering listener loop proto=tls" \$HOME/adguard.env
 }
@@ -5804,7 +6039,7 @@ filtering:
     ids: []
   rewrites:
     - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
-      answer: \$RELAYSERVER_SERVER_IP
+      answer: $RELAYSERVER_SERVER_IP
     - domain: '*.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
       answer: $RELAYSERVER_WG_SV_IP
     - domain: '$HOMESERVER_DOMAIN'
@@ -7313,7 +7548,7 @@ function uploadVPNInstallScripts()
       pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
       pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
-      sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo "$pubkey" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
+      sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
         showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
@@ -7633,6 +7868,7 @@ EOF
           return 0
         fi
         PRIMARY_VPN_SETUP_TYPE=host
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupHostedVPN
         if [ $? -ne 0 ]; then
           return 0
@@ -7654,7 +7890,7 @@ EOF
         echo -e "The installation script has been uploaded. Please log in to"
         echo -e "the RelayServer with your newly created username ($RELAYSERVER_REMOTE_USERNAME),"
         echo -e "and perform the installation by entering the command"
-        echo -e "'bash install.sh', and follow the prompts.\n"
+        echo -e "'bash $RS_INSTALL_FRESH_SCRIPT_NAME', and follow the prompts.\n"
         echo -e "Ensure to copy your new WireGuard configuration above for your first user.\n"
         echo -e "AFTER the RelayServer has completed the installation, and AFTER the server"
         echo -e "has FULLY rebooted, enter 'integrate' to finish the integration. When this"
@@ -7679,6 +7915,7 @@ EOF
           return 0
         fi
         PRIMARY_VPN_SETUP_TYPE=join
+        updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupJoinPrimaryVPN
         join_res=$?
         if [ $join_res -ne 0 ]; then
@@ -7696,7 +7933,6 @@ EOF
       3)
         return ;;
     esac
-    updateConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
 }
 
 function showRemovePrimaryVPN()
@@ -10448,13 +10684,18 @@ EOFSI
   
   chmod 0600 $HOME/00-installer-config.yaml
   sudo chown root:root $HOME/00-installer-config.yaml
+  sudo rm -f /etc/netplan/*
   sudo mv -f $HOME/00-installer-config.yaml /etc/netplan/00-installer-config.yaml
-  # Disable cloud-init
-  sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
+  if sudo test -d /etc/cloud/cloud.cfg.d; then
+    # Disable cloud-init
+    sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg >/dev/null <<EOFCI
 network: {config: disabled}
 EOFCI
-  sudo rm -f /etc/netplan/50-cloud-init.yaml
-  sudo netplan apply
+  fi
+  # Remove old package
+  sudo apt remove --purge ifupdown -y > /dev/null 2>&1
+  sudo rm -rf /etc/network > /dev/null 2>&1
+  sudo netplan apply > /dev/null 2>&1
 }
 
 function changeHostStaticIP()
@@ -12208,7 +12449,24 @@ function getThisVersionWrapper()
 
 function getLatestVersionLib()
 {
-  echo $(curl --silent $HSHQ_LIB_VER_URL)
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo $(curl --silent $HSHQ_LIB_DEV_VER_URL)
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo $(curl --silent $HSHQ_LIB_TEST_VER_URL)
+  else
+    echo $(curl --silent $HSHQ_LIB_VER_URL)
+  fi
+}
+
+function getLatestLibURL()
+{
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo "$HSHQ_LIB_DEV_URL"
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo "$HSHQ_LIB_TEST_URL"
+  else
+    echo "$HSHQ_LIB_URL"
+  fi
 }
 
 function getThisVersionLib()
@@ -13915,8 +14173,11 @@ function createInitialEnv()
   echo "Defaults timestamp_timeout=$SUDO_NORMAL_TIMEOUT" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/passwd_tries/d' /etc/sudoers >/dev/null
   echo "Defaults passwd_tries=$SUDO_MAX_RETRIES" | sudo tee -a /etc/sudoers >/dev/null
+  sudo sed -i '/logfile=/d' /etc/sudoers >/dev/null
+  echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
+
   mkdir -p $HOME/.ssh
   set +e
   tmp_pw1=""
@@ -14309,6 +14570,12 @@ function checkUpdateVersion()
     echo "Updating to Version 119..."
     version119Update
     HSHQ_VERSION=119
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 120 ]; then
+    echo "Updating to Version 120..."
+    version120Update
+    HSHQ_VERSION=120
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
@@ -16166,6 +16433,79 @@ function version119Update()
   outputHABandaidScript
 }
 
+function version120Update()
+{
+  sudo chown root:root /etc/crontab
+  sudo chmod og-rwx /etc/crontab
+  sudo chown root:root /etc/cron.hourly/
+  sudo chmod og-rwx /etc/cron.hourly/
+  sudo chown root:root /etc/cron.daily/
+  sudo chmod og-rwx /etc/cron.daily/
+  sudo chown root:root /etc/cron.weekly/
+  sudo chmod og-rwx /etc/cron.weekly/
+  sudo chown root:root /etc/cron.monthly/
+  sudo chmod og-rwx /etc/cron.monthly/
+  sudo chown root:root /etc/cron.d/
+  sudo chmod og-rwx /etc/cron.d/
+  sudo sed -i '/logfile=/d' /etc/sudoers >/dev/null
+  sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
+  echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
+  echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
+
+  cat <<EOFLO > $HOME/rsUpdateScript.sh
+#!/bin/bash
+
+function main()
+{
+  if sudo test -f /etc/logrotate.d/rsyslog; then
+    # Set max size of syslog to 2G
+    grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      sudo sed -i "/weekly\$/a\        maxsize 2G" /etc/logrotate.d/rsyslog
+    fi
+  fi
+  # Move logrotate into hourly
+  if sudo test -f /etc/cron.daily/logrotate; then
+    sudo mv /etc/cron.daily/logrotate /etc/cron.hourly
+  fi
+  # Set conditions for docker container logs
+  sudo tee /etc/logrotate.d/docker >/dev/null <<EOFLR
+/var/log/docker/*.log {
+    weekly
+    maxsize 100M
+    rotate 4
+    missingok
+    notifempty
+}
+EOFLR
+  sudo systemctl restart logrotate
+}
+main "\$@"
+EOFLO
+  updateRelayServerWithScript
+}
+
+function updateRelayServerWithScript()
+{
+  # This function assumes that a script file
+  # called $HOME/rsUpdateScript.sh has already
+  # been created before executing this function.
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    chmod 500 $HOME/rsUpdateScript.sh
+    set +e
+    notifyRSLogin
+    nrsl_retVal=$?
+    set -e
+    if [ $nrsl_retVal -eq 0 ]; then
+      loadSSHKey
+      scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh; rm -f ~/rsUpdateScript.sh"
+      unloadSSHKey
+    fi
+  fi
+  rm -f $HOME/rsUpdateScript.sh
+}
+
 function modFunAutheliaConfigFilterVar()
 {
   set +e
@@ -17151,9 +17491,14 @@ function nukeHSHQ()
     removeWGInterfaceQuick $bname
   done
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo systemctl enable systemd-resolved > /dev/null 2>&1
-  sudo systemctl start systemd-resolved > /dev/null 2>&1
-  sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  sudo systemctl status systemd-resolved > /dev/null 2>&1
+  if [ $? -ne 4 ]; then
+    sudo systemctl enable systemd-resolved > /dev/null 2>&1
+    sudo systemctl start systemd-resolved > /dev/null 2>&1
+    sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf
+  else
+    echo "nameserver 9.9.9.9" | sudo tee /etc/resolv.conf
+  fi
   sudo systemctl restart docker
   sudo docker container prune -f
   sudo docker volume rm $(sudo docker volume ls -q)
@@ -18429,7 +18774,7 @@ function isProgramInstalled()
 {
   bin_name=$(echo $1 | cut -d"|" -f1)
   lib_name=$(echo $1 | cut -d"|" -f2)
-  if [[ -z $(which ${bin_name}) ]]; then
+  if [[ -z $(sudo which ${bin_name}) ]]; then
     echo "false"
   else
     echo "true"
@@ -18439,47 +18784,59 @@ function isProgramInstalled()
 function installDocker()
 {
   set +e
-
-  IS_ROOTLESS_DOCKER=false
-#  if [[ "$(isProgramInstalled docker)" = "false" ]]; then
-#    dockermenu=$(cat << EOF
-#$hshqlogo
-#
-#Select your install method
-#EOF
-#    )
-#    menures=$(whiptail --title "Install Docker" --menu "$dockermenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-#  "1" "Rooted" \
-#  "2" "Rootless - more secure (only available for Ubuntu on bare metal install)" \
-#  "3" "Exit Installation" 3>&1 1>&2 2>&3)
-#    case $menures in
-#      1)
-#        IS_ROOTLESS_DOCKER=false ;;
-#      2)
-#        IS_ROOTLESS_DOCKER=true ;;
-#      3)
-#        exit 2 ;;
-#    esac
-#  fi
-  updateConfigVar IS_ROOTLESS_DOCKER $IS_ROOTLESS_DOCKER
   outputDockerSettings
   util="docker|docker"
   if [[ "$(isProgramInstalled $util)" = "true" ]]; then
+    sudo systemctl restart rsyslog
     sudo systemctl restart docker
     return 0
   fi
-  if [ "$IS_ROOTLESS_DOCKER" = "true" ]; then
-	installDockerUbuntu2004Rooted
-	installDockerUbuntu2004Rootless
-  else
-    installDockerUbuntu2004Rooted
-  fi
+  performAptInstall ca-certificates > /dev/null 2>&1
+  performAptInstall curl > /dev/null 2>&1
+  performAptInstall gnupg > /dev/null 2>&1
+  performAptInstall lsb-release > /dev/null 2>&1
+  case "$DISTRO_ID" in
+  "ubuntu")
+    if [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
+      installDockerUbuntu2204
+    elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+      installDockerUbuntu2404
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "debian")
+    if [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+      installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "linuxmint")
+    if [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+      installDockerUbuntu2404
+    elif [[ "$DISTRO_VERSION" =~ ^6. ]]; then
+      installDockerDebian12
+    else
+      echo "Linux version not found when installing Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  *)
+    ;;
+  esac
+  # See https://www.portainer.io/blog/portainer-and-docker-26
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+  sudo systemctl restart rsyslog
+  sudo systemctl restart docker
 }
 
 function removeDocker()
 {
   sudo systemctl stop docker
-  sudo DEBIAN_FRONTEND=noninteractive apt purge -y docker-engine docker docker.io docker-ce docker-ce-cli docker-compose
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y --purge docker-engine docker docker.io docker-ce docker-compose
   sudo rm -rf /var/lib/docker /etc/docker
   sudo rm -rf /etc/apparmor.d/docker
@@ -18544,48 +18901,50 @@ EOFRL
 
 }
 
-function installDockerUbuntu2004Rooted()
+function installDockerUbuntu2204()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
-  echo "Installing docker, please wait..."
-  performAptInstall ca-certificates > /dev/null 2>&1
-  performAptInstall curl > /dev/null 2>&1
-  performAptInstall gnupg > /dev/null 2>&1
-  performAptInstall lsb-release > /dev/null 2>&1
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   sudo DEBIAN_FRONTEND=noninteractive apt update
   echo "Installing docker, please wait..."
-  performAptInstall docker-ce=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
-  performAptInstall docker-ce-cli=5:25.0.5-1~ubuntu.22.04~jammy > /dev/null 2>&1
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-compose > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1
+}
+
+function installDockerUbuntu2404()
+{
+  # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Installing docker, please wait..."
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall containerd.io > /dev/null 2>&1
+  performAptInstall docker-buildx-plugin > /dev/null 2>&1
+  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+}
+
+function installDockerDebian12()
+{
+  # Install Docker (https://docs.docker.com/engine/install/debian/)
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  echo "Installing docker, please wait..."
+  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
-  # See https://www.portainer.io/blog/portainer-and-docker-26
-  sudo apt-mark hold docker-ce
-  sudo apt-mark hold docker-ce-cli
-  sudo systemctl restart rsyslog
-  sudo systemctl restart docker
-}
-
-function installDockerUbuntu2004Rootless()
-{
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  # Install dependencies for rootless docker (https://linuxhandbook.com/rootless-docker/)
-  performAptInstall uidmap > /dev/null 2>&1
-  performAptInstall dbus-user-session  > /dev/null 2>&1
-  performAptInstall fuse-overlayfs  > /dev/null 2>&1
-  sudo systemctl disable --now docker.service docker.socket
-  # Install the rootless docker package (https://linuxhandbook.com/rootless-docker/)
-  curl -fsSL https://get.docker.com/rootless | sh
-  sudo setcap cap_net_bind_service=ep $HOME/bin/rootlesskit
-  systemctl --user start docker
-  systemctl --user enable docker
-  sudo loginctl enable-linger $(whoami)
-  echo "" >> ~/.bashrc
-  echo "export PATH=$HOME/bin:\$PATH" >> ~/.bashrc
-  echo "export DOCKER_HOST=unix:///run/user/$USERID/docker.sock" >> ~/.bashrc
-  updateConfigVar IS_ROOTLESS_DOCKER true
 }
 
 function initCertificateAuthority()
@@ -18920,9 +19279,9 @@ function createDockerNetworks()
   sudo $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
   docker network create -o com.docker.network.bridge.name=$NET_INTERNALMAIL_BRIDGE_NAME --driver=bridge --subnet $NET_INTERNALMAIL_SUBNET --internal dock-internalmail > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_DBS_BRIDGE_NAME --driver=bridge --subnet $NET_DBS_SUBNET --internal dock-dbs > /dev/null
-  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null 2>/dev/null
-  docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null 2>/dev/null
-  docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null 2>/dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null
 }
 
 function removeDockerNetworks()
@@ -19740,7 +20099,6 @@ CONFIG_ENCRYPTION_PASSPHRASE=$CONFIG_ENCRYPTION_PASSPHRASE
 USERID=
 GROUPID=
 XDG_RUNTIME_DIR=
-IS_ROOTLESS_DOCKER=false
 DEFAULT_NETWORK_POOL=172.16.0.0/12
 DEFAULT_NETWORK_SIZE=24
 DOCKER_METRICS_PORT=8323
@@ -22845,9 +23203,6 @@ function installPortainer()
 function outputConfigPortainer()
 {
   DOCKER_SOCKET="/var/run/docker.sock"
-  if [ "$IS_ROOTLESS_DOCKER" = "true" ]; then
-	  DOCKER_SOCKET='$XDG_RUNTIME_DIR/docker.sock'
-  fi
   if ! [ "$HOMESERVER_HOST_ISPRIVATE" = "true" ]; then
     pdocknet=dock-ext
   else
@@ -23377,6 +23732,8 @@ function performUpdateAdGuard()
 
 function prepAdguardInstallation()
 {
+  pai_curE=${-//[^e]/}
+  set +e
   sudo systemctl stop systemd-resolved > /dev/null 2>&1
   sudo systemctl disable systemd-resolved > /dev/null 2>&1
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
@@ -23390,6 +23747,9 @@ EOFR
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
   done
   sudo netplan apply > /dev/null 2>&1
+  if ! [ -z $pai_curE ]; then
+    set -e
+  fi
 }
 
 # SysUtils
@@ -44680,7 +45040,7 @@ function installHomarr()
   rm -f $HOME/homarr.oidc
   insertOIDCClientAuthelia homarr "$oidcBlock"
   set +e
-  installStack homarr homarr-app "Listening on port" $HOME/homarr.env 1
+  installStack homarr homarr-app "Listening on port" $HOME/homarr.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -46545,7 +46905,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
 fi
 
 if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
-  wget -q4 -O \$HSHQ_LIB_TMP \$HSHQ_LIB_URL
+  wget -q4 -O \$HSHQ_LIB_TMP \$(getLatestLibURL)
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_LIB_TMP
     echo "ERROR: Could not obtain current version of lib script."

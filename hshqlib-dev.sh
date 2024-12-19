@@ -10693,7 +10693,8 @@ network: {config: disabled}
 EOFCI
   fi
   # Remove old package
-  sudo apt remove --purge ifupdown -y && sudo rm -rf /etc/network > /dev/null 2>&1
+  sudo apt remove --purge ifupdown -y > /dev/null 2>&1
+  sudo rm -rf /etc/network > /dev/null 2>&1
   sudo netplan apply > /dev/null 2>&1
 }
 
