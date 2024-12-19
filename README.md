@@ -7,7 +7,7 @@
 ### For full instructions, see <a href="https://wiki.homeserverhq.com/getting-started" target="_blank">https://wiki.homeserverhq.com/getting-started</a>
 
 ## Supported Distributions
-**Distribution** | 
+Distribution | |
 :------ | :------:
 Ubuntu 22.04 (Jammy Jellyfish) | Stable
 Ubuntu 24.04 (Noble Numbat) | Experimental
