@@ -4577,8 +4577,10 @@ function main()
     exit 3
   fi
   set +e
+  is_detach=true
   while [ -z "\$USER_RELAY_SUDO_PW" ]
   do
+    is_detach=false
     read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
@@ -4598,7 +4600,11 @@ function main()
     touch $HSHQ_SCRIPT_OPEN
     install
   else
-    screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
+    if [ "\$is_detach" = "true" ]; then
+      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
+    else
+      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i -p \$USER_RELAY_SUDO_PW
+    fi
   fi
 }
 
