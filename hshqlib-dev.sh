@@ -32,16 +32,13 @@ function init()
   USERNAME=$(id -u -n)
   HSHQ_SCRIPT_OPEN_DIR=/tmp/hshqopen
   HSHQ_SCRIPT_OPEN_FILENAME=lastCaller
-  CONFIG_FILE_DEFAULT_FILENAME="config.cnf"
-  ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME="config.enc"
-  ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME="config-enc.bak"
+  CONFIG_FILE_DEFAULT_FILENAME=config.cnf
+  ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME=config.enc
+  ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME=config-enc.bak
   RS_INSTALL_SETUP_SCRIPT_NAME=setup.sh
   RS_INSTALL_FRESH_SCRIPT_NAME=install.sh
   RS_INSTALL_TRANSFER_SCRIPT_NAME=transfer.sh
   NUKE_SCRIPT_NAME=nuke.sh
-  HSHQ_FULL_LOG_NAME=hshqInstall.log
-  HSHQ_RESTORE_LOG_NAME=hshqRestore.log
-  HSHQ_TIMESTAMP_LOG_NAME=hshqInstallTS.log
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
   HSHQ_LOG_FILE=/var/log/hshq.log
@@ -352,16 +349,6 @@ EOF
 
 function showInstalledMenu()
 {
-  #if [ -f $HSHQ_INSTALL_CFG ]; then
-  #  read -p "The installation configuration file still exists ($HSHQ_INSTALL_CFG). It contains sensitive data in plain text. If you have successfully performed the installation and utilized the information, then it is recommended that you delete this file. Do you wish to remove it? Enter yes to remove." is_rem_install_config
-  #  mbres=$?
-  #  if [ $mbres -eq 0 ]; then
-  #    rm -f $HSHQ_INSTALL_CFG
-  #    # Clean up the log files as well, don't need them anymore.
-  #    rm -f $HOME/hshq/$HSHQ_FULL_LOG_NAME
-  #    rm -f $HOME/hshq/$HSHQ_TIMESTAMP_LOG_NAME
-  #  fi
-  #fi
   installedmenu=$(cat << EOF
 
 $hshqlogo
@@ -498,8 +485,7 @@ function showRestoreUnencryptedMenu()
   else
     rm -f $HOME/$HSHQ_LIB_FILENAME
   fi
-  rm -f $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME
-  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_RESTORE_LOG_NAME -S hshqRestore bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
+  screen -L -Logfile $HSHQ_LOG_FILE -S hshqRestore bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
   exit 0
 }
 
@@ -1599,7 +1585,7 @@ function initConfig()
         exit 5
       fi
     fi
-    checkUpdateHostInterface add $add_interface true
+    addHSInterface $add_interface true
     if [ $? -ne 0 ]; then
       showMessageBox "Default Interface Error" "There was an error with the default interface"
       add_interface=""
@@ -2040,7 +2026,8 @@ function initInstallation()
   sudo -v
   echo "Starting installation on HomeServer..."
   sleep 1
-  screen -L -Logfile $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME -S hshqInstall bash $0 install "$CONNECTING_IP" "$USER_SUDO_PW"
+  closeHSHQScript "preInstallation"
+  screen -L -Logfile $HSHQ_LOG_FILE -S hshqInstall bash $0 install "$CONNECTING_IP" "$USER_SUDO_PW"
   exit 0
 }
 
@@ -2065,6 +2052,8 @@ function performBaseInstallation()
     echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). Please remove the directory: $HSHQ_SCRIPT_OPEN_DIR, then restart the installation."
     exit 7
   fi
+  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  setSudoTimeoutInstall
   checkLoadConfig
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
     echo "Already installed or existing installation is in progress, exiting..."
@@ -2073,8 +2062,7 @@ function performBaseInstallation()
   IS_INSTALLING=true
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
-  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  setSudoTimeoutInstall
+
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
@@ -2082,21 +2070,23 @@ function performBaseInstallation()
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
-  installLogNotify "Install Dependencies"
+  logHSHQEvent info "Install Dependencies"
   installMailUtils
   installDependencies
+  set +e
   performClearIPTables true
   checkUpdateAllIPTables performBaseInstallation-Early
+  set -e
   pullBaseServicesDockerImages
-  installLogNotify "Init DH Params"
+  logHSHQEvent info "Init DH Params"
   initDHParams
   getUpdateAssets
-  installLogNotify "Starting Stack Installs"
+  logHSHQEvent info "Starting Stack Installs"
   installBaseStacks
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-      installLogNotify "Configure Docker WireGuard Network"
+      logHSHQEvent info "Configure Docker WireGuard Network"
       connectPrimaryInternet
     elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
       dns_file=$HOME/dns.tmp
@@ -2107,7 +2097,7 @@ function performBaseInstallation()
         docker container start heimdall >/dev/null
       fi
     fi
-    installLogNotify "Connect Services To VPN"
+    logHSHQEvent info "Connect Services To VPN"
     connectPrimaryVPN
     echo "Waiting 30s for services to initialize..."
     sleep 30
@@ -2122,10 +2112,10 @@ function performBaseInstallation()
     fi
   fi
   set -e
-  installLogNotify "Post Installation"
+  logHSHQEvent info "Post Installation"
   removeSudoTimeoutInstall
-  deleteIPTableEntryByChainAndComment filter INPUT "INPUT TEMP ALLOW PORT"
   checkUpdateAllIPTables performBaseInstallation-Late
+  set -e
   postInstallation
 }
 
@@ -2162,25 +2152,17 @@ function postInstallation()
   echo "The system will automatically reboot in 60 seconds..."
   echo -e "\n\n########################################\n\n"
   sleep 60
-  installLogNotify "Rebooting"
+  logHSHQEvent info "Rebooting"
   closeHSHQScript "postInstallation"
   sudo reboot
 }
 
 function sanitizeFullLog()
 {
-  sed -i "s|$USERNAME|hshquser|g" $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME
-  sed -i "s|$LDAP_PRIMARY_USER_USERNAME|hshquser|g" $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME
-  sed -i "s|$LDAP_ADMIN_USER_USERNAME|hshqadmin|g" $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME
-  sed -i "s|$HOMESERVER_DOMAIN|hshqexample.com|g" $HSHQ_BASE_DIR/$HSHQ_FULL_LOG_NAME
-}
-
-function installLogNotify()
-{
-  log_message=$1
-  if [ "$IS_INSTALLING" = "true" ]; then
-    echo $(date)" - $log_message" >> ${HSHQ_BASE_DIR}/${HSHQ_TIMESTAMP_LOG_NAME}
-  fi
+  sudo sed -i "s|$USERNAME|hshquser|g" $HSHQ_LOG_FILE
+  sudo sed -i "s|$LDAP_PRIMARY_USER_USERNAME|hshquser|g" $HSHQ_LOG_FILE
+  sudo sed -i "s|$LDAP_ADMIN_USER_USERNAME|hshqadmin|g" $HSHQ_LOG_FILE
+  sudo sed -i "s|$HOMESERVER_DOMAIN|hshqexample.com|g" $HSHQ_LOG_FILE
 }
 
 function showSimpleBackupMenu()
@@ -11515,7 +11497,7 @@ function installStack()
   if [ -z $max_interval ]; then
     max_interval=300
   fi
-  installLogNotify "Installing Stack ($stack_name)"
+  logHSHQEvent info "Installing Stack ($stack_name)"
   # Refresh the sudo timestamp
   sudo -v
   if [ -z "$PORTAINER_TOKEN" ]; then
@@ -11543,7 +11525,7 @@ function installStack()
     ((ins_numTries++))
   done
   if [ $ins_retVal -ne 0 ]; then
-    installLogNotify "Error installing stack ($stack_name)"
+    logHSHQEvent error "Error installing stack ($stack_name)"
     echo "ERROR: Could not install stack ($stack_name) in Portainer..." 1>&2
     return $ins_retVal
   fi
@@ -14203,8 +14185,11 @@ function createInitialEnv()
   tmp_pw2=""
   CONFIG_FILE=$HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
   outputEncConfigFile
+  source $CONFIG_FILE
   outputPlainTextRootConfig
+  source <(sudo cat $HSHQ_PLAINTEXT_ROOT_CONFIG)
   outputPlainTextUserConfig
+  source $HSHQ_PLAINTEXT_USER_CONFIG
   initHSHQDB
   set -e
 }
@@ -16682,6 +16667,12 @@ EOFBS
   sudo systemctl enable runOnBootRoot
 
 }
+
+function getDefaultIface()
+{
+  echo \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1)
+}
+
 function checkIsIPPrivate()
 {
   check_ip="\$1"
@@ -16698,9 +16689,34 @@ function checkIsIPPrivate()
   echo "false"
 }
 
+function isIPInSubnet()
+{
+  iiis_curE=\${-//[^e]/}
+  check_ipaddr=\$1
+  check_subnet=\$2
+  set +e
+  grepcidr \${check_subnet} <(echo \${check_ipaddr}) > /dev/null 2>&1
+  if [ \$? -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+  set +e
+  if ! [ -z \$iiis_curE ]; then
+    set -e
+  fi
+}
+
 main "\$@"
 EOFRS
   updateRelayServerWithScript
+
+  if sudo test -f $HSHQ_LOG_FILE; then
+    echo ""
+  else
+    sudo touch $HSHQ_LOG_FILE
+    sudo chown $USERNAME:$USERNAME $HSHQ_LOG_FILE
+  fi
 
   # Only let superuser modify db
   sudo chmod 640 $HSHQ_DB
@@ -16748,12 +16764,8 @@ EOFRS
   fi
   moveVarsToPlaintextFile
 
-  if sudo test -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; then
-    sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
-  fi
-  if sudo test -f $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; then
-    sudo rm -f $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
-  fi
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     prID=$(getPrimaryVPN_DBID)
     PRIMARY_VPN_SUBNET=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$prID;")
@@ -16761,11 +16773,21 @@ EOFRS
   fi
   source <(sudo cat $HSHQ_PLAINTEXT_ROOT_CONFIG)
   source $HSHQ_PLAINTEXT_USER_CONFIG
-  idList=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType='other';"))
+
+  idList=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='other';"))
   for curID in "${idList[@]}"
   do
-    addOtherVPNIPTConfig $curID
+    sudo sqlite3 $HSHQ_DB "update connections set IsExposeToNetwork=true where ID=$curID;"
+    sudo sqlite3 $HSHQ_DB "update connections set InputAllowPorts='$INPUT_OTHER_VPN_ALLOW_PORTS_DEFAULT' where ID=$curID;"
+    sudo sqlite3 $HSHQ_DB "update connections set DockerUserAllowPorts='$DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT' where ID=$curID;"
   done
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    primID=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='primary';")
+    sudo sqlite3 $HSHQ_DB "update connections set IsExposeToNetwork=true where ID=$primID;"
+    sudo sqlite3 $HSHQ_DB "update connections set InputAllowPorts='$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT' where ID=$primID;"
+    sudo sqlite3 $HSHQ_DB "update connections set DockerUserAllowPorts='$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT' where ID=$primID;"
+  fi
+
   echo "Restarting Portainer..."
   stopPortainer
   outputConfigPortainer
@@ -16777,6 +16799,7 @@ EOFRS
   checkUpdateAllIPTables versionUpdate
   updateSysctl true
   outputMaintenanceScripts
+  outputUpdateEndpointIPsScript
   PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   jitsiStackID=$(getStackID jitsi "$PORTAINER_TOKEN")
   if ! [ -z "$jitsiStackID" ]; then
@@ -16821,6 +16844,7 @@ function updateRelayServerWithScript()
       unloadSSHKey
     fi
   fi
+  set +e
   rm -f $HOME/rsUpdateScript.sh
 }
 
@@ -16956,9 +16980,6 @@ function fixInterfaceNames()
       RELAYSERVER_WG_VPN_NETNAME=$new_vpn_name
       updateConfigVar RELAYSERVER_WG_VPN_NETNAME $RELAYSERVER_WG_VPN_NETNAME
     fi
-  fi
-
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     if [ "${RELAYSERVER_WG_INTERNET_NETNAME: -4}" = "-ext" ] && ! [ "${RELAYSERVER_WG_INTERNET_NETNAME:0:4}" = "ext-" ]; then
       old_ext_name=$RELAYSERVER_WG_INTERNET_NETNAME
       new_ext_name="ext-${RELAYSERVER_WG_INTERNET_NETNAME%????}"
@@ -18179,6 +18200,9 @@ function checkUpdateAllIPTables()
     sudo iptables -t raw -P PREROUTING ACCEPT > /dev/null 2>&1
   fi
 
+  # Docker likes to append this during boot
+  sudo iptables -D DOCKER-USER -j RETURN > /dev/null 2>&1
+
   sudo iptables -t filter -L -n > $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
   sudo iptables -t raw -L -n >> $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
 
@@ -18331,7 +18355,7 @@ function checkUpdateAllIPTables()
   checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment "$comment" -j RETURN'
 
   # HomeServer Host and WireGuard interfaces
-  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where (ConnectionType='homeserver_vpn' and NetworkType='other') or (NetworkType='home_network') order by NetworkType;"))
+  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;"))
   for curDBID in "${dbIDArr[@]}"
   do
     curInterfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$curDBID;")
@@ -18449,6 +18473,9 @@ function checkAddRule()
   sudo grep "$comment" $HSHQ_SCRIPT_OPEN_DIR/ipt.txt > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     eval " $ip_cmd"
+    if [ $? -ne 0 ]; then
+      logHSHQEvent error "IPTables ($netstate) - Error adding rule: $ip_cmd"
+    fi
     echo "$comment" >> $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
     logHSHQEvent info "IPTables ($netstate) - Added rule: $comment"
   fi
@@ -18991,6 +19018,7 @@ function main()
     return
   fi
   checkUpdateAllIPTables prenetwork
+  closeHSHQScript "updateIPTablesBeforeNetwork"
 }
 main
 EOFBS
@@ -19017,6 +19045,7 @@ function main()
     return
   fi
   checkUpdateAllIPTables postdocker
+  closeHSHQScript "updateIPTablesAfterDocker"
 }
 main
 EOFBS
@@ -19479,7 +19508,7 @@ function main()
     cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_id;")
     if [ "\$(checkByID \$cur_id)" = "true" ]; then
       echo "IP changed, restarting \$cname..."
-      addLogMessage "IP changed, restarting \$cname..."
+      logHSHQEvent info "IP changed, restarting \$cname..."
       if [ \$is_int = 0 ]; then
         resetVPN \$iname
       else
@@ -19492,7 +19521,7 @@ function main()
       if ! [ -z "\$rs_ip" ]; then
         timeout \$ping_timeout ping -c 1 \$rs_ip > /dev/null 2>&1
         if [ \$? -ne 0 ]; then
-          addLogMessage "Connection Error, restarting(HSVPN) \$cname..."
+          logHSHQEvent error "Connection Error, restarting(HSVPN) \$cname..."
           resetVPN \$iname
         fi
       fi
@@ -19511,7 +19540,7 @@ function main()
     fi
     if ! [ -z "\$cur_cdns" ] && [ "\$(checkByID \$cur_cdns)" = "true" ]; then
       echo "IP changed, restarting \$cname..."
-      addLogMessage "IP changed, restarting(ClientDNS) $cname..."
+      logHSHQEvent info "IP changed, restarting(ClientDNS) $cname..."
       docker container restart \${cname}-wireguard
       docker container restart \${cname}-dnsmasq
     fi
@@ -19523,7 +19552,7 @@ function main()
     resOut=\$(\$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf status)
     retVal=\$?
     if [ \$retVal -ne 0 ]; then
-      addLogMessage "Connection Error, restarting(HSInternet)[\$retVal - \$resOut] \$conf..."
+      logHSHQEvent error "Connection Error, restarting(HSInternet)[\$retVal - \$resOut] \$conf..."
       \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf restart > /dev/null 2>&1
     fi
   done
@@ -19563,10 +19592,11 @@ function getIPFromHostname()
   echo \$(dig \$1 +short | grep '^[.0-9]*\$')
 }
 
-function addLogMessage()
+function logHSHQEvent()
 {
-  log_msg=\$1
-  echo "\$(date +%Y-%m-%d_%H%M%S): \$log_msg" >> \$HSHQ_WIREGUARD_DIR/logs/wireguard.log
+  msgType="\$1"
+  msgContent="WireGuard - \$2"
+  echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [\$msgType] \$msgContent" >> $HSHQ_LOG_FILE
 }
 
 main "\$@"
@@ -20001,10 +20031,11 @@ function updateExposedPortsLists()
     echo "Default list updated - $selectedList"
     updatePlaintextUserConfigVar "$selectedList" "$selectedPorts"
   else
+    intName=$(echo "$selectedList" | cut -d" " -f1 | xargs)
     if [ "$selectedChain" = "INPUT" ]; then
-      sudo sqlite3 $HSHQ_DB "update connections set InputAllowPorts='$selectedPorts' where InterfaceName='$selectedList';"
+      sudo sqlite3 $HSHQ_DB "update connections set InputAllowPorts='$selectedPorts' where InterfaceName='$intName';"
     elif [ "$selectedChain" = "DOCKER-USER" ]; then
-      sudo sqlite3 $HSHQ_DB "update connections set DockerUserAllowPorts='$selectedPorts' where InterfaceName='$selectedList';"
+      sudo sqlite3 $HSHQ_DB "update connections set DockerUserAllowPorts='$selectedPorts' where InterfaceName='$intName';"
       # Check 
     fi
     echo "Applying results to firewall..."
@@ -20496,7 +20527,7 @@ function getUpdateAssets()
 function pullImage()
 {
   img_and_version=$1
-  installLogNotify "Pulling Image: $img_and_version"
+  logHSHQEvent info "Pulling Image: $img_and_version"
   echo "Pulling Image: $img_and_version"
   is_success=1
   num_tries=1
@@ -21216,6 +21247,12 @@ function outputEncConfigFile()
 # Encrypted Configuration File
 $hshqlogo
 
+# General Info BEGIN
+IS_CONFIG_INIT=true
+IS_INSTALLED=false
+IS_INSTALLING=false
+# General Info END
+
 # Services Info BEGIN
 # Services Info END
 
@@ -21820,9 +21857,7 @@ SSH_PORT=
 CURRENT_SSH_PORT=
 ADMIN_USERNAME_BASE=
 PRIMARY_VPN_SETUP_TYPE=none
-IS_CONFIG_INIT=true
-IS_INSTALLED=false
-IS_INSTALLING=false
+PRIMARY_VPN_SUBNET=
 DESKTOP_ENV=
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 DISABLED_SERVICES=
@@ -21887,8 +21922,8 @@ EOFPT
 
 function outputPlainTextUserConfig()
 {
-  sudo tee $HSHQ_PLAINTEXT_USER_CONFIG >/dev/null <<EOFPT
-# Plaintext Root Configuration File
+  tee $HSHQ_PLAINTEXT_USER_CONFIG >/dev/null <<EOFPT
+# Plaintext User Configuration File
 $hshqlogo
 
 # INPUT Chain Defaults BEGIN
@@ -21904,7 +21939,7 @@ DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COT
 # DOCKER-USER Chain Defaults END
 
 EOFPT
-  sudo chmod 600 $HSHQ_PLAINTEXT_USER_CONFIG
+  chmod 600 $HSHQ_PLAINTEXT_USER_CONFIG
 }
 
 function initServicesCredentials()
@@ -46810,7 +46845,7 @@ chainName="\$1"
 
 OLDIFS=\$IFS
 IFS=\$(echo -en "\n\b")
-expList=(\$(sqlite3 $HSHQ_DB "select InterfaceName,' (',Name,')' from connections where (ConnectionType='homeserver_vpn' and NetworkType='other') or (NetworkType='home_network') order by NetworkType;" | sed 's/|//g'))
+expList=(\$(sqlite3 $HSHQ_DB "select InterfaceName,' (',Name,')' from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;" | sed 's/|//g'))
 IFS=\$OLDIFS
 
 if [ "\$chainName" = "INPUT" ]; then
@@ -54472,6 +54507,15 @@ EOFCF
         echo "Undefined error(1) in outputConfigCaddy, exiting..."
         exit 1
       fi
+      cat <<EOFCE > $HOME/$caddy_net_name.env
+CERT_RENEW_INTERVAL=$CADDY_CERT_RENEW_INTERVAL
+CERT_INTERMEDIATE_LIFETIME=$CADDY_CERT_INTERMEDIATE_LIFETIME
+CERT_LEAF_LIFETIME=$CADDY_CERT_LEAF_LIFETIME
+CADDY_HSHQ_CA_NAME=$ca_name
+CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+CADDY_HSHQ_PRIVATE_IPS=
+CADDY_HSHQ_CA_URL=$ca_url
+EOFCE
       ;;
     other)
       cat <<EOFCF > $HOME/$caddy_net_name-compose.yml
@@ -54541,6 +54585,15 @@ import /snippets/head.snip
 import /config/CaddyfileBody
 
 EOFCF
+      cat <<EOFCE > $HOME/$caddy_net_name.env
+CERT_RENEW_INTERVAL=$CADDY_CERT_RENEW_INTERVAL
+CERT_INTERMEDIATE_LIFETIME=$CADDY_CERT_INTERMEDIATE_LIFETIME
+CERT_LEAF_LIFETIME=$CADDY_CERT_LEAF_LIFETIME
+CADDY_HSHQ_CA_NAME=$ca_name
+CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+CADDY_HSHQ_PRIVATE_IPS=
+CADDY_HSHQ_CA_URL=$ca_url
+EOFCE
       ;;
     *)
       # This should never happen
