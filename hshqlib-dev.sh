@@ -1848,6 +1848,8 @@ function initConfig()
       set -e
     fi
     updatePlaintextRootConfigVar PORTAINER_LOCAL_HTTPS_PORT $PORTAINER_LOCAL_HTTPS_PORT
+    DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT,$PORTAINER_LOCAL_HTTPS_PORT
+    updatePlaintextUserConfigVar DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT $DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT
   done
   while [ -z "$ADMIN_USERNAME_BASE" ] || [ "$ADMIN_USERNAME_BASE" = "admin" ]
   do
@@ -18058,7 +18060,7 @@ function nukeHSHQ()
 
 function getExposedPortsList()
 {
-  echo "$ADGUARD_DNS_PORT,$PORTAINER_LOCAL_HTTPS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT"
+  echo "$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT"
 }
 
 function outputBootScripts()
@@ -19760,7 +19762,7 @@ function removeHSInterface()
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where InterfaceName='$iface_name';" > /dev/null 2>&1
 }
 
-function changeHSInterface()
+function setHSInterfaceAsPrimary()
 {
   # This function changes the primary interface
   iface_name="$1"
@@ -19792,10 +19794,35 @@ function changeHSInterface()
     logHSHQEvent error "$strMsg"
     return 3
   fi
+  sudo sqlite3 $HSHQ_DB "update connections set ConnectionType='primary' where InterfaceName = '$iface_name';"
+  sudo sqlite3 $HSHQ_DB "update connections set ConnectionType='secondary' where InterfaceName = '$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME';"
   HOMESERVER_HOST_PRIMARY_INTERFACE_NAME="$iface_name"
   HOMESERVER_HOST_PRIMARY_INTERFACE_IP="$iface_ip"
   updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_NAME $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
   updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
+}
+
+function setHSInterfaceIsExpose()
+{
+  # This function sets the expose setting for the selected interface
+  iface_name="$1"
+  iface_isExpose="$2"
+  interfaceListArr=($(echo $HOMESERVER_HOST_NETWORK_INTERFACES | tr "," "\n"))
+  isFound=false
+  for curInterface in "${interfaceListArr[@]}"
+  do
+    if [ "$iface_name" = "$curInterface" ]; then
+      isFound=true
+      break
+    fi
+  done
+  if [ "$isFound" = "false" ]; then
+    strMsg="The selected network interface was not in the list."
+    echo "$strMsg"
+    logHSHQEvent error "$strMsg"
+    return 1
+  fi
+  sudo sqlite3 $HSHQ_DB "update connections set IsExposeToNetwork=$iface_isExpose where InterfaceName = '$iface_name';"
 }
 
 function updateHSInterface()
@@ -19844,6 +19871,8 @@ function checkUpdateHostInterface()
   iface_operation="$1"
   iface_name="$2"
   iface_isPrimary="$3"
+  iface_isExpose="$4"
+  #echo "iface_operation: $iface_operation, iface_name: $iface_name, iface_isPrimary: $iface_isPrimary, iface_isExpose: $iface_isExpose"
   primary_ip_prior=$HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   case $iface_operation in
     add)
@@ -19879,7 +19908,7 @@ function checkUpdateHostInterface()
         return 6
       fi
       ;;
-    change)
+    setisprimary)
       if [ -z "$iface_name" ] || [ -z "$iface_isPrimary" ]; then
         strMsg="You must specify the interface name and if its the primary interface (true|false)."
         echo "$strMsg"
@@ -19898,9 +19927,27 @@ function checkUpdateHostInterface()
         logHSHQEvent error "$strMsg"
         return 9
       fi
-      changeHSInterface "$iface_name"
+      setHSInterfaceAsPrimary "$iface_name"
       if [ $? -ne 0 ]; then
         return 10
+      fi
+      ;;
+    setisexpose)
+      if [ -z "$iface_name" ] || [ -z "$iface_isExpose" ]; then
+        strMsg="You must specify the interface name and if its expose setting. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
+        echo "$strMsg"
+        logHSHQEvent error "$strMsg"
+        return 11
+      fi
+      if ! [ "$iface_isExpose" = "true" ] && ! [ "$iface_isExpose" = "false" ]; then
+        strMsg="The expose setting must be either true or false. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
+        echo "$strMsg"
+        logHSHQEvent error "$strMsg"
+        return 12
+      fi
+      setHSInterfaceIsExpose "$iface_name" "$iface_isExpose"
+      if [ $? -ne 0 ]; then
+        return 13
       fi
       ;;
     update)
@@ -19908,18 +19955,18 @@ function checkUpdateHostInterface()
         strMsg="You must specify the interface name."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
-        return 11
+        return 14
       fi
       updateHSInterface "$iface_name"
       if [ $? -ne 0 ]; then
-        return 12
+        return 15
       fi
       ;;
     *)
       strMsg="Unknown operation."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
-      return 13
+      return 16
       ;;
   esac
 
@@ -19939,9 +19986,13 @@ function checkUpdateHostInterface()
       generateCert script-server "script-server,host.docker.internal" "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
       ;;
   esac
-  updatePortainerJitsiIPChanges
   case $iface_operation in
-    change|update)
+    add|remove|setisprimary|update)
+      updatePortainerJitsiIPChanges
+      ;;
+  esac
+  case $iface_operation in
+    setisprimary|update)
       if [ "$(checkValidIPAddress $primary_ip_prior)" = "true" ] && [ "$(checkValidIPAddress $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "true" ] && ! [ "$primary_ip_prior" = "$HOMESERVER_HOST_PRIMARY_INTERFACE_IP" ]; then
         sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$primary_ip_prior:$PORTAINER_LOCAL_HTTPS_PORT%';" > /dev/null 2>&1
         sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT' where url like '%$primary_ip_prior:$SCRIPTSERVER_LOCALHOST_PORT%';" > /dev/null 2>&1
@@ -19959,7 +20010,7 @@ function checkUpdateHostInterface()
       # Add Caddy instance
       installHostInterfaceCaddy "$iface_name"
       ;;
-    change|update)
+    setisprimary|update)
       # Restart caddy-home stacks
       caddy_arr=($(docker ps -a --filter name=caddy-home- --format "{{.Names}}"))
       for curcaddy in "${caddy_arr[@]}"
@@ -19971,9 +20022,12 @@ function checkUpdateHostInterface()
       ;;
   esac
 
-  if [ "$iface_operation" = "update" ]; then
-    sudo systemctl restart runScriptServer
-  fi
+  case $iface_operation in
+    add|update)
+      performExitFunctions false
+      sudo systemctl restart runScriptServer
+      ;;
+  esac
 }
 
 function updatePortainerJitsiIPChanges()
@@ -20026,6 +20080,8 @@ function updateExposedPortsLists()
   selectedChain="$1"
   selectedList="$2"
   selectedPorts="$3"
+
+  #echo "selectedChain: $selectedChain, selectedList: $selectedList, selectedPorts: $selectedPorts"
 
   if [ "${selectedList: -8}" = "_DEFAULT" ]; then
     echo "Default list updated - $selectedList"
@@ -52461,7 +52517,7 @@ EOFSC
 EOFSC
 
   # 09 Home Network
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayHomeServerHostInterface.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllHomeServerHostInterfaces.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
@@ -52475,10 +52531,10 @@ exit \$retVal
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/displayHomeServerHostInterface.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/displayAllHomeServerHostInterfaces.json
 {
   "name": "01 Display All Interfaces",
-  "script_path": "conf/scripts/displayHomeServerHostInterface.sh",
+  "script_path": "conf/scripts/displayAllHomeServerHostInterfaces.sh",
   "description": "Displays all network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function displays all of the network interfaces on the host system. It will not show Docker network or HSHQ-based WireGuard interfaces, but will display everything else. You can use this function to obtain the exact name of an interface that you may want to add.",
   "group": "$group_id_homenetwork",
   "parameters": []
@@ -52586,17 +52642,29 @@ decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selinterface=\$(getArgumentValue selinterface "\$@")
 isprimary=\$(getArgumentValue isprimary "\$@")
+isexpose=\$(getArgumentValue isexpose "\$@")
+
+selinterface=\$(echo "\$selinterface" | cut -d" " -f1 | xargs)
 
 set +e
 retVal=0
 if [ "\$isprimary" = "Set As Primary" ]; then
   echo "Setting host interface as primary (\$selinterface)..."
-  checkUpdateHostInterface change \$selinterface true
-  retVal=\$?
+  checkUpdateHostInterface setisprimary \$selinterface true na
+  retVal1=\$?
+fi
+if [ "\$isexpose" = "Enable Expose To Network" ]; then
+  echo "Setting host interface (\$selinterface) to enable exposure to connected network..."
+  checkUpdateHostInterface setisexpose \$selinterface na true
+  retVal2=\$?
+elif [ "\$isexpose" = "Disable Expose To Network" ]; then
+  echo "Setting host interface (\$selinterface) to disable exposure to connected network..."
+  checkUpdateHostInterface setisexpose \$selinterface na false
+  retVal2=\$?
 fi
 set -e
 performExitFunctions false
-exit \$retVal
+exit \$((\$retVal1+\$retVal2))
 
 EOFSC
 
@@ -52604,7 +52672,7 @@ EOFSC
 {
   "name": "03 Edit Host Interface",
   "script_path": "conf/scripts/editHomeServerHostInterface.sh",
-  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. The only action available at the moment is to set the selected interface as the primary, i.e. what IP address the DNS records point to, etc.",
+  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are two possible actions available at the moment:\n1. Set As Primary - Sets the selected interface as the primary, i.e. what IP address the DNS records point to, the ip-based links on the home page (Heimdall) etc.\n2. Expose To Network - allows the selected ports to be accessible (or inaccessible) for the selected interface/network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -52639,7 +52707,7 @@ EOFSC
     },
     {
       "name": "Select the interface to edit",
-      "required": false,
+      "required": true,
       "param": "-selinterface=",
       "same_arg_param": true,
       "type": "list",
@@ -52650,14 +52718,14 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select InterfaceName,' {',ConnectionType,')' from connections where NetworkType='home_network';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select InterfaceName,' (',ConnectionType,')' from connections where NetworkType='home_network';\" | sed 's/|//g'",
         "shell": true
       },
       "secure": false,
       "pass_as": "argument"
     },
     {
-      "name": "Select the action to perform",
+      "name": "Select Set As Primary",
       "required": false,
       "param": "-isprimary=",
       "same_arg_param": true,
@@ -52669,6 +52737,22 @@ EOFSC
         }
       },
       "values": [ "Set As Primary" ],
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select Expose To Network Setting",
+      "required": false,
+      "param": "-isexpose=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": [ "Enable Expose To Network", "Disable Expose To Network" ],
       "secure": false,
       "pass_as": "argument"
     }
@@ -52895,7 +52979,7 @@ EOFSC
 
 function outputAllNetworkInterfaces()
 {
-  allInterfaces=($(ls /sys/class/net | grep -v -E "veth.*|docker.*|lo|vpn-*"))
+  allInterfaces=($(ls /sys/class/net | grep -v -E "veth.*|docker.*|lo|vpn-*|ext-*"))
   dockerNets=($(docker network ls -q))
   networksArr=()
   for curNet in "${dockerNets[@]}"
