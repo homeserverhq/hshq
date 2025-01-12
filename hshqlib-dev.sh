@@ -10126,7 +10126,6 @@ function disconnectOtherNetworkHomeServerVPNConnection()
   else
     echo "ERROR: WireGuard config file not found: /etc/wireguard/${ifaceName}.conf"
   fi
-  removeOtherVPNIPTables $db_id
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${ifaceName}.conf
   sudo rm -f $HSHQ_SSL_DIR/"$(getCACertificateNameFromDomain $domain_name)"
   sudo rm -f /usr/local/share/ca-certificates/"$(getCACertificateNameFromDomain $domain_name)"
@@ -16371,21 +16370,21 @@ identity_providers:
         rules:
           - policy: one_factor
             subject: group:everyone
-      basicusers_auth:
+      ${LDAP_BASIC_USER_GROUP_NAME}_auth:
         default_policy: deny
         rules:
           - policy: one_factor
-            subject: group:basicusers
-      primaryusers_auth:
+            subject: group:$LDAP_BASIC_USER_GROUP_NAME
+      ${LDAP_PRIMARY_USER_GROUP_NAME}_auth:
         default_policy: deny
         rules:
           - policy: one_factor
-            subject: group:primaryusers
+            subject: group:${LDAP_PRIMARY_USER_GROUP_NAME}
       adminusers_auth:
         default_policy: deny
         rules:
           - policy: one_factor
-            subject: group:admins
+            subject: group:${LDAP_ADMIN_USER_GROUP_NAME}
     hmac_secret: |
       {{- fileContent "/config/secrets/authelia_identity_providers_oidc_hmac_secret.txt" | nindent 6 }}
     jwks:
@@ -17309,14 +17308,14 @@ function fixAutheliaConfig()
       curnum=$((curnum+1))
     done
     curnum=$((curnum+1))
-    outres="${outres}# Authelia basicusers BEGIN\n"
+    outres="${outres}# Authelia $LDAP_BASIC_USER_GROUP_NAME BEGIN\n"
     while [ $curnum -lt ${#inputArr[@]} ]
     do
       if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
       outres="${outres}${inputArr[$curnum]}\n"
       curnum=$((curnum+1))
     done
-    outres="${outres}# Authelia basicusers END\n"
+    outres="${outres}# Authelia $LDAP_BASIC_USER_GROUP_NAME END\n"
     outres="${outres}${inputArr[$curnum]}\n"
     curnum=$((curnum+1))
   
@@ -17327,14 +17326,14 @@ function fixAutheliaConfig()
       curnum=$((curnum+1))
     done
     curnum=$((curnum+1))
-    outres="${outres}# Authelia primaryusers BEGIN\n"
+    outres="${outres}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} BEGIN\n"
     while [ $curnum -lt ${#inputArr[@]} ]
     do
       if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
       outres="${outres}${inputArr[$curnum]}\n"
       curnum=$((curnum+1))
     done
-    outres="${outres}# Authelia primaryusers END\n"
+    outres="${outres}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
     outres="${outres}${inputArr[$curnum]}\n"
     curnum=$((curnum+1))
   
@@ -17345,14 +17344,14 @@ function fixAutheliaConfig()
       curnum=$((curnum+1))
     done
     curnum=$((curnum+1))
-    outres="${outres}# Authelia admins BEGIN\n"
+    outres="${outres}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} BEGIN\n"
     while [ $curnum -lt ${#inputArr[@]} ]
     do
       if [[ "${inputArr[$curnum]}" =~ policy: ]]; then break; fi
       outres="${outres}${inputArr[$curnum]}\n"
       curnum=$((curnum+1))
     done
-    outres="${outres}# Authelia admins END\n"
+    outres="${outres}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
     outres="${outres}${inputArr[$curnum]}\n"
     curnum=$((curnum+1))
   
@@ -18268,8 +18267,8 @@ function checkUpdateAllIPTables()
   # Docker likes to append this during boot
   sudo iptables -D DOCKER-USER -j RETURN > /dev/null 2>&1
 
-  sudo iptables -t filter -L -n > $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
-  sudo iptables -t raw -L -n >> $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
+  sudo iptables -t filter -n -L > $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
+  sudo iptables -t raw -n -L >> $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
 
   # See https://gist.github.com/mattia-beta/bd5b1c68e3d51db933181d8a3dc0ba64?permalink_comment_id=3728715#gistcomment-3728715
   # chain-icmp
@@ -18405,9 +18404,11 @@ function checkUpdateAllIPTables()
   checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m comment --comment "$comment" -j LOG --log-prefix "DOCKER-USER-SUSPICIOUS: " --log-level 4'
   comment="HSHQ_BEGIN DOCKER-USER Policy drop HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m comment --comment "$comment" -j DROP'
-  # Insert this first, then insert everything else at position 2 (i.e. after this rule)
+  # Insert these first, then insert everything else at position 3 (i.e. after these rules)
   comment="HSHQ_BEGIN DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE RETURN HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m comment --comment "$comment" -j RETURN'
+  comment="HSHQ_BEGIN DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED RETURN HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment "$comment" -j RETURN'
 
   # HomeServer Host and WireGuard interfaces
   dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;"))
@@ -18501,7 +18502,7 @@ function checkUpdateAllIPTables()
   tableArr=(raw filter)
   for curTable in "${tableArr[@]}"
   do
-    allIPTCommentsArr=($(sudo iptables -t $curTable -L -n | grep -o "HSHQ_BEGIN.*HSHQ_END"))
+    allIPTCommentsArr=($(sudo iptables -t $curTable -n -L | grep -o "HSHQ_BEGIN.*HSHQ_END"))
     for curComment in "${allIPTCommentsArr[@]}"
     do
       grep "$curComment" $HSHQ_SCRIPT_OPEN_DIR/newRules.txt > /dev/null 2>&1
@@ -18632,7 +18633,7 @@ function insertDOCKERUSERBySubnetAndPortsList()
     for cur_subnet in "${subnetArr[@]}"
     do
       comment="HSHQ_BEGIN DOCKER-USER -s $cur_subnet -m conntrack --ctorigdstport $port_no HSHQ_END"
-      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER 2 -s $cur_subnet -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER 3 -s $cur_subnet -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
     done
   done
 }
@@ -18645,7 +18646,7 @@ function deleteIPTableEntryByChainAndComment()
   logHSHQEvent info "IPTables ($netstate) - deleteIPTableEntryByChainAndComment BEGIN - ipt_table: $ipt_table, ipt_chain: $ipt_chain, ipt_comment: $ipt_comment"
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  ipt_list=($(sudo iptables -t $ipt_table -L $ipt_chain -n --line-numbers | grep "$ipt_comment"))
+  ipt_list=($(sudo iptables -t $ipt_table -n -L $ipt_chain --line-numbers | grep "$ipt_comment"))
   unset rule_list
   for cur_ipt in "${ipt_list[@]}"
   do
@@ -23574,16 +23575,16 @@ function getAutheliaBlock()
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
-  retval="${retval}# Authelia basicusers BEGIN\n"
+  retval="${retval}# Authelia $LDAP_BASIC_USER_GROUP_NAME BEGIN\n"
   retval="${retval}        - $SUB_DISCOURSE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PHOTOPRISM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_INVIDIOUS.$HOMESERVER_DOMAIN\n"
-  retval="${retval}# Authelia basicusers END\n"
+  retval="${retval}# Authelia $LDAP_BASIC_USER_GROUP_NAME END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_BASIC_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
-  retval="${retval}# Authelia primaryusers BEGIN\n"
+  retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} BEGIN\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
@@ -23593,12 +23594,12 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
-  retval="${retval}# Authelia primaryusers END\n"
+  retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_PRIMARY_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
-  retval="${retval}# Authelia admins BEGIN\n"
+  retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} BEGIN\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
@@ -23627,7 +23628,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WAZUH.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WIKIJS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WORDPRESS.$HOMESERVER_DOMAIN\n"
-  retval="${retval}# Authelia admins END\n"
+  retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
   retval="${retval}        - \"group:$LDAP_ADMIN_USER_GROUP_NAME\"\n"
@@ -35334,7 +35335,7 @@ authentication_backend:
       minimum_version: TLS1.2
     base_dn: $LDAP_BASE_DN
     additional_users_dn: ou=people
-    users_filter: (&(&({username_attribute}={input})(objectClass=person))(memberOf=cn=$LDAP_BASIC_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+    users_filter: (&(&({username_attribute}={input})(objectClass=person))(memberOf=cn=everybody,ou=groups,$LDAP_BASE_DN))
     additional_groups_dn: ou=groups
     groups_filter: (&(uniquemember={dn})(objectClass=groupOfUniqueNames))
     group_search_mode: filter
@@ -35416,21 +35417,21 @@ identity_providers:
         rules:
           - policy: one_factor
             subject: group:everyone
-      basicusers_auth:
+      ${LDAP_BASIC_USER_GROUP_NAME}_auth:
         default_policy: deny
         rules:
           - policy: one_factor
-            subject: group:basicusers
-      primaryusers_auth:
+            subject: group:$LDAP_BASIC_USER_GROUP_NAME
+      ${LDAP_PRIMARY_USER_GROUP_NAME}_auth:
         default_policy: deny
         rules:
           - policy: one_factor
-            subject: group:primaryusers
+            subject: group:${LDAP_PRIMARY_USER_GROUP_NAME}
       adminusers_auth:
         default_policy: deny
         rules:
           - policy: one_factor
-            subject: group:admins
+            subject: group:${LDAP_ADMIN_USER_GROUP_NAME}
     hmac_secret: |
       {{- fileContent "/config/secrets/authelia_identity_providers_oidc_hmac_secret.txt" | nindent 6 }}
     jwks:
@@ -41209,7 +41210,7 @@ function installCalibre()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CALIBRE_SERVER $MANAGETLS_CALIBRE_SERVER "$is_integrate_hshq" $NETDEFAULT_CALIBRE_SERVER "$inner_block"
-  insertSubAuthelia $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN admins
+  insertSubAuthelia $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN {\n"
@@ -41413,7 +41414,7 @@ function installNetdata()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NETDATA $MANAGETLS_NETDATA "$is_integrate_hshq" $NETDEFAULT_NETDATA "$inner_block"
-  insertSubAuthelia $SUB_NETDATA.$HOMESERVER_DOMAIN admins
+  insertSubAuthelia $SUB_NETDATA.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll netdata "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" "netdata.png"
@@ -41588,7 +41589,7 @@ function installLinkwarden()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_LINKWARDEN $MANAGETLS_LINKWARDEN "$is_integrate_hshq" $NETDEFAULT_LINKWARDEN "$inner_block"
-  insertSubAuthelia $SUB_LINKWARDEN.$HOMESERVER_DOMAIN primaryusers
+  insertSubAuthelia $SUB_LINKWARDEN.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
@@ -41710,7 +41711,7 @@ EOFDZ
         client_name: Linkwarden
         client_secret: '$LINKWARDEN_OIDC_CLIENT_SECRET_HASH'
         public: false
-        authorization_policy: primaryusers_auth
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         consent_mode: implicit
         scopes:
           - openid
@@ -41816,7 +41817,7 @@ function installStirlingPDF()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_STIRLINGPDF $MANAGETLS_STIRLINGPDF "$is_integrate_hshq" $NETDEFAULT_STIRLINGPDF "$inner_block"
-  insertSubAuthelia $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN primaryusers
+  insertSubAuthelia $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll stirlingpdf "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" "stirlingpdf.png"
@@ -41970,7 +41971,7 @@ function installBarAssistant()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_BARASSISTANT $MANAGETLS_BARASSISTANT "$is_integrate_hshq" $NETDEFAULT_BARASSISTANT "$inner_block"
-  insertSubAuthelia $SUB_BARASSISTANT.$HOMESERVER_DOMAIN primaryusers
+  insertSubAuthelia $SUB_BARASSISTANT.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll bar-assistant "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" "bar-assistant.png"
@@ -42512,7 +42513,7 @@ EOFBA
         client_name: FreshRSS
         client_secret: $FRESHRSS_OIDC_CLIENT_SECRET_HASH
         public: false
-        authorization_policy: primaryusers_auth
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         redirect_uris:
           - https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/i/oidc/
         scopes:
@@ -43104,7 +43105,7 @@ function installJupyter()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_JUPYTER $MANAGETLS_JUPYTER "$is_integrate_hshq" $NETDEFAULT_JUPYTER "$inner_block"
-  insertSubAuthelia $SUB_JUPYTER.$HOMESERVER_DOMAIN admins
+  insertSubAuthelia $SUB_JUPYTER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll jupyter "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" "jupyter.png"
@@ -43271,7 +43272,7 @@ function installPaperless()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PAPERLESS $MANAGETLS_PAPERLESS "$is_integrate_hshq" $NETDEFAULT_PAPERLESS "$inner_block"
-  insertSubAuthelia $SUB_PAPERLESS.$HOMESERVER_DOMAIN primaryusers
+  insertSubAuthelia $SUB_PAPERLESS.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
@@ -43472,7 +43473,7 @@ EOFJT
         client_name: Paperless
         client_secret: '$PAPERLESS_OIDC_CLIENT_SECRET_HASH'
         public: false
-        authorization_policy: primaryusers_auth
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         require_pkce: true
         pkce_challenge_method: S256
         redirect_uris:
@@ -43603,7 +43604,7 @@ function installSpeedtestTrackerLocal()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_LOCAL $MANAGETLS_SPEEDTEST_TRACKER_LOCAL "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_LOCAL "$inner_block"
-  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN admins
+  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
@@ -43860,7 +43861,7 @@ function installSpeedtestTrackerVPN()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_VPN $MANAGETLS_SPEEDTEST_TRACKER_VPN "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_VPN "$inner_block"
-  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN admins
+  insertSubAuthelia $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
@@ -44122,7 +44123,7 @@ function installChangeDetection()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CHANGEDETECTION $MANAGETLS_CHANGEDETECTION "$is_integrate_hshq" $NETDEFAULT_CHANGEDETECTION "$inner_block"
-  insertSubAuthelia $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN primaryusers
+  insertSubAuthelia $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll changedetection "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" "changedetection.png"
@@ -44330,7 +44331,7 @@ function installHuginn()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_HUGINN $MANAGETLS_HUGINN "$is_integrate_hshq" $NETDEFAULT_HUGINN "$inner_block"
-  insertSubAuthelia $SUB_HUGINN.$HOMESERVER_DOMAIN primaryusers
+  insertSubAuthelia $SUB_HUGINN.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
@@ -44833,7 +44834,7 @@ function installPiped()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PIPED_FRONTEND $MANAGETLS_PIPED_FRONTEND "$is_integrate_hshq" $NETDEFAULT_PIPED_FRONTEND "$inner_block"
-  insertSubAuthelia $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN primaryusers
+  insertSubAuthelia $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PIPED_PROXY.$HOMESERVER_DOMAIN {\n"
@@ -46510,7 +46511,7 @@ EOFIM
         client_name: Immich
         client_secret: '$IMMICH_OIDC_CLIENT_SECRET_HASH'
         public: false
-        authorization_policy: primaryusers_auth
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         redirect_uris:
           - https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login
           - https://$SUB_IMMICH.$HOMESERVER_DOMAIN/user-settings
@@ -46668,8 +46669,8 @@ AUTH_OIDC_URI=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
 AUTH_OIDC_CLIENT_SECRET=$HOMARR_OIDC_CLIENT_SECRET
 AUTH_OIDC_CLIENT_ID=homarr
 AUTH_OIDC_CLIENT_NAME=Authelia
-AUTH_OIDC_ADMIN_GROUP=admins
-AUTH_OIDC_OWNER_GROUP=primaryusers
+AUTH_OIDC_ADMIN_GROUP=${LDAP_ADMIN_USER_GROUP_NAME}
+AUTH_OIDC_OWNER_GROUP=${LDAP_PRIMARY_USER_GROUP_NAME}
 NEXTAUTH_URL=https://$SUB_HOMARR.$HOMESERVER_DOMAIN
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 EOFPI
@@ -46680,7 +46681,7 @@ EOFPI
         client_name: Homarr
         client_secret: $HOMARR_OIDC_CLIENT_SECRET_HASH
         public: false
-        authorization_policy: primaryusers_auth
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         redirect_uris:
           - https://$SUB_HOMARR.$HOMESERVER_DOMAIN/api/auth/callback/oidc
         scopes:
@@ -46780,7 +46781,7 @@ function installScriptServer()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SCRIPTSERVER $MANAGETLS_SCRIPTSERVER "$is_integrate_hshq" $NETDEFAULT_SCRIPTSERVER "$inner_block"
-  insertSubAuthelia $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN admins
+  insertSubAuthelia $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   insertEnableSvcAll script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png"
   insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true
   restartAllCaddyContainers
