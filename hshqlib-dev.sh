@@ -78,6 +78,8 @@ function init()
   CADDY_HTTPS_PORT=443
   COTURN_PRIMARY_PORT=3478
   COTURN_SECONDARY_PORT=5349
+  COTURN_COMMS_MIN_PORT=14100
+  COTURN_COMMS_MAX_PORT=14200
   JELLYFIN_PORT=7359
   JITSI_COLIBRI_PORT=8020
   JITSI_JVB_PORT=4443
@@ -1184,7 +1186,7 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 
 # Reserve for Coturn and any other ports above 10000
-net.ipv4.ip_local_reserved_ports = 10000,14100-14200,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$WAZUH_PORT_4
+net.ipv4.ip_local_reserved_ports = $JITSI_MEET_PORT,$COTURN_COMMS_MIN_PORT-$COTURN_COMMS_MAX_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$WAZUH_PORT_4
 
 # See https://community.home-assistant.io/t/zeroconf-error/153883
 
@@ -3453,7 +3455,7 @@ EOFCF
   curdt=$(getCurrentDate)
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_PRESHAREDKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt','$PRIMARY_VPN_SUBNET');select last_insert_rowid();")
+  db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt','$PRIMARY_VPN_SUBNET',true,'$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT','$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT');select last_insert_rowid();")
   mail_host_id=$(sudo sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_SV_IP');"
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
@@ -3462,6 +3464,7 @@ EOFCF
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
 
   updatePortainerJitsiIPChanges
+  checkUpdateAllIPTables setupHostedVPN
 
   RELAYSERVER_IS_INIT=true
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
@@ -7723,11 +7726,6 @@ function connectVPN()
   rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
   is_primary=$(sqlite3 $HSHQ_DB "select IsPrimary from hsvpn_connections where ID=$db_id;")
   
-  if [ $is_primary = 1 ]; then
-    addPrimaryVPNIPTables
-  else
-    addOtherVPNIPTables $db_id
-  fi
   enableWGInterfaceQuick $ifaceName
 
   # If not hosting or non-primary VPN, then add CA domain.
@@ -8939,6 +8937,8 @@ function performNetworkInvite()
   last_line="$(awk 'NF{s=$0}END{print s}' $apply_file)"
   if ! [ "$first_line" = "$APPLICATION_FIRST_LINE" ] || ! [ "$last_line" = "$APPLICATION_LAST_LINE" ]; then
     echo "ERROR: Incomplete application."
+    echo "first_line: $first_line"
+    echo "last_line: $last_line"
     return 7
   fi
   request_id=$(getValueFromConfig "RequestID" $apply_file)
@@ -9704,10 +9704,14 @@ function performNetworkJoin()
       config_name="Other-VPN-$domain_name"
       net_type="other"
       isPrimary=0
+      input_ports_list=$INPUT_OTHER_VPN_ALLOW_PORTS_DEFAULT
+      docker_user_ports_list=$DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT
       if [ "$is_primary" = "true" ]; then
         isPrimary=1
         config_name="Primary-VPN-$domain_name"
         net_type="primary"
+        input_ports_list=$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT
+        docker_user_ports_list=$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT
       fi
       checkname_db=$(sqlite3 $HSHQ_DB "select Name from connections where Name='$config_name';")
       if ! [ -z "$checkname_db" ]; then
@@ -9769,8 +9773,9 @@ function performNetworkJoin()
       dns_file=$HOME/dns.tmp
       echo -e "$dns_section" > $dns_file
       curdt=$(getCurrentDate)
-      db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$preshared_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt','$vpn_subnet');select last_insert_rowid();")
+      db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('$config_name','$email_address','homeserver_vpn','$net_type','$my_pub_key','$preshared_key','$client_ip',false,'$interface_name','$endpoint_hostname','$curdt','$vpn_subnet',true,'$input_ports_list','$docker_user_ports_list');select last_insert_rowid();")
       sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$cur_hs_name','$isPrimary','$domain_name','$ext_prefix','$int_prefix','$ca_abbrev','$ca_ip','$ca_subdomain','$ca_url','$rs_vpn_ip');"
+      checkUpdateAllIPTables performNetworkJoin
       if [ "$IS_INSTALLED" = "true" ]; then
         echo "Updating HomeServer DNS and restarting Heimdall..."
         docker container stop heimdall >/dev/null
@@ -9900,7 +9905,6 @@ function removeMyNetworkPrimaryVPN()
   sleep 30
 
   removeWGInterfaceQuick $ifaceName
-  removePrimaryVPNIPTables
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${ifaceName}.conf
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
   checkDeleteStackAndDirectory caddy-$ifaceName "Caddy" true true
@@ -9974,6 +9978,7 @@ function removeMyNetworkPrimaryVPN()
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
   updatePortainerJitsiIPChanges
+  checkUpdateAllIPTables removeMyNetworkPrimaryVPN
   resetRelayServerData
 }
 
@@ -10133,6 +10138,7 @@ function disconnectOtherNetworkHomeServerVPNConnection()
     fi
   done
   updatePortainerJitsiIPChanges
+  checkUpdateAllIPTables disconnectOtherNetworkHomeServerVPNConnection
   # Notify host that you have disconnected.
   email_subj="HomeServer VPN Disconnect Notice from $HOMESERVER_NAME"
   email_body=""
@@ -12097,6 +12103,48 @@ function checkValidPassword()
     echo "false"
   else
     echo "true"
+  fi
+}
+
+function checkValidPortsList()
+{
+  check_string="$1"
+  if ! [ $(checkValidString "$check_string" ",:/") = "true" ]; then 
+    echo "The list of ports is invalid. It must consist of 0-9, a-z, commas(,), colons(:), and/or fwd slash (/) with no spaces."
+    return 1
+  else
+    portListArr=($(echo "$check_string" | tr "," "\n"))
+    for curPort in "${portListArr[@]}"
+    do
+      port_no=$(echo "$curPort" | cut -d"/" -f1 | xargs)
+      unset port_prot
+      if [[ $curPort =~ "/" ]]; then
+        port_prot=$(echo "$curPort" | cut -d"/" -f2- | xargs)
+      fi
+      if ! [[ $port_no =~ ^[0-9:]+$ ]]; then
+        echo "One of the port numbers in the list is invalid. It must consist of 0-9, and/or colons(:) with no spaces."
+        return 2
+      fi
+      if [[ $port_no =~ ":" ]]; then
+        port_begin=$(echo "$port_no" | cut -d":" -f1 | xargs)
+        port_end=$(echo "$port_no" | cut -d":" -f2- | xargs)
+        if ! [[ $port_begin =~ ^[0-9]+$ ]] || ! [[ $port_end =~ ^[0-9]+$ ]]; then
+          echo "One of the port numbers in the list is invalid. It must consist of 0-9, and/or colons(:) with no spaces."
+          return 3
+        fi
+      fi
+      if ! [ -z "$port_prot" ]; then
+        case "$port_prot" in
+          tcp|udp|both)
+            continue
+          ;;
+          *)
+            echo "One of the port protocols in the list is invalid. It must be either tcp, udp, or both: $port_prot"
+            return 4
+          ;;
+        esac
+      fi
+    done
   fi
 }
 
@@ -15838,7 +15886,7 @@ EOFBS
   outputRestartStacksBootscript
   updateSysctl false
   if [ -f $HSHQ_STACKS_DIR/coturn/turnserver.conf ]; then
-    grep 14100 $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
+    grep $COTURN_COMMS_MIN_PORT $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       # Reinstall coturn with new ports
       echo -e "\n\n\nCoturn must be reinstalled due to a change in the port range.\nThis will result in the reverse proxy (Caddy) being restarted,\nand this web page will desync as a result. Ensure to refresh \nthe web page when this occurs, in order to continue the update."
@@ -16736,6 +16784,7 @@ EOFRS
     sudo sqlite3 $HSHQ_DB "alter table connections add IsExposeToNetwork boolean;"
     sudo sqlite3 $HSHQ_DB "alter table connections add InputAllowPorts text default null;"
     sudo sqlite3 $HSHQ_DB "alter table connections add DockerUserAllowPorts text default null;"
+    sudo sqlite3 $HSHQ_DB "create table customfwsubnet(ID integer not null primary key autoincrement,Name text not null, Subnet text not null, InputAllowPorts text default null, DockerUserAllowPorts text default null);"
   fi
   
   sudo grep "172\.16\.0\.0\/12" /etc/docker/daemon.json > /dev/null 2>&1
@@ -16909,65 +16958,65 @@ function moveVarsToPlaintextFile()
   updatePlaintextRootConfigVar HOMEASSISTANT_LOCALHOST_PORT $HOMEASSISTANT_LOCALHOST_PORT
   updatePlaintextRootConfigVar HOMEASSISTANT_DB_LOCALHOST_PORT $HOMEASSISTANT_DB_LOCALHOST_PORT
 
-  sudo sed -i "/RELAYSERVER_WG_VPN_SUBNET=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMENET_ADDITIONAL_IPS=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_HOST_PRIMARY_INTERFACE_IP=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_HOST_ISPRIVATE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_HOST_ISPRIVATE_IP=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_HOST_RANGE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/WAZUH_AGENT_VERSION=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/DEFAULT_NETWORK_POOL=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/DEFAULT_NETWORK_SIZE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HSHQ_VERSION=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_DOMAIN=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_NAME=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_ABBREV=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/EMAIL_ADMIN_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/EXT_DOMAIN_PREFIX=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/INT_DOMAIN_PREFIX=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/TZ=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/SSH_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CURRENT_SSH_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/ADMIN_USERNAME_BASE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/PRIMARY_VPN_SETUP_TYPE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/DESKTOP_ENV=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HSHQ_BASE_DIR=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/DISABLED_SERVICES=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/ADMIN_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/USERS_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVERS_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/RELAYSERVER_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/WIREGUARD_DNS_REFRESH_RATE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/LECERTS_REFRESH_RATE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/DOCKER_NETWORK_RESERVED_RANGE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/DOCKER_NETWORK_SIZE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/IS_AUTO_UPDATE_NETWORK=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_IS_CA_INIT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_ROOT_CA_NAME=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_DHPARAMS_KEYLENGTH=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_COUNTRY=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_STATE=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_LOCALITY=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_ORG_NAME=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_OU_NAME=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_ROOT_CN=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_INTERMEDIATE_CN=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/CERTS_INTERNAL_CA_DAYS=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/PORTAINER_ADMIN_USERNAME=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/PORTAINER_ADMIN_PASSWORD=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/PORTAINER_LOCAL_HTTPS_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/SCRIPTSERVER_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/ADGUARD_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/ADGUARD_ADMIN_USERNAME=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/ADGUARD_ADMIN_PASSWORD=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMEASSISTANT_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMEASSISTANT_DB_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/DOCKER_METRICS_PORT=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/JITSI_ADVERTISE_IPS=/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/# Jitsi (Service Details) BEGIN/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/# Jitsi (Service Details) END/d" $CONFIG_FILE >/dev/null
-  sudo sed -i "/HOMESERVER_HOST_IP=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^RELAYSERVER_WG_VPN_SUBNET=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMENET_ADDITIONAL_IPS=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_HOST_PRIMARY_INTERFACE_IP=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_HOST_ISPRIVATE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_HOST_ISPRIVATE_IP=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_HOST_RANGE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^WAZUH_AGENT_VERSION=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^DEFAULT_NETWORK_POOL=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^DEFAULT_NETWORK_SIZE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HSHQ_VERSION=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_DOMAIN=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_NAME=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_ABBREV=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^EMAIL_ADMIN_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^EXT_DOMAIN_PREFIX=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^INT_DOMAIN_PREFIX=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^TZ=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^SSH_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CURRENT_SSH_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^ADMIN_USERNAME_BASE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^PRIMARY_VPN_SETUP_TYPE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^DESKTOP_ENV=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HSHQ_BASE_DIR=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^DISABLED_SERVICES=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^ADMIN_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^USERS_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVERS_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^RELAYSERVER_COLOR_CODE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^WIREGUARD_DNS_REFRESH_RATE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^LECERTS_REFRESH_RATE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^DOCKER_NETWORK_RESERVED_RANGE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^DOCKER_NETWORK_SIZE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^IS_AUTO_UPDATE_NETWORK=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_IS_CA_INIT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_ROOT_CA_NAME=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_DHPARAMS_KEYLENGTH=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_COUNTRY=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_STATE=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_LOCALITY=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_ORG_NAME=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_OU_NAME=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_ROOT_CN=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_INTERMEDIATE_CN=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^CERTS_INTERNAL_CA_DAYS=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^PORTAINER_ADMIN_USERNAME=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^PORTAINER_ADMIN_PASSWORD=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^PORTAINER_LOCAL_HTTPS_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^SCRIPTSERVER_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^ADGUARD_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^ADGUARD_ADMIN_USERNAME=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^ADGUARD_ADMIN_PASSWORD=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMEASSISTANT_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMEASSISTANT_DB_LOCALHOST_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^DOCKER_METRICS_PORT=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^JITSI_ADVERTISE_IPS=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Jitsi (Service Details) BEGIN/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Jitsi (Service Details) END/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^HOMESERVER_HOST_IP=/d" $CONFIG_FILE >/dev/null
 }
 
 function fixInterfaceNames()
@@ -18058,11 +18107,6 @@ function nukeHSHQ()
   exit 2
 }
 
-function getExposedPortsList()
-{
-  echo "$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT"
-}
-
 function outputBootScripts()
 {
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/beforenetwork
@@ -18404,6 +18448,17 @@ function checkUpdateAllIPTables()
     fi
   done
 
+  # Custom rules
+  dbIDArr=($(sqlite3 $HSHQ_DB "select ID from customfwsubnet;"))
+  for curDBID in "${dbIDArr[@]}"
+  do
+    curSubnet=$(sqlite3 $HSHQ_DB "select Subnet from customfwsubnet where ID=$curDBID;")
+    curInputAllowPorts=$(sqlite3 $HSHQ_DB "select InputAllowPorts from customfwsubnet where ID=$curDBID;")
+    curDockerUserAllowPorts=$(sqlite3 $HSHQ_DB "select DockerUserAllowPorts from customfwsubnet where ID=$curDBID;")
+    appendINPUTBySubnetAndPortsList "$curSubnet" "$curInputAllowPorts"
+    insertDOCKERUSERBySubnetAndPortsList "$curSubnet" "$curDockerUserAllowPorts"
+  done
+
   # Query docker networks and add some more anti-spoofing rules
   if ! [ "$netstate" = "prenetwork" ]; then
     timeout 5 docker ps > /dev/null 2>&1
@@ -18511,6 +18566,13 @@ function appendINPUTBySubnetAndPortsList()
   if [ -z "$subnetList" ] ||  [ -z "$portList" ]; then
     return
   fi
+  checkValidPortsList "$portList"
+  if [ $? -ne 0 ]; then
+    strMsg="There was an error with the ports list: portList"
+    logHSHQEvent error "IPTables ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
+    echo "ERROR: $strMsg"
+    return
+  fi
   portsArr=($(echo $portList | tr "," "\n"))
   subnetArr=($(echo $subnetList | tr "," "\n"))
   for cur_port in "${portsArr[@]}"
@@ -18544,14 +18606,24 @@ function insertDOCKERUSERBySubnetAndPortsList()
   if [ -z "$subnetList" ] ||  [ -z "$portList" ]; then
     return
   fi
+  checkValidPortsList "$portList"
+  if [ $? -ne 0 ]; then
+    strMsg="There was an error with the ports list: portList"
+    logHSHQEvent error "IPTables ($netstate) (insertDOCKERUSERBySubnetAndPortsList) - $strMsg"
+    echo "ERROR: $strMsg"
+    return
+  fi
   portsArr=($(echo $portList | tr "," "\n"))
   subnetArr=($(echo $subnetList | tr "," "\n"))
   for cur_port in "${portsArr[@]}"
   do
+    # Protocol doesn't matter here, but just in case the user added it
+    port_no=$(echo "$cur_port" | cut -d"/" -f1 | xargs)
+    port_prot=$(echo "$cur_port" | cut -d"/" -f2 | xargs)
     for cur_subnet in "${subnetArr[@]}"
     do
-      comment="HSHQ_BEGIN DOCKER-USER -s $cur_subnet -m conntrack --ctorigdstport $cur_port HSHQ_END"
-      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER 3 -s $cur_subnet -m conntrack --ctorigdstport $cur_port --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+      comment="HSHQ_BEGIN DOCKER-USER -s $cur_subnet -m conntrack --ctorigdstport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER 3 -s $cur_subnet -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
     done
   done
 }
@@ -20030,6 +20102,26 @@ function checkUpdateHostInterface()
   esac
 }
 
+function addFirewallSubnet()
+{
+  ruleName="$1"
+  subnet="${2}/${3}"
+  if [ $(checkValidStringUpperLowerNumbers "$ruleName" "-") = "false" ]; then
+    strMsg="The rule name is invalid. It must consist of a-z (lowercase), 0-9, and/or -, no spaces."
+    logHSHQEvent error "addFirewallSubnet - $strMsg"
+    echo "ERROR: $strMsg"
+    return 1
+  fi
+  sudo sqlite3 $HSHQ_DB "insert into customfwsubnet(Name,Subnet) values('$ruleName','$subnet');"
+}
+
+function removeFirewallSubnet()
+{
+  db_id=$1
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from customfwsubnet where ID=$db_id;"
+  checkUpdateAllIPTables removeFirewallSubnet
+}
+
 function updatePortainerJitsiIPChanges()
 {
   if ! [ "$IS_INSTALLED" = "true" ]; then
@@ -20080,12 +20172,28 @@ function updateExposedPortsLists()
   selectedChain="$1"
   selectedList="$2"
   selectedPorts="$3"
-
+  checkValidPortsList "$selectedPorts"
+  if [ $? -ne 0 ]; then
+    strMsg="There was an error with the ports list: $selectedPorts"
+    logHSHQEvent error "updateExposedPortsLists (checkValidPortsList) - $strMsg"
+    echo "ERROR: $strMsg"
+    return 1
+  fi
   #echo "selectedChain: $selectedChain, selectedList: $selectedList, selectedPorts: $selectedPorts"
-
+  checkCustom=$(echo "$selectedList" | cut -d" " -f2 | xargs)
   if [ "${selectedList: -8}" = "_DEFAULT" ]; then
     echo "Default list updated - $selectedList"
     updatePlaintextUserConfigVar "$selectedList" "$selectedPorts"
+  elif [ "$checkCustom" = "(Custom)" ]; then
+    intID=$(echo "$selectedList" | cut -d" " -f1 | xargs)
+    if [ "$selectedChain" = "INPUT" ]; then
+      sudo sqlite3 $HSHQ_DB "update customfwsubnet set InputAllowPorts='$selectedPorts' where ID=$intID;"
+    elif [ "$selectedChain" = "DOCKER-USER" ]; then
+      sudo sqlite3 $HSHQ_DB "update customfwsubnet set DockerUserAllowPorts='$selectedPorts' where ID=$intID;" 
+    fi
+    echo "Applying results to firewall..."
+    checkUpdateAllIPTables updatePorts1
+    echo "Edits to firewall completed successfully!"
   else
     intName=$(echo "$selectedList" | cut -d" " -f1 | xargs)
     if [ "$selectedChain" = "INPUT" ]; then
@@ -20095,7 +20203,7 @@ function updateExposedPortsLists()
       # Check 
     fi
     echo "Applying results to firewall..."
-    checkUpdateAllIPTables updatePorts
+    checkUpdateAllIPTables updatePorts2
     echo "Edits to firewall completed successfully!"
   fi
 }
@@ -21989,9 +22097,9 @@ INPUT_OTHER_VPN_ALLOW_PORTS_DEFAULT=
 # INPUT Chain Defaults END
 
 # DOCKER-USER Chain Defaults BEGIN
-DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$(getExposedPortsList)
-DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT
-DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT
+DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
 # DOCKER-USER Chain Defaults END
 
 EOFPT
@@ -44439,7 +44547,7 @@ services:
       - "$COTURN_PRIMARY_PORT:$COTURN_PRIMARY_PORT/udp"
       - "$COTURN_SECONDARY_PORT:$COTURN_SECONDARY_PORT"
       - "$COTURN_SECONDARY_PORT:$COTURN_SECONDARY_PORT/udp"
-      - "14100-14200:14100-14200/udp"
+      - "${COTURN_COMMS_MIN_PORT}-${COTURN_COMMS_MAX_PORT}:${COTURN_COMMS_MIN_PORT}-${COTURN_COMMS_MAX_PORT}/udp"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -44467,8 +44575,8 @@ EOFRM
   cat <<EOFRM > $HSHQ_STACKS_DIR/coturn/turnserver.conf
 listening-port=$COTURN_PRIMARY_PORT
 tls-listening-port=$COTURN_SECONDARY_PORT
-min-port=14100
-max-port=14200
+min-port=$COTURN_COMMS_MIN_PORT
+max-port=$COTURN_COMMS_MAX_PORT
 fingerprint
 use-auth-secret
 static-auth-secret=$COTURN_STATIC_SECRET
@@ -46904,6 +47012,14 @@ IFS=\$(echo -en "\n\b")
 expList=(\$(sqlite3 $HSHQ_DB "select InterfaceName,' (',Name,')' from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;" | sed 's/|//g'))
 IFS=\$OLDIFS
 
+tmpList=(\$(sqlite3 $HSHQ_DB "select ID from customfwsubnet;"))
+for curID in "\${tmpList[@]}"
+do
+  curName=\$(sqlite3 $HSHQ_DB "select Name from customfwsubnet where ID=\$curID;")
+  curSubnet=\$(sqlite3 $HSHQ_DB "select Subnet from customfwsubnet where ID=\$curID;")
+  expList+=( "\$curID (Custom) \$curName [\$curSubnet]" )
+done
+
 if [ "\$chainName" = "INPUT" ]; then
   expList+=( "INPUT_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT" )
   expList+=( "INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT" )
@@ -46927,8 +47043,17 @@ EOFSC
 chainName="\$1"
 varName="\$2"
 
+checkCustom=\$(echo "\$varName" | cut -d" " -f2)
+
 if [ "\${varName: -8}" = "_DEFAULT" ]; then
   echo \$(grep ^\$varName= $HSHQ_PLAINTEXT_USER_CONFIG | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+elif [ "\${checkCustom}" = "(Custom)" ]; then
+  intID=\$(echo "\$varName" | cut -d" " -f1 | xargs)
+  if [ "\$chainName" = "INPUT" ]; then
+    sqlite3 $HSHQ_DB "select InputAllowPorts from customfwsubnet where ID=\$intID;"
+  elif [ "\$chainName" = "DOCKER-USER" ]; then
+    sqlite3 $HSHQ_DB "select DockerUserAllowPorts from customfwsubnet where ID=\$intID;"
+  fi
 else
   intName=\$(echo "\$varName" | cut -d" " -f1 | xargs)
   if [ "\$chainName" = "INPUT" ]; then
@@ -47568,8 +47693,9 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
-
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
@@ -47590,6 +47716,21 @@ EOFSC
   "description": "Emails all login credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a human-readable format, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
   "group": "$group_id_misc",
   "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
     {
       "name": "Enter config decrypt password",
       "required": true,
@@ -49006,6 +49147,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
@@ -49329,9 +49471,9 @@ configname=\$(getArgumentValue configname "\$@")
 
 set +e
 if [ -z "\$configname" ]; then
-  echo "\$2" > \$HOME/apply_hsv.cnf
-else
   echo "\$3" > \$HOME/apply_hsv.cnf
+else
+  echo "\$4" > \$HOME/apply_hsv.cnf
 fi
 performNetworkInvite "\$HOME/apply_hsv.cnf" "\$configname"
 retVal=\$?
@@ -49778,7 +49920,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-removeReason="\$3"
+removeReason="\$4"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -49875,7 +50017,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-removeReason="\$3"
+removeReason="\$4"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -49972,7 +50114,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-removeReason="\$3"
+removeReason="\$4"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -50246,13 +50388,16 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
 configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
-strMsg="\$2"
+strMsg="\$3"
+
 set +e
 echo "Emailing broadcast message..."
 sendEmailMyNetworkBroadcast "\$strMsg"
@@ -50268,6 +50413,21 @@ EOFSC
   "description": "Emails a broadcast message. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will send a broadcast message to all users and connected devices on your network.",
   "group": "$group_id_mynetwork",
   "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
     {
       "name": "Enter config decrypt password",
       "required": true,
@@ -51224,9 +51384,11 @@ source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
+dnsconfig="\$3"
+
 set +e
 echo "Updating HomeServer DNS..."
-echo "\$2" > \$HOME/dns.tmp
+echo "\$dnsconfig" > \$HOME/dns.tmp
 updateHomeServerDNS \$HOME/dns.tmp
 rm -f \$HOME/dns.tmp
 set -e
@@ -52725,7 +52887,7 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Select Set As Primary",
+      "name": "Select Primary Option",
       "required": false,
       "param": "-isprimary=",
       "same_arg_param": true,
@@ -52736,12 +52898,12 @@ EOFSC
           "type": "new_line"
         }
       },
-      "values": [ "Set As Primary" ],
+      "values": [ "Set As Primary", "Do Nothing" ],
       "secure": false,
       "pass_as": "argument"
     },
     {
-      "name": "Select Expose To Network Setting",
+      "name": "Select Expose Option",
       "required": false,
       "param": "-isexpose=",
       "same_arg_param": true,
@@ -52774,6 +52936,8 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 removeinterface=\$(getArgumentValue removeinterface "\$@")
+
+removeinterface=\$(echo "\$removeinterface" | cut -d" " -f1 | xargs)
 
 set +e
 echo "Removing host interface (\$removeinterface)..."
@@ -52835,7 +52999,209 @@ EOFSC
         }
       },
       "values": {
-        "script": "sqlite3 $HSHQ_DB \"select InterfaceName from connections where NetworkType='home_network';\" | sed 's/|//g'",
+        "script": "sqlite3 $HSHQ_DB \"select InterfaceName,' (',ConnectionType,')' from connections where NetworkType='home_network';\" | sed 's/|//g'",
+        "shell": true
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addCustomFirewallSubnet.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+ruleName=\$(getArgumentValue ruleName "\$@")
+ipaddr=\$(getArgumentValue ipaddr "\$@")
+cidrlen=\$(getArgumentValue cidrlen "\$@")
+
+set +e
+echo "Adding custom subnet \${ipaddr}/\${cidrlen} (\$ruleName)..."
+addFirewallSubnet "\$ruleName" "\$ipaddr" "\$cidrlen"
+retVal=\$?
+set -e
+performExitFunctions false
+exit \$retVal
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addCustomFirewallSubnet.json
+{
+  "name": "05 Add Custom Subnet",
+  "script_path": "conf/scripts/addCustomFirewallSubnet.sh",
+  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function ",
+  "group": "$group_id_homenetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter rule name",
+      "required": true,
+      "param": "-ruleName=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter an IP address",
+      "required": true,
+      "param": "-ipaddr=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "0.0.0.0",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "CIDR length",
+      "required": true,
+      "param": "-cidrlen=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 1
+      },
+      "default": "32",
+      "min": "0",
+      "max": "32",
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removeCustomFirewallSubnet.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+configpw=\$(getArgumentValue configpw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+
+pfRemRule=\$(getArgumentValue pfRemRule "\$@")
+pfRemID=\$(echo "\$pfRemRule" | cut -d" " -f1)
+
+set +e
+echo "Removing custom firewall subnet (\$pfRemRule)..."
+removeFirewallSubnet "\$pfRemID"
+retVal=\$?
+if [ \$retVal -ne 0 ]; then
+  echo "ERROR: \$strRes"
+fi
+set -e
+performExitFunctions false
+exit \$retVal
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removeCustomFirewallSubnet.json
+{
+  "name": "06 Remove Custom Subnet",
+  "script_path": "conf/scripts/removeCustomFirewallSubnet.sh",
+  "description": "Removes a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function ",
+  "group": "$group_id_homenetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "param": "-configpw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the rule to remove",
+      "required": false,
+      "param": "-pfRemRule=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "sqlite3 $HSHQ_DB \"select ID,' (Custom) ',Name,' [',Subnet,']' from customfwsubnet;\" | sed 's/|//g'",
         "shell": true
       },
       "secure": false,
