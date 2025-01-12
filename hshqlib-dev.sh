@@ -67,10 +67,10 @@ function init()
   NET_LDAP_BRIDGE_NAME=brdockldap
   NET_LDAP_SUBNET=172.16.6.0/24
   NET_LDAP_SUBNET_PREFIX=172.16.6
-  NET_MAILU_EXT_BRIDGE_NAME=br-mailu-ext
+  NET_MAILU_EXT_BRIDGE_NAME=brmailuext
   NET_MAILU_EXT_SUBNET=172.16.7.0/24
   NET_MAILU_EXT_SUBNET_PREFIX=172.16.7
-  NET_MAILU_INT_BRIDGE_NAME=br-mailu-int
+  NET_MAILU_INT_BRIDGE_NAME=brmailuint
   NET_MAILU_INT_SUBNET=172.16.8.0/24
   NET_MAILU_INT_SUBNET_PREFIX=172.16.8
   ADGUARD_DNS_PORT=53
@@ -971,7 +971,7 @@ EOF
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Update Linux OS and Reboot" \
   "2" "Download All Docker Images" \
-  "3" "Perform Networking Checks" \
+  "3" "Check For IP Address Changes" \
   "4" "Configure Simple Backup" \
   "5" "Uninstall and Remove Everything" \
   "6" "Exit" 3>&1 1>&2 2>&3)
@@ -993,7 +993,7 @@ EOF
       return 1 ;;
     3)
       checkLoadConfig
-      performNetworkingChecks true
+      checkHostInterfaceIPChanges true
       set +e
       return 1 ;;
     4)
@@ -1529,12 +1529,21 @@ function initConfig()
   if [ "$IS_INSTALLED" = "true" ]; then
     return 0
   fi
+  if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
+    echo "Installing sqlite3, please wait..."
+    performAptInstall sqlite3 > /dev/null 2>&1
+  fi
+  if [[ "$(isProgramInstalled sipcalc)" = "false" ]]; then
+    echo "Installing sipcalc, please wait..."
+    performAptInstall sipcalc > /dev/null 2>&1
+  fi
   if [ -z "$CONFIG_FILE" ]; then
     # Create new directories and config file
     showYesNoMessageBox "No Config Found" "No configuration file found, create initial environment (y/n)?"
 	createInitialEnv
     loadConfigVars
   fi
+
   set +e
   if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
     showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
@@ -10738,6 +10747,7 @@ function initHSHQDB()
   sqlite3 $HSHQ_DB "create table mailhostmap(MailHostID integer not null references mailhosts(ID) on delete cascade,Domain text not null,IsFirstDomain boolean,primary key (MailHostID,Domain));"
   sqlite3 $HSHQ_DB "create table lecertdomains(Domain text primary key,BaseDomain text not null);"
   sqlite3 $HSHQ_DB "create table exposedomains(Domain text primary key,BaseDomain text not null);"
+  sqlite3 $HSHQ_DB "create table customfwsubnet(ID integer not null primary key autoincrement,Name text not null, Subnet text not null, InputAllowPorts text default null, DockerUserAllowPorts text default null);"
   sudo chmod 640 $HSHQ_DB
   sudo chown root $HSHQ_DB
 }
@@ -16845,6 +16855,7 @@ EOFRS
   startPortainer
   echo "Fixing interface names..."
   fixInterfaceNames
+  fixMailuNetworkNames
   echo "Clearing and re-initializing iptables..."
   performClearIPTables true
   checkUpdateAllIPTables versionUpdate
@@ -16864,7 +16875,6 @@ EOFRS
     outputConfigCaddy home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME home $(getHSHostIPVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME) home na na na "$(getHSHostSubnetVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME)" "$(getNonPrivateConnectingIP)"
     installStack caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME "serving initial configuration" $HOME/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME.env
   fi
-
   sudo systemctl disable runOnBootRoot
   sudo systemctl daemon-reload
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
@@ -16873,7 +16883,6 @@ EOFRS
     sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts $HSHQ_SCRIPTS_DIR/boot/afterdocker
   fi
   outputBootScripts
-
   set -e
 }
 
@@ -17089,6 +17098,16 @@ function fixInterfaceNames()
       sudo sqlite3 $HSHQ_DB "update connections set InterfaceName = '${new_ext_name}' where InterfaceName = '${old_ext_name}';"
     fi
   done
+}
+
+function fixMailuNetworkNames()
+{
+  startStopStack mailu stop
+  docker network rm dock-mailu-ext > /dev/null
+  docker network rm dock-mailu-int > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_EXT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_EXT_SUBNET dock-mailu-ext > /dev/null
+  docker network create -o com.docker.network.bridge.name=$NET_MAILU_INT_BRIDGE_NAME --driver=bridge --subnet $NET_MAILU_INT_SUBNET --internal dock-mailu-int > /dev/null
+  startStopStack mailu start
 }
 
 function mfFixCACertPath()
@@ -18375,17 +18394,9 @@ function checkUpdateAllIPTables()
   comment="HSHQ_BEGIN INPUT -s $DOCKER_NETWORK_RESERVED_RANGE -p udp --dport 123 HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -A INPUT -s $DOCKER_NETWORK_RESERVED_RANGE -p udp --dport 123 -m comment --comment "$comment" -j ACCEPT'
 
-  if ! [ -z "$IS_INSTALLED" ] && [ "$IS_INSTALLED" = "false" ]; then
-    cur_ssh_port=$(grep "^Port" /etc/ssh/sshd_config)
-    if [ $? -ne 0 ]; then
-      cur_ssh_port=22
-    else
-      cur_ssh_port=$(sudo grep ^Port /etc/ssh/sshd_config | xargs | cut -d" " -f2)
-    fi
-    if ! [ -z "$SSH_PORT" ] && ! [ "$cur_ssh_port" = "$SSH_PORT" ]; then
-      comment="HSHQ_BEGIN Temp allow SSH port $cur_ssh_port HSHQ_END"
-      checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp --dport $cur_ssh_port -m comment --comment "$comment" -j ACCEPT'
-    fi
+  if ! [ -z "$IS_INSTALLED" ] && [ "$IS_INSTALLED" = "false" ] && ! [ -z "$CURRENT_SSH_PORT" ] && ! [ "$CURRENT_SSH_PORT" = "$SSH_PORT" ]; then
+    comment="HSHQ_BEGIN Temp allow SSH port $CURRENT_SSH_PORT HSHQ_END"
+    checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -m comment --comment "$comment" -j ACCEPT'
   fi
 
   # DOCKER-USER
@@ -18394,11 +18405,9 @@ function checkUpdateAllIPTables()
   checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m comment --comment "$comment" -j LOG --log-prefix "DOCKER-USER-SUSPICIOUS: " --log-level 4'
   comment="HSHQ_BEGIN DOCKER-USER Policy drop HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m comment --comment "$comment" -j DROP'
-  # Insert these first, then insert everything else at position 3 (i.e. after these rules)
+  # Insert this first, then insert everything else at position 2 (i.e. after this rule)
   comment="HSHQ_BEGIN DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE RETURN HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m comment --comment "$comment" -j RETURN'
-  comment="HSHQ_BEGIN DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED RETURN HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment "$comment" -j RETURN'
 
   # HomeServer Host and WireGuard interfaces
   dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;"))
@@ -18461,7 +18470,7 @@ function checkUpdateAllIPTables()
 
   # Query docker networks and add some more anti-spoofing rules
   if ! [ "$netstate" = "prenetwork" ]; then
-    timeout 5 docker ps > /dev/null 2>&1
+    timeout 10 docker ps > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       networksArr=($(docker network ls -q))
       for curNet in "${networksArr[@]}"
@@ -18623,7 +18632,7 @@ function insertDOCKERUSERBySubnetAndPortsList()
     for cur_subnet in "${subnetArr[@]}"
     do
       comment="HSHQ_BEGIN DOCKER-USER -s $cur_subnet -m conntrack --ctorigdstport $port_no HSHQ_END"
-      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER 3 -s $cur_subnet -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER 2 -s $cur_subnet -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
     done
   done
 }
@@ -18742,7 +18751,7 @@ function main()
 {
   source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  performNetworkingChecks false
+  checkHostInterfaceIPChanges false
 }
 main
 EOFBS
@@ -20132,7 +20141,7 @@ function updatePortainerJitsiIPChanges()
   startStopStack jitsi start > /dev/null 2>&1
 }
 
-function performNetworkingChecks()
+function checkHostInterfaceIPChanges()
 {
   isBypassHSHQStatus=$1
   set +e
@@ -20150,13 +20159,17 @@ function performNetworkingChecks()
     return
   fi
   interfaceListArr=($(echo $HOMESERVER_HOST_NETWORK_INTERFACES | tr "," "\n"))
+  isUpdateIPT=false
   for curInterface in "${interfaceListArr[@]}"
   do
     checkUpdateHostInterface update $curInterface
+    if [ $? -eq 0 ]; then
+      isUpdateIPT=true
+    fi
   done
   checkUpdateAllIPTables maintenance
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
-    closeHSHQScript "performNetworkingChecks"
+    closeHSHQScript "checkHostInterfaceIPChanges"
   fi
 }
 
