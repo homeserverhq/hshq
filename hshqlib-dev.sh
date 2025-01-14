@@ -100,6 +100,8 @@ function init()
   WAZUH_PORT_3=514
   WAZUH_PORT_4=55000
   WAZUH_PORT_5=9200
+  DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
+  DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
   MAX_DOCKER_PULL_TRIES=10
   MENU_WIDTH=85
   MENU_HEIGHT=25
@@ -110,6 +112,7 @@ function init()
   SUDO_LONG_TIMEOUT_FILENAME=sudohshqinstall
   SUDO_MAX_RETRIES=20
   MAILX_TIMEOUT=15
+  NETPLAN_ORIGIN_HINT=88-hshq
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
   IS_HSHQ_DEV_FILENAME=hshq.dev
@@ -149,7 +152,7 @@ function init()
   HSHQ_CUSTOM_POST_IPTABLES_SCRIPT=$HSHQ_SCRIPTS_DIR/root/userCustomPostIPTables.sh
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
-  UTILS_LIST="whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate"
+  UTILS_LIST="whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils needrestart"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
   hshqlogo=$(cat << EOF
@@ -1337,7 +1340,17 @@ function performSuggestedSecUpdates()
 
 function performAptInstall()
 {
+  if [ "$1" = "yq" ]; then
+    installYQ
+    return
+  fi
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' $1
+}
+
+function installYQ()
+{
+  sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+  sudo chmod a+x /usr/local/bin/yq
 }
 
 function installDependencies()
@@ -10649,6 +10662,11 @@ function getConnectingIPAddress()
   echo $(echo $SSH_CLIENT | xargs | cut -d" " -f1)
 }
 
+function getDefaultIface()
+{
+  echo $(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+}
+
 function getIPAddressOfInterface()
 {
   interface_name=$1
@@ -10659,9 +10677,51 @@ function getIPAddressOfInterface()
   echo $ip_addr
 }
 
-function getDefaultIface()
+function getCIDRLengthOfInterface()
 {
-  echo $(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+  interface_name=$1
+  ip route | grep src | grep "$interface_name" | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2
+}
+
+function getSubnetOfInterface()
+{
+  net_interface=$1
+  net_ip=$2
+  is_priv=$3
+  gsoa_curE=${-//[^e]/}
+  set +e
+  if [ -z "$net_ip" ]; then
+    net_ip=$(getIPAddressOfInterface $net_interface)
+  fi
+  if [ -z "$is_priv" ]; then
+    is_priv=$(checkIsIPPrivate "$net_ip")
+  fi
+  this_subnet=""
+  num_tries=1
+  max_tries=6
+  while [ -z "$this_subnet" ] && [ $num_tries -lt $max_tries ]
+  do
+    if [ "$is_priv" = "true" ]; then
+      this_subnet=$(ip route | grep src | grep $net_interface | grep / | awk '{print $1}' | head -1)
+    else
+      this_subnet="${net_ip}/32"
+    fi
+    if ! [ -z "$this_subnet" ]; then
+      break
+    fi
+    sleep 3
+    ((num_tries++))
+  done
+  if ! [ -z $gsoa_curE ]; then
+    set -e
+  fi
+  echo "$this_subnet"
+}
+
+function getGatewayOfInterface()
+{
+  interface_name=$1
+  ip route | grep src | grep "$interface_name" | grep -e "^default" | awk '{print $3}'
 }
 
 function getIPFromHostname()
@@ -10700,39 +10760,388 @@ function checkIsIPPrivate()
   echo "false"
 }
 
-function getSubnetOfInterface()
+function outputInterfaceInfo()
 {
-  net_interface=$1
-  net_ip=$2
-  is_priv=$3
-  gsoa_curE=${-//[^e]/}
-  set +e
-  if [ -z "$net_ip" ]; then
-    net_ip=$(getIPAddressOfInterface $net_interface)
-  fi
-  if [ -z "$is_priv" ]; then
-    is_priv=$(checkIsIPPrivate "$net_ip")
-  fi
-  this_subnet=""
-  num_tries=1
-  max_tries=6
-  while [ -z "$this_subnet" ] && [ $num_tries -lt $max_tries ]
-  do
-    if [ "$is_priv" = "true" ]; then
-      this_subnet=$(ip route | grep src | grep $net_interface | grep / | awk '{print $1}' | head -1)
+  interfaceName="$1"
+  strOut="\n----------------------------------------------------------------"
+  strOut="${strOut}\n          Interface Name:  $interfaceName"
+  strOut="${strOut}\n              IP Address:  $(getIPAddressOfInterface $interfaceName)"
+  strOut="${strOut}\n                  Subnet:  $(getSubnetOfInterface $interfaceName)"
+  interfaceType=Other
+  connectedTo=""
+  ipAssignment=""
+  sudo netplan get network | yq -r '.ethernets | keys' 2> /dev/null | grep $interfaceName > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    interfaceType=Wired
+    if [ "$(sudo netplan get network.ethernets.${interfaceName}.dhcp4)" = "true" ]; then
+      ipAssignment="dhcp"
     else
-      this_subnet="${net_ip}/32"
+      ipAssignment="static"
     fi
-    if ! [ -z "$this_subnet" ]; then
-      break
-    fi
-    sleep 3
-    ((num_tries++))
-  done
-  if ! [ -z $gsoa_curE ]; then
-    set -e
   fi
-  echo "$this_subnet"
+  sudo netplan get network | yq -r '.wifis | keys' 2> /dev/null | grep $interfaceName > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    interfaceType=Wireless
+    connectedTo=$(sudo iwconfig $interfaceName | grep -o "ESSID.*" | cut -d":" -f2)
+    if [ "$(sudo netplan get network.wifis.${interfaceName}.dhcp4)" = "true" ]; then
+      ipAssignment="dhcp"
+    else
+      ipAssignment="static"
+    fi
+  fi
+  strOut="${strOut}\n          Interface Type:  $interfaceType"
+  if ! [ -z "$ipAssignment" ]; then
+    strOut="${strOut}\n    IP Assignment Method:  $ipAssignment"
+  fi
+  if ! [ -z "$connectedTo" ]; then
+    strOut="${strOut}\n            Wifi Network:  $connectedTo"
+  fi
+  isPrimary=$(sqlite3 $HSHQ_DB "select ConnectionType from connections where InterfaceName='$interfaceName';")
+  strOut="${strOut}\n               IsPrimary:  $isPrimary"
+  isExposeToNetwork=$(sqlite3 $HSHQ_DB "select IsExposeToNetwork from connections where InterfaceName='$interfaceName';")
+  if [ "$isExposeToNetwork" = "1" ]; then
+    isExposeToNetwork=true
+  else
+    isExposeToNetwork=false
+  fi
+  strOut="${strOut}\n       IsExposeToNetwork:  $isExposeToNetwork"
+  inputAllowPorts=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where InterfaceName='$interfaceName';")
+  strOut="${strOut}\n         InputAllowPorts:  $inputAllowPorts"
+  dockerUserAllowPorts=$(sqlite3 $HSHQ_DB "select DockerUserAllowPorts from connections where InterfaceName='$interfaceName';")
+  strOut="${strOut}\n    DockerUserAllowPorts:  $dockerUserAllowPorts"
+  strOut="${strOut}\n----------------------------------------------------------------\n"
+  echo "$strOut"
+}
+
+function setAsWiredDHCP()
+{
+  interfaceName="$1"
+  set +e
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.nameservers=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=true"
+  sudo netplan apply
+}
+
+function setAsWiredStaticIP()
+{
+  interfaceName="$1"
+  ipAddress="$2"
+  cidrLength="$3"
+  interfaceGateway="$4"
+  set +e
+  if [ -z "$ipAddress" ]; then
+    echo "ERROR: The IP address cannot be blank. No actions were performed."
+    return 1
+  elif [ -z "$cidrLength" ]; then
+    echo "ERROR: The CIDR length cannot be blank. No actions were performed."
+    return 2
+  elif [ -z "$interfaceGateway" ]; then
+    echo "ERROR: The network gateway cannot be blank. No actions were performed."
+    return 3
+  fi
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.nameservers=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=[${ipAddress}/${cidrLength}]"
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=false"
+  sudo netplan apply
+}
+
+function setAsWirelessDHCP()
+{
+  interfaceName="$1"
+  wifiSSID="$2"
+  wifiPass="$3"
+  set +e
+  sudo netplan get | yq '.network.wifis | keys' 2> /dev/null | grep $interfaceName > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    if [ -z "$wifiSSID" ]; then
+      echo "ERROR: This is a new interface, thus the wifi SSID cannot be blank. No actions were performed."
+      return 1
+    elif ! [ -z "$wifiPass" ] && ([ ${#wifiPass} -lt 8 ] || [ ${#wifiPass} -gt 63 ]); then
+      echo "ERROR: The wifi password must be between 8 and 63 characters. No actions were performed."
+      return 2
+    fi
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
+    if [ -z "$wifiPass" ]; then
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, access-points: {$wifiSSID: {}}}"
+    else
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
+    fi
+  else
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.nameservers=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.routes=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=true"
+  fi
+  sudo netplan apply
+}
+
+function setAsWirelessStaticIP()
+{
+  interfaceName="$1"
+  ipAddress="$2"
+  cidrLength="$3"
+  interfaceGateway="$4"
+  wifiSSID="$5"
+  wifiPass="$6"
+  set +e
+  if [ -z "$ipAddress" ]; then
+    echo "ERROR: The IP address cannot be blank. No actions were performed."
+    return 1
+  elif [ -z "$cidrLength" ]; then
+    echo "ERROR: The CIDR length cannot be blank. No actions were performed."
+    return 2
+  elif [ -z "$interfaceGateway" ]; then
+    echo "ERROR: The network gateway cannot be blank. No actions were performed."
+    return 3
+  fi
+  sudo netplan get | yq '.network.wifis | keys' 2> /dev/null | grep $interfaceName > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    if [ -z "$wifiSSID" ]; then
+      echo "ERROR: This is a new interface, thus the wifi SSID cannot be blank. No actions were performed."
+      return 4
+    elif ! [ -z "$wifiPass" ] && ([ ${#wifiPass} -lt 8 ] || [ ${#wifiPass} -gt 63 ]); then
+      echo "ERROR: The wifi password must be between 8 and 63 characters. No actions were performed."
+      return 6
+    fi
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
+    if [ -z "$wifiPass" ]; then
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {}}}"
+    else
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
+    fi
+  else
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.nameservers=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.routes=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=[${ipAddress}/${cidrLength}]"
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=false"
+  fi
+  sudo netplan apply
+}
+
+function removeFromNetplan()
+{
+  interfaceName="$1"
+  set +e
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null"
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null"
+  sudo netplan apply
+}
+
+function displayWifiNetworks()
+{
+  interfaceName="$1"
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  resArr=($(sudo iwlist $interfaceName scanning | grep -E --color 'Frequency|Quality|Encryption|ESSID'))
+
+  numItems=$((${#resArr[@]} - 1))
+  unset fmtArr
+  sudo rm -f $HSHQ_SCRIPT_OPEN_DIR/wifi.txt
+  curIndex=0
+  fmtArr=()
+  for curID in $(seq 0 $numItems);
+  do
+    if ! [[ $(echo "${resArr[$curID]}" | sed 's/^[ \t]*//') =~ ^Frequency ]] || ! [[ $(echo "${resArr[$(($curID + 1))]}" | sed 's/^[ \t]*//') =~ ^Quality ]] || ! [[ $(echo "${resArr[$(($curID + 2))]}" | sed 's/^[ \t]*//') =~ ^Encryption ]] || ! [[ $(echo "${resArr[$(($curID + 3))]}" | sed 's/^[ \t]*//') =~ ^ESSID ]]; then
+      continue
+    fi
+    curFrequency="${resArr[$curID]}"
+    curQuality="${resArr[$(($curID + 1))]}"
+    curEncryption="${resArr[$(($curID + 2))]}"
+    curESSID="${resArr[$(($curID + 3))]}"
+    echo "$curESSID" | grep "x00" > /dev/null 2>&1
+    if [ $? -eq 0 ] || [ -z "$curESSID" ]; then
+      continue
+    fi
+    curFrequency="$(echo $curFrequency | cut -d":" -f2- | cut -d"(" -f1 | xargs -0)"
+    curQualityNum="$(echo $curQuality | cut -d"=" -f2- | cut -d"/" -f1 | xargs -0)"
+    curSignal="$(echo $curQuality | rev | cut -d"=" -f1 | rev | xargs -0)"
+    curSignalNum="$(echo $curSignal | cut -d" " -f1 | xargs -0)"
+    curEncryption="$(echo $curEncryption | cut -d":" -f2 | xargs -0)"
+    if [ "$curEncryption" = "off" ]; then
+      curEncryption="open"
+    elif [ "$curEncryption" = "on" ]; then
+      curEncryption=""
+    else
+      curEncryption="unknown"
+    fi
+    curESSID="$(echo $curESSID | cut -d":" -f2- | tr -d '"' | xargs -0)"
+    fmtArr+=( "$curESSID|$curQualityNum|$curSignal|$curFrequency|$curEncryption" )
+    echo "$curQualityNum $curSignalNum $curIndex" >> $HSHQ_SCRIPT_OPEN_DIR/wifi.txt
+    ((curIndex+=1))
+  done
+  sort -k1 -k2 -rn <$HSHQ_SCRIPT_OPEN_DIR/wifi.txt > $HSHQ_SCRIPT_OPEN_DIR/wifi-sorted.txt
+  readarray -t sortedArr < $HSHQ_SCRIPT_OPEN_DIR/wifi-sorted.txt
+  echo "----------------------------------------------------------------"
+  echo "       SSID          Quality     Signal     Frequency    Open   "
+  echo "----------------------------------------------------------------"
+  for curLine in "${sortedArr[@]}"
+  do
+    curIndex=$(echo "$curLine" | rev | cut -d" " -f1 | rev)
+    curESSID=$(echo "${fmtArr[$curIndex]}" | cut -d"|" -f1)
+    curQualityNum=$(echo "${fmtArr[$curIndex]}" | cut -d"|" -f2)/70
+    curSignal=$(echo "${fmtArr[$curIndex]}" | cut -d"|" -f3)
+    curFrequency=$(echo "${fmtArr[$curIndex]}" | cut -d"|" -f4)
+    curEncryption=$(echo "${fmtArr[$curIndex]}" | cut -d"|" -f5)
+    if [ -z "$curESSID" ]; then
+      continue
+    fi
+    printf "%-20s  %-8s  %-10s  %-12s %-9s\n" "${curESSID:0:20}" "${curQualityNum:0:6}" "${curSignal:0:10}" "${curFrequency:0:10}" "${curEncryption:0:8}"
+  done
+  echo "----------------------------------------------------------------"
+  IFS=$OLDIFS
+}
+
+function addUpdateWifiAccessPoint()
+{
+  interfaceName="$1"
+  wifiSSID="$2"
+  wifiPass="$3"
+  set +e
+  if [ -z "$wifiSSID" ]; then
+    echo "ERROR: The wifi SSID cannot be blank. No actions were performed."
+    return 1
+  elif ! [ -z "$wifipass" ] && ([ ${#wifiPass} -lt 8 ] || [ ${#wifiPass} -gt 63 ]); then
+    echo "ERROR: The wifi password must be between 8 and 63 characters. No actions were performed."
+    return 2
+  fi
+  sudo netplan get | yq '.network.wifis | keys' | grep $interfaceName > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ERROR: This wireless interface was not found within netplan. First try adding the interface."
+    return 3
+  fi
+  sudo netplan get "network.wifis.${interfaceName}.access-points" | yq 'keys' | grep "$wifiSSID" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    if [ $(sudo netplan get "network.wifis.${interfaceName}.access-points" | yq 'keys' | wc -l) -eq 1 ]; then
+      # This is the only access point, and we only need to update the password
+      # Since netplan is so poorly designed, we (stupidly) have to remove and re-add the entire interface
+      # Unfortunately, this will cause any other edits in netplan by the user will be lost.
+      # This is so clumsy and dumb.
+      if [ "$(sudo netplan get network.wifis.wlp2s0.dhcp4)" = "true" ]; then
+        sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null"
+        setAsWirelessDHCP "$interfaceName" "$wifiSSID" "$wifiPass"
+      else
+        ipaddr=$(sudo netplan get "network.wifis.${interfaceName}" | yq .addresses[0])
+        if [ $? -ne 0 ] || [ -z "$ipaddr" ]; then
+          echo "ERROR: There was a problem updating the password. Please remove this interface and re-add it with the updated password."
+          return 4
+        fi
+        iponly=$(echo $ipaddr | cut -d"/" -f1)
+        if [ $? -ne 0 ] || [ -z "$iponly" ]; then
+          echo "ERROR: There was a problem updating the password. Please remove this interface and re-add it with the updated password."
+          return 5
+        fi
+        cidr=$(echo $ipaddr | cut -d"/" -f2)
+        if [ $? -ne 0 ] || [ -z "$cidr" ]; then
+          echo "ERROR: There was a problem updating the password. Please remove this interface and re-add it with the updated password."
+          return 6
+        fi
+        gateway=$(sudo netplan get "network.wifis.${interfaceName}" | yq .routes[0].via)
+        if [ $? -ne 0 ] || [ -z "$gateway" ]; then
+          echo "ERROR: There was a problem updating the password. Please remove this interface and re-add it with the updated password."
+          return 7
+        fi
+        sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null"
+        setAsWirelessStaticIP "$interfaceName" "$iponly" "$cidr" "$gateway" "$wifiSSID" "$wifiPass"
+      fi
+      return
+    else
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.access-points.${wifiSSID}=null"
+    fi
+  fi
+  if [ -z "$wifipass" ]; then
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.access-points.${wifiSSID}={}"
+  else
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.access-points.${wifiSSID}={auth: {key-management: psk, password: $wifiPass}}"
+  fi
+
+  sudo netplan apply
+}
+
+function removeWifiAccessPoint()
+{
+  interfaceName="$1"
+  wifiSSID="$2"
+  set +e
+  if [ -z "$wifiSSID" ]; then
+    echo "ERROR: The wifi SSID cannot be blank. No actions were performed."
+    return 1
+  fi
+  sudo netplan get | yq '.network.wifis | keys' | grep $interfaceName > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ERROR: This wireless interface was not found within netplan. First try adding the interface."
+    return 2
+  fi
+  sudo netplan get | interfaceName=$interfaceName yq '.network.wifis.[strenv(interfaceName)].access-points | keys' | grep "$wifiSSID" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "ERROR: The wireless SSID ($wifiSSID) is not a listed access point. No actions were performed."
+    return 3
+  fi
+  numAP=$(sudo netplan get | interfaceName=$interfaceName yq '.network.wifis.[strenv(interfaceName)].access-points | keys' | wc -l)
+  if [ $numAP -le 1 ]; then
+    # This the last access point, must remove the interface
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null"
+  else
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.access-points.${wifiSSID}=null"
+  fi
+  sudo netplan apply
+}
+
+function getAllNetworkInterfacesCSV()
+{
+  set +e
+  allInterfaces=($(ls /sys/class/net | grep -v -E "veth.*|docker.*|lo|vpn-*|ext-*"))
+  timeout 10 docker network ls > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    dockerNets=($(docker network ls -q))
+    networksArr=()
+    for curNet in "${dockerNets[@]}"
+    do
+      brName=$(docker network inspect $curNet | jq -r '.[] | .Options."com.docker.network.bridge.name"')
+      if [ -z "$brName" ] || [ "$brName" = "null" ]; then
+        brName="br-${curNet}"
+      fi
+      networksArr+=($brName)
+    done
+  fi
+  allInts=""
+  for curInt in "${allInterfaces[@]}"
+  do
+    isFound=false
+    for curNet in "${networksArr[@]}"
+    do
+      if [ "$curNet" = "$curInt" ]; then
+        isFound=true
+        break
+      fi
+    done
+    if [ "$isFound" = "false" ]; then
+      if [ -z "$allInts" ]; then
+        allInts="$curInt"
+      else
+        allInts="${allInts},$curInt"
+      fi
+    fi
+  done
+  echo "$allInts"
+}
+
+function outputAllNetworkInterfaces()
+{
+  allInterfacesArr=($(echo "$(getAllNetworkInterfacesCSV)" | tr "," "\n")) 
+
+  for curInt in "${allInterfacesArr[@]}"
+  do
+    ifconfig $curInt
+  done
 }
 
 function initHSHQDB()
@@ -15870,7 +16279,7 @@ function version53Update()
 {
   set +e
   outputMaintenanceScripts
-  outputDockerWireGuardCaddyScript
+  outputWGInternetUpBootscript
   deleteFromRootCron "restartHomeAssistantStack.sh"
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
@@ -16124,7 +16533,7 @@ function version72Update()
   mkdir -p $HSHQ_WIREGUARD_DIR/logs
   outputWGDockInternetScript
   outputUpdateEndpointIPsScript
-  outputDockerWireGuardCaddyScript
+  outputWGInternetUpBootscript
   sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
   sudo systemctl start networkd-dispatcher > /dev/null 2>&1
   sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
@@ -16209,7 +16618,7 @@ function version84Update()
 {
   set +e
   outputWGDockInternetScript
-  outputDockerWireGuardCaddyScript
+  outputWGInternetUpBootscript
   set -e
 }
 
@@ -16555,10 +16964,10 @@ EOFBS
   portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
   for cur_port in "\\\${portsArr[@]}"
   do
-    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j RETURN 2> /dev/null
     iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
     iptables -I DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP
-    iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT
+    iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j RETURN
   done
 
   # See https://gist.github.com/mattia-beta/bd5b1c68e3d51db933181d8a3dc0ba64?permalink_comment_id=3728715#gistcomment-3728715
@@ -16636,10 +17045,10 @@ EOFBS
 
   # Special case for WG Portal from reverse proxy
   iptables -C INPUT -p tcp -m tcp -i brdockext -s \\\$DOCK_EXT_NET --dport \\\$WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i brdockext -s \\\$DOCK_EXT_NET --dport \\\$WG_PORTAL_PORT -j ACCEPT
-  iptables -D DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  iptables -D DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j RETURN 2> /dev/null
   iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j DROP 2> /dev/null
   iptables -I DOCKER-USER -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j DROP
-  iptables -I DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j ACCEPT
+  iptables -I DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j RETURN
 
   # Policy drop for input and forward
   iptables -P INPUT DROP
@@ -16661,7 +17070,7 @@ is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
 def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
 if [ "\$is_def_priv" = "true" ]; then
   echo "Default route is in private range, adding allowance to (raw)iptables..."
-  sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j RETURN > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j RETURN" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
 else
   echo "Default route is in public range."
 fi
@@ -16770,6 +17179,11 @@ main "\$@"
 EOFRS
   updateRelayServerWithScript
 
+  echo "Installing yq..."
+  performAptInstall yq
+  echo "Installing wireless-tools..."
+  performAptInstall wireless-tools
+
   if sudo test -f $HSHQ_LOG_FILE; then
     echo ""
   else
@@ -16825,7 +17239,11 @@ EOFRS
   moveVarsToPlaintextFile
 
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-setupDockerUserIPTables.sh
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/50-dockerWireGuardCaddyFix.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-dockerWireGuardCaddyFix.sh
+
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     prID=$(getPrimaryVPN_DBID)
     PRIMARY_VPN_SUBNET=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$prID;")
@@ -18202,7 +18620,7 @@ EOFBS
   sudo systemctl enable runOnBootRootAfterDocker
 
   outputRestartStacksBootscript
-  outputDockerWireGuardCaddyScript
+  outputWGInternetUpBootscript
   outputPingGatewayBootscript
   outputSysCtlBootscript
   outputUpdateIPTablesBeforeNetworkBootscript
@@ -18398,18 +18816,6 @@ function checkUpdateAllIPTables()
     checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp --dport $CURRENT_SSH_PORT -m comment --comment "$comment" -j ACCEPT'
   fi
 
-  # DOCKER-USER
-  # Append these two to the bottom, and insert everyting else
-  comment="HSHQ_BEGIN DOCKER-USER Log suspicious HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m comment --comment "$comment" -j LOG --log-prefix "DOCKER-USER-SUSPICIOUS: " --log-level 4'
-  comment="HSHQ_BEGIN DOCKER-USER Policy drop HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m comment --comment "$comment" -j DROP'
-  # Insert these first, then insert everything else at position 3 (i.e. after these rules)
-  comment="HSHQ_BEGIN DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE RETURN HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m comment --comment "$comment" -j RETURN'
-  comment="HSHQ_BEGIN DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED RETURN HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment "$comment" -j RETURN'
-
   # HomeServer Host and WireGuard interfaces
   dbIDArr=($(sqlite3 $HSHQ_DB "select ID from connections where (ConnectionType='homeserver_vpn' and NetworkType in ('primary','other')) or (NetworkType='home_network') order by NetworkType;"))
   for curDBID in "${dbIDArr[@]}"
@@ -18421,6 +18827,7 @@ function checkUpdateAllIPTables()
     curInputAllowPorts=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where ID=$curDBID;")
     curDockerUserAllowPorts=$(sqlite3 $HSHQ_DB "select DockerUserAllowPorts from connections where ID=$curDBID;")
     curNetworkType=$(sqlite3 $HSHQ_DB "select NetworkType from connections where ID=$curDBID;")
+    curConnectionType=$(sqlite3 $HSHQ_DB "select ConnectionType from connections where ID=$curDBID;")
     curIsIPPrivate="$(checkIsIPPrivate $curIPAddress)"
     if [ "$curIsIPPrivate" = "true" ]; then
       if [ "$curIsExposeToNetwork" = "1" ]; then
@@ -18432,25 +18839,27 @@ function checkUpdateAllIPTables()
       hn_ip_list=${curIPAddress}/32,${HOMENET_ADDITIONAL_IPS}
     fi
     appendINPUTBySubnetAndPortsList "$hn_ip_list" "$curInputAllowPorts"
-    insertDOCKERUSERBySubnetAndPortsList "$hn_ip_list" "$curDockerUserAllowPorts"
+    addDOCKERUSERBySubnetAndPortsList "$hn_ip_list" "$curDockerUserAllowPorts"
 
     # Add some anti-spoofing measures
-    if [ "$curNetworkType" = "homeserver_vpn" ]; then
+    if [ "$curConnectionType" = "homeserver_vpn" ]; then
       addIPTablesSpoofRule "$curInterfaceName" "$curSubnet"
     elif [ "$curNetworkType" = "home_network" ]; then
+      comment="HSHQ_BEGIN chain-ipspoof -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s $DOCKER_NETWORK_RESERVED_RANGE -i $curInterfaceName -m comment --comment "$comment" -j DROP'
       if [ "$curIsIPPrivate" = "false" ]; then
         # Add special rules when HomeServer interface is on non-private network, i.e. cloud-server, etc.
         # Insert these at the 3rd position down
         comment="HSHQ_BEGIN chain-ipspoof -s 10.0.0.0/8 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 10.0.0.0/8 -i $curInterfaceName -j DROP'
+        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 10.0.0.0/8 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
         comment="HSHQ_BEGIN chain-ipspoof -s 172.16.0.0/12 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 172.16.0.0/12 -i $curInterfaceName -j DROP'
+        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 172.16.0.0/12 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
         comment="HSHQ_BEGIN chain-ipspoof -s 192.168.0.0/16 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 192.168.0.0/16 -i $curInterfaceName -j DROP'
+        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 192.168.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
         comment="HSHQ_BEGIN chain-ipspoof -s 169.254.0.0/16 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 169.254.0.0/16 -i $curInterfaceName -j DROP'
+        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 169.254.0.0/16 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
         comment="HSHQ_BEGIN chain-ipspoof -s 224.0.0.0/4 -i $curInterfaceName HSHQ_END"
-        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 224.0.0.0/4 -i $curInterfaceName -j DROP'
+        checkAddRule "$comment" 'sudo iptables -t raw -I chain-ipspoof 3 -s 224.0.0.0/4 -i $curInterfaceName -m comment --comment "$comment" -j DROP'
         # Insert this to top of chain-icmp
         comment="HSHQ_BEGIN chain-icmp echo-request primary $curInterfaceName HSHQ_END"
         checkAddRule "$comment" 'sudo iptables -t raw -I chain-icmp -p icmp -m icmp --icmp-type echo-request -i $curInterfaceName -m comment --comment "$comment" -j DROP'
@@ -18466,7 +18875,7 @@ function checkUpdateAllIPTables()
     curInputAllowPorts=$(sqlite3 $HSHQ_DB "select InputAllowPorts from customfwsubnet where ID=$curDBID;")
     curDockerUserAllowPorts=$(sqlite3 $HSHQ_DB "select DockerUserAllowPorts from customfwsubnet where ID=$curDBID;")
     appendINPUTBySubnetAndPortsList "$curSubnet" "$curInputAllowPorts"
-    insertDOCKERUSERBySubnetAndPortsList "$curSubnet" "$curDockerUserAllowPorts"
+    addDOCKERUSERBySubnetAndPortsList "$curSubnet" "$curDockerUserAllowPorts"
   done
 
   # Query docker networks and add some more anti-spoofing rules
@@ -18553,7 +18962,6 @@ function performClearIPTables()
   is_skip_policy=$1
   sudo iptables -t filter -F INPUT
   sudo iptables -t filter -F DOCKER-USER
-  sudo iptables -A DOCKER-USER -j RETURN
   sudo iptables -t raw -F PREROUTING
   sudo iptables -t raw -F chain-icmp > /dev/null 2>&1
   sudo iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
@@ -18609,7 +19017,7 @@ function appendINPUTBySubnetAndPortsList()
   done
 }
 
-function insertDOCKERUSERBySubnetAndPortsList()
+function addDOCKERUSERBySubnetAndPortsList()
 {
   subnetList="$1"
   portList="$2"
@@ -18619,7 +19027,7 @@ function insertDOCKERUSERBySubnetAndPortsList()
   checkValidPortsList "$portList"
   if [ $? -ne 0 ]; then
     strMsg="There was an error with the ports list: portList"
-    logHSHQEvent error "IPTables ($netstate) (insertDOCKERUSERBySubnetAndPortsList) - $strMsg"
+    logHSHQEvent error "IPTables ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
     echo "ERROR: $strMsg"
     return
   fi
@@ -18633,7 +19041,11 @@ function insertDOCKERUSERBySubnetAndPortsList()
     for cur_subnet in "${subnetArr[@]}"
     do
       comment="HSHQ_BEGIN DOCKER-USER -s $cur_subnet -m conntrack --ctorigdstport $port_no HSHQ_END"
-      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER 3 -s $cur_subnet -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -s $cur_subnet -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+      comment="HSHQ_BEGIN DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m conntrack --ctorigdstport $port_no HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -I DOCKER-USER -s $DOCKER_NETWORK_RESERVED_RANGE -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j RETURN'
+      comment="HSHQ_BEGIN DOCKER-USER -m conntrack --ctorigdstport $port_no DROP HSHQ_END"
+      checkAddRule "$comment" 'sudo iptables -A DOCKER-USER -m conntrack --ctorigdstport $port_no --ctdir ORIGINAL -m comment --comment "$comment" -j DROP'
     done
   done
 }
@@ -18699,9 +19111,20 @@ EOFBS
 
 function restartStacksOnBoot()
 {
-  # This script is a bandaid solution to fix the startup
-  # issues with certain stacks after a reboot.
-  echo "Starting restartStacksOnBoot.sh..."
+  # This script handles the chicken/egg paradox between Docker and WireGuard during boot.
+  # Each Caddy instance is bound to a specific interface - in most cases, a WireGuard interface.
+  # Each WireGuard VPN interface uses a domain name as opposed to an IP address for the endpoint.
+  # The domain name requires a DNS lookup, which is handled by AdguardHome - in a Docker container.
+  # Thus, given this setup, the WireGuard interfaces will not come up until the AdGuard container is up.
+  # Unfortunately, this causes a race condition with the Caddy containers that are bound to 
+  # specific WireGuard interfaces - they will fail to start if the interface doesn't exist.
+  # Attempts were made within the systemd service files to start one after the other, but it still results
+  # in a circular reference problem. Even manually starting the VPN interfaces before docker.service with 
+  # wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
+  # at boot, will wait until the interfaces are up, then start/restart the Caddy containers.
+
+  # This script also restarts some other stacks that have issues after a reboot.
+
   sleep 10
   docker ps > /dev/null 2>&1
   sleep 10
@@ -18725,8 +19148,32 @@ function restartStacksOnBoot()
   fi
   restartStackIfRunning homeassistant 15 $portainerToken > /dev/null
 
+
+  ips_arr=($(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
+
+  ns_sleep=5
+  ping_timeout=5
+  max_tries=100
+  is_error=false
+
+  for cur_ip in "${ips_arr[@]}"
+  do
+    is_up=false
+    cur_tries=1
+    while [ $cur_tries -le $max_tries ] && [ "$is_up" = "false" ]
+    do
+      timeout $ping_timeout ping -c 1 $cur_ip > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        is_up=true
+      else
+        ((cur_tries++))
+        sleep $ns_sleep
+      fi
+    done
+  done
+
   echo "Restarting caddy stacks..."
-  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
+  caddy_arr=($(docker ps -a --filter name=caddy-vpn --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
   do
     startStopStack $curcaddy stop > /dev/null 2>&1
@@ -18735,6 +19182,13 @@ function restartStacksOnBoot()
     sleep 1
     startStopStack $curcaddy start > /dev/null 2>&1
   done
+
+  isCoturn=$(docker ps -a --filter name=coturn --format "{{.Names}}")
+  if ! [ -z "$isCoturn" ]; then
+    startStopStack coturn stop > /dev/null 2>&1
+    sleep 1
+    startStopStack coturn start > /dev/null 2>&1
+  fi
 
   echo "End restartStacksOnBoot.sh"
 }
@@ -18760,72 +19214,25 @@ EOFBS
   sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
 }
 
-function outputDockerWireGuardCaddyScript()
+function outputWGInternetUpBootscript()
 {
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-dockerWireGuardCaddyFix.sh >/dev/null <<EOFWC
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh >/dev/null <<EOFWC
 #!/bin/bash
 set +e
+# This script initializes all of the tunnelled WireGuard internet-bound connections that are bound to a docker network.
 
-# This script handles the chicken/egg paradox between Docker and WireGuard during boot.
-# Each Caddy instance is bound to a specific interface - in most cases, a WireGuard interface.
-# Each WireGuard VPN interface uses a domain name as opposed to an IP address for the endpoint.
-# The domain name requires a DNS lookup, which is handled by AdguardHome - in a Docker container.
-# Thus, given this setup, the WireGuard interfaces will not come up until the AdGuard container is up.
-# Unfortunately, this causes a race condition with the Caddy containers that are bound to 
-# specific WireGuard interfaces - they will fail to start if the interface doesn't exist.
-# Attempts were made within the systemd service files to start one after the other, but it still results
-# in a circular reference problem. Even manually starting the VPN interfaces before docker.service with 
-# wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
-# at boot, will wait until the interfaces are up, then start/restart the Caddy containers.
-
-# This script will also initialize all of the tunnelled WireGuard internet-bound connections that are bound to a docker network.
-
-hshq_db=$HSHQ_DB
 HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
 
 function main()
 {
   sudo \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
-
-  ips_arr=(\$(sqlite3 \$hshq_db "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
-
-  ns_sleep=5
-  ping_timeout=5
-  max_tries=100
-  is_error=false
-
-  for cur_ip in "\${ips_arr[@]}"
-  do
-    is_up=false
-    cur_tries=1
-    while [ \$cur_tries -le \$max_tries ] && [ "\$is_up" = "false" ]
-    do
-      timeout \$ping_timeout ping -c 1 \$cur_ip > /dev/null 2>&1
-      if [ \$? -eq 0 ]; then
-        is_up=true
-      else
-        ((cur_tries++))
-        sleep \$ns_sleep
-      fi
-    done
-  done
-
-  caddy_arr=(\$(docker ps -a --filter name=caddy- --format "{{.Names}}"))
-  for curcaddy in "\${caddy_arr[@]}"
-  do
-    docker container restart \$curcaddy
-  done
-
-  isCoturn=\$(docker ps -a --filter name=coturn --format "{{.Names}}")
-  if ! [ -z "\$isCoturn" ]; then
-    docker container restart coturn
-  fi
 }
 main "\$@"
 
 EOFWC
 
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-dockerWireGuardCaddyFix.sh
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh
 }
 
 function outputDBExportScripts()
@@ -19740,10 +20147,6 @@ function checkIPConflict()
     echo "This IP address is in the 127.0.0.0/8 range. This range is specifically reserved for the loopback interface. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
     return
   fi
-  if [[ "$chk_ip" =~ ^169\.254\. ]]; then
-    echo "This IP address is in the 169.254.0.0/16 range. This usually indicates an error with your DHCP server. Please check your network settings are restart the installation."
-    return
-  fi
   if [ "$chk_private" = "true" ]; then
     if [ "$(checkNetworkIntersect $chk_subnet 10.0.0.0/8)" = "true" ]; then
       netsize=$(echo $chk_subnet | cut -d"/" -f2)
@@ -19758,6 +20161,17 @@ function checkIPConflict()
       echo "Your current private network intersects within the $DOCKER_NETWORK_RESERVED_RANGE range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
       return
     fi
+  fi
+}
+
+function isInterfaceExists()
+{
+  set +e
+  find /sys/class/net -type l -printf '%f\n' | grep "$1" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
   fi
 }
 
@@ -19785,35 +20199,51 @@ function addHSInterface()
       return 2
     fi
   done
-
-  find /sys/class/net -type l -printf '%f\n' | grep $iface_name > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
+  isFound=false
+  availInterfacesArr=($(echo "$(getAllNetworkInterfacesCSV)" | tr "," "\n"))
+  for curInterface in "${availInterfacesArr[@]}"
+  do
+    if [ "$iface_name" = "$curInterface" ]; then
+      isFound=true
+      break
+    fi
+  done
+  if [ "$isFound" = "false" ]; then
+    strMsg="The selected interface is not available."
+    echo "$strMsg"
+    logHSHQEvent error "$strMsg"
+    return 3
+  fi
+  if [ "$(isInterfaceExists $iface_name)" = "false" ]; then
     strMsg="The network interface was not found."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
   fi
   ip_addr=$(getIPAddressOfInterface $iface_name)
-  if [ -z "$ip_addr" ]; then
-    strMsg="There was an error obtaining the IP address of this interface ($iface_name)."
-    echo "$strMsg"
-    logHSHQEvent error "$strMsg"
-    return 4
-  fi
-  is_private=$(checkIsIPPrivate "$ip_addr")
-  interface_subnet=$(getSubnetOfInterface "$iface_name" "$ip_addr" "$is_private")
-  if [ -z "$interface_subnet" ]; then
-    strMsg="There was an error obtaining the subnet of this interface ($iface_name)."
-    echo "$strMsg"
-    logHSHQEvent error "$strMsg"
-    return 5
-  fi
-  chk_conflict=$(checkIPConflict "$ip_addr" "$interface_subnet" "$is_private")
-  if ! [ -z "$chk_conflict" ]; then
-    strMsg="$chk_conflict"
-    echo "$strMsg"
-    logHSHQEvent error "$strMsg"
-    return 6
+  if [ -z "$ip_addr" ] || [[ "$ip_addr" =~ ^169\.254\. ]]; then
+    if [ "$iface_isPrimary" = "true" ]; then
+      strMsg="The IP address for this primary interface could not be determined."
+      echo "$strMsg"
+      logHSHQEvent error "$strMsg"
+      return 3
+    fi
+    ip_addr=$DEFAULT_UNFOUND_IP_ADDRESS
+    is_private=true
+    interface_subnet=$DEFAULT_UNFOUND_IP_SUBNET
+  else
+    is_private=$(checkIsIPPrivate "$ip_addr")
+    interface_subnet=$(getSubnetOfInterface "$iface_name" "$ip_addr" "$is_private")
+    if [ -z "$interface_subnet" ]; then
+      interface_subnet="${ip_addr}/24"
+    fi
+    chk_conflict=$(checkIPConflict "$ip_addr" "$interface_subnet" "$is_private")
+    if ! [ -z "$chk_conflict" ]; then
+      strMsg="$chk_conflict"
+      echo "$strMsg"
+      logHSHQEvent error "$strMsg"
+      return 6
+    fi
   fi
   if [ -z "$HOMESERVER_HOST_NETWORK_INTERFACES" ]; then
     HOMESERVER_HOST_NETWORK_INTERFACES=$iface_name
@@ -19912,7 +20342,6 @@ function updateHSInterface()
   iface_name="$1"
   db_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName = '$iface_name';")
   current_ip=$(getIPAddressOfInterface $iface_name)
-  is_private=$(checkIsIPPrivate "$current_ip")
   if [ "$(checkValidIPAddress $current_ip)" = "false" ]; then
     strMsg="Invalid IP address"
     echo "$strMsg"
@@ -19925,6 +20354,7 @@ function updateHSInterface()
     logHSHQEvent error "$strMsg"
     return 2
   fi
+  is_private=$(checkIsIPPrivate "$current_ip")
   interface_subnet=$(getSubnetOfInterface "$iface_name" "$current_ip" "$is_private")
   if [ -z "$interface_subnet" ]; then
     strMsg="There was an error obtaining the subnet of this interface ($iface_name)."
@@ -19971,6 +20401,7 @@ function checkUpdateHostInterface()
       if [ "$iface_isPrimary" = "true" ]; then
         return 3
       fi
+      newIP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName='$iface_name';")
       ;;
     remove)
       if [ -z "$iface_name" ]; then
@@ -20043,6 +20474,7 @@ function checkUpdateHostInterface()
       if [ $? -ne 0 ]; then
         return 15
       fi
+      updateIP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName='$iface_name';")
       ;;
     *)
       strMsg="Unknown operation."
@@ -20060,7 +20492,7 @@ function checkUpdateHostInterface()
       for curID in "${ifListDBID[@]}"
       do
         curIF_IP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID = $curID;")
-        if [ "$(checkValidIPAddress $curIF_IP)" = "true" ]; then
+        if [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
           certIPList="$certIPList","$curIF_IP"
         fi
       done
@@ -20090,15 +20522,20 @@ function checkUpdateHostInterface()
   case $iface_operation in
     add)
       # Add Caddy instance
-      installHostInterfaceCaddy "$iface_name"
+      if [ "$iface_isExpose" = "true" ]; then
+        installHostInterfaceCaddy "$iface_name"
+        if [ "$newIP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+          startStopStack caddy-home-$iface_name stop > /dev/null 2>&1
+        fi
+      fi
       ;;
-    setisprimary|update)
+    update)
       # Restart caddy-home stacks
-      caddy_arr=($(docker ps -a --filter name=caddy-home- --format "{{.Names}}"))
-      for curcaddy in "${caddy_arr[@]}"
-      do
-        restartStackIfRunning $curcaddy 1
-      done
+      if [ "$(checkValidIPAddress $updateIP)" = "true" ] && ! [ "$updateIP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+        startStopStack caddy-home-$iface_name stop > /dev/null 2>&1
+        sleep 1
+        startStopStack caddy-home-$iface_name start > /dev/null 2>&1
+      fi
       ;;
     *)
       ;;
@@ -24783,12 +25220,17 @@ EOFPC
     curIF_IPVar=$(getHSHostIPVarName $curIF_Interface)
     curIF_SubnetVar=$(getHSHostSubnetVarName $curIF_Interface)
     if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ]; then
-      echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-      echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-      if [ -z "$ALL_INTERFACE_IPS" ]; then
-        ALL_INTERFACE_IPS="${curIF_IP}"
+      if [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+        echo "${curIF_IPVar}=127.0.0.1" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+        echo "${curIF_SubnetVar}=127.0.0.1/32" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
       else
-        ALL_INTERFACE_IPS="$ALL_INTERFACE_IPS","${curIF_IP}"
+        echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+        echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+        if [ -z "$ALL_INTERFACE_IPS" ]; then
+          ALL_INTERFACE_IPS="${curIF_IP}"
+        else
+          ALL_INTERFACE_IPS="$ALL_INTERFACE_IPS","${curIF_IP}"
+        fi
       fi
     fi
   done
@@ -47079,6 +47521,36 @@ fi
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getInterfaceIP.sh
+#!/bin/bash
+
+interfaceName="\$1"
+interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
+source $HSHQ_LIB_SCRIPT lib
+getIPAddressOfInterface \$interfaceName
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getInterfaceCIDRLength.sh
+#!/bin/bash
+
+interfaceName="\$1"
+interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
+source $HSHQ_LIB_SCRIPT lib
+getCIDRLengthOfInterface \$interfaceName
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getInterfaceGateway.sh
+#!/bin/bash
+
+interfaceName="\$1"
+interfaceName=\$(echo "\$interfaceName" | cut -d" " -f1 | xargs)
+source $HSHQ_LIB_SCRIPT lib
+getGatewayOfInterface \$interfaceName
+
+EOFSC
+
   # 01 Misc Utils
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartAuthelia.sh
 #!/bin/bash
@@ -49314,7 +49786,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
+        "width_weight": 1,
         "separator_before": {
           "type": "new_line"
         }
@@ -52731,10 +53203,15 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 addinterface=\$(getArgumentValue addinterface "\$@")
-
+createcaddy=\$(getArgumentValue createcaddy "\$@")
+if [ "\$createcaddy" = "Yes" ]; then
+  isCaddy=true
+else
+  isCaddy=false
+fi
 set +e
 echo "Adding host interface \$addinterface..."
-checkUpdateHostInterface add \$addinterface false
+checkUpdateHostInterface add \$addinterface false \$isCaddy
 retVal=\$?
 set -e
 performExitFunctions false
@@ -52751,7 +53228,7 @@ EOFSC
 {
   "name": "02 Add Host Interface",
   "script_path": "conf/scripts/addHomeServerHostInterface.sh",
-  "description": "Add network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a network interface on the host to be managed by the HSHQ firewall. It will also generate a (Caddy) reverse proxy instance to serve its respective network specifically on this interface. The interface of the default route has already been added. This function is to add any additional adapters or connections.",
+  "description": "Add network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a network interface on the host to be managed by the HSHQ firewall. It will also generate a (Caddy) reverse proxy instance (if selected) to serve its respective network specifically on this interface. The interface of the default route has already been added. This function is to add any additional adapters or connections.",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -52798,6 +53275,26 @@ EOFSC
       },
       "secure": false,
       "pass_as": "argument"
+    },
+    {
+      "name": "Create Caddy Instance?",
+      "required": true,
+      "param": "-createcaddy=",
+      "same_arg_param": true,
+      "type": "list",
+      "default": "Yes",
+      "values": [
+        "Yes",
+        "No"
+      ],
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
     }
   ]
 }
@@ -52817,30 +53314,79 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
 
 selinterface=\$(getArgumentValue selinterface "\$@")
-isprimary=\$(getArgumentValue isprimary "\$@")
-isexpose=\$(getArgumentValue isexpose "\$@")
-
 selinterface=\$(echo "\$selinterface" | cut -d" " -f1 | xargs)
+selaction=\$(getArgumentValue selaction "\$@")
+
+ipaddr=\$(getArgumentValue ipaddr "\$@")
+cidrlen=\$(getArgumentValue cidrlen "\$@")
+selgateway=\$(getArgumentValue selgateway "\$@")
+ssid=\$(getArgumentValue ssid "\$@")
+wifipass=\$(getArgumentValue wifipass "\$@")
 
 set +e
 retVal=0
-if [ "\$isprimary" = "Set As Primary" ]; then
-  echo "Setting host interface as primary (\$selinterface)..."
-  checkUpdateHostInterface setisprimary \$selinterface true na
-  retVal1=\$?
-fi
-if [ "\$isexpose" = "Enable Expose To Network" ]; then
-  echo "Setting host interface (\$selinterface) to enable exposure to connected network..."
-  checkUpdateHostInterface setisexpose \$selinterface na true
-  retVal2=\$?
-elif [ "\$isexpose" = "Disable Expose To Network" ]; then
-  echo "Setting host interface (\$selinterface) to disable exposure to connected network..."
-  checkUpdateHostInterface setisexpose \$selinterface na false
-  retVal2=\$?
-fi
+
+case "\$selaction" in
+  "Display Info")
+      echo "Displaying info for \$selinterface..."
+      echo -e "\$(outputInterfaceInfo \$selinterface)"
+    ;;
+  "Set As Primary Interface")
+      echo "Setting \$selinterface as primary interface..."
+      checkUpdateHostInterface setisprimary \$selinterface true na
+    ;;
+  "Enable Expose To Network")
+      echo "Enabling \$selinterface to be exposed to network..."
+      checkUpdateHostInterface setisexpose \$selinterface na true
+    ;;
+  "Disable Expose To Network")
+      echo "DIsabling \$selinterface from being exposed to network..."
+      checkUpdateHostInterface setisexpose \$selinterface na false
+    ;;
+  "Display Netplan")
+      sudo netplan get
+      echo ""
+    ;;
+  "Set As Wired DHCP")
+      echo "Setting \$selinterface as wired DHCP..."
+      setAsWiredDHCP "\$selinterface"
+    ;;
+  "Set As Wired Static IP")
+      echo "Setting \$selinterface as wired static IP..."
+      setAsWiredStaticIP "\$selinterface" "\$ipaddr" "\$cidrlen" "\$selgateway"
+    ;;
+  "Set As Wireless DHCP")
+      echo "Setting \$selinterface as wireless DHCP..."
+      setAsWirelessDHCP "\$selinterface" "\$ssid" "\$wifipass"
+    ;;
+  "Set As Wireless Static IP")
+      echo "Setting \$selinterface as wireless static IP..."
+      setAsWirelessStaticIP "\$selinterface" "\$ipaddr" "\$cidrlen" "\$selgateway" "\$ssid" "\$wifipass"
+    ;;
+  "Remove From Netplan")
+      echo "Removing \$selinterface from netplan..."
+      removeFromNetplan "\$selinterface"
+    ;;
+  "Display Wifi Networks")
+      echo "Displaying wifi networks for \${selinterface}..."
+      displayWifiNetworks "\$selinterface"
+    ;;
+  "Add/Update Wifi Access Point")
+      echo "Adding/Updating wifi access point on \${selinterface}..."
+      addUpdateWifiAccessPoint "\$selinterface" "\$ssid" "\$wifipass"
+    ;;
+  "Remove Wifi Access Point")
+      echo "Removing wifi access point from \${selinterface}..."
+      removeWifiAccessPoint "\$selinterface" "\$ssid"
+    ;;
+  *)
+      echo "Unknown: \$selaction"
+    ;;
+esac
+retVal=\$?
 set -e
 performExitFunctions false
-exit \$((\$retVal1+\$retVal2))
+exit \$retVal
 
 EOFSC
 
@@ -52848,7 +53394,7 @@ EOFSC
 {
   "name": "03 Edit Host Interface",
   "script_path": "conf/scripts/editHomeServerHostInterface.sh",
-  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are two possible actions available at the moment:\n1. Set As Primary - Sets the selected interface as the primary, i.e. what IP address the DNS records point to, the ip-based links on the home page (Heimdall) etc.\n2. Expose To Network - allows the selected ports to be accessible (or inaccessible) for the selected interface/network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.",
+  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are numerous actions that can be performed on a particular interface, and some actions require parameters that are available below the selected action.<br/><br/>Setting an interface as primary will determine what IP address the DNS records piont to, as well as the ip-based links on the home page.<br/><br/>Enabling/Disabling Expose to Network allows the selected ports to be accessible/inaccessible for the corresponding network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.<br/><br/>Setting an interface (wired or wireless) to a static IP requires an IP address, CIDR length, and gateway. When setting up a new wireless interface, you must also provide an initial network SSID (and password, if applicable).",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -52873,10 +53419,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "argument"
@@ -52901,35 +53444,93 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "Select Primary Option",
+      "name": "Select Action",
       "required": false,
-      "param": "-isprimary=",
+      "param": "-selaction=",
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
-      "values": [ "Set As Primary", "Do Nothing" ],
+      "values": [ "Display Info", "Set As Primary Interface", "Enable Expose To Network", "Disable Expose To Network", "Display Netplan", "Set As Wired DHCP", "Set As Wired Static IP", "Set As Wireless DHCP", "Set As Wireless Static IP", "Remove From Netplan", "Display Wifi Networks", "Add/Update Wifi Access Point", "Remove Wifi Access Point" ],
       "secure": false,
       "pass_as": "argument"
     },
     {
-      "name": "Select Expose Option",
+      "name": "Enter an IP address",
       "required": false,
-      "param": "-isexpose=",
+      "param": "-ipaddr=",
       "same_arg_param": true,
-      "type": "list",
+      "type": "ip4",
+      "ui": {
+        "width_weight": 1,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": { 
+        "script": "conf/scripts/getInterfaceIP.sh \"\${Select the interface to edit}\""
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "CIDR length",
+      "required": false,
+      "param": "-cidrlen=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 1
+      },
+      "default": { 
+        "script": "conf/scripts/getInterfaceCIDRLength.sh \"\${Select the interface to edit}\""
+      },
+      "min": "0",
+      "max": "32",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter Gateway",
+      "required": false,
+      "param": "-selgateway=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 1
+      },
+      "default": { 
+        "script": "conf/scripts/getInterfaceGateway.sh \"\${Select the interface to edit}\""
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "SSID Name",
+      "required": false,
+      "param": "-ssid=",
+      "same_arg_param": true,
+      "type": "text",
       "ui": {
         "width_weight": 2,
         "separator_before": {
           "type": "new_line"
         }
       },
-      "values": [ "Enable Expose To Network", "Disable Expose To Network" ],
       "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Wireless Password",
+      "required": false,
+      "param": "-wifipass=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
       "pass_as": "argument"
     }
   ]
@@ -53053,7 +53654,7 @@ EOFSC
 {
   "name": "05 Add Custom Subnet",
   "script_path": "conf/scripts/addCustomFirewallSubnet.sh",
-  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function ",
+  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to add a custom subnet, which can then be selected in the 07 Edit Exposed Ports function. The use case for this is if you have any other VPN and/or networking interfaces that are not mananaged by HSHQ, but provide an easy means in which ports/services can be exposed to that corresponding network.",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -53108,7 +53709,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
+        "width_weight": 1,
         "separator_before": {
           "type": "new_line"
         }
@@ -53169,7 +53770,7 @@ EOFSC
 {
   "name": "06 Remove Custom Subnet",
   "script_path": "conf/scripts/removeCustomFirewallSubnet.sh",
-  "description": "Removes a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function ",
+  "description": "Removes a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Removes a selected custom firewall subnet that was added via 05 Add Custom Subnet.",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -53255,7 +53856,7 @@ EOFSC
 {
   "name": "07 Edit Exposed Ports",
   "script_path": "conf/scripts/editExposedPorts.sh",
-  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. All other traffic is dropped. You also have to select either the INPUT chain or the DOCKER-USER chain. ",
+  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed (thus causing it to be inaccessible otherwise).",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -53347,6 +53948,60 @@ EOFSC
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetFirewall.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+
+set +e
+source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
+checkRes=\$(tryOpenHSHQScript boot)
+if ! [ -z "\$checkRes" ]; then
+  echo "The HSHQ script is running in another instance (\$checkRes), returning..."
+  return
+fi
+echo "Clearing iptables..."
+performClearIPTables true
+echo "Adding rules to iptables..."
+checkUpdateAllIPTables resetFirewall
+echo "Reset firewall complete!"
+retVal=\$?
+closeHSHQScript "resetFirewall"
+exit \$retVal
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetFirewall.json
+{
+  "name": "08 Reset Firewall",
+  "script_path": "conf/scripts/resetFirewall.sh",
+  "description": "Clears and restores firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This functions flushes and restores certain parts of the firewall, i.e. iptables. It does not affect all of the chains/tables, only the raw table, and the INPUT and DOCKER-USER chains in the filter table.",
+  "group": "$group_id_homenetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
   # Need to do a bit more work to migrate this function to web UI.
   rm -f $HSHQ_STACKS_DIR/script-server/conf/scripts/hostVPN.sh
   rm -f $HSHQ_STACKS_DIR/script-server/conf/runners/hostVPN.json
@@ -53355,36 +54010,6 @@ EOFSC
   # Set permissions
   chmod 700 $HSHQ_STACKS_DIR/script-server/conf/scripts/*
   chmod 600 $HSHQ_STACKS_DIR/script-server/conf/runners/*
-}
-
-function outputAllNetworkInterfaces()
-{
-  allInterfaces=($(ls /sys/class/net | grep -v -E "veth.*|docker.*|lo|vpn-*|ext-*"))
-  dockerNets=($(docker network ls -q))
-  networksArr=()
-  for curNet in "${dockerNets[@]}"
-  do
-    brName=$(docker network inspect $curNet | jq -r '.[] | .Options."com.docker.network.bridge.name"')
-    if [ -z "$brName" ] || [ "$brName" = "null" ]; then
-      brName="br-${curNet}"
-    fi
-    networksArr+=($brName)
-  done
-
-  for curInt in "${allInterfaces[@]}"
-  do
-    isFound=false
-    for curNet in "${networksArr[@]}"
-    do
-      if [ "$curNet" = "$curInt" ]; then
-        isFound=true
-        break
-      fi
-    done
-    if [ "$isFound" = "false" ]; then
-      ifconfig $curInt
-    fi
-  done
 }
 
 function outputStackListsScriptServer()
