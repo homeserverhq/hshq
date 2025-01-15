@@ -1611,7 +1611,7 @@ function initConfig()
       fi
     fi
     addHSInterface $add_interface true
-    if [ $? -ne 0 ]; then
+    if [ $? -ne 0 ] && [ $? -ne 1 ]; then
       showMessageBox "Default Interface Error" "There was an error with the default interface"
       add_interface=""
       is_add_error=true
@@ -1746,6 +1746,9 @@ function initConfig()
   while [ -z "$TZ" ]
   do
     TZ=$(promptUserInputMenu "$(cat /etc/timezone)" "Enter Time Zone" "Enter your time zone. For a list of all time zones, visit https://en.wikipedia.org/wiki/List_of_tz_database_time_zones and enter the value in the [TZ database name] column: ")
+    if [ $? -ne 0 ]; then
+      exit 2
+    fi
     if [ -z "$TZ" ]; then
       showMessageBox "Time Zone Empty" "The time zone cannot be empty"
     else
@@ -23961,6 +23964,10 @@ function installStackByName()
   stack_install_retval=$?
   if [ $stack_install_retval -ne 0 ]; then
     notifyStackInstallFailure "$stack_name"
+    if [ "$IS_INSTALLING" = "true" ]; then
+      logHSHQEvent error "Error installing stack ($stack_name), exiting..."
+      exit 1
+    fi
   fi
 }
 
@@ -25880,7 +25887,6 @@ EOFR
     sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
     sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
   done
-  sudo netplan apply > /dev/null 2>&1
   if ! [ -z $pai_curE ]; then
     set -e
   fi
