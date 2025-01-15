@@ -113,6 +113,7 @@ function init()
   SUDO_MAX_RETRIES=20
   MAILX_TIMEOUT=15
   NETPLAN_ORIGIN_HINT=88-hshq
+  NETPLAN_APPLY_WAIT=5
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
   IS_HSHQ_DEV_FILENAME=hshq.dev
@@ -996,7 +997,7 @@ EOF
       return 1 ;;
     3)
       checkLoadConfig
-      checkHostInterfaceIPChanges true
+      checkHostAllInterfaceIPChanges true
       set +e
       return 1 ;;
     4)
@@ -5915,7 +5916,11 @@ dns:
   bootstrap_dns:
     - 9.9.9.9
     - 149.112.112.112
-  fallback_dns: []
+  fallback_dns:
+    - 9.9.9.10
+    - 149.112.112.10
+    - 94.140.14.14
+    - 94.140.15.15
   all_servers: false
   fastest_addr: false
   fastest_timeout: 1s
@@ -10428,7 +10433,7 @@ function removePlaintextUserConfigVar()
 function updateConfigVarInFile()
 {
   ucv_curE=${-//[^e]/}
-  if [ -z "$CONFIG_FILE" ]; then
+  if [ -z "$3" ]; then
     return
   fi
   set +e
@@ -10674,6 +10679,9 @@ function getIPAddressOfInterface()
   if ! [ "$(checkValidIPAddress $ip_addr)" = "true" ]; then
     ip_addr=""
   fi
+  if [[ $ip_addr =~ ^169\.254\. ]]; then
+    ip_addr="$DEFAULT_UNFOUND_IP_ADDRESS"
+  fi
   echo $ip_addr
 }
 
@@ -10715,13 +10723,16 @@ function getSubnetOfInterface()
   if ! [ -z $gsoa_curE ]; then
     set -e
   fi
+  if [[ $net_ip =~ ^169\.254\. ]]; then
+    this_subnet="$DEFAULT_UNFOUND_IP_SUBNET"
+  fi
   echo "$this_subnet"
 }
 
 function getGatewayOfInterface()
 {
   interface_name=$1
-  ip route | grep src | grep "$interface_name" | grep -e "^default" | awk '{print $3}'
+  ip route | grep "$interface_name" | grep -e "^default" | awk '{print $3}'
 }
 
 function getIPFromHostname()
@@ -10823,6 +10834,8 @@ function setAsWiredDHCP()
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=true"
   sudo netplan apply
+  sleep $NETPLAN_APPLY_WAIT
+  checkUpdateSingleHostInterface "$interfaceName"
 }
 
 function setAsWiredStaticIP()
@@ -10850,6 +10863,8 @@ function setAsWiredStaticIP()
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=false"
   sudo netplan apply
+  sleep $NETPLAN_APPLY_WAIT
+  checkUpdateSingleHostInterface "$interfaceName"
 }
 
 function setAsWirelessDHCP()
@@ -10880,6 +10895,8 @@ function setAsWirelessDHCP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=true"
   fi
   sudo netplan apply
+  sleep $NETPLAN_APPLY_WAIT
+  checkUpdateSingleHostInterface "$interfaceName"
 }
 
 function setAsWirelessStaticIP()
@@ -10925,6 +10942,8 @@ function setAsWirelessStaticIP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=false"
   fi
   sudo netplan apply
+  sleep $NETPLAN_APPLY_WAIT
+  checkUpdateSingleHostInterface "$interfaceName"
 }
 
 function removeFromNetplan()
@@ -10934,6 +10953,8 @@ function removeFromNetplan()
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null"
   sudo netplan apply
+  sleep $NETPLAN_APPLY_WAIT
+  checkUpdateSingleHostInterface "$interfaceName"
 }
 
 function displayWifiNetworks()
@@ -11062,8 +11083,9 @@ function addUpdateWifiAccessPoint()
   else
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.access-points.${wifiSSID}={auth: {key-management: psk, password: $wifiPass}}"
   fi
-
   sudo netplan apply
+  sleep $NETPLAN_APPLY_WAIT
+  checkUpdateSingleHostInterface "$interfaceName"
 }
 
 function removeWifiAccessPoint()
@@ -11093,6 +11115,8 @@ function removeWifiAccessPoint()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.access-points.${wifiSSID}=null"
   fi
   sudo netplan apply
+  sleep $NETPLAN_APPLY_WAIT
+  checkUpdateSingleHostInterface "$interfaceName"
 }
 
 function getAllNetworkInterfacesCSV()
@@ -11142,6 +11166,43 @@ function outputAllNetworkInterfaces()
   do
     ifconfig $curInt
   done
+}
+
+function setHostInternetTrafficWGInterface()
+{
+  set +e
+  selWG="$1"
+  curInt=$(getPlaintextConfigVar HOST_INTERNET_TRAFFIC_INTERFACE)
+  if [ "$curInt" = "$selWG" ]; then
+    strMsg="This is already the current interface, no changes were made."
+    echo "$strMsg"
+    return
+  fi
+  if ! [ "$selWG" = "default" ]; then
+    if ! sudo test -f $HSHQ_WIREGUARD_DIR/internet/${selWG}.conf; then
+      strMsg="Could not find WireGuard interface ($selWG)"
+      echo "$strMsg"
+      logHSHQEvent error "(setHostInternetTrafficWGInterface) $strMsg"
+      return 1
+    fi
+    rTable=$(getConfigVarFromFile \#ROUTING_TABLE_ID $HSHQ_WIREGUARD_DIR/internet/${selWG}.conf root)
+    if [ -z "$rTable" ]; then
+      strMsg="Could not determine routing table ($selWG)"
+      echo "$strMsg"
+      logHSHQEvent error "(setHostInternetTrafficWGInterface) $strMsg"
+      return 2
+    fi
+  fi
+  sudo ip rule delete priority 8000 > /dev/null 2>&1
+  while [ $? -eq 0 ]
+  do
+    sudo ip rule delete priority 8000 > /dev/null 2>&1
+  done
+  if ! [ "$selWG" = "default" ]; then
+    sudo ip rule add not fwmark $rTable table $rTable priority 8000
+  fi
+  HOST_INTERNET_TRAFFIC_INTERFACE="$selWG"
+  updatePlaintextRootConfigVar HOST_INTERNET_TRAFFIC_INTERFACE $HOST_INTERNET_TRAFFIC_INTERFACE
 }
 
 function initHSHQDB()
@@ -16928,6 +16989,8 @@ EOFLO
 
 function version121Update()
 {
+  #outputWGDockInternetScript
+  #if true; then return; fi
   set +e
   rm -f $HOME/rsUpdateScript.sh
   cat <<EOFRS > $HOME/rsUpdateScript.sh
@@ -17279,6 +17342,7 @@ EOFRS
   updateSysctl true
   outputMaintenanceScripts
   outputUpdateEndpointIPsScript
+  outputWGDockInternetScript
   PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   jitsiStackID=$(getStackID jitsi "$PORTAINER_TOKEN")
   if ! [ -z "$jitsiStackID" ]; then
@@ -17300,6 +17364,12 @@ EOFRS
     sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts $HSHQ_SCRIPTS_DIR/boot/afterdocker
   fi
   outputBootScripts
+
+  sudo crontab -l > $HOME/rootcron
+  echo "*/$CHECKIP_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "*/$UPDATE_IPTABLES_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh" | sudo tee -a $HOME/rootcron >/dev/null
+  sudo crontab $HOME/rootcron
+  sudo rm -f $HOME/rootcron
   set -e
 }
 
@@ -18643,6 +18713,13 @@ function checkUpdateAllIPTables()
     bash $HSHQ_CUSTOM_PRE_IPTABLES_SCRIPT "$netstate"
   fi
 
+  sudo touch $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt
+  if ! sudo test -f $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt; then
+    logHSHQEvent error "IPTables ($netstate) - Could not write to temp file, exiting..."
+    return
+  fi
+  sudo rm -f $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt
+
   isInit=false
   sudo iptables -t raw -n -L chain-icmp > /dev/null 2>&1
   if [ $? -ne 0 ]; then
@@ -18676,8 +18753,8 @@ function checkUpdateAllIPTables()
     sudo iptables -t filter -F INPUT > /dev/null 2>&1
     sudo iptables -t filter -F DOCKER-USER > /dev/null 2>&1
     sudo iptables -t filter -N DOCKER-USER > /dev/null 2>&1
-    sudo iptables -t raw -A PREROUTING -j chain-ipspoof > /dev/null 2>&1
     sudo iptables -t raw -A PREROUTING -p icmp -j chain-icmp > /dev/null 2>&1
+    sudo iptables -t raw -A PREROUTING -j chain-ipspoof > /dev/null 2>&1
     sudo iptables -t raw -A PREROUTING -p tcp -m tcp -j chain-bad_tcp > /dev/null 2>&1
     sudo iptables -t raw -P PREROUTING ACCEPT > /dev/null 2>&1
   fi
@@ -18829,18 +18906,19 @@ function checkUpdateAllIPTables()
     curNetworkType=$(sqlite3 $HSHQ_DB "select NetworkType from connections where ID=$curDBID;")
     curConnectionType=$(sqlite3 $HSHQ_DB "select ConnectionType from connections where ID=$curDBID;")
     curIsIPPrivate="$(checkIsIPPrivate $curIPAddress)"
-    if [ "$curIsIPPrivate" = "true" ]; then
-      if [ "$curIsExposeToNetwork" = "1" ]; then
-        hn_ip_list=$curSubnet
+    if ! [ "$curIPAddress" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+      if [ "$curIsIPPrivate" = "true" ]; then
+        if [ "$curIsExposeToNetwork" = "1" ]; then
+          hn_ip_list=$curSubnet
+        else
+          hn_ip_list=${curIPAddress}/32
+        fi
       else
-        hn_ip_list=${curIPAddress}/32
+        hn_ip_list=${curIPAddress}/32,${HOMENET_ADDITIONAL_IPS}
       fi
-    else
-      hn_ip_list=${curIPAddress}/32,${HOMENET_ADDITIONAL_IPS}
+      appendINPUTBySubnetAndPortsList "$hn_ip_list" "$curInputAllowPorts"
+      addDOCKERUSERBySubnetAndPortsList "$hn_ip_list" "$curDockerUserAllowPorts"
     fi
-    appendINPUTBySubnetAndPortsList "$hn_ip_list" "$curInputAllowPorts"
-    addDOCKERUSERBySubnetAndPortsList "$hn_ip_list" "$curDockerUserAllowPorts"
-
     # Add some anti-spoofing measures
     if [ "$curConnectionType" = "homeserver_vpn" ]; then
       addIPTablesSpoofRule "$curInterfaceName" "$curSubnet"
@@ -19073,7 +19151,7 @@ function deleteIPTableEntryByChainAndComment()
     logHSHQEvent info "IPTables ($netstate) - Removed rule: $ipt_comment"
   done
   if [ "$isRuleFound" = "false" ]; then
-    logHSHQEvent error "IPTables ($netstate) - Cound not find rule to remove: $ipt_comment"
+    logHSHQEvent error "IPTables ($netstate) - Could not find rule to remove: $ipt_comment"
   fi
   IFS=$OLDIFS
 }
@@ -19153,7 +19231,7 @@ function restartStacksOnBoot()
 
   ns_sleep=5
   ping_timeout=5
-  max_tries=100
+  max_tries=15
   is_error=false
 
   for cur_ip in "${ips_arr[@]}"
@@ -19176,11 +19254,11 @@ function restartStacksOnBoot()
   caddy_arr=($(docker ps -a --filter name=caddy-vpn --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
   do
-    startStopStack $curcaddy stop > /dev/null 2>&1
-    docker container stop $curcaddy > /dev/null 2>&1
-    docker container rm $curcaddy > /dev/null 2>&1
+    startStopStack $curcaddy stop
+    docker container stop $curcaddy
+    docker container rm $curcaddy
     sleep 1
-    startStopStack $curcaddy start > /dev/null 2>&1
+    startStopStack $curcaddy start
   done
 
   isCoturn=$(docker ps -a --filter name=coturn --format "{{.Names}}")
@@ -19195,8 +19273,8 @@ function restartStacksOnBoot()
 
 function outputPerformNetworkingChecks()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh >/dev/null <<EOFBS
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
@@ -19204,14 +19282,36 @@ HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
 
 function main()
 {
+  sleep 30
   source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  checkHostInterfaceIPChanges false
+  if [ "\$IS_AUTO_UPDATE_NETWORK" = "true" ]; then
+    checkHostAllInterfaceIPChanges false checkIP-cronjob > /dev/null 2>&1
+  fi
 }
 main
 EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
 
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh >/dev/null <<EOFBS
+#!/bin/bash
+
+HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+
+function main()
+{
+  sleep 5
+  source \$HSHQ_LIB_SCRIPT lib
+  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
+  if [ "\$IS_AUTO_UPDATE_NETWORK" = "true" ]; then
+    checkUpdateIPTablesCron > /dev/null 2>&1
+  fi
+}
+main
+EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
 }
 
 function outputWGInternetUpBootscript()
@@ -19456,6 +19556,7 @@ EOFWG
   sudo chmod 0500 $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo chown root:root $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
 
+  outputPerformNetworkingChecks
 }
 
 function outputPingGatewayBootscript()
@@ -19550,6 +19651,8 @@ function initCronJobs()
   echo "*/$LECERTS_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "*/$WIREGUARD_DNS_REFRESH_RATE * * * * bash $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "*/$CHECKIP_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "*/$UPDATE_IPTABLES_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh" | sudo tee -a $HOME/rootcron >/dev/null
   sudo crontab $HOME/rootcron
   sudo rm -f $HOME/rootcron
 }
@@ -19753,6 +19856,8 @@ function outputWGDockInternetScript()
 
 CONFIG_FILE=\$1
 COMMAND=\$2
+HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
+
 set +e
 function main()
 {
@@ -19770,6 +19875,7 @@ function main()
   MTU=\$(getConfigVar \#MTU)
   IS_ENABLED=\$(getConfigVar \#IS_ENABLED)
   EXT_DOMAIN=\$(getConfigVar \#EXT_DOMAIN)
+  HOST_INTERNET_TRAFFIC_INTERFACE=\$(sudo grep ^HOST_INTERNET_TRAFFIC_INTERFACE= \$HSHQ_PLAINTEXT_ROOT_CONFIG | sed 's/^[^=]*=//' | sed 's/ *\$//g')
 
   if [ \${#NETWORK_NAME} -gt 10 ]; then
     echo "Network name is too long, exiting..."
@@ -19831,6 +19937,7 @@ function up()
   if [ \$? -ne 0 ]; then
     ip link add \$NETWORK_NAME type wireguard
     wg setconf \$NETWORK_NAME \$CONFIG_FILE
+    wg set \$NETWORK_NAME fwmark \$ROUTING_TABLE_ID
     ip addr add \$CLIENT_ADDRESS dev \$NETWORK_NAME
     ip link set mtu \$MTU up dev \$NETWORK_NAME
     ip link set up dev \$NETWORK_NAME
@@ -19839,6 +19946,15 @@ function up()
   CMD="ip route add default via \$CLIENT_ADDR_NO_CIDR metric 2 table \$ROUTING_TABLE_ID"
   CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "\$CLIENT_ADDR_NO_CIDR")
   while_check "\$CMD" "\$CHECK"
+
+  if [ "\$HOST_INTERNET_TRAFFIC_INTERFACE" = "\$NETWORK_NAME" ]; then
+    sudo ip rule delete priority 8000 > /dev/null 2>&1
+    while [ \$? -eq 0 ]
+    do
+      sudo ip rule delete priority 8000 > /dev/null 2>&1
+    done
+    sudo ip rule add not fwmark \$ROUTING_TABLE_ID table \$ROUTING_TABLE_ID priority 8000
+  fi
 
   echo "Connection: \$NETWORK_NAME is up"
 }
@@ -19899,12 +20015,12 @@ function status()
   if [ -z "\$rsip" ]; then
     echo "ERROR: Could not determine IP from \$EXT_DOMAIN"
     return 1
-  elif [[ "\$VPNIP" = "\$IP" ]]; then
-    echo "Not connected to Endpoint: Blackhole NOT active!"
-    return 2
   elif [[ "\$VPNIP" = "\$rsip" ]]; then
     echo "Connected to \$rsip: Blackhole active"
     return 0
+  elif [[ "\$VPNIP" = "\$IP" ]]; then
+    echo "Not connected to Endpoint: Blackhole NOT active!"
+    return 2
   else
     echo "Unknown error, VPNIP=\$VPNIP, RSIP=\$rsip, LocalIP=\$IP"
     return 3
@@ -20351,7 +20467,6 @@ function updateHSInterface()
   if [ "$db_ip" = "$current_ip" ]; then
     strMsg="The IP address is unchanged. No updated needed."
     echo "$strMsg"
-    logHSHQEvent error "$strMsg"
     return 2
   fi
   is_private=$(checkIsIPPrivate "$current_ip")
@@ -20365,6 +20480,12 @@ function updateHSInterface()
   chk_conflict=$(checkIPConflict "$current_ip" "$interface_subnet" "$is_private")
   if ! [ -z "$chk_conflict" ]; then
     strMsg="$chk_conflict"
+    echo "$strMsg"
+    logHSHQEvent error "$strMsg"
+    return 4
+  fi
+  if [ "$current_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+    strMsg="The IP address is invalid ($DEFAULT_UNFOUND_IP_ADDRESS)."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 4
@@ -20579,23 +20700,29 @@ function updatePortainerJitsiIPChanges()
   startStopStack jitsi start > /dev/null 2>&1
 }
 
-function checkHostInterfaceIPChanges()
+function checkHostAllInterfaceIPChanges()
 {
   isBypassHSHQStatus=$1
+  callerName="$2"
   set +e
   timeout 5 docker ps > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "Docker is not yet up and running, returning..."
     return 1
   fi
+  if [ -z "$$callerName" ]; then
+    callerName=checkHostAllInterfaceIPChanges
+  fi
   checkRes=""
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
-    checkRes=$(tryOpenHSHQScript NetworkingCheck)
+    checkRes=$(tryOpenHSHQScript $callerName)
   fi
   if ! [ -z "$checkRes" ]; then
     echo "The HSHQ script is running in another instance ($checkRes), returning..."
+    logHSHQEvent error "ERROR: (checkHostAllInterfaceIPChanges) The HSHQ script is already open or running in a different instance ($checkRes)"
     return
   fi
+  #logHSHQEvent info "Check IP ($callerName) - BEGIN"
   interfaceListArr=($(echo $HOMESERVER_HOST_NETWORK_INTERFACES | tr "," "\n"))
   isUpdateIPT=false
   for curInterface in "${interfaceListArr[@]}"
@@ -20605,10 +20732,33 @@ function checkHostInterfaceIPChanges()
       isUpdateIPT=true
     fi
   done
-  checkUpdateAllIPTables maintenance
-  if ! [ "$isBypassHSHQStatus" = "true" ]; then
-    closeHSHQScript "checkHostInterfaceIPChanges"
+  if [ "$isUpdateIPT" = "true" ]; then
+    checkUpdateAllIPTables $callerName
   fi
+  if ! [ "$isBypassHSHQStatus" = "true" ]; then
+    closeHSHQScript "$callerName"
+  fi
+  #logHSHQEvent info "Check IP ($callerName) - END"
+}
+
+function checkUpdateSingleHostInterface()
+{
+  curInterface="$1"
+  checkUpdateHostInterface update $curInterface
+  if [ $? -eq 0 ]; then
+    checkUpdateAllIPTables checkUpdateSingleHostInterface
+  fi
+}
+
+function checkUpdateIPTablesCron()
+{
+  checkRes=$(tryOpenHSHQScript checkFirewall-cronjob)
+  if ! [ -z "$checkRes" ]; then
+    logHSHQEvent error "ERROR: (checkUpdateIPTablesCron) The HSHQ script is already open or running in a different instance ($checkRes)"
+    return
+  fi
+  checkUpdateAllIPTables checkFirewall-cronjob > /dev/null 2>&1
+  closeHSHQScript "checkFirewall-cronjob"
 }
 
 function logHSHQEvent()
@@ -22486,6 +22636,9 @@ DOCKER_NETWORK_RESERVED_RANGE=172.16.0.0/15
 DOCKER_NETWORK_SIZE=24
 DOCKER_METRICS_PORT=8323
 IS_AUTO_UPDATE_NETWORK=true
+CHECKIP_REFRESH_RATE=1
+UPDATE_IPTABLES_REFRESH_RATE=5
+HOST_INTERNET_TRAFFIC_INTERFACE=default
 # General Info END
 
 # Certs BEGIN
@@ -25469,7 +25622,11 @@ dns:
   bootstrap_dns:
     - 9.9.9.9
     - 149.112.112.112
-  fallback_dns: []
+  fallback_dns:
+    - 9.9.9.10
+    - 149.112.112.10
+    - 94.140.14.14
+    - 94.140.15.15
   all_servers: false
   fastest_addr: false
   fastest_timeout: 1s
@@ -47551,6 +47708,17 @@ getGatewayOfInterface \$interfaceName
 
 EOFSC
 
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getWGInternetTrafficInterfaces.sh
+#!/bin/bash
+
+echo "default"
+for curInt in $HSHQ_WIREGUARD_DIR/internet/*;
+do
+  echo \$(basename \${curInt%.*})
+done
+
+EOFSC
+
   # 01 Misc Utils
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restartAuthelia.sh
 #!/bin/bash
@@ -53181,7 +53349,7 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/displayAllHomeServerHostInterfaces.json
 {
-  "name": "01 Display All Interfaces",
+  "name": "01 Display Host Interfaces",
   "script_path": "conf/scripts/displayAllHomeServerHostInterfaces.sh",
   "description": "Displays all network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function displays all of the network interfaces on the host system. It will not show Docker network or HSHQ-based WireGuard interfaces, but will display everything else. You can use this function to obtain the exact name of an interface that you may want to add.",
   "group": "$group_id_homenetwork",
@@ -53979,7 +54147,7 @@ EOFSC
 {
   "name": "08 Reset Firewall",
   "script_path": "conf/scripts/resetFirewall.sh",
-  "description": "Clears and restores firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This functions flushes and restores certain parts of the firewall, i.e. iptables. It does not affect all of the chains/tables, only the raw table, and the INPUT and DOCKER-USER chains in the filter table.",
+  "description": "Clears and restores firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function flushes and restores certain parts of the firewall, i.e. iptables. It does not affect all of the chains/tables, only the raw table, and the INPUT and DOCKER-USER chains in the filter table.",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -53995,6 +54163,72 @@ EOFSC
         }
       },
       "secure": true,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/setHostInternetWGInterface.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sudopw=\$(getArgumentValue sudopw "\$@")
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+
+selinterface=\$(getArgumentValue selinterface "\$@")
+set +e
+
+echo "Setting host internet traffic interface to \${selinterface}..."
+setHostInternetTrafficWGInterface "\$selinterface"
+retVal=\$?
+echo "Finished!"
+exit \$retVal
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/setHostInternetWGInterface.json
+{
+  "name": "09 Set Internet Traffic Interface",
+  "script_path": "conf/scripts/setHostInternetWGInterface.sh",
+  "description": "Sets the interface for internet-bound host traffic. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to route internet-bound traffic on the HomeServer host via any WireGuard interfaces. When you set up your own RelayServer, a connection is set up for you by default. Select the WireGuard interface from the list below, or select default to use the normal default route(s).",
+  "group": "$group_id_homenetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "param": "-sudopw=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select the WireGuard interface",
+      "required": false,
+      "param": "-selinterface=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "values": {
+        "script": "conf/scripts/getWGInternetTrafficInterfaces.sh",
+        "shell": true
+      },
+      "secure": false,
       "pass_as": "argument"
     }
   ]
