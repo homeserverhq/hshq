@@ -470,6 +470,7 @@ EOF
 
 function showRestoreUnencryptedMenu()
 {
+  set +e
   performRestorePostcheck
   if [ $? -ne 0 ]; then
     return
@@ -582,35 +583,33 @@ EOF
   updateMOTD
   performSuggestedSecUpdates
   installMailUtils
-
   performClearIPTables true
   checkUpdateAllIPTables performFullRestore
-
   outputScripts
   sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
-  enableAllWGVPNInterfaces
-  sudo $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
-  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
-
   performAptInstall python3-tornado > /dev/null 2>&1
   sudo rm -f /etc/systemd/system/runScriptServer.service
   sudo ln -s $HSHQ_SCRIPTS_DIR/root/runScriptServer.service /etc/systemd/system/runScriptServer.service
   sudo systemctl daemon-reload
   sudo systemctl enable runScriptServer
   sudo systemctl start runScriptServer
-
+  set -e
   if [ -d $HSHQ_STACKS_DIR/wazuh ]; then
     installWazuhAgent
   fi
-
-  createDockerNetworks
   set +e
+  sudo docker ps -q | xargs sudo docker stop
+  sudo docker container prune -f
+  createDockerNetworks
+  enableAllWGVPNInterfaces
+  sudo $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
   outputEnvPortainer
   startPortainer
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
   createClientDNSNetworksOnRestore
   prepAdguardInstallation
   restartAllStacks "duplicati,syncthing" true
+  sudo docker container prune -f
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   # Add RelayServer fingerprint
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -619,9 +618,23 @@ EOF
     unloadSSHKey
   fi
   removeSudoTimeoutInstall
+  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
   initCronJobs
   performExitFunctions
-  echo "Restore Complete!"
+  clear
+  echo -e "\n\n\n\n##########################################\n"
+  echo -e "HomeServer Restore Process Complete!\n"
+  echo -e "The duplicati and syncthing stacks have"
+  echo -e "been intentionally skipped from the stack"
+  echo -e "restart process, as you may still need"
+  echo -e "to re-configure your backup drives, etc.\n"
+  echo -e "You may also have to manually restart some"
+  echo -e "stacks due to some bugs in the docker"
+  echo -e "startup process.\n"
+  echo -e "Log in to Portainer via the following URL: \n"
+  echo -e "  https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT"
+  echo -e "\n##########################################\n\n"
+  read -p "Press enter to continue."
 }
 
 function restorePullDockerImages()
@@ -816,6 +829,7 @@ EOF
   sudo rm -fr /tmp/dupconfig
   echo "Data Successfully Restored!"
   if ! [ -z "$umountDisk" ]; then
+    echo "Unmounting disk ($umountDisk)..."
     sudo umount $umountDisk
   fi
   showRestoreUnencryptedMenu
@@ -9922,7 +9936,7 @@ function performNetworkJoin()
       chmod 0400 $join_wireguard_config_file
       sudo chown root:root $join_wireguard_config_file
       sudo mv $join_wireguard_config_file $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
-      rm -f $join_config_file
+      rm -f $join_base_config_file
       curdt=$(getCurrentDate)
       db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_internet','other','$my_pub_key','$preshared_key','$client_ip',true,'$interface_name','$endpoint_hostname','$curdt');select last_insert_rowid();")
       JOINED_DB_ID=$db_id
@@ -11646,6 +11660,8 @@ function restartAllStacksDialog()
 
 function restartAllStacks()
 {
+  ras_curE=${-//[^e]/}
+  set +e
   skipRestart="$1"
   isOnlyHSHQManaged="$2"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -11680,6 +11696,8 @@ function restartAllStacks()
   done
   stopPortainer
   removeDockerNetworks
+  sudo docker ps -q | xargs sudo docker stop
+  docker container prune -f
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
@@ -11701,6 +11719,7 @@ function restartAllStacks()
     echo "Error getting portainer token, exiting..."
     exit 1
   fi
+
   for curID in $(seq 0 $numItems);
   do
     if ! [ -z "$skipRestart" ]; then
@@ -11720,6 +11739,9 @@ function restartAllStacks()
     sleep 3
   done
   startStopStack uptimekuma start "$portainerToken"
+  if ! [ -z $ras_curE ]; then
+    set -e
+  fi
 }
 
 function isStackHSHQManaged()
@@ -12116,11 +12138,18 @@ function startStopStackByID()
   sss_retVal=1
   while [ $sss_numTries -le $sss_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+    if [ "$IS_STACK_DEBUG" = "true" ] || [ $sss_numTries -eq $sss_totalTries ]; then
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1
+    else
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+    fi
     sss_retVal=$?
     if [ $sss_retVal -eq 0 ]; then
       break
     fi
+    sleep 1
+    sudo docker container prune -f
+    sleep 1
     ((sss_numTries++))
   done
   if [ $sss_retVal -ne 0 ]; then
@@ -18641,11 +18670,7 @@ function nukeHSHQ()
   sudo docker container prune -f
   sudo docker volume rm $(sudo docker volume ls -q)
   sudo docker network prune -f
-  sudo systemctl stop wazuh-agent
-  sudo systemctl disable wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
-  sudo apt-mark unhold wazuh-agent
-  sudo systemctl daemon-reload
+  removeWazuhAgent
   sudo rm -f /usr/local/share/ca-certificates/*
   sudo update-ca-certificates
   sudo systemctl stop docker
@@ -19603,6 +19628,12 @@ ip rule delete priority 2000
 while [ \$? -eq 0 ]
 do
   ip rule delete priority 2000
+done
+
+ip rule delete priority 8000
+while [ \$? -eq 0 ]
+do
+  ip rule delete priority 8000
 done
 
 ip route flush table 42
@@ -30927,6 +30958,10 @@ function mfUpdateWazuhStackJavaMem()
 
 function installWazuhAgent()
 {
+  if [ -z "$SUB_WAZUH" ] || [ -z "$HOMESERVER_DOMAIN" ] || [ -z "$WAZUH_AGENT_VERSION" ] || [ -z "$WAZUH_MANAGER_AUTH_PASSWORD" ]; then
+    echo "Fatal error: SUB_WAZUH: $SUB_WAZUH, HOMESERVER_DOMAIN: $HOMESERVER_DOMAIN, WAZUH_AGENT_VERSION: $WAZUH_AGENT_VERSION, WAZUH_MANAGER_AUTH_PASSWORD: $WAZUH_MANAGER_AUTH_PASSWORD"
+    exit 2
+  fi
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
   echo "deb [signed-by=/usr/share/keyrings/wazuh.gpg] https://packages.wazuh.com/4.x/apt/ stable main" | sudo tee /etc/apt/sources.list.d/wazuh.list
   sudo DEBIAN_FRONTEND=noninteractive apt update
