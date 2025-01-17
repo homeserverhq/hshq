@@ -498,6 +498,8 @@ function showRestoreUnencryptedMenu()
 function performFullRestore()
 {
   checkLoadConfig
+  IS_INSTALLED=false
+  IS_INSTALLING=true
   set +e
   origUsername=$(echo $HSHQ_BASE_DIR | cut -d"/" -f3)
   curUID=$(id -u)
@@ -521,10 +523,8 @@ EOF
   fi
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   setSudoTimeoutInstall
-  performClearIPTables true
-  checkUpdateAllIPTables performFullRestore
+  createHSHQLog
   checkCreateNonbackupDirs
-
   # Set hostname
   new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
@@ -533,20 +533,58 @@ EOF
   sudo hostnamectl set-hostname $new_hostname
   rm -f $HOME/dead.letter
 
-  # Set timezone
-  sudo timedatectl set-timezone "$TZ"
-
   echo "Pulling docker images..."
   restorePullDockerImages
   rm -f $HOME/script-server.zip
+
+  # Set timezone
+  sudo timedatectl set-timezone "$TZ"
+  set +e
+  # Setup primary network interface
+  prevPrimaryIface=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ConnectionType = 'primary' and NetworkType = 'home_network';")
+  isFound=false
+  availInterfacesArr=($(echo "$(getAllNetworkInterfacesCSV)" | tr "," "\n"))
+  for curInterface in "${availInterfacesArr[@]}"
+  do
+    if [ "$prevPrimaryIface" = "$curInterface" ]; then
+      isFound=true
+      break
+    fi
+  done
+  if [ "$isFound" = "false" ]; then
+    default_iface=$(getDefaultIface)
+    checkDB=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where InterfaceName = '$default_iface';")
+    if [ -z "$checkDB" ]; then
+      addHSInterface $default_iface true
+    else
+      sudo sqlite3 $HSHQ_DB "update connections set ConnectionType = 'secondary' where NetworkType = 'home_network';"
+      sudo sqlite3 $HSHQ_DB "update connections set ConnectionType = 'primary' where InterfaceName = '$default_iface';"
+    fi
+  fi
+  set -e
+  # This should cover all possibilities
+  curPrimaryIfaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ConnectionType = 'primary' and NetworkType = 'home_network';")
+  curPrimaryIfaceIP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType = 'primary' and NetworkType = 'home_network';")
+  HOMESERVER_HOST_PRIMARY_INTERFACE_NAME=$curPrimaryIfaceName
+  updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_NAME $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
+  HOMESERVER_HOST_PRIMARY_INTERFACE_IP=$curPrimaryIfaceIP
+  updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
+
   find $HSHQ_SSL_DIR -name "*-ca.crt" -print0 | xargs -0 -I {} sudo cp {} /usr/local/share/ca-certificates/
   sudo update-ca-certificates
+  CURRENT_SSH_PORT=$(sudo grep "^Port\|^#Port" /etc/ssh/sshd_config | cut -d" " -f2)
+  if [ -z "$CURRENT_SSH_PORT" ]; then
+    CURRENT_SSH_PORT=22
+  fi
   # Change SSH port on host
   sudo sed -i "s|^#*Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
   sudo sed -i "s|^Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
   updateMOTD
   performSuggestedSecUpdates
   installMailUtils
+
+  performClearIPTables true
+  checkUpdateAllIPTables performFullRestore
 
   outputScripts
   sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
@@ -567,13 +605,13 @@ EOF
 
   createDockerNetworks
   set +e
+  outputEnvPortainer
   startPortainer
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
   createClientDNSNetworksOnRestore
   prepAdguardInstallation
   restartAllStacks "duplicati,syncthing" true
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
-  initCronJobs
   # Add RelayServer fingerprint
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     loadSSHKey
@@ -581,6 +619,7 @@ EOF
     unloadSSHKey
   fi
   removeSudoTimeoutInstall
+  initCronJobs
   performExitFunctions
   echo "Restore Complete!"
 }
@@ -997,7 +1036,7 @@ EOF
       return 1 ;;
     3)
       checkLoadConfig
-      checkHostAllInterfaceIPChanges true
+      checkHostAllInterfaceIPChanges true User-Console
       set +e
       return 1 ;;
     4)
@@ -1184,8 +1223,8 @@ net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.conf.default.accept_source_route = 0
 net.ipv4.conf.all.secure_redirects = 0
 net.ipv4.conf.default.secure_redirects = 0
-net.ipv4.conf.all.rp_filter = 1
-net.ipv4.conf.default.rp_filter = 1
+net.ipv4.conf.all.rp_filter = 2
+net.ipv4.conf.default.rp_filter = 2
 net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 
@@ -1597,6 +1636,39 @@ function initConfig()
     echo "Installing grepcidr, please wait..."
     performAptInstall grepcidr > /dev/null 2>&1
   fi
+
+  while [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]
+  do
+    tmp_port=$((9000 + $RANDOM % 999))
+    while [ "$tmp_port" = "$SSH_PORT" ]
+    do
+      tmp_port=$((9000 + $RANDOM % 999))
+    done
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      PORTAINER_LOCAL_HTTPS_PORT=$tmp_port
+    else
+      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between 9000-9999 has been generated for you.")
+      if [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]; then
+        showMessageBox "Portainer Port Error" "The port cannot be empty or the same as the SSH port"
+      elif [ "$(checkValidNumber $PORTAINER_LOCAL_HTTPS_PORT '-')" = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must consist of 0-9"
+        PORTAINER_LOCAL_HTTPS_PORT=""
+      fi
+      set +e
+      if ! [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ]; then
+        checkAvailablePort $PORTAINER_LOCAL_HTTPS_PORT
+        if [ $? -ne 0 ]; then
+          showMessageBox "Invalid Port" "The port is invalid. Please enter a valid and available port higher than 1024."
+          PORTAINER_LOCAL_HTTPS_PORT=""
+        fi
+      fi
+      set -e
+    fi
+    updatePlaintextRootConfigVar PORTAINER_LOCAL_HTTPS_PORT $PORTAINER_LOCAL_HTTPS_PORT
+    DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT,$PORTAINER_LOCAL_HTTPS_PORT
+    updatePlaintextUserConfigVar DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT $DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT
+  done
+
   is_add_error=false
   default_iface=$(getDefaultIface)
   add_interface=""
@@ -1629,11 +1701,11 @@ function initConfig()
 
   if [ -z "$USERID" ]; then
     USERID=$(id -u)
-    updateConfigVar USERID $USERID
+    updatePlaintextRootConfigVar USERID $USERID
   fi
   if [ -z "$GROUPID" ]; then
     GROUPID=$(id -g)
-    updateConfigVar GROUPID $GROUPID
+    updatePlaintextRootConfigVar GROUPID $GROUPID
   fi
   if [ -z "$XDG_RUNTIME_DIR" ]; then
     XDG_RUNTIME_DIR="/run/user/$USERID"
@@ -1848,37 +1920,6 @@ function initConfig()
     set -e
   fi
 
-  while [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]
-  do
-    tmp_port=$((9000 + $RANDOM % 999))
-    while [ "$tmp_port" = "$SSH_PORT" ]
-    do
-      tmp_port=$((9000 + $RANDOM % 999))
-    done
-    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      PORTAINER_LOCAL_HTTPS_PORT=$tmp_port
-    else
-      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between 9000-9999 has been generated for you.")
-      if [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]; then
-        showMessageBox "Portainer Port Error" "The port cannot be empty or the same as the SSH port"
-      elif [ "$(checkValidNumber $PORTAINER_LOCAL_HTTPS_PORT '-')" = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must consist of 0-9"
-        PORTAINER_LOCAL_HTTPS_PORT=""
-      fi
-      set +e
-      if ! [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ]; then
-        checkAvailablePort $PORTAINER_LOCAL_HTTPS_PORT
-        if [ $? -ne 0 ]; then
-          showMessageBox "Invalid Port" "The port is invalid. Please enter a valid and available port higher than 1024."
-          PORTAINER_LOCAL_HTTPS_PORT=""
-        fi
-      fi
-      set -e
-    fi
-    updatePlaintextRootConfigVar PORTAINER_LOCAL_HTTPS_PORT $PORTAINER_LOCAL_HTTPS_PORT
-    DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT,$PORTAINER_LOCAL_HTTPS_PORT
-    updatePlaintextUserConfigVar DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT $DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT
-  done
   while [ -z "$ADMIN_USERNAME_BASE" ] || [ "$ADMIN_USERNAME_BASE" = "admin" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
@@ -10966,7 +11007,9 @@ function displayWifiNetworks()
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   resArr=($(sudo iwlist $interfaceName scanning | grep -E --color 'Frequency|Quality|Encryption|ESSID'))
-
+  if [ $? -ne 0 ]; then
+    return
+  fi
   numItems=$((${#resArr[@]} - 1))
   unset fmtArr
   sudo rm -f $HSHQ_SCRIPT_OPEN_DIR/wifi.txt
@@ -11828,7 +11871,6 @@ function performExitFunctions()
     echo "The configuration file has been encrypted."
     echo "=========================================="
   fi
-  
 }
 
 function encryptConfigFile()
@@ -14681,13 +14723,7 @@ function createInitialEnv()
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
 
-  if sudo test -f $HSHQ_LOG_FILE; then
-    sudo truncate -s 0 $HSHQ_LOG_FILE
-  else
-    sudo touch $HSHQ_LOG_FILE
-    sudo chown $USERNAME:$USERNAME $HSHQ_LOG_FILE
-  fi
-
+  createHSHQLog
   mkdir -p $HOME/.ssh
   set +e
   tmp_pw1=""
@@ -14724,6 +14760,16 @@ function createInitialEnv()
   source $HSHQ_PLAINTEXT_USER_CONFIG
   initHSHQDB
   set -e
+}
+
+function createHSHQLog()
+{
+  if sudo test -f $HSHQ_LOG_FILE; then
+    sudo truncate -s 0 $HSHQ_LOG_FILE
+  else
+    sudo touch $HSHQ_LOG_FILE
+    sudo chown $USERNAME:$USERNAME $HSHQ_LOG_FILE
+  fi
 }
 
 function checkUpdateVersion()
@@ -16993,6 +17039,7 @@ EOFLO
 function version121Update()
 {
   #outputWGDockInternetScript
+  #updateSysctl true
   #if true; then return; fi
   set +e
   rm -f $HOME/rsUpdateScript.sh
@@ -17250,12 +17297,7 @@ EOFRS
   echo "Installing wireless-tools..."
   performAptInstall wireless-tools
 
-  if sudo test -f $HSHQ_LOG_FILE; then
-    echo ""
-  else
-    sudo touch $HSHQ_LOG_FILE
-    sudo chown $USERNAME:$USERNAME $HSHQ_LOG_FILE
-  fi
+  createHSHQLog
 
   # Only let superuser modify db
   sudo chmod 640 $HSHQ_DB
@@ -17417,6 +17459,8 @@ function moveVarsToPlaintextFile()
   updatePlaintextRootConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
   updatePlaintextRootConfigVar EXT_DOMAIN_PREFIX $EXT_DOMAIN_PREFIX
   updatePlaintextRootConfigVar INT_DOMAIN_PREFIX $INT_DOMAIN_PREFIX
+  updatePlaintextRootConfigVar USERID "$USERID"
+  updatePlaintextRootConfigVar GROUPID "$GROUPID"
   updatePlaintextRootConfigVar TZ "$TZ"
   updatePlaintextRootConfigVar SSH_PORT $SSH_PORT
   updatePlaintextRootConfigVar CURRENT_SSH_PORT $CURRENT_SSH_PORT
@@ -17473,6 +17517,8 @@ function moveVarsToPlaintextFile()
   sudo sed -i "/^EMAIL_ADMIN_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^EXT_DOMAIN_PREFIX=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^INT_DOMAIN_PREFIX=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^USERID=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^GROUPID=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^TZ=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^SSH_PORT=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^CURRENT_SSH_PORT=/d" $CONFIG_FILE >/dev/null
@@ -17502,6 +17548,8 @@ function moveVarsToPlaintextFile()
   sudo sed -i "/^CERTS_INTERNAL_ROOT_CN=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^CERTS_INTERNAL_INTERMEDIATE_CN=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^CERTS_INTERNAL_CA_DAYS=/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Certs BEGIN/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Certs END/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^PORTAINER_ADMIN_USERNAME=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^PORTAINER_ADMIN_PASSWORD=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^PORTAINER_LOCAL_HTTPS_PORT=/d" $CONFIG_FILE >/dev/null
@@ -17516,6 +17564,8 @@ function moveVarsToPlaintextFile()
   sudo sed -i "/^# Jitsi (Service Details) BEGIN/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^# Jitsi (Service Details) END/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^HOMESERVER_HOST_IP=/d" $CONFIG_FILE >/dev/null
+  cat -s $CONFIG_FILE > $HSHQ_CONFIG_DIR/tmpfile
+  mv $HSHQ_CONFIG_DIR/tmpfile $CONFIG_FILE
 }
 
 function fixInterfaceNames()
@@ -18716,7 +18766,7 @@ function checkUpdateAllIPTables()
     bash $HSHQ_CUSTOM_PRE_IPTABLES_SCRIPT "$netstate"
   fi
 
-  sudo touch $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt
+  echo "Test Write" | sudo tee $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt > /dev/null
   if ! sudo test -f $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt; then
     logHSHQEvent error "IPTables ($netstate) - Could not write to temp file, exiting..."
     return
@@ -18909,7 +18959,9 @@ function checkUpdateAllIPTables()
     curNetworkType=$(sqlite3 $HSHQ_DB "select NetworkType from connections where ID=$curDBID;")
     curConnectionType=$(sqlite3 $HSHQ_DB "select ConnectionType from connections where ID=$curDBID;")
     curIsIPPrivate="$(checkIsIPPrivate $curIPAddress)"
-    if ! [ "$curIPAddress" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+    if [ "$curIPAddress" = "$DEFAULT_UNFOUND_IP_ADDRESS" ] || [ "$curIPAddress" = "127.0.0.1" ]; then
+      curIsIPPrivate=true
+    else
       if [ "$curIsIPPrivate" = "true" ]; then
         if [ "$curIsExposeToNetwork" = "1" ]; then
           hn_ip_list=$curSubnet
@@ -18959,31 +19011,35 @@ function checkUpdateAllIPTables()
     addDOCKERUSERBySubnetAndPortsList "$curSubnet" "$curDockerUserAllowPorts"
   done
 
+  # This following section is problematic for unnamed bridges, as it will
+  # cause the user problems when stopping and starting stacks. We'll leave
+  # the code in here for now, and perhaps loop back to this idea later.
+
   # Query docker networks and add some more anti-spoofing rules
-  if ! [ "$netstate" = "prenetwork" ]; then
-    timeout 10 docker ps > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-      networksArr=($(docker network ls -q))
-      for curNet in "${networksArr[@]}"
-      do
-        brName=$(docker network inspect $curNet | jq -r '.[] | .Options."com.docker.network.bridge.name"')
-        netName=$(docker network inspect $curNet | jq -r '.[] | .Name')
-        if [ "$netName" = "host" ] || [ "$netName" = "none" ]; then
-          continue
-        fi
-        if [ -z "$brName" ] || [ "$brName" = "null" ]; then
-          brName="br-${curNet}"
-        fi
-        ip a | grep $brName > /dev/null 2>&1
-        if [ $? -ne 0 ]; then
-          logHSHQEvent error "IPTables ($netstate) - Could not find bridge interface associated with docker network: $curNet"
-          continue
-        fi
-        brSubnet=$(docker network inspect $curNet | jq -r '.[] | .IPAM.Config[0].Subnet')
-        addIPTablesSpoofRule "$brName" "$brSubnet"
-      done
-    fi
-  fi
+#  if ! [ "$netstate" = "prenetwork" ]; then
+#    timeout 10 docker ps > /dev/null 2>&1
+#    if [ $? -eq 0 ]; then
+#      networksArr=($(docker network ls -q))
+#      for curNet in "${networksArr[@]}"
+#      do
+#        brName=$(docker network inspect $curNet | jq -r '.[] | .Options."com.docker.network.bridge.name"')
+#        netName=$(docker network inspect $curNet | jq -r '.[] | .Name')
+#        if [ "$netName" = "host" ] || [ "$netName" = "none" ]; then
+#          continue
+#        fi
+#        if [ -z "$brName" ] || [ "$brName" = "null" ]; then
+#          brName="br-${curNet}"
+#        fi
+#       ip a | grep $brName > /dev/null 2>&1
+#       if [ $? -ne 0 ]; then
+#          logHSHQEvent error "IPTables ($netstate) - Could not find bridge interface associated with docker network: $curNet"
+#          continue
+#        fi
+#        brSubnet=$(docker network inspect $curNet | jq -r '.[] | .IPAM.Config[0].Subnet')
+#        addIPTablesSpoofRule "$brName" "$brSubnet"
+#      done
+#    fi
+#  fi
 
   # Compare rules on this pass with all exisitng rules,
   # Then delete any that do not match
@@ -19003,6 +19059,7 @@ function checkUpdateAllIPTables()
     done
     unset allIPTCommentsArr
   done
+  IFS=$OLDIFS
 
   # Policy drop for input and forward
   sudo iptables -P INPUT DROP
@@ -19136,7 +19193,6 @@ function deleteIPTableEntryByChainAndComment()
   ipt_table="$1"
   ipt_chain="$2"
   ipt_comment="$3"
-  logHSHQEvent info "IPTables ($netstate) - deleteIPTableEntryByChainAndComment BEGIN - ipt_table: $ipt_table, ipt_chain: $ipt_chain, ipt_comment: $ipt_comment"
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   ipt_list=($(sudo iptables -t $ipt_table -n -L $ipt_chain --line-numbers | grep "$ipt_comment"))
@@ -19951,12 +20007,7 @@ function up()
   while_check "\$CMD" "\$CHECK"
 
   if [ "\$HOST_INTERNET_TRAFFIC_INTERFACE" = "\$NETWORK_NAME" ]; then
-    sudo ip rule delete priority 8000 > /dev/null 2>&1
-    while [ \$? -eq 0 ]
-    do
-      sudo ip rule delete priority 8000 > /dev/null 2>&1
-    done
-    sudo ip rule add not fwmark \$ROUTING_TABLE_ID table \$ROUTING_TABLE_ID priority 8000
+    status
   fi
 
   echo "Connection: \$NETWORK_NAME is up"
@@ -19997,6 +20048,11 @@ function status()
       return 4
     fi
   fi
+  timeout 10 docker ps > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Docker is not yet up, returning..."
+    return 5
+  fi
   # Checking the status will start a curl container.
   # So if this is called when the connection is set
   # to a down state, then the container will not be
@@ -20020,6 +20076,17 @@ function status()
     return 1
   elif [[ "\$VPNIP" = "\$rsip" ]]; then
     echo "Connected to \$rsip: Blackhole active"
+    if [ "\$HOST_INTERNET_TRAFFIC_INTERFACE" = "\$NETWORK_NAME" ]; then
+      ip rule show | grep -w "not from all fwmark .* lookup \$ROUTING_TABLE_ID" > /dev/null 2>&1
+      if [ \$? -ne 0 ]; then
+        sudo ip rule delete priority 8000 > /dev/null 2>&1
+        while [ \$? -eq 0 ]
+        do
+          sudo ip rule delete priority 8000 > /dev/null 2>&1
+        done
+        sudo ip rule add not fwmark \$ROUTING_TABLE_ID table \$ROUTING_TABLE_ID priority 8000
+      fi
+    fi
     return 0
   elif [[ "\$VPNIP" = "\$IP" ]]; then
     echo "Not connected to Endpoint: Blackhole NOT active!"
@@ -20347,9 +20414,9 @@ function addHSInterface()
       logHSHQEvent error "$strMsg"
       return 3
     fi
-    ip_addr=$DEFAULT_UNFOUND_IP_ADDRESS
+    ip_addr=127.0.0.1
     is_private=true
-    interface_subnet=$DEFAULT_UNFOUND_IP_SUBNET
+    interface_subnet=127.0.0.1/32
   else
     is_private=$(checkIsIPPrivate "$ip_addr")
     interface_subnet=$(getSubnetOfInterface "$iface_name" "$ip_addr" "$is_private")
@@ -20462,9 +20529,15 @@ function updateHSInterface()
   db_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName = '$iface_name';")
   current_ip=$(getIPAddressOfInterface $iface_name)
   if [ "$(checkValidIPAddress $current_ip)" = "false" ]; then
+    if ! [ "$db_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+      curdt=$(getCurrentDate)
+      sudo sqlite3 $HSHQ_DB "update connections set IPAddress = '$DEFAULT_UNFOUND_IP_ADDRESS', Network_Subnet = '$DEFAULT_UNFOUND_IP_SUBNET', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
+      return
+    fi
     strMsg="Invalid IP address"
     echo "$strMsg"
-    logHSHQEvent error "$strMsg"
+    # Could be a lot of log spam, lets not log it
+    #logHSHQEvent error "$strMsg"
     return 1
   fi
   if [ "$db_ip" = "$current_ip" ]; then
@@ -20494,7 +20567,8 @@ function updateHSInterface()
     return 4
   fi
   # Everything is good, the IP addresses are different, so proceed with update.
-  sqlite3 $HSHQ_DB "update connections set IPAddress = '$current_ip' where InterfaceName = '$iface_name';" > /dev/null 2>&1
+  curdt=$(getCurrentDate)
+  sqlite3 $HSHQ_DB "update connections set IPAddress = '$current_ip', Network_Subnet = '$interface_subnet', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
   if [ "$iface_name" = "$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME" ]; then
     HOMESERVER_HOST_PRIMARY_INTERFACE_IP="$current_ip"
     updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
@@ -20506,8 +20580,9 @@ function checkUpdateHostInterface()
   set +e
   iface_operation="$1"
   iface_name="$2"
-  iface_isPrimary="$3"
-  iface_isExpose="$4"
+  is_close_hshq="$3"
+  iface_isPrimary="$4"
+  iface_isExpose="$5"
   #echo "iface_operation: $iface_operation, iface_name: $iface_name, iface_isPrimary: $iface_isPrimary, iface_isExpose: $iface_isExpose"
   primary_ip_prior=$HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   case $iface_operation in
@@ -20610,18 +20685,20 @@ function checkUpdateHostInterface()
 
   case $iface_operation in
     add|update)
-      # Regenerate Portainer and Script-server certs
-      certIPList="127.0.0.1"
-      ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
-      for curID in "${ifListDBID[@]}"
-      do
-        curIF_IP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID = $curID;")
-        if [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
-          certIPList="$certIPList","$curIF_IP"
-        fi
-      done
-      generateCert portainer portainer "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
-      generateCert script-server "script-server,host.docker.internal" "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
+      if ! [ "$newIP" = "127.0.0.1" ]; then
+        # Regenerate Portainer and Script-server certs
+        certIPList="127.0.0.1"
+        ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
+        for curID in "${ifListDBID[@]}"
+        do
+          curIF_IP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID = $curID;")
+          if [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ] && ! [ "$curIF_IP" = "127.0.0.1" ]; then
+            certIPList="$certIPList","$curIF_IP"
+          fi
+        done
+        generateCert portainer portainer "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
+        generateCert script-server "script-server,host.docker.internal" "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
+      fi
       ;;
   esac
   case $iface_operation in
@@ -20648,8 +20725,10 @@ function checkUpdateHostInterface()
       # Add Caddy instance
       if [ "$iface_isExpose" = "true" ]; then
         installHostInterfaceCaddy "$iface_name"
-        if [ "$newIP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+        if [ "$newIP" = "127.0.0.1" ]; then
           startStopStack caddy-home-$iface_name stop > /dev/null 2>&1
+          sudo sqlite3 $HSHQ_DB "update connections set IPAddress = '$DEFAULT_UNFOUND_IP_ADDRESS', Network_Subnet = '$DEFAULT_UNFOUND_IP_SUBNET' where ID=$curID;" > /dev/null 2>&1
+          updatePortainerEnv
         fi
       fi
       ;;
@@ -20657,6 +20736,8 @@ function checkUpdateHostInterface()
       # Restart caddy-home stacks
       if [ "$(checkValidIPAddress $updateIP)" = "true" ] && ! [ "$updateIP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
         startStopStack caddy-home-$iface_name stop > /dev/null 2>&1
+        docker container stop caddy-home-$iface_name > /dev/null 2>&1
+        docker container rm caddy-home-$iface_name > /dev/null 2>&1
         sleep 1
         startStopStack caddy-home-$iface_name start > /dev/null 2>&1
       fi
@@ -20667,7 +20748,10 @@ function checkUpdateHostInterface()
 
   case $iface_operation in
     add|update)
-      performExitFunctions false
+      if ! [ "$is_close_hshq" = "false" ]; then
+        performExitFunctions false
+      fi
+      sleep 2
       sudo systemctl restart runScriptServer
       ;;
   esac
@@ -20695,7 +20779,7 @@ function removeFirewallSubnet()
 
 function updatePortainerJitsiIPChanges()
 {
-  if ! [ "$IS_INSTALLED" = "true" ]; then
+  if [ "$IS_INSTALLED" = "false" ]; then
     return
   fi
   updatePortainerEnv
@@ -20730,14 +20814,11 @@ function checkHostAllInterfaceIPChanges()
   isUpdateIPT=false
   for curInterface in "${interfaceListArr[@]}"
   do
-    checkUpdateHostInterface update $curInterface
+    checkUpdateHostInterface update "$curInterface" "$isBypassHSHQStatus" na na
     if [ $? -eq 0 ]; then
       isUpdateIPT=true
     fi
   done
-  if [ "$isUpdateIPT" = "true" ]; then
-    checkUpdateAllIPTables $callerName
-  fi
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
     closeHSHQScript "$callerName"
   fi
@@ -20747,7 +20828,7 @@ function checkHostAllInterfaceIPChanges()
 function checkUpdateSingleHostInterface()
 {
   curInterface="$1"
-  checkUpdateHostInterface update $curInterface
+  checkUpdateHostInterface update $curInterface true na na
   if [ $? -eq 0 ]; then
     checkUpdateAllIPTables checkUpdateSingleHostInterface
   fi
@@ -21233,6 +21314,8 @@ EOFCN
 
   chmod 0444 $HSHQ_SSL_DIR/$CERT_NAME.key
   chmod 0444 $HSHQ_SSL_DIR/$CERT_NAME.crt
+  chown $USERID:$GROUPID $HSHQ_SSL_DIR/$CERT_NAME.key
+  chown $USERID:$GROUPID $HSHQ_SSL_DIR/$CERT_NAME.crt
 }
 
 function generateCertDialog()
@@ -22098,8 +22181,6 @@ CONFIG_ENCRYPTION_PASSPHRASE=$CONFIG_ENCRYPTION_PASSPHRASE
 # Config File Encryption Passphrase END
 
 # Docker Installation Info BEGIN
-USERID=
-GROUPID=
 XDG_RUNTIME_DIR=
 TRUSTED_PROXIES="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16"
 # Docker Installation Info END
@@ -22620,6 +22701,8 @@ HOMESERVER_ABBREV=
 EMAIL_ADMIN_EMAIL_ADDRESS=
 EXT_DOMAIN_PREFIX=
 INT_DOMAIN_PREFIX=
+USERID=
+GROUPID=
 TZ=
 SSH_PORT=
 CURRENT_SSH_PORT=
@@ -25379,13 +25462,10 @@ EOFPC
     curIF_Subnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID = $curID;")
     curIF_IPVar=$(getHSHostIPVarName $curIF_Interface)
     curIF_SubnetVar=$(getHSHostSubnetVarName $curIF_Interface)
-    if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ]; then
-      if [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
-        echo "${curIF_IPVar}=127.0.0.1" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-        echo "${curIF_SubnetVar}=127.0.0.1/32" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-      else
-        echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-        echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+    if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+      echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+      echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+      if ! [ "$curIF_IP" = "127.0.0.1" ]; then
         if [ -z "$ALL_INTERFACE_IPS" ]; then
           ALL_INTERFACE_IPS="${curIF_IP}"
         else
@@ -25404,8 +25484,8 @@ EOFPC
       ALL_INTERFACE_IPS="$ALL_INTERFACE_IPS,${curIP}"
     fi
   done
-
   echo "ALL_INTERFACE_IPS=${ALL_INTERFACE_IPS}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+  chown $USERID:$GROUPID $HSHQ_STACKS_DIR/portainer/portainer.env
 }
 
 function performUpdatePortainer()
@@ -47718,8 +47798,9 @@ EOFSC
 #!/bin/bash
 
 echo "default"
-for curInt in $HSHQ_WIREGUARD_DIR/internet/*;
+for curInt in $HSHQ_WIREGUARD_DIR/internet/*.conf;
 do
+  [ -e "\$curInt" ] || continue
   echo \$(basename \${curInt%.*})
 done
 
@@ -53385,7 +53466,7 @@ else
 fi
 set +e
 echo "Adding host interface \$addinterface..."
-checkUpdateHostInterface add \$addinterface false \$isCaddy
+checkUpdateHostInterface add \$addinterface true false \$isCaddy
 retVal=\$?
 set -e
 performExitFunctions false
@@ -53507,15 +53588,15 @@ case "\$selaction" in
     ;;
   "Set As Primary Interface")
       echo "Setting \$selinterface as primary interface..."
-      checkUpdateHostInterface setisprimary \$selinterface true na
+      checkUpdateHostInterface setisprimary \$selinterface true true na
     ;;
   "Enable Expose To Network")
       echo "Enabling \$selinterface to be exposed to network..."
-      checkUpdateHostInterface setisexpose \$selinterface na true
+      checkUpdateHostInterface setisexpose \$selinterface true na true
     ;;
   "Disable Expose To Network")
       echo "DIsabling \$selinterface from being exposed to network..."
-      checkUpdateHostInterface setisexpose \$selinterface na false
+      checkUpdateHostInterface setisexpose \$selinterface true na false
     ;;
   "Display Netplan")
       sudo netplan get
@@ -53730,7 +53811,7 @@ removeinterface=\$(echo "\$removeinterface" | cut -d" " -f1 | xargs)
 
 set +e
 echo "Removing host interface (\$removeinterface)..."
-checkUpdateHostInterface remove \$removeinterface
+checkUpdateHostInterface remove \$removeinterface true na na
 retVal=\$?
 set -e
 performExitFunctions false
