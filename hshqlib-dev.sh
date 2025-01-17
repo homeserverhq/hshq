@@ -14798,6 +14798,7 @@ function createHSHQLog()
   else
     sudo touch $HSHQ_LOG_FILE
     sudo chown $USERNAME:$USERNAME $HSHQ_LOG_FILE
+    sudo chmod 644 $HSHQ_LOG_FILE
   fi
 }
 
@@ -18782,8 +18783,14 @@ function checkUpdateAllIPTables()
   # prenetwork, postdocker, and maintenance (on a regular schedule, likely every minute).
   # It can also be executed on-demand pertaining to changes by the user.
   netstate="$1"
-  logHSHQEvent info "IPTables ($netstate) - BEGIN"
-
+  isLogInfo=true
+  echo "$netstate" | grep "cronjob" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    isLogInfo=false
+  fi
+  if [ "$isLogInfo" = "true" ]; then
+    logHSHQEvent info "IPTables ($netstate) - BEGIN"
+  fi
   # If one wants to run any script(s) prior to this function,
   # then create the following bash script accordingly. There
   # is also a post script hook at the end of this function.
@@ -19101,7 +19108,10 @@ function checkUpdateAllIPTables()
   if [ -f $HSHQ_CUSTOM_POST_IPTABLES_SCRIPT ]; then
     bash $HSHQ_CUSTOM_POST_IPTABLES_SCRIPT "$netstate"
   fi
-  logHSHQEvent info "IPTables ($netstate) - END"
+  
+  if [ "$isLogInfo" = "true" ]; then
+    logHSHQEvent info "IPTables ($netstate) - END"
+  fi
 }
 
 function checkAddRule()
