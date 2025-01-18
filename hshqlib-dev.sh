@@ -580,7 +580,7 @@ EOF
   updateMOTD
   performSuggestedSecUpdates
   installMailUtils
-  performClearIPTables true
+  performClearIPTables
   checkUpdateAllIPTables performFullRestore
   outputScripts
   sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
@@ -2156,7 +2156,7 @@ function performBaseInstallation()
   installMailUtils
   installDependencies
   set +e
-  performClearIPTables true
+  performClearIPTables
   checkUpdateAllIPTables performBaseInstallation-Early
   set -e
   pullBaseServicesDockerImages
@@ -17439,8 +17439,8 @@ EOFRS
     sudo sqlite3 $HSHQ_DB "update connections set InputAllowPorts='$INPUT_OTHER_VPN_ALLOW_PORTS_DEFAULT' where ID=$curID;"
     sudo sqlite3 $HSHQ_DB "update connections set DockerUserAllowPorts='$DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT' where ID=$curID;"
   done
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    primID=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='primary';")
+  primID=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='primary';")
+  if ! [ -z "$primID" ]; then
     sudo sqlite3 $HSHQ_DB "update connections set IsExposeToNetwork=true where ID=$primID;"
     sudo sqlite3 $HSHQ_DB "update connections set InputAllowPorts='$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT' where ID=$primID;"
     sudo sqlite3 $HSHQ_DB "update connections set DockerUserAllowPorts='$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT' where ID=$primID;"
@@ -17454,7 +17454,7 @@ EOFRS
   fixInterfaceNames
   fixMailuNetworkNames
   echo "Clearing and re-initializing iptables..."
-  performClearIPTables false
+  performClearIPTables
   checkUpdateAllIPTables versionUpdate
   updateSysctl true
   outputMaintenanceScripts
@@ -18689,7 +18689,7 @@ function nukeHSHQ()
   sudo systemctl stop runScriptServer
   sudo systemctl disable runScriptServer
   sudo rm -f /etc/systemd/system/runScriptServer.service
-  performClearIPTables false
+  performClearIPTables
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
   sudo docker container prune -f
@@ -19174,7 +19174,10 @@ function checkAddRule()
 
 function performClearIPTables()
 {
-  is_skip_policy=$1
+  sudo iptables -P INPUT ACCEPT
+  sudo ip6tables -P INPUT ACCEPT
+  sudo ip6tables -P FORWARD ACCEPT
+  sudo ip6tables -P OUTPUT ACCEPT
   sudo iptables -t filter -F INPUT
   sudo iptables -t filter -F DOCKER-USER
   sudo iptables -t raw -F PREROUTING
@@ -19184,12 +19187,6 @@ function performClearIPTables()
   sudo iptables -t raw -X chain-icmp > /dev/null 2>&1
   sudo iptables -t raw -X chain-bad_tcp > /dev/null 2>&1
   sudo iptables -t raw -X chain-ipspoof > /dev/null 2>&1
-  if [ -z "$is_skip_policy" ] || ! [ "$is_skip_policy" = "true" ]; then
-    sudo iptables -P INPUT ACCEPT
-    sudo ip6tables -P INPUT ACCEPT
-    sudo ip6tables -P FORWARD ACCEPT
-    sudo ip6tables -P OUTPUT ACCEPT
-  fi
 }
 
 function appendINPUTBySubnetAndPortsList()
@@ -54307,7 +54304,7 @@ if ! [ -z "\$checkRes" ]; then
   return
 fi
 echo "Clearing iptables..."
-performClearIPTables true
+performClearIPTables
 echo "Adding rules to iptables..."
 checkUpdateAllIPTables resetFirewall
 echo "Reset firewall complete!"
