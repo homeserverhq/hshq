@@ -10450,7 +10450,7 @@ function getConfigVar()
   echo $(getConfigVarFromFile $1 $CONFIG_FILE)
 }
 
-function getPlaintextConfigVar()
+function getPlaintextRootConfigVar()
 {
   echo $(getConfigVarFromFile $1 $HSHQ_PLAINTEXT_ROOT_CONFIG root)
 }
@@ -10885,6 +10885,10 @@ function outputInterfaceInfo()
 
 function setAsWiredDHCP()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   set +e
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
@@ -10899,6 +10903,10 @@ function setAsWiredDHCP()
 
 function setAsWiredStaticIP()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   ipAddress="$2"
   cidrLength="$3"
@@ -10928,6 +10936,10 @@ function setAsWiredStaticIP()
 
 function setAsWirelessDHCP()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   wifiSSID="$2"
   wifiPass="$3"
@@ -10960,6 +10972,10 @@ function setAsWirelessDHCP()
 
 function setAsWirelessStaticIP()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   ipAddress="$2"
   cidrLength="$3"
@@ -11007,6 +11023,10 @@ function setAsWirelessStaticIP()
 
 function removeFromNetplan()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   set +e
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null"
@@ -11018,6 +11038,10 @@ function removeFromNetplan()
 
 function displayWifiNetworks()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
@@ -11084,6 +11108,10 @@ function displayWifiNetworks()
 
 function addUpdateWifiAccessPoint()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   wifiSSID="$2"
   wifiPass="$3"
@@ -11151,6 +11179,10 @@ function addUpdateWifiAccessPoint()
 
 function removeWifiAccessPoint()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   interfaceName="$1"
   wifiSSID="$2"
   set +e
@@ -11229,11 +11261,20 @@ function outputAllNetworkInterfaces()
   done
 }
 
+function checkIsPrimaryInterfacePrivate()
+{
+  checkIsIPPrivate "$(getPlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP)"
+}
+
 function setHostInternetTrafficWGInterface()
 {
+  if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
+    echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
   set +e
   selWG="$1"
-  curInt=$(getPlaintextConfigVar HOST_INTERNET_TRAFFIC_INTERFACE)
+  curInt=$(getPlaintextRootConfigVar HOST_INTERNET_TRAFFIC_INTERFACE)
   if [ "$curInt" = "$selWG" ]; then
     strMsg="This is already the current interface, no changes were made."
     echo "$strMsg"
