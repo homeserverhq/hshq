@@ -17445,7 +17445,7 @@ EOFRS
     sudo sqlite3 $HSHQ_DB "update connections set InputAllowPorts='$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT' where ID=$primID;"
     sudo sqlite3 $HSHQ_DB "update connections set DockerUserAllowPorts='$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT' where ID=$primID;"
   fi
-
+  set +e
   echo "Restarting Portainer..."
   stopPortainer
   outputConfigPortainer
