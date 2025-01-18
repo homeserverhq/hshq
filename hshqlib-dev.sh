@@ -17454,7 +17454,7 @@ EOFRS
   fixInterfaceNames
   fixMailuNetworkNames
   echo "Clearing and re-initializing iptables..."
-  performClearIPTables true
+  performClearIPTables false
   checkUpdateAllIPTables versionUpdate
   updateSysctl true
   outputMaintenanceScripts
