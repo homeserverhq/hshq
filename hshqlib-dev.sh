@@ -5074,10 +5074,10 @@ EOFBS
   portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
   for cur_port in "\\\${portsArr[@]}"
   do
-    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+    iptables -D DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j RETURN 2> /dev/null
     iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP 2> /dev/null
     iptables -I DOCKER-USER -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j DROP
-    iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j ACCEPT
+    iptables -I DOCKER-USER -s 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 -m conntrack --ctorigdstport \\\$cur_port --ctdir ORIGINAL -j RETURN
   done
 
   # See https://gist.github.com/mattia-beta/bd5b1c68e3d51db933181d8a3dc0ba64?permalink_comment_id=3728715#gistcomment-3728715
@@ -5155,10 +5155,10 @@ EOFBS
 
   # Special case for WG Portal from reverse proxy
   iptables -C INPUT -p tcp -m tcp -i brdockext -s \\\$DOCK_EXT_NET --dport \\\$WG_PORTAL_PORT -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -p tcp -m tcp -i brdockext -s \\\$DOCK_EXT_NET --dport \\\$WG_PORTAL_PORT -j ACCEPT
-  iptables -D DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j ACCEPT 2> /dev/null
+  iptables -D DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j RETURN 2> /dev/null
   iptables -D DOCKER-USER -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j DROP 2> /dev/null
   iptables -I DOCKER-USER -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j DROP
-  iptables -I DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j ACCEPT
+  iptables -I DOCKER-USER -s 127.0.0.0/8 -m conntrack --ctorigdstport \\\$WG_PORTAL_PORT --ctdir ORIGINAL -j RETURN
 
   # Policy drop for input and forward
   iptables -P INPUT DROP
