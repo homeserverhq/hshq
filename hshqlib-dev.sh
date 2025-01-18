@@ -498,6 +498,7 @@ function showRestoreUnencryptedMenu()
 
 function performFullRestore()
 {
+  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   checkLoadConfig
   IS_INSTALLED=false
   IS_INSTALLING=true
@@ -522,7 +523,6 @@ EOF
     whiptail --title "ERROR" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
     return
   fi
-  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   setSudoTimeoutInstall
   createHSHQLog
   checkCreateNonbackupDirs
@@ -533,7 +533,7 @@ EOF
   fi
   sudo hostnamectl set-hostname $new_hostname
   rm -f $HOME/dead.letter
-
+  installDependencies
   echo "Pulling docker images..."
   restorePullDockerImages
   rm -f $HOME/script-server.zip
@@ -5177,7 +5177,7 @@ EOFBS
 # then allow traffic from the gateway, since raw table blocks all private ranges
 def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
 is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
-def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+def_route_cidr_part=\$(ip route | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
 if [ "\$is_def_priv" = "true" ]; then
   echo "Default route is in private range, adding allowance to (raw)iptables..."
   sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j ACCEPT" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
@@ -10733,7 +10733,7 @@ function getDefaultIface()
 function getIPAddressOfInterface()
 {
   interface_name=$1
-  ip_addr=$(ip route | grep src | grep $interface_name | grep / | awk -F'src ' '{print $2}' | xargs | cut -d" " -f1)
+  ip_addr=$(ip route | grep $interface_name | grep / | awk -F'src ' '{print $2}' | xargs | cut -d" " -f1)
   if ! [ "$(checkValidIPAddress $ip_addr)" = "true" ]; then
     ip_addr=""
   fi
@@ -10746,7 +10746,7 @@ function getIPAddressOfInterface()
 function getCIDRLengthOfInterface()
 {
   interface_name=$1
-  ip route | grep src | grep "$interface_name" | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2
+  ip route | grep "$interface_name" | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2
 }
 
 function getSubnetOfInterface()
@@ -10768,7 +10768,7 @@ function getSubnetOfInterface()
   while [ -z "$this_subnet" ] && [ $num_tries -lt $max_tries ]
   do
     if [ "$is_priv" = "true" ]; then
-      this_subnet=$(ip route | grep src | grep $net_interface | grep / | awk '{print $1}' | head -1)
+      this_subnet=$(ip route | grep $net_interface | grep / | awk '{print $1}' | head -1)
     else
       this_subnet="${net_ip}/32"
     fi
@@ -10790,7 +10790,7 @@ function getSubnetOfInterface()
 function getGatewayOfInterface()
 {
   interface_name=$1
-  ip route | grep "$interface_name" | grep -e "^default" | awk '{print $3}'
+  ip route | grep "$interface_name" | grep -e "^default" | awk '{print $3}' | head -1
 }
 
 function getIPFromHostname()
@@ -15222,7 +15222,7 @@ function version22Update()
   grep "HOMESERVER_HOST_RANGE" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     if [ "$HOMESERVER_HOST_ISPRIVATE_IP" = "true" ]; then
-      HOMESERVER_HOST_RANGE=$(ip route | grep src | grep $(getDefaultIface) | grep / | awk '{print $1}' | head -1)
+      HOMESERVER_HOST_RANGE=$(ip route | grep $(getDefaultIface) | grep / | awk '{print $1}' | head -1)
     else
       HOMESERVER_HOST_RANGE="${HOMESERVER_HOST_IP}/32"
     fi
@@ -17210,7 +17210,7 @@ EOFBS
 # then allow traffic from the gateway, since raw table blocks all private ranges
 def_route_gate=\$(ip route | grep -e "^default" | awk '{print \$3}')
 is_def_priv=\$(checkIsIPPrivate \$def_route_gate)
-def_route_cidr_part=\$(ip route | grep src | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
+def_route_cidr_part=\$(ip route | grep \$(ip route | grep -e "^default" | head -n 1 | awk -F'dev ' '{print \$2}' | xargs | cut -d" " -f1) | grep / | xargs | cut -d" " -f1 | cut -d"/" -f2)
 if [ "\$is_def_priv" = "true" ]; then
   echo "Default route is in private range, adding allowance to (raw)iptables..."
   sudo sed -i "/  # Block spoofed packets.*/a\  iptables -t raw -C PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j RETURN > \/dev\/null 2>&1 || iptables -t raw -I PREROUTING -s \$def_route_gate\/\$def_route_cidr_part -i \$default_iface -j RETURN" \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
@@ -54156,7 +54156,7 @@ EOFSC
 {
   "name": "07 Edit Exposed Ports",
   "script_path": "conf/scripts/editExposedPorts.sh",
-  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed (thus causing it to be inaccessible otherwise).",
+  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list.<br/><br/>All ports must be comma-separated with no spaces.",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
