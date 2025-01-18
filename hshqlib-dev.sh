@@ -206,7 +206,6 @@ function main()
     performBaseInstallation
     exit 0
   fi
-
   if [ "$IS_PERFORM_RESTORE" = "true" ]; then
     if [ "$USERNAME" = "root" ]; then
       echo "Cannot install as root user, exiting..."
@@ -227,7 +226,6 @@ function main()
     checkRes=$(tryOpenHSHQScript User-Console)
   fi
   set -e
-
   checkConfigAvailable
   is_hshq_installed=false
   if ! [ -z $CONFIG_FILE ] && [ -f $CONFIG_FILE ]; then
@@ -241,7 +239,6 @@ function main()
     # Encrypted file found, assume installed.
     is_hshq_installed=true
   fi
-
   set +e
   mainMenuResult=1
   while  [[ $mainMenuResult -ne 0 ]]
@@ -10382,6 +10379,8 @@ function tryOpenHSHQScript()
     echo $callerName > $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
     echo $(date '+%s') >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
     echo 1 >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
+    chmod 755 $HSHQ_SCRIPT_OPEN_DIR
+    chmod 644 $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
   else
     echo "$(getHSHQScriptOpenMsg)"
   fi
@@ -10392,7 +10391,7 @@ function tryOpenHSHQScript()
 
 function getHSHQScriptOpenMsg()
 {
-  if sudo test -f $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME; then
+  if test -f $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME; then
     lastCaller=$(sed -n 1p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
     lastExecute=$(sed -n 2p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
     lastAttempts=$(sed -n 3p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
