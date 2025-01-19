@@ -1,6 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=15
-
+HSHQ_WRAPPER_SCRIPT_VERSION=16
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -96,6 +95,7 @@ EOF
   shift "$(($OPTIND -1))"
 
   set +e
+  is_dpkg_config=false
   if [[ "$(isProgramInstalled sudo)" = "false" ]]; then
     if ! [ "$USERNAME" = "root" ]; then
       echo -e "\n\n================================================================================"
@@ -113,11 +113,12 @@ EOF
     fi
     echo "Installing sudo, please wait..."
     DEBIAN_FRONTEND=noninteractive apt update
-    DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo >/dev/null 2>/dev/null
+    sudo dpkg --configure -a
+    is_dpkg_config=true
+    DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
   fi
-
   # Underscores in hostname have shown to be problematic...
-  hostname | grep "_" >/dev/null 2>/dev/null
+  hostname | grep "_" > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     cur_hostname=$(hostname)
     new_hostname=$(echo $cur_hostname | sed 's|_|-|g')
@@ -132,25 +133,37 @@ EOF
     checkPromptUserPW
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
-    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart >/dev/null 2>/dev/null
+    sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled curl)" = "false" ]]; then
     checkPromptUserPW
     echo "Installing curl, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall curl >/dev/null 2>/dev/null
+    if [ "$is_dpkg_config" = "false" ]; then
+      sudo dpkg --configure -a
+      is_dpkg_config=true
+    fi
+    performAptInstall curl > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled whiptail)" = "false" ]]; then
     checkPromptUserPW
     echo "Installing whiptail, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall whiptail >/dev/null 2>/dev/null
+    if [ "$is_dpkg_config" = "false" ]; then
+      sudo dpkg --configure -a
+      is_dpkg_config=true
+    fi
+    performAptInstall whiptail > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled gpg)" = "false" ]]; then
     checkPromptUserPW
     echo "Installing gnupg, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall gnupg >/dev/null 2>/dev/null
+    if [ "$is_dpkg_config" = "false" ]; then
+      sudo dpkg --configure -a
+      is_dpkg_config=true
+    fi
+    performAptInstall gnupg > /dev/null 2>&1
   fi
   set -e
 
@@ -241,9 +254,8 @@ EOF
     fi
     exit 1
   fi
-
   set +e
-  id -nG | grep docker >/dev/null 2>/dev/null
+  id -nG | grep docker > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     checkPromptUserPW
     getent group docker >/dev/null || sudo groupadd docker
@@ -254,14 +266,102 @@ EOF
     sudo -u $USERNAME bash $0 -s $ciparg $pwarg
     exit 0
   fi
-
   if ! [ -d $HSHQ_LIB_DIR ]; then
     mkdir -p $HSHQ_BASE_DIR $HSHQ_DATA_DIR $HSHQ_LIB_DIR
   fi
+
   is_download_lib=false
-  is_download_wrap=false
-  if [ "$IS_DISABLE_UPDATE_CHECKS" = "false" ] && [ -f $HSHQ_LIB_SCRIPT ]; then
-    hshq_lib_latest_version=$(curl --silent $HSHQ_LIB_VER_URL)
+  checkDownloadWrapper
+  checkDownloadLib
+
+  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
+    showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
+    exit 1
+  fi
+  bash $HSHQ_LIB_SCRIPT run "$is_download_lib" "$CONNECTING_IP" "$USER_SUDO_PW"
+}
+
+function checkDownloadWrapper()
+{
+  if [ "$IS_DISABLE_UPDATE_CHECKS" = "true" ]; then
+    return
+  fi
+  hshq_wrap_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_WRAP_VER_URL)
+  if [ $? -ne 0 ] || [ -z $hshq_wrap_latest_version ]; then
+    echo "Could not get latest wrapper version, proceeding with local version..."
+    rm -f $HSHQ_LIB_TMP
+    return
+  fi
+  hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
+  if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
+    wget -q4 -O $HSHQ_WRAP_TMP $HSHQ_WRAP_URL
+    if [ $? -ne 0 ]; then
+      rm -f $HSHQ_WRAP_TMP
+      rm -f $HSHQ_LIB_TMP
+      if [ -f $HSHQ_WRAP_SCRIPT ]; then
+        showMessageBox "Download Error" "There was an error obtaining the latest wrapper version, proceeding with local version..."
+      else
+        showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
+        exit 1
+      fi
+      return
+    fi
+  else
+    # No update needed
+    return
+  fi
+  hshq_wrap_dl_version=$(sed -n 2p $HSHQ_WRAP_TMP | cut -d"=" -f2)
+  echo "Obtained Wrapper Version $hshq_wrap_dl_version"
+  wget -q4 -O $HOME/wrap-${hshq_wrap_dl_version}.sig $HSHQ_SIG_BASE_URL/wrap-${hshq_wrap_dl_version}.sig
+  if [ $? -eq 0 ]; then
+    echo "Signature downloaded (wrap-${hshq_wrap_dl_version}.sig)..."
+  else
+    rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
+    rm -f $HSHQ_WRAP_TMP
+    if [ -f $HSHQ_LIB_SCRIPT ]; then
+      showMessageBox "Download Error" "There was an error obtaining the wrapper signature, proceeding with local version..."
+    else
+      showMessageBox "Download Error" "There was an error obtaining the wrapper signature. Please try again later."
+      exit 1
+    fi
+    return
+  fi
+  echo "Verifying wrap with signature..."
+  verifyFile $HSHQ_WRAP_TMP $HOME/wrap-${hshq_wrap_dl_version}.sig
+  ver_res=$?
+  rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
+  if [ $ver_res -ne 0 ]; then
+   # Not verified, raise the red flag
+    rm -f $HSHQ_WRAP_TMP
+    rm -f $HSHQ_LIB_TMP
+    echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
+    echo " There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). "
+    echo "   Please email security@homeserverhq.com as soon as possible.  "
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+    if [ -f $HSHQ_LIB_SCRIPT ]; then
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
+    else
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
+      exit 1
+    fi
+    return
+  fi
+  # Verified
+  rm -f $HSHQ_WRAP_SCRIPT
+  mv $HSHQ_WRAP_TMP $HSHQ_WRAP_SCRIPT
+  # Show message box
+  showMessageBox "Wrapper Script Updated" "The wrapper script was updated. You will have to restart the script (bash hshq.sh). Exiting..."
+  exit
+}
+
+function checkDownloadLib()
+{
+  if [ "$IS_DISABLE_UPDATE_CHECKS" = "true" ]; then
+    return
+  fi
+  if [ -f $HSHQ_LIB_SCRIPT ]; then
+    hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
     if [ $? -eq 0 ] && ! [ -z $hshq_lib_latest_version ]; then
       hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
       if [ $hshq_lib_local_version -lt $hshq_lib_latest_version ]; then
@@ -276,181 +376,83 @@ $logo
  
 EOF
         )
-        if (whiptail --title "HomeServerHQ" --yesno "$updateMenu" $MENU_HEIGHT $MENU_WIDTH); then
-          is_download_lib=true
+        if ! (whiptail --title "HomeServerHQ" --yesno "$updateMenu" $MENU_HEIGHT $MENU_WIDTH); then
+          return
         fi
+      else
+        # No updated needed
+        return
       fi
     else
       echo "Could not get latest lib version, proceeding with local version..."
+      return
     fi
-  elif ! [ -f $HSHQ_LIB_SCRIPT ]; then
-    is_download_lib=true
   fi
-
-  if [ "$is_download_lib" = "true" ]; then
-    echo "Downloading latest version..."
-    wget -q4 -O $HSHQ_LIB_TMP $HSHQ_LIB_URL
-    if [ $? -ne 0 ]; then
-      rm -f $HSHQ_LIB_TMP
-      if [ -f $HSHQ_LIB_SCRIPT ]; then
-        showMessageBox "Download Error" "There was an error obtaining the latest lib version, proceeding with local version..."
-      else
-        showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
-        exit 1
-      fi
-      is_download_lib=false
+  echo "Downloading latest version..."
+  wget -q4 -O $HSHQ_LIB_TMP $HSHQ_LIB_URL
+  if [ $? -ne 0 ]; then
+    rm -f $HSHQ_LIB_TMP
+    if [ -f $HSHQ_LIB_SCRIPT ]; then
+      showMessageBox "Download Error" "There was an error obtaining the latest lib version, proceeding with local version..."
     else
-      hshq_lib_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
-      echo "Obtained Library Version $hshq_lib_dl_version"
-    fi
-    # Check for new versions of wrapper script (this)
-    if [ "$is_download_lib" = "true" ]; then
-      hshq_wrap_latest_version=$(curl --silent $HSHQ_WRAP_VER_URL)
-      if [ $? -eq 0 ] && ! [ -z $hshq_wrap_latest_version ]; then
-        hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
-        if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
-          is_download_wrap=true
-          wget -q4 -O $HSHQ_WRAP_TMP $HSHQ_WRAP_URL
-          if [ $? -ne 0 ]; then
-            rm -f $HSHQ_WRAP_TMP
-            rm -f $HSHQ_LIB_TMP
-            if [ -f $HSHQ_WRAP_SCRIPT ]; then
-              showMessageBox "Download Error" "There was an error obtaining the latest wrapper version, proceeding with local version..."
-            else
-              showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
-              exit 1
-            fi
-            is_download_wrap=false
-            is_download_lib=false
-          else
-            hshq_wrap_dl_version=$(sed -n 2p $HSHQ_WRAP_TMP | cut -d"=" -f2)
-            echo "Obtained Wrapper Version $hshq_wrap_dl_version"
-          fi
-        fi
-      else
-        echo "Could not get latest wrapper version, proceeding with local version..."
-        rm -f $HSHQ_LIB_TMP
-        is_download_lib=false
-      fi
-    fi
-  fi
-
-  if [ "$is_download_lib" = "true" ]; then
-    gpg --list-keys $HSHQ_GPG_FINGERPRINT >/dev/null 2>/dev/null
-    if [ $? -ne 0 ]; then
-      echo "Obtaining HomeServerHQ Public GPG Key..."
-      curl -s https://homeserverhq.com/hshq.asc | gpg --import >/dev/null 2>/dev/null
-    fi
-    gpg --list-keys $HSHQ_GPG_FINGERPRINT >/dev/null 2>/dev/null
-    if [ $? -ne 0 ]; then
-      showMessageBox "GPG Key Error" "There was an error obtaining HomeServerHQ's Public GPG Key, exiting..."
-      rm -f $HSHQ_LIB_TMP
+      showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
       exit 1
     fi
-    wget -q4 -O $HOME/lib-${hshq_lib_dl_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_lib_dl_version}.sig
-    if [ $? -eq 0 ]; then
-      echo "Signature downloaded (lib-${hshq_lib_dl_version}.sig)..."
-    else
-      rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
-      rm -f $HSHQ_WRAP_TMP
-      rm -f $HOME/lib-${hshq_lib_dl_version}.sig
-      rm -f $HSHQ_LIB_TMP
-      if [ -f $HSHQ_LIB_SCRIPT ]; then
-        showMessageBox "Download Error" "There was an error obtaining the lib signature, proceeding with local version..."
-      else
-        showMessageBox "Download Error" "There was an error obtaining the lib signature. Please try again later."
-        exit 1
-      fi
-      is_download_lib=false
-    fi
-    if [ "$is_download_wrap" = "true" ] && [ "$is_download_lib" = "true" ]; then
-      wget -q4 -O $HOME/wrap-${hshq_wrap_dl_version}.sig $HSHQ_SIG_BASE_URL/wrap-${hshq_wrap_dl_version}.sig
-      if [ $? -eq 0 ]; then
-        echo "Signature downloaded (wrap-${hshq_wrap_dl_version}.sig)..."
-      else
-        rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
-        rm -f $HSHQ_WRAP_TMP
-        rm -f $HOME/lib-${hshq_lib_dl_version}.sig
-        rm -f $HSHQ_LIB_TMP
-        if [ -f $HSHQ_LIB_SCRIPT ]; then
-          showMessageBox "Download Error" "There was an error obtaining the wrapper signature, proceeding with local version..."
-        else
-          showMessageBox "Download Error" "There was an error obtaining the wrapper signature. Please try again later."
-          exit 1
-        fi
-        is_download_wrap=false
-        is_download_lib=false
-      fi
-    fi
+    return
   fi
-
-  if [ "$is_download_lib" = "true" ]; then
-    echo "Verifying lib with signature..."
-    verifyFile $HSHQ_LIB_TMP $HOME/lib-${hshq_lib_dl_version}.sig
-    ver_res=$?
-    rm -f $HOME/lib-${hshq_lib_dl_version}.sig
-    if [ $ver_res -ne 0 ]; then
-      # Not verified, raise the red flag
-      is_download_wrap=false
-      rm -f $HSHQ_WRAP_TMP
-      rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
-      is_download_lib=false
-      rm -f $HSHQ_LIB_TMP
-      echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
-      echo " There was a verification error on the latest lib version(${hshq_lib_dl_version})."
-      echo "   Please email security@homeserverhq.com as soon as possible.  "
-      echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-      if [ -f $HSHQ_LIB_SCRIPT ]; then
-        showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest lib version(${hshq_lib_dl_version}).\n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
-      else
-        showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
-        exit 1
-      fi
-    fi
-    if [ "$is_download_wrap" = "true" ] && [ "$is_download_lib" = "true" ]; then
-      echo "Verifying wrap with signature..."
-      verifyFile $HSHQ_WRAP_TMP $HOME/wrap-${hshq_wrap_dl_version}.sig
-      ver_res=$?
-      rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
-      if [ $ver_res -ne 0 ]; then
-       # Not verified, raise the red flag
-        is_download_wrap=false
-        rm -f $HSHQ_WRAP_TMP
-        is_download_lib=false
-        rm -f $HSHQ_LIB_TMP
-        echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
-        echo " There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). "
-        echo "   Please email security@homeserverhq.com as soon as possible.  "
-        echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-        if [ -f $HSHQ_LIB_SCRIPT ]; then
-          showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
-        else
-          showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
-          exit 1
-        fi
-      fi
-    fi
-    if [ "$is_download_lib" = "true" ]; then
-      # Verified
-      echo "Source code verified!"
-      rm -f $HSHQ_LIB_SCRIPT
-      mv $HSHQ_LIB_TMP $HSHQ_LIB_SCRIPT
-    fi
-    if [ "$is_download_wrap" = "true" ]; then
-      # Verified
-      rm -f $HSHQ_WRAP_SCRIPT
-      mv $HSHQ_WRAP_TMP $HSHQ_WRAP_SCRIPT
-      # Show message box
-      showMessageBox "Wrapper Script Updated" "The wrapper script was updated. You will have to restart the script (bash hshq.sh). Exiting..."
-      exit
-    fi
+  hshq_lib_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
+  echo "Obtained Library Version $hshq_lib_dl_version"
+  gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "Obtaining HomeServerHQ Public GPG Key..."
+    curl -s https://homeserverhq.com/hshq.asc | gpg --import > /dev/null 2>&1
   fi
-  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
-  if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
-    showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
+  gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    showMessageBox "GPG Key Error" "There was an error obtaining HomeServerHQ's Public GPG Key, exiting..."
+    rm -f $HSHQ_LIB_TMP
     exit 1
   fi
-  bash $HSHQ_LIB_SCRIPT run $is_download_lib "$CONNECTING_IP" "$USER_SUDO_PW"
+  wget -q4 -O $HOME/lib-${hshq_lib_dl_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_lib_dl_version}.sig
+  if [ $? -ne 0 ]; then
+    rm -f $HOME/lib-${hshq_lib_dl_version}.sig
+    rm -f $HSHQ_LIB_TMP
+    if [ -f $HSHQ_LIB_SCRIPT ]; then
+      showMessageBox "Download Error" "There was an error obtaining the lib signature, proceeding with local version..."
+    else
+      showMessageBox "Download Error" "There was an error obtaining the lib signature. Please try again later."
+      exit 1
+    fi
+    return
+  fi
+  echo "Signature downloaded (lib-${hshq_lib_dl_version}.sig)..."
+  echo "Verifying lib with signature..."
+  verifyFile $HSHQ_LIB_TMP $HOME/lib-${hshq_lib_dl_version}.sig
+  ver_res=$?
+  rm -f $HOME/lib-${hshq_lib_dl_version}.sig
+  if [ $ver_res -ne 0 ]; then
+    # Not verified, raise the red flag
+    is_download_wrap=false
+    rm -f $HSHQ_WRAP_TMP
+    rm -f $HOME/wrap-${hshq_wrap_dl_version}.sig
+    rm -f $HSHQ_LIB_TMP
+    echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
+    echo " There was a verification error on the latest lib version(${hshq_lib_dl_version})."
+    echo "   Please email security@homeserverhq.com as soon as possible.  "
+    echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+    if [ -f $HSHQ_LIB_SCRIPT ]; then
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest lib version(${hshq_lib_dl_version}).\n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
+    else
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
+      exit 1
+    fi
+    return
+  fi
+  # Verified
+  echo "Source code verified!"
+  rm -f $HSHQ_LIB_SCRIPT
+  mv $HSHQ_LIB_TMP $HSHQ_LIB_SCRIPT
+  is_download_lib=true
 }
 
 function verifyFile()
