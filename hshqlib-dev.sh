@@ -18892,7 +18892,17 @@ function checkUpdateAllIPTables()
     sudo iptables -t raw -N chain-icmp > /dev/null 2>&1
     sudo iptables -t raw -N chain-bad_tcp > /dev/null 2>&1
     sudo iptables -t raw -N chain-ipspoof > /dev/null 2>&1
-    sudo iptables -t filter -F INPUT > /dev/null 2>&1
+    comment="HSHQ_BEGIN INPUT Temp Keep Established HSHQ_END"
+    sudo iptables -I INPUT -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$comment" -j ACCEPT > /dev/null 2>&1
+    while true;
+    do
+      sudo iptables -L INPUT -n --line-numbers | cut -d" " -f1 | grep "2" > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        sudo iptables -D INPUT 2 > /dev/null 2>&1
+      else
+        break
+      fi
+    done
     sudo iptables -t filter -F DOCKER-USER > /dev/null 2>&1
     sudo iptables -t filter -N DOCKER-USER > /dev/null 2>&1
     sudo iptables -t raw -A PREROUTING -p icmp -j chain-icmp > /dev/null 2>&1
@@ -54358,7 +54368,7 @@ if ! [ -z "\$checkRes" ]; then
   return
 fi
 echo "Clearing iptables..."
-performClearIPTables false
+performClearIPTables true
 echo "Adding rules to iptables..."
 checkUpdateAllIPTables resetFirewall
 echo "Reset firewall complete!"
