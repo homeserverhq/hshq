@@ -580,7 +580,7 @@ EOF
   updateMOTD
   performSuggestedSecUpdates
   installMailUtils
-  performClearIPTables
+  performClearIPTables true
   checkUpdateAllIPTables performFullRestore
   outputScripts
   sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
@@ -2156,7 +2156,7 @@ function performBaseInstallation()
   installMailUtils
   installDependencies
   set +e
-  performClearIPTables
+  performClearIPTables true
   checkUpdateAllIPTables performBaseInstallation-Early
   set -e
   pullBaseServicesDockerImages
@@ -17124,9 +17124,6 @@ EOFLO
 
 function version121Update()
 {
-  #outputWGDockInternetScript
-  #updateSysctl true
-  #if true; then return; fi
   set +e
   rm -f $HOME/rsUpdateScript.sh
   cat <<EOFRS > $HOME/rsUpdateScript.sh
@@ -17466,9 +17463,10 @@ EOFRS
   startPortainer
   echo "Fixing interface names..."
   fixInterfaceNames
+  echo "Fixing mailu network names..."
   fixMailuNetworkNames
   echo "Clearing and re-initializing iptables..."
-  performClearIPTables
+  performClearIPTables true
   checkUpdateAllIPTables versionUpdate
   echo "Updating Sysctl..."
   updateSysctl true
@@ -18706,7 +18704,7 @@ function nukeHSHQ()
   sudo systemctl stop runScriptServer
   sudo systemctl disable runScriptServer
   sudo rm -f /etc/systemd/system/runScriptServer.service
-  performClearIPTables
+  performClearIPTables false
   sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo sysctl --system > /dev/null 2>&1
   sudo docker container prune -f
@@ -19191,11 +19189,30 @@ function checkAddRule()
 
 function performClearIPTables()
 {
+  set +e
+  isAllowExisting="$1"
+  if [ -z "$isAllowExisting" ]; then
+    isAllowExisting=false
+  fi
   sudo iptables -P INPUT ACCEPT
   sudo ip6tables -P INPUT ACCEPT
   sudo ip6tables -P FORWARD ACCEPT
   sudo ip6tables -P OUTPUT ACCEPT
-  sudo iptables -t filter -F INPUT
+  if [ "$isAllowExisting" = "true" ]; then
+    comment="HSHQ_BEGIN INPUT Temp Keep Established HSHQ_END"
+    sudo iptables -I INPUT -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$comment" -j ACCEPT > /dev/null 2>&1
+    while true;
+    do
+      sudo iptables -L INPUT -n --line-numbers | cut -d" " -f1 | grep "2" > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        sudo iptables -D INPUT 2 > /dev/null 2>&1
+      else
+        break
+      fi
+    done
+  else
+    sudo iptables -t filter -F INPUT
+  fi
   sudo iptables -t filter -F DOCKER-USER
   sudo iptables -t raw -F PREROUTING
   sudo iptables -t raw -F chain-icmp > /dev/null 2>&1
@@ -54341,7 +54358,7 @@ if ! [ -z "\$checkRes" ]; then
   return
 fi
 echo "Clearing iptables..."
-performClearIPTables
+performClearIPTables false
 echo "Adding rules to iptables..."
 checkUpdateAllIPTables resetFirewall
 echo "Reset firewall complete!"
