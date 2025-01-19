@@ -10890,11 +10890,16 @@ function setAsWiredDHCP()
     return
   fi
   interfaceName="$1"
+  isReplace="$2"
   set +e
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
-  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=null" > /dev/null 2>&1
-  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.nameservers=null" > /dev/null 2>&1
-  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
+  if [ "$isReplace" = "true" ]; then
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
+  else
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.nameservers=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
+  fi
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=true"
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
@@ -10908,9 +10913,10 @@ function setAsWiredStaticIP()
     return
   fi
   interfaceName="$1"
-  ipAddress="$2"
-  cidrLength="$3"
-  interfaceGateway="$4"
+  isReplace="$2"
+  ipAddress="$3"
+  cidrLength="$4"
+  interfaceGateway="$5"
   set +e
   if [ -z "$ipAddress" ]; then
     echo "ERROR: The IP address cannot be blank. No actions were performed."
@@ -10923,9 +10929,13 @@ function setAsWiredStaticIP()
     return 3
   fi
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
-  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=null" > /dev/null 2>&1
-  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.nameservers=null" > /dev/null 2>&1
-  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
+  if [ "$isReplace" = "true" ]; then
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
+  else
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.nameservers=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
+  fi
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=[${ipAddress}/${cidrLength}]"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=false"
@@ -10941,19 +10951,21 @@ function setAsWirelessDHCP()
     return
   fi
   interfaceName="$1"
-  wifiSSID="$2"
-  wifiPass="$3"
+  isReplace="$2"
+  wifiSSID="$3"
+  wifiPass="$4"
   set +e
   sudo netplan get | yq '.network.wifis | keys' 2> /dev/null | grep $interfaceName > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
+  if [ $? -ne 0 ] || [ "$isReplace" = "true" ]; then
     if [ -z "$wifiSSID" ]; then
-      echo "ERROR: This is a new interface, thus the wifi SSID cannot be blank. No actions were performed."
+      echo "ERROR: This is a new interface or a forced replacement, thus the wifi SSID cannot be blank. No actions were performed."
       return 1
     elif ! [ -z "$wifiPass" ] && ([ ${#wifiPass} -lt 8 ] || [ ${#wifiPass} -gt 63 ]); then
       echo "ERROR: The wifi password must be between 8 and 63 characters. No actions were performed."
       return 2
     fi
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
     if [ -z "$wifiPass" ]; then
       sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, access-points: {$wifiSSID: {}}}"
     else
@@ -10977,11 +10989,12 @@ function setAsWirelessStaticIP()
     return
   fi
   interfaceName="$1"
-  ipAddress="$2"
-  cidrLength="$3"
-  interfaceGateway="$4"
-  wifiSSID="$5"
-  wifiPass="$6"
+  isReplace="$2"
+  ipAddress="$3"
+  cidrLength="$4"
+  interfaceGateway="$5"
+  wifiSSID="$6"
+  wifiPass="$7"
   set +e
   if [ -z "$ipAddress" ]; then
     echo "ERROR: The IP address cannot be blank. No actions were performed."
@@ -10994,15 +11007,16 @@ function setAsWirelessStaticIP()
     return 3
   fi
   sudo netplan get | yq '.network.wifis | keys' 2> /dev/null | grep $interfaceName > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
+  if [ $? -ne 0 ] || [ "$isReplace" = "true" ]; then
     if [ -z "$wifiSSID" ]; then
-      echo "ERROR: This is a new interface, thus the wifi SSID cannot be blank. No actions were performed."
+      echo "ERROR: This is a new interface or a forced replacement, thus the wifi SSID cannot be blank. No actions were performed."
       return 4
     elif ! [ -z "$wifiPass" ] && ([ ${#wifiPass} -lt 8 ] || [ ${#wifiPass} -gt 63 ]); then
       echo "ERROR: The wifi password must be between 8 and 63 characters. No actions were performed."
       return 6
     fi
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
     if [ -z "$wifiPass" ]; then
       sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {}}}"
     else
@@ -17456,6 +17470,7 @@ EOFRS
   echo "Clearing and re-initializing iptables..."
   performClearIPTables
   checkUpdateAllIPTables versionUpdate
+  echo "Updating Sysctl..."
   updateSysctl true
   outputMaintenanceScripts
   outputUpdateEndpointIPsScript
@@ -17467,12 +17482,14 @@ EOFRS
   fi
   stackID=$(getStackID caddy-home "$PORTAINER_TOKEN")
   if ! [ -z "$stackID" ]; then
+    echo "Fixing caddy-home name..."
     # Reinsatll caddy-home stack
     deleteStack caddy-home "$PORTAINER_TOKEN"
     sudo mv $HSHQ_STACKS_DIR/caddy-home $HSHQ_STACKS_DIR/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
     outputConfigCaddy home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME home $(getHSHostIPVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME) home na na na "$(getHSHostSubnetVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME)" "$(getNonPrivateConnectingIP)"
     installStack caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME "serving initial configuration" $HOME/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME.env
   fi
+  echo "Updating boot services..."
   sudo systemctl disable runOnBootRoot
   sudo systemctl daemon-reload
   sudo rm -f /etc/systemd/system/runOnBootRoot.service
@@ -17481,7 +17498,7 @@ EOFRS
     sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts $HSHQ_SCRIPTS_DIR/boot/afterdocker
   fi
   outputBootScripts
-
+  echo "Updating cronjobs..."
   sudo crontab -l > $HOME/rootcron
   echo "*/$CHECKIP_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh" | sudo tee -a $HOME/rootcron >/dev/null
   echo "*/$UPDATE_IPTABLES_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh" | sudo tee -a $HOME/rootcron >/dev/null
@@ -53659,8 +53676,14 @@ selaction=\$(getArgumentValue selaction "\$@")
 ipaddr=\$(getArgumentValue ipaddr "\$@")
 cidrlen=\$(getArgumentValue cidrlen "\$@")
 selgateway=\$(getArgumentValue selgateway "\$@")
+selmethod=\$(getArgumentValue selmethod "\$@")
 ssid=\$(getArgumentValue ssid "\$@")
 wifipass=\$(getArgumentValue wifipass "\$@")
+
+isReplace=false
+if [ "\$selmethod" = "Replace Netplan Entry" ]; then
+  isReplace=true
+fi
 
 set +e
 retVal=0
@@ -53688,19 +53711,19 @@ case "\$selaction" in
     ;;
   "Set As Wired DHCP")
       echo "Setting \$selinterface as wired DHCP..."
-      setAsWiredDHCP "\$selinterface"
+      setAsWiredDHCP "\$selinterface" "\$isReplace"
     ;;
   "Set As Wired Static IP")
       echo "Setting \$selinterface as wired static IP..."
-      setAsWiredStaticIP "\$selinterface" "\$ipaddr" "\$cidrlen" "\$selgateway"
+      setAsWiredStaticIP "\$selinterface" "\$isReplace" "\$ipaddr" "\$cidrlen" "\$selgateway"
     ;;
   "Set As Wireless DHCP")
       echo "Setting \$selinterface as wireless DHCP..."
-      setAsWirelessDHCP "\$selinterface" "\$ssid" "\$wifipass"
+      setAsWirelessDHCP "\$selinterface" "\$isReplace" "\$ssid" "\$wifipass"
     ;;
   "Set As Wireless Static IP")
       echo "Setting \$selinterface as wireless static IP..."
-      setAsWirelessStaticIP "\$selinterface" "\$ipaddr" "\$cidrlen" "\$selgateway" "\$ssid" "\$wifipass"
+      setAsWirelessStaticIP "\$selinterface" "\$isReplace" "\$ipaddr" "\$cidrlen" "\$selgateway" "\$ssid" "\$wifipass"
     ;;
   "Remove From Netplan")
       echo "Removing \$selinterface from netplan..."
@@ -53842,6 +53865,20 @@ EOFSC
       "default": { 
         "script": "conf/scripts/getInterfaceGateway.sh \"\${Select the interface to edit}\""
       },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Select Method",
+      "required": false,
+      "param": "-selmethod=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 1
+      },
+      "values": [ "Edit Netplan Entry", "Replace Netplan Entry" ],
+      "default": "Edit Netplan Entry",
       "secure": false,
       "pass_as": "argument"
     },
