@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=121
+HSHQ_SCRIPT_VERSION=122
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -153,7 +153,7 @@ function init()
   HSHQ_CUSTOM_POST_IPTABLES_SCRIPT=$HSHQ_SCRIPTS_DIR/root/userCustomPostIPTables.sh
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
-  UTILS_LIST="whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools"
+  UTILS_LIST="whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils needrestart"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
   hshqlogo=$(cat << EOF
@@ -332,7 +332,6 @@ EOF
       set +e
       return 1 ;;
     3)
-      sudo apt update && sudo apt upgrade -y && sudo apt autoremove -y
       installDependencies
       pullBaseServicesDockerImages
       sudo reboot ;;
@@ -496,6 +495,7 @@ function showRestoreUnencryptedMenu()
 function performFullRestore()
 {
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  createHSHQLog
   checkLoadConfig
   IS_INSTALLED=false
   IS_INSTALLING=true
@@ -521,7 +521,6 @@ EOF
     return
   fi
   setSudoTimeoutInstall
-  createHSHQLog
   checkCreateNonbackupDirs
   # Set hostname
   new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
@@ -1407,6 +1406,8 @@ function installYQ()
 function installDependencies()
 {
   set +e
+  createHSHQLog
+  sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
@@ -1466,7 +1467,7 @@ function installDependencies()
     if ! [ $DESKTOP_ENV = "na" ]; then
       # Default browsers are so-so...
       sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
-      echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
+      echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg arch=amd64] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
       sudo DEBIAN_FRONTEND=noninteractive apt update
       performAptInstall brave-browser
       if ! [ -z "$CERTS_ROOT_CA_NAME" ]; then
@@ -14768,6 +14769,7 @@ function checkPortForwardingIntersect()
 # Initialization
 function createInitialEnv()
 {
+  createHSHQLog
   mkdir -p $HSHQ_BASE_DIR
   mkdir -p $HSHQ_DATA_DIR
   mkdir -p $HSHQ_BACKUP_DIR
@@ -14807,8 +14809,6 @@ function createInitialEnv()
   echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
-
-  createHSHQLog
   mkdir -p $HOME/.ssh
   set +e
   tmp_pw1=""
@@ -14849,9 +14849,7 @@ function createInitialEnv()
 
 function createHSHQLog()
 {
-  if sudo test -f $HSHQ_LOG_FILE; then
-    sudo truncate -s 0 $HSHQ_LOG_FILE
-  else
+  if ! sudo test -f $HSHQ_LOG_FILE; then
     sudo touch $HSHQ_LOG_FILE
     sudo chown $USERNAME:$USERNAME $HSHQ_LOG_FILE
     sudo chmod 644 $HSHQ_LOG_FILE
@@ -17125,6 +17123,7 @@ EOFLO
 function version121Update()
 {
   set +e
+  createHSHQLog
   rm -f $HOME/rsUpdateScript.sh
   cat <<EOFRS > $HOME/rsUpdateScript.sh
 function main()
@@ -17374,14 +17373,10 @@ function isIPInSubnet()
 main "\$@"
 EOFRS
   updateRelayServerWithScript
-
   echo "Installing yq..."
   performAptInstall yq
   echo "Installing wireless-tools..."
   performAptInstall wireless-tools
-
-  createHSHQLog
-
   # Only let superuser modify db
   sudo chmod 640 $HSHQ_DB
   sudo chown root $HSHQ_DB
@@ -45576,6 +45571,7 @@ function performUpdateFileDrop()
 function buildFileDropImage()
 {
   set +e
+  sudo rm -fr $HSHQ_BUILD_DIR/filedrop
   git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
   docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
   retVal=$?
@@ -47031,7 +47027,7 @@ services:
       - int-immich-net
       - dock-proxy-net
       - dock-internalmail-net
-      - dock-privateip-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -47055,7 +47051,7 @@ services:
     networks:
       - int-immich-net
       - dock-proxy-net
-      - dock-privateip-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -47097,8 +47093,8 @@ networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
-  dock-privateip-net:
-    name: dock-privateip
+  dock-ext-net:
+    name: dock-ext
     external: true
   dock-dbs-net:
     name: dock-dbs
