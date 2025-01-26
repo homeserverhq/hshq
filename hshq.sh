@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=16
+HSHQ_WRAPPER_SCRIPT_VERSION=17
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -134,6 +134,16 @@ EOF
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
     sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart > /dev/null 2>&1
+  fi
+  if [[ "$(isProgramInstalled wget)" = "false" ]]; then
+    checkPromptUserPW
+    echo "Installing wget, please wait..."
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+    if [ "$is_dpkg_config" = "false" ]; then
+      sudo dpkg --configure -a
+      is_dpkg_config=true
+    fi
+    performAptInstall wget > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled curl)" = "false" ]]; then
     checkPromptUserPW
@@ -271,6 +281,7 @@ EOF
   fi
 
   is_download_lib=false
+  checkDownloadGPGKey
   checkDownloadWrapper
   checkDownloadLib
 
@@ -280,6 +291,20 @@ EOF
     exit 1
   fi
   bash $HSHQ_LIB_SCRIPT run "$is_download_lib" "$CONNECTING_IP" "$USER_SUDO_PW"
+}
+
+function checkDownloadGPGKey()
+{
+  gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "Obtaining HomeServerHQ Public GPG Key..."
+    curl -s https://homeserverhq.com/hshq.asc | gpg --import > /dev/null 2>&1
+  fi
+  gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    showMessageBox "GPG Key Error" "There was an error obtaining HomeServerHQ's Public GPG Key, exiting..."
+    exit 1
+  fi
 }
 
 function checkDownloadWrapper()
@@ -302,7 +327,7 @@ function checkDownloadWrapper()
       if [ -f $HSHQ_WRAP_SCRIPT ]; then
         showMessageBox "Download Error" "There was an error obtaining the latest wrapper version, proceeding with local version..."
       else
-        showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
+        showMessageBox "Download Error" "There was an error obtaining the required wrapper. Please try again later."
         exit 1
       fi
       return
@@ -395,24 +420,13 @@ EOF
     if [ -f $HSHQ_LIB_SCRIPT ]; then
       showMessageBox "Download Error" "There was an error obtaining the latest lib version, proceeding with local version..."
     else
-      showMessageBox "Download Error" "There was an error obtaining the required file(s). Please try again later."
+      showMessageBox "Download Error" "There was an error obtaining the required lib. Please try again later."
       exit 1
     fi
     return
   fi
   hshq_lib_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
   echo "Obtained Library Version $hshq_lib_dl_version"
-  gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    echo "Obtaining HomeServerHQ Public GPG Key..."
-    curl -s https://homeserverhq.com/hshq.asc | gpg --import > /dev/null 2>&1
-  fi
-  gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    showMessageBox "GPG Key Error" "There was an error obtaining HomeServerHQ's Public GPG Key, exiting..."
-    rm -f $HSHQ_LIB_TMP
-    exit 1
-  fi
   wget -q4 -O $HOME/lib-${hshq_lib_dl_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_lib_dl_version}.sig
   if [ $? -ne 0 ]; then
     rm -f $HOME/lib-${hshq_lib_dl_version}.sig

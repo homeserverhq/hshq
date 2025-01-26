@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=122
+HSHQ_SCRIPT_VERSION=123
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -153,8 +153,8 @@ function init()
   HSHQ_CUSTOM_POST_IPTABLES_SCRIPT=$HSHQ_SCRIPTS_DIR/root/userCustomPostIPTables.sh
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
-  UTILS_LIST="whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|sha1sum nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools"
-  APT_REMOVE_LIST="vim vim-tiny vim-common xxd binutils needrestart"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential"
+  APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
   hshqlogo=$(cat << EOF
 
@@ -1634,8 +1634,8 @@ function initConfig()
   # Obviously 120 != 150, but this allows a little leeway.
   # The partitioning structure could be different than expected, so user can bypass this warning.
   total_disk_space=$(($(df / | tail -1 | xargs | cut -d" " -f2) / 1048576))
-  if [ $total_disk_space -lt 20 ]; then
-    showMessageBox "Insufficient Disk Space" "You must have at least 20GB of disk space to perform the base installation, exiting..."
+  if [ $total_disk_space -lt 11 ]; then
+    showMessageBox "Insufficient Disk Space" "You must have at least 16GB of disk space to perform the base installation, exiting..."
     exit 1
   elif [ $total_disk_space -lt 120 ]; then
     showYesNoMessageBox "Insufficient Disk Space" "Total size of disk is $total_disk_space GB. You should have at least 150 GB of available space to perform the installation. The process could fail or your server could crash. Are you sure you want to continue?"
@@ -1805,7 +1805,7 @@ function initConfig()
 	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc (No special characters except for commas, hyphens, or periods). This will appear in window titles, certificates, among other things: ")
 	if [ -z "$HOMESERVER_NAME" ]; then
 	  showMessageBox "HomeServer Name Empty" "The name cannot be empty"
-    elif [ $(checkValidStringUpperLowerNumbers "$HOMESERVER_NAME" " ,.-") = "false" ]; then
+    elif [ $(checkValidStringUpperLowerNumbers "$HOMESERVER_NAME" "[:space:],.-") = "false" ]; then
       showMessageBox "Invalid Character(s)" "The HomeServer name contains invalid character(s)."
       HOMESERVER_NAME=""
 	else
