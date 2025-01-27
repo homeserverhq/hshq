@@ -29579,6 +29579,7 @@ function installMailu()
   mkdir $HSHQ_STACKS_DIR/mailu/certs
   mkdir $HSHQ_STACKS_DIR/mailu/redis
   mkdir $HSHQ_STACKS_DIR/mailu/clamav
+  mkdir $HSHQ_STACKS_DIR/mailu/initconfig
   sudo chown 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
 
   # Generate email certificate if not joining another VPN
@@ -29592,6 +29593,7 @@ function installMailu()
     SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   fi
   outputConfigMailu
+
   installStack mailu mailu-admin "Listening at: http://0.0.0.0:8080" $HOME/mailu.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -29600,7 +29602,10 @@ function installMailu()
   fi
   echo "Installed Mailu stack, sleeping 5 seconds..."
   sleep 5
-  addInitialUsers
+  echo "Adding initial users..."
+  docker exec mailu-admin flask mailu config-import /initconfig/mail-config.yaml > /dev/null 2>&1
+  sleep 5
+  rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
   startStopStack mailu stop
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   sudo mv $HSHQ_STACKS_DIR/mailu/dovecot-override.conf $HSHQ_STACKS_DIR/mailu/overrides/dovecot/dovecot.conf
@@ -29758,6 +29763,32 @@ group "dkim" {
 
 EOFRS
 
+  cat <<EOFMC > $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+domain:
+  - name: $HOMESERVER_DOMAIN
+
+user:
+  - email: $EMAIL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    password: '$(openssl passwd -6 $EMAIL_ADMIN_PASSWORD)'
+    hash_password: true
+    global_admin: true
+    displayed_name: '${HOMESERVER_ABBREV^^} Admin'
+  - email: $EMAIL_SMTP_USERNAME@$HOMESERVER_DOMAIN
+    password: '$(openssl passwd -6 $EMAIL_SMTP_PASSWORD)'
+    hash_password: true
+    displayed_name: '${HOMESERVER_ABBREV^^} SMTP Sender'
+  - email: $LDAP_PRIMARY_USER_USERNAME@$HOMESERVER_DOMAIN
+    password: '$LDAP_PRIMARY_USER_PASSWORD_HASH'
+    hash_password: true
+    displayed_name: '$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)'
+
+EOFMC
+  if ! [ -z $RELAYSERVER_WGPORTAL_ADMIN_EMAIL ]; then
+    echo -e "alias:" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+    echo -e "  - email: $RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+    echo -e "    destination:" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+    echo -e "      - $EMAIL_ADMIN_EMAIL_ADDRESS\n" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+  fi
 }
 
 function outputMailuCompose()
@@ -29840,6 +29871,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/initconfig:/initconfig
       - \${HSHQ_STACKS_DIR}/mailu/data:/data
       - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
 
@@ -30141,39 +30173,6 @@ function performUpdateMailu()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
-}
-
-function addInitialUsers()
-{
-  cat <<EOFMC > $HOME/mail-config.yaml
-domain:
-  - name: $HOMESERVER_DOMAIN"
-
-user:
-  - email: $EMAIL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    password_hash: '$(openssl passwd -6 $EMAIL_ADMIN_PASSWORD)'
-    hash_scheme: MD5-CRYPT
-    global_admin: true
-    displayed_name: '${HOMESERVER_ABBREV^^} Admin'
-  - email: $EMAIL_SMTP_USERNAME@$HOMESERVER_DOMAIN
-    password_hash: '$(openssl passwd -6 $EMAIL_SMTP_PASSWORD)'
-    hash_scheme: MD5-CRYPT
-    displayed_name: '${HOMESERVER_ABBREV^^} SMTP Sender'
-  - email: $LDAP_PRIMARY_USER_USERNAME@$HOMESERVER_DOMAIN
-    password_hash: '$LDAP_PRIMARY_USER_PASSWORD_HASH'
-    hash_scheme: MD5-CRYPT
-    displayed_name: '$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)'
-
-EOFMC
-  if ! [ -z $RELAYSERVER_WGPORTAL_ADMIN_EMAIL ]; then
-    echo -e "alias:" >> $HOME/mail-config.yaml
-    echo -e "  - email: $RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN" >> $HOME/mail-config.yaml
-    echo -e "    destination:" >> $HOME/mail-config.yaml
-    echo -e "      - $EMAIL_ADMIN_EMAIL_ADDRESS\n" >> $HOME/mail-config.yaml
-  fi
-  docker exec mailu-admin flask mailu config-import -nv < $HOME/mail-config.yaml
-  sleep 5
-  rm -f $HOME/mail-config.yaml
 }
 
 function addUserMailu()
