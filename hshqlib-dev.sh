@@ -1905,7 +1905,7 @@ function initConfig()
   fi
   while [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]
   do
-    LDAP_PRIMARY_USER_FULLNAME=$(promptUserInputMenu $curFullName "Enter Full Name" "Enter the full name for your first HomeServer user account: ")
+    LDAP_PRIMARY_USER_FULLNAME=$(promptUserInputMenu "$curFullName" "Enter Full Name" "Enter the full name for your first HomeServer user account: ")
     if [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]; then
       showMessageBox "Name Empty" "The name cannot be empty"
     elif [ $(checkValidStringUpperLowerNumbers "$LDAP_PRIMARY_USER_FULLNAME" "[:space:].-") = "false" ]; then
