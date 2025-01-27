@@ -29770,16 +29770,16 @@ domain:
 user:
   - email: $EMAIL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
     password: '$(openssl passwd -6 $EMAIL_ADMIN_PASSWORD)'
-    hash_password: true
+    hash_password: false
     global_admin: true
     displayed_name: '${HOMESERVER_ABBREV^^} Admin'
   - email: $EMAIL_SMTP_USERNAME@$HOMESERVER_DOMAIN
     password: '$(openssl passwd -6 $EMAIL_SMTP_PASSWORD)'
-    hash_password: true
+    hash_password: false
     displayed_name: '${HOMESERVER_ABBREV^^} SMTP Sender'
   - email: $LDAP_PRIMARY_USER_USERNAME@$HOMESERVER_DOMAIN
     password: '$LDAP_PRIMARY_USER_PASSWORD_HASH'
-    hash_password: true
+    hash_password: false
     displayed_name: '$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)'
 
 EOFMC
@@ -55015,9 +55015,9 @@ function installHeimdall()
       isFound="T"
       break
     fi
-    echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
-    sleep 1
-    i=$((i+1))
+    echo "Container not ready, sleeping 3 seconds, total wait=$i seconds..."
+    sleep 3
+    i=$((i+3))
   done
   if [ $isFound == "F" ]; then
     echo "Heimdall did not start up correctly..."
