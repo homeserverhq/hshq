@@ -312,7 +312,6 @@ EOF
     1)
       checkLoadConfig
       initConfig
-      #outputScripts
       initCertificateAuthority
       setupVPNConnection
       if [ $? -ne 0 ]; then

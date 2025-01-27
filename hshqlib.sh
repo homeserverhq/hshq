@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=123
+HSHQ_SCRIPT_VERSION=124
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -194,6 +194,16 @@ function main()
     *)
       ;;
   esac
+  # Check and capture the user sudo password, only for the installation/restore processes.
+  # This change was implemented on version 10 of the wrapper (hshq.sh), and 
+  # version 68 of the lib (hshqlib.sh), in order to speed up the installation
+  # process and eliminate duplicate prompting.
+  if ! [ -z "$USER_SUDO_PW" ]; then
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_SUDO_PW=""
+    fi
+  fi
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
   fi
@@ -260,16 +270,6 @@ function showNotInstalledMenu()
 {
   set +e
   checkSupportedHostOS
-  # Check and capture the user sudo password, only for the installation process.
-  # This change was implemented on version 10 of the wrapper (hshq.sh), and 
-  # version 68 of the lib (hshqlib.sh), in order to speed up the installation
-  # process and eliminate duplicate prompting.
-  if ! [ -z "$USER_SUDO_PW" ]; then
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      USER_SUDO_PW=""
-    fi
-  fi
   while [ -z "$USER_SUDO_PW" ]
   do
     USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME (This is only used for the installation process to eliminate duplicate prompting): ")
@@ -312,7 +312,6 @@ EOF
     1)
       checkLoadConfig
       initConfig
-      outputScripts
       initCertificateAuthority
       setupVPNConnection
       if [ $? -ne 0 ]; then
@@ -1695,7 +1694,8 @@ function initConfig()
       fi
     fi
     addHSInterface $add_interface true
-    if [ $? -ne 0 ] && [ $? -ne 1 ]; then
+    retVal=$?
+    if [ $retVal -ne 0 ] && [ $retVal -ne 1 ]; then
       showMessageBox "Default Interface Error" "There was an error with the default interface"
       add_interface=""
       is_add_error=true
@@ -1898,6 +1898,22 @@ function initConfig()
       updateConfigVar LDAP_PRIMARY_USER_EMAIL_ADDRESS $LDAP_PRIMARY_USER_EMAIL_ADDRESS
     fi
   done
+  curFullName="$(echo $(getent passwd $USERNAME) | cut -d":" -f5 | cut -d"," -f1)"
+  if [ -z "$curFullName" ]; then
+    curFullName="${LDAP_PRIMARY_USER_USERNAME^}"
+  fi
+  while [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]
+  do
+    LDAP_PRIMARY_USER_FULLNAME=$(promptUserInputMenu "$curFullName" "Enter Full Name" "Enter the full name for your first HomeServer user account: ")
+    if [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]; then
+      showMessageBox "Name Empty" "The name cannot be empty"
+    elif [ $(checkValidStringUpperLowerNumbers "$LDAP_PRIMARY_USER_FULLNAME" "[:space:].-") = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, periods, and/or hyphens."
+      LDAP_PRIMARY_USER_FULLNAME=""
+    else
+      updateConfigVar LDAP_PRIMARY_USER_FULLNAME "$LDAP_PRIMARY_USER_FULLNAME"
+    fi
+  done
 
   if [ -z "$LDAP_PRIMARY_USER_PASSWORD_HASH" ]; then
     tmp_pw1=""
@@ -2083,10 +2099,28 @@ function initInstallation()
   fi
   strInstallConfig="${strInstallConfig}#######################################################\n\n"
   echo -e "${strInstallConfig}"
+  while true;
+  do
+    echo -e "________________________________________________________________________\n"
+    echo -e "Do you want to retain this information in a file in the home directory,"
+    echo -e "i.e. (/home/$USERNAME/install.txt)? Note that this information is very"
+    echo -e "sensitive and you should delete the file as soon as you are finished"
+    read -p "with it. Enter 'y' or 'n': " is_keep_config
+    if [ "$is_keep_config" = "y" ]; then
+      rm -f /home/$USERNAME/install.txt
+      echo -e "${strInstallConfig}" > /home/$USERNAME/install.txt
+      chmod 0400 /home/$USERNAME/install.txt
+      break
+    elif [ "$is_keep_config" = "n" ]; then
+      break
+    else
+      echo "Unknown response, please try again."
+    fi
+  done
   isRelayInstallInit=false
   while true;
   do
-    echo -e "________________________________________________________________________"
+    echo -e "\n\n________________________________________________________________________\n"
     read -p "After reading/copying the above section, enter 'install' or 'exit': " is_install
     if [ "$is_install" = "install" ]; then
       break
@@ -2145,11 +2179,11 @@ function performBaseInstallation()
   IS_INSTALLING=true
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
-
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
+  outputScripts
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
@@ -14858,7 +14892,7 @@ function createHSHQLog()
 
 function checkUpdateVersion()
 {
-  if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+  if [ "$IS_INSTALLED" = "false" ] || [ "$IS_PERFORM_RESTORE" = "true" ]; then
     return
   fi
   is_update_performed=false
@@ -18740,6 +18774,7 @@ function nukeHSHQ()
     sudo chmod +x /etc/update-motd.d/*
   fi
   sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  rm -f /home/$USERNAME/install.txt
   #sudo reboot
   exit 2
 }
@@ -22333,6 +22368,7 @@ INFLUXDB_HA_BUCKET=
 # OpenLDAP (Service Details) BEGIN
 LDAP_ADMIN_USER_USERNAME=
 LDAP_ADMIN_USER_PASSWORD=
+LDAP_PRIMARY_USER_FULLNAME=
 LDAP_PRIMARY_USER_USERNAME=
 LDAP_PRIMARY_USER_PASSWORD_HASH=
 LDAP_PRIMARY_USER_EMAIL_ADDRESS=
@@ -25403,6 +25439,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET="
+  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}"
 }
 
 # Stacks Installation/Update Functions
@@ -26076,16 +26113,22 @@ function prepAdguardInstallation()
   set +e
   sudo systemctl stop systemd-resolved > /dev/null 2>&1
   sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  if [ -f /etc/dhcp/dhclient.conf ]; then
+    sudo sed -i '/supersede domain-name-servers/d' /etc/dhcp/dhclient.conf
+    sudo sed -i -e '$a\' /etc/dhcp/dhclient.conf
+    echo "supersede domain-name-servers 127.0.0.1;" | sudo tee -a /etc/dhcp/dhclient.conf > /dev/null 2>&1
+  fi
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
   sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
 EOFR
-  np_path="/etc/netplan/*"
-  for cur_np in "$np_path"
-  do
-    sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
-    sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
-  done
+  if sudo test -d /etc/netplan; then
+    sudo find /etc/netplan -type f -print0 | while read -d '' cur_np
+    do
+      sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
+      sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
+    done
+  fi
   if ! [ -z $pai_curE ]; then
     set -e
   fi
@@ -29391,6 +29434,8 @@ EOFLD
 ldapadd -f /tmp/initconfig/initdb.ldif -D $LDAP_ADMIN_BIND_DN -Z -w $LDAP_ADMIN_BIND_PASSWORD
 EOFLI
 
+  firstname="$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)"
+  surname="$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f1 | rev)"
   cat <<EOFLB > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/initdb.ldif
 # People
 dn: ou=people,${LDAP_BASE_DN}
@@ -29420,8 +29465,8 @@ userPassword: {CRYPT}${ADMIN_PASSWORD_CRYPT}
 
 # Basic User
 dn: uid=${LDAP_PRIMARY_USER_USERNAME},ou=people,${LDAP_BASE_DN}
-givenName: ${LDAP_PRIMARY_USER_USERNAME^}
-sn:: IA==
+givenName:: $(echo -n "$firstname " | base64)
+sn:: $(echo -n "$surname" | base64)
 uid: ${LDAP_PRIMARY_USER_USERNAME}
 mail: ${LDAP_PRIMARY_USER_EMAIL_ADDRESS}
 objectClass: person
@@ -29533,6 +29578,7 @@ function installMailu()
   mkdir $HSHQ_STACKS_DIR/mailu/certs
   mkdir $HSHQ_STACKS_DIR/mailu/redis
   mkdir $HSHQ_STACKS_DIR/mailu/clamav
+  mkdir $HSHQ_STACKS_DIR/mailu/initconfig
   sudo chown 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
 
   # Generate email certificate if not joining another VPN
@@ -29546,6 +29592,7 @@ function installMailu()
     SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   fi
   outputConfigMailu
+
   installStack mailu mailu-admin "Listening at: http://0.0.0.0:8080" $HOME/mailu.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -29554,14 +29601,10 @@ function installMailu()
   fi
   echo "Installed Mailu stack, sleeping 5 seconds..."
   sleep 5
-  # Since the upgrade from 1.9 to 2.0, the following commands occasionally error out and halt the installation.
-  # Added a short sleep and some error handling/retries to see if it fixes it.
-  addUserMailu admin "$EMAIL_ADMIN_USERNAME" "$HOMESERVER_DOMAIN" "$EMAIL_ADMIN_PASSWORD"
-  addUserMailu user "$EMAIL_SMTP_USERNAME" "$HOMESERVER_DOMAIN" "$EMAIL_SMTP_PASSWORD"
-  addUserMailu user-import "$LDAP_PRIMARY_USER_USERNAME" "$HOMESERVER_DOMAIN" "$LDAP_PRIMARY_USER_PASSWORD_HASH"
-  if ! [ -z $RELAYSERVER_WGPORTAL_ADMIN_EMAIL ]; then
-    addUserMailu alias "$RELAYSERVER_WGPORTAL_ADMIN_USERNAME" "$HOMESERVER_DOMAIN" "$EMAIL_ADMIN_EMAIL_ADDRESS"
-  fi
+  echo "Adding initial users..."
+  docker exec mailu-admin flask mailu config-import /initconfig/mail-config.yaml > /dev/null 2>&1
+  sleep 5
+  rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
   startStopStack mailu stop
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   sudo mv $HSHQ_STACKS_DIR/mailu/dovecot-override.conf $HSHQ_STACKS_DIR/mailu/overrides/dovecot/dovecot.conf
@@ -29719,6 +29762,32 @@ group "dkim" {
 
 EOFRS
 
+  cat <<EOFMC > $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+domain:
+  - name: $HOMESERVER_DOMAIN
+
+user:
+  - email: $EMAIL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    password: '$(openssl passwd -6 $EMAIL_ADMIN_PASSWORD)'
+    hash_password: false
+    global_admin: true
+    displayed_name: '${HOMESERVER_ABBREV^^} Admin'
+  - email: $EMAIL_SMTP_USERNAME@$HOMESERVER_DOMAIN
+    password: '$(openssl passwd -6 $EMAIL_SMTP_PASSWORD)'
+    hash_password: false
+    displayed_name: '${HOMESERVER_ABBREV^^} SMTP Sender'
+  - email: $LDAP_PRIMARY_USER_USERNAME@$HOMESERVER_DOMAIN
+    password: '$LDAP_PRIMARY_USER_PASSWORD_HASH'
+    hash_password: false
+    displayed_name: '$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)'
+
+EOFMC
+  if ! [ -z $RELAYSERVER_WGPORTAL_ADMIN_EMAIL ]; then
+    echo -e "alias:" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+    echo -e "  - email: $RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+    echo -e "    destination:" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+    echo -e "      - $EMAIL_ADMIN_EMAIL_ADDRESS\n" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+  fi
 }
 
 function outputMailuCompose()
@@ -29801,6 +29870,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/initconfig:/initconfig
       - \${HSHQ_STACKS_DIR}/mailu/data:/data
       - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
 
@@ -54944,9 +55014,9 @@ function installHeimdall()
       isFound="T"
       break
     fi
-    echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
-    sleep 1
-    i=$((i+1))
+    echo "Container not ready, sleeping 3 seconds, total wait=$i seconds..."
+    sleep 3
+    i=$((i+3))
   done
   if [ $isFound == "F" ]; then
     echo "Heimdall did not start up correctly..."
@@ -56617,7 +56687,7 @@ function installUptimeKuma()
   initServicesCredentials
   UPTIMEKUMA_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $UPTIMEKUMA_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   outputConfigUptimeKuma
-  installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env
+  installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing Uptimekuma"
