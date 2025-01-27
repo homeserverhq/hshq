@@ -18775,6 +18775,7 @@ function nukeHSHQ()
     sudo chmod +x /etc/update-motd.d/*
   fi
   sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  rm -f /home/$USERNAME/install.txt
   #sudo reboot
   exit 2
 }
@@ -25439,7 +25440,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET="
-  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME="
+  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}"
 }
 
 # Stacks Installation/Update Functions
@@ -29599,14 +29600,7 @@ function installMailu()
   fi
   echo "Installed Mailu stack, sleeping 5 seconds..."
   sleep 5
-  # Since the upgrade from 1.9 to 2.0, the following commands occasionally error out and halt the installation.
-  # Added a short sleep and some error handling/retries to see if it fixes it.
-  addUserMailu admin "$EMAIL_ADMIN_USERNAME" "$HOMESERVER_DOMAIN" "$EMAIL_ADMIN_PASSWORD"
-  addUserMailu user "$EMAIL_SMTP_USERNAME" "$HOMESERVER_DOMAIN" "$EMAIL_SMTP_PASSWORD"
-  addUserMailu user-import "$LDAP_PRIMARY_USER_USERNAME" "$HOMESERVER_DOMAIN" "$LDAP_PRIMARY_USER_PASSWORD_HASH"
-  if ! [ -z $RELAYSERVER_WGPORTAL_ADMIN_EMAIL ]; then
-    addUserMailu alias "$RELAYSERVER_WGPORTAL_ADMIN_USERNAME" "$HOMESERVER_DOMAIN" "$EMAIL_ADMIN_EMAIL_ADDRESS"
-  fi
+  addInitialUsers
   startStopStack mailu stop
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   sudo mv $HSHQ_STACKS_DIR/mailu/dovecot-override.conf $HSHQ_STACKS_DIR/mailu/overrides/dovecot/dovecot.conf
@@ -30147,6 +30141,39 @@ function performUpdateMailu()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function addInitialUsers()
+{
+  cat <<EOFMC > $HOME/mail-config.yaml
+domain:
+  - name: $HOMESERVER_DOMAIN"
+
+user:
+  - email: $EMAIL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    password_hash: '$(openssl passwd -6 $EMAIL_ADMIN_PASSWORD)'
+    hash_scheme: MD5-CRYPT
+    global_admin: true
+    displayed_name: '${HOMESERVER_ABBREV^^} Admin'
+  - email: $EMAIL_SMTP_USERNAME@$HOMESERVER_DOMAIN
+    password_hash: '$(openssl passwd -6 $EMAIL_SMTP_PASSWORD)'
+    hash_scheme: MD5-CRYPT
+    displayed_name: '${HOMESERVER_ABBREV^^} SMTP Sender'
+  - email: $LDAP_PRIMARY_USER_USERNAME@$HOMESERVER_DOMAIN
+    password_hash: '$LDAP_PRIMARY_USER_PASSWORD_HASH'
+    hash_scheme: MD5-CRYPT
+    displayed_name: '$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)'
+
+EOFMC
+  if ! [ -z $RELAYSERVER_WGPORTAL_ADMIN_EMAIL ]; then
+    echo -e "alias:" >> $HOME/mail-config.yaml
+    echo -e "  - email: $RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN" >> $HOME/mail-config.yaml
+    echo -e "    destination:" >> $HOME/mail-config.yaml
+    echo -e "      - $EMAIL_ADMIN_EMAIL_ADDRESS\n" >> $HOME/mail-config.yaml
+  fi
+  docker exec mailu-admin flask mailu config-import -nv < $HOME/mail-config.yaml
+  sleep 5
+  rm -f $HOME/mail-config.yaml
 }
 
 function addUserMailu()
