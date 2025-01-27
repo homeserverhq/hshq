@@ -1899,6 +1899,22 @@ function initConfig()
       updateConfigVar LDAP_PRIMARY_USER_EMAIL_ADDRESS $LDAP_PRIMARY_USER_EMAIL_ADDRESS
     fi
   done
+  curFullName="$(echo $(getent passwd $USERNAME) | cut -d":" -f5 | cut -d"," -f1)"
+  if [ -z "$curFullName" ]; then
+    curFullName="${LDAP_PRIMARY_USER_USERNAME^}"
+  fi
+  while [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]
+  do
+    LDAP_PRIMARY_USER_FULLNAME=$(promptUserInputMenu $curFullName "Enter Full Name" "Enter the full name for your first HomeServer user account: ")
+    if [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]; then
+      showMessageBox "Name Empty" "The name cannot be empty"
+    elif [ $(checkValidStringUpperLowerNumbers "$LDAP_PRIMARY_USER_FULLNAME" "[:space:].-") = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, periods, and/or hyphens."
+      LDAP_PRIMARY_USER_FULLNAME=""
+    else
+      updateConfigVar LDAP_PRIMARY_USER_FULLNAME "$LDAP_PRIMARY_USER_FULLNAME"
+    fi
+  done
 
   if [ -z "$LDAP_PRIMARY_USER_PASSWORD_HASH" ]; then
     tmp_pw1=""
@@ -22352,6 +22368,7 @@ INFLUXDB_HA_BUCKET=
 # OpenLDAP (Service Details) BEGIN
 LDAP_ADMIN_USER_USERNAME=
 LDAP_ADMIN_USER_PASSWORD=
+LDAP_PRIMARY_USER_FULLNAME=
 LDAP_PRIMARY_USER_USERNAME=
 LDAP_PRIMARY_USER_PASSWORD_HASH=
 LDAP_PRIMARY_USER_EMAIL_ADDRESS=
@@ -25422,6 +25439,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET="
+  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME="
 }
 
 # Stacks Installation/Update Functions
@@ -29416,6 +29434,8 @@ EOFLD
 ldapadd -f /tmp/initconfig/initdb.ldif -D $LDAP_ADMIN_BIND_DN -Z -w $LDAP_ADMIN_BIND_PASSWORD
 EOFLI
 
+  firstname="$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)"
+  surname="$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f1 | rev)"
   cat <<EOFLB > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/initdb.ldif
 # People
 dn: ou=people,${LDAP_BASE_DN}
@@ -29445,8 +29465,8 @@ userPassword: {CRYPT}${ADMIN_PASSWORD_CRYPT}
 
 # Basic User
 dn: uid=${LDAP_PRIMARY_USER_USERNAME},ou=people,${LDAP_BASE_DN}
-givenName: ${LDAP_PRIMARY_USER_USERNAME^}
-sn:: IA==
+givenName:: $(echo -n "$firstname " | base64)
+sn:: $(echo -n "$surname" | base64)
 uid: ${LDAP_PRIMARY_USER_USERNAME}
 mail: ${LDAP_PRIMARY_USER_EMAIL_ADDRESS}
 objectClass: person
