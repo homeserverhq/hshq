@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=123
+HSHQ_SCRIPT_VERSION=124
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -194,6 +194,16 @@ function main()
     *)
       ;;
   esac
+  # Check and capture the user sudo password, only for the installation/restore processes.
+  # This change was implemented on version 10 of the wrapper (hshq.sh), and 
+  # version 68 of the lib (hshqlib.sh), in order to speed up the installation
+  # process and eliminate duplicate prompting.
+  if ! [ -z "$USER_SUDO_PW" ]; then
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_SUDO_PW=""
+    fi
+  fi
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
   fi
@@ -260,16 +270,6 @@ function showNotInstalledMenu()
 {
   set +e
   checkSupportedHostOS
-  # Check and capture the user sudo password, only for the installation process.
-  # This change was implemented on version 10 of the wrapper (hshq.sh), and 
-  # version 68 of the lib (hshqlib.sh), in order to speed up the installation
-  # process and eliminate duplicate prompting.
-  if ! [ -z "$USER_SUDO_PW" ]; then
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      USER_SUDO_PW=""
-    fi
-  fi
   while [ -z "$USER_SUDO_PW" ]
   do
     USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME (This is only used for the installation process to eliminate duplicate prompting): ")
@@ -312,7 +312,7 @@ EOF
     1)
       checkLoadConfig
       initConfig
-      outputScripts
+      #outputScripts
       initCertificateAuthority
       setupVPNConnection
       if [ $? -ne 0 ]; then
@@ -1695,7 +1695,8 @@ function initConfig()
       fi
     fi
     addHSInterface $add_interface true
-    if [ $? -ne 0 ] && [ $? -ne 1 ]; then
+    retVal=$?
+    if [ $retVal -ne 0 ] && [ $retVal -ne 1 ]; then
       showMessageBox "Default Interface Error" "There was an error with the default interface"
       add_interface=""
       is_add_error=true
@@ -2083,10 +2084,28 @@ function initInstallation()
   fi
   strInstallConfig="${strInstallConfig}#######################################################\n\n"
   echo -e "${strInstallConfig}"
+  while true;
+  do
+    echo -e "________________________________________________________________________\n"
+    echo -e "Do you want to retain this information in a file in the home directory,"
+    echo -e "i.e. (/home/$USERNAME/install.txt)? Note that this information is very"
+    echo -e "sensitive and you should delete the file as soon as you are finished"
+    read -p "with it. Enter 'y' or 'n': " is_keep_config
+    if [ "$is_keep_config" = "y" ]; then
+      rm -f /home/$USERNAME/install.txt
+      echo -e "${strInstallConfig}" > /home/$USERNAME/install.txt
+      chmod 0400 /home/$USERNAME/install.txt
+      break
+    elif [ "$is_keep_config" = "n" ]; then
+      break
+    else
+      echo "Unknown response, please try again."
+    fi
+  done
   isRelayInstallInit=false
   while true;
   do
-    echo -e "________________________________________________________________________"
+    echo -e "\n\n________________________________________________________________________\n"
     read -p "After reading/copying the above section, enter 'install' or 'exit': " is_install
     if [ "$is_install" = "install" ]; then
       break
@@ -2145,11 +2164,11 @@ function performBaseInstallation()
   IS_INSTALLING=true
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
-
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
+  outputScripts
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
@@ -14858,7 +14877,7 @@ function createHSHQLog()
 
 function checkUpdateVersion()
 {
-  if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+  if [ "$IS_INSTALLED" = "false" ] || [ "$IS_PERFORM_RESTORE" = "true" ]; then
     return
   fi
   is_update_performed=false
@@ -26076,16 +26095,22 @@ function prepAdguardInstallation()
   set +e
   sudo systemctl stop systemd-resolved > /dev/null 2>&1
   sudo systemctl disable systemd-resolved > /dev/null 2>&1
+  if [ -f /etc/dhcp/dhclient.conf ]; then
+    sudo sed -i '/supersede domain-name-servers/d' /etc/dhcp/dhclient.conf
+    sudo sed -i -e '$a\' /etc/dhcp/dhclient.conf
+    echo "supersede domain-name-servers 127.0.0.1;" | sudo tee -a /etc/dhcp/dhclient.conf > /dev/null 2>&1
+  fi
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
   sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
 EOFR
-  np_path="/etc/netplan/*"
-  for cur_np in "$np_path"
-  do
-    sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
-    sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
-  done
+  if sudo test -d /etc/netplan; then
+    sudo find /etc/netplan -type f -print0 | while read -d '' cur_np
+    do
+      sudo sed -i "s|8.8.8.8|9.9.9.9|g" $cur_np
+      sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
+    done
+  fi
   if ! [ -z $pai_curE ]; then
     set -e
   fi
@@ -56617,7 +56642,7 @@ function installUptimeKuma()
   initServicesCredentials
   UPTIMEKUMA_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $UPTIMEKUMA_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
   outputConfigUptimeKuma
-  installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env
+  installStack uptimekuma uptimekuma "Listening on 3001" $HOME/uptimekuma.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing Uptimekuma"
