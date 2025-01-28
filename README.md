@@ -19,12 +19,12 @@
 - [FAQ](#faq)
 
 ## Supported Distributions
-Distribution | |
-:------ | :------:
-Ubuntu 22.04 (Jammy Jellyfish) | Stable
-Ubuntu 24.04 (Noble Numbat) | Experimental
-Debian 12 (Bookworm) | Experimental
-Mint 22 (Wilma) | Experimental
+Distribution | State | Custom ISO |
+:------ | :------: | :------:
+Ubuntu 22.04 (Jammy Jellyfish) | Stable | Coming Soon
+Ubuntu 24.04 (Noble Numbat) | Experimental | Coming Soon
+Debian 12 (Bookworm) | Stable | <a href="https://downloads.homeserverhq.com/Debian12_HSHQ.iso" target="_blank">Download (758 MB)</a> [ <a href="https://downloads.homeserverhq.com/Debian12_HSHQ.sha256" target="_blank">sha256</a> ]
+Mint 22 (Wilma) | Experimental | Coming Soon
 
 ## One-line Start Installation
 ```
