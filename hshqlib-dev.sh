@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=124
+HSHQ_SCRIPT_VERSION=125
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -153,7 +153,7 @@ function init()
   HSHQ_CUSTOM_POST_IPTABLES_SCRIPT=$HSHQ_SCRIPTS_DIR/root/userCustomPostIPTables.sh
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential"
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
   hshqlogo=$(cat << EOF
@@ -232,6 +232,8 @@ function main()
     if [ $mbres -eq 0 ]; then
       exit
     fi
+    sudo -k
+    sudo -v
     closeHSHQScript "main"
     checkRes=$(tryOpenHSHQScript User-Console)
   fi
@@ -1024,9 +1026,10 @@ EOF
   "1" "Update Linux OS and Reboot" \
   "2" "Download All Docker Images" \
   "3" "Check For IP Address Changes" \
-  "4" "Configure Simple Backup" \
-  "5" "Uninstall and Remove Everything" \
-  "6" "Exit" 3>&1 1>&2 2>&3)
+  "4" "Refresh Firewall" \
+  "5" "Configure Simple Backup" \
+  "6" "Uninstall and Remove Everything" \
+  "7" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -1050,12 +1053,17 @@ EOF
       return 1 ;;
     4)
       checkLoadConfig
-      showSimpleBackupMenu
+      checkUpdateAllIPTables User-Console
       set +e
       return 1 ;;
     5)
-      nukeHSHQ ;;
+      checkLoadConfig
+      showSimpleBackupMenu
+      set +e
+      return 1 ;;
     6)
+      nukeHSHQ ;;
+    7)
 	  return 0 ;;
   esac
 }
@@ -4900,7 +4908,8 @@ function outputCerts()
   docker volume create --driver local -o device=\$RELAYSERVER_HSHQ_SSL_DIR/caddy -o o=bind -o type=none caddy-certs
   echo """$(cat $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt)""" > \$RELAYSERVER_HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt
   openssl x509 -in \$RELAYSERVER_HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -out \$RELAYSERVER_HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der -outform DER
-  openssl dhparam -out \$RELAYSERVER_HSHQ_SSL_DIR/dhparam.pem $CERTS_INTERNAL_DHPARAMS_KEYLENGTH
+  echo "Generating DH parameters, 512 bit long safe prime..."
+  openssl dhparam -out \$RELAYSERVER_HSHQ_SSL_DIR/dhparam.pem $CERTS_INTERNAL_DHPARAMS_KEYLENGTH > /dev/null 2>&1
   chmod 0444 \$RELAYSERVER_HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt
   chmod 0444 \$RELAYSERVER_HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der
   chmod 0444 \$RELAYSERVER_HSHQ_SSL_DIR/dhparam.pem
@@ -6229,8 +6238,10 @@ function installMailRelay()
 
   pw_hash=\$(docker run --rm $IMG_MAIL_RELAY_RSPAMD rspamadm pw -p $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)
   outputConfigMailRelay
-  openssl dhparam -out \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/dh1024.pem 1024
-  openssl dhparam -out \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/dh512.pem 512
+  echo "Generating DH parameters, 1024 bit long safe prime..."
+  openssl dhparam -out \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/dh1024.pem 1024 > /dev/null 2>&1
+  echo "Generating DH parameters, 512 bit long safe prime..."
+  openssl dhparam -out \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/dh512.pem 512 > /dev/null 2>&1
   openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:4096 -keyout \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/key.pem -out \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/cert.pem -subj "/C=US/ST=MO/L=STL/O=HomeServerHQ/OU=SampleCert/CN=$RELAYSERVER_EXT_EMAIL_HOSTNAME"
   chmod 0400 \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/cert.pem
   chmod 0400 \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/tls/key.pem
@@ -14906,127 +14917,127 @@ function checkUpdateVersion()
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
     HSHQ_VERSION=11
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 14 ]; then
     echo "Updating to Version 14..."
     version14Update
     HSHQ_VERSION=14
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 22 ]; then
     echo "Updating to Version 22..."
     version22Update
     HSHQ_VERSION=22
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 23 ]; then
     echo "Updating to Version 23..."
     version23Update
     HSHQ_VERSION=23
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 24 ]; then
     echo "Updating to Version 24..."
     version24Update
     HSHQ_VERSION=24
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 25 ]; then
     echo "Updating to Version 25..."
     version25Update
     HSHQ_VERSION=25
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 26 ]; then
     echo "Updating to Version 26..."
     version26Update
     HSHQ_VERSION=26
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 27 ]; then
     echo "Updating to Version 27..."
     version27Update
     HSHQ_VERSION=27
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 29 ]; then
     echo "Updating to Version 29..."
     version29Update
     HSHQ_VERSION=29
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 30 ]; then
     echo "Updating to Version 30..."
     version30Update
     HSHQ_VERSION=30
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 31 ]; then
     echo "Updating to Version 31..."
     version31Update
     HSHQ_VERSION=31
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 32 ]; then
     echo "Updating to Version 32..."
     version32Update
     HSHQ_VERSION=32
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 34 ]; then
     echo "Updating to Version 34..."
     version34Update
     HSHQ_VERSION=34
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 35 ]; then
     echo "Updating to Version 35..."
     version35Update
     HSHQ_VERSION=35
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 37 ]; then
     echo "Updating to Version 37..."
     version37Update
     HSHQ_VERSION=37
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 38 ]; then
     echo "Updating to Version 38..."
     version38Update
     HSHQ_VERSION=38
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 39 ]; then
     echo "Updating to Version 39..."
     version39Update
     HSHQ_VERSION=39
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 40 ]; then
     echo "Updating to Version 40..."
     version40Update
     HSHQ_VERSION=40
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 41 ]; then
     echo "Updating to Version 41..."
     version41Update
     HSHQ_VERSION=41
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 43 ]; then
     echo "Updating to Version 43..."
     version43Update
     HSHQ_VERSION=43
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 44 ]; then
     echo "Updating to Version 44..."
     version44Update
     HSHQ_VERSION=44
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 46 ]; then
     echo "Updating to Version 46..."
@@ -15039,217 +15050,217 @@ function checkUpdateVersion()
     echo "Updating to Version 48..."
     version48Update
     HSHQ_VERSION=48
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 52 ]; then
     echo "Updating to Version 52..."
     version52Update
     HSHQ_VERSION=52
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 53 ]; then
     echo "Updating to Version 53..."
     version53Update
     HSHQ_VERSION=53
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 54 ]; then
     echo "Updating to Version 54..."
     version54Update
     HSHQ_VERSION=54
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 55 ]; then
     echo "Updating to Version 55..."
     version55Update
     HSHQ_VERSION=55
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 56 ]; then
     echo "Updating to Version 56..."
     version56Update
     HSHQ_VERSION=56
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 59 ]; then
     echo "Updating to Version 59..."
     version59Update
     HSHQ_VERSION=59
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 64 ]; then
     echo "Updating to Version 64..."
     version64Update
     HSHQ_VERSION=64
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 65 ]; then
     echo "Updating to Version 65..."
     version65Update
     HSHQ_VERSION=65
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 66 ]; then
     echo "Updating to Version 66..."
     version66Update
     HSHQ_VERSION=66
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 67 ]; then
     echo "Updating to Version 67..."
     version67Update
     HSHQ_VERSION=67
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 68 ]; then
     echo "Updating to Version 68..."
     version68Update
     HSHQ_VERSION=68
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 71 ]; then
     echo "Updating to Version 71..."
     version71Update
     HSHQ_VERSION=71
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 72 ]; then
     echo "Updating to Version 72..."
     version72Update
     HSHQ_VERSION=72
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 73 ]; then
     echo "Updating to Version 73..."
     version73Update
     HSHQ_VERSION=73
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 75 ]; then
     echo "Updating to Version 75..."
     version75Update
     HSHQ_VERSION=75
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 76 ]; then
     echo "Updating to Version 76..."
     version76Update
     HSHQ_VERSION=76
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 78 ]; then
     echo "Updating to Version 78..."
     version78Update
     HSHQ_VERSION=78
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 80 ]; then
     echo "Updating to Version 80..."
     version80Update
     HSHQ_VERSION=80
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 82 ]; then
     echo "Updating to Version 82..."
     version82Update
     HSHQ_VERSION=82
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 83 ]; then
     echo "Updating to Version 83..."
     version83Update
     HSHQ_VERSION=83
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 84 ]; then
     echo "Updating to Version 84..."
     version84Update
     HSHQ_VERSION=84
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 85 ]; then
     echo "Updating to Version 85..."
     version85Update
     HSHQ_VERSION=85
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 86 ]; then
     echo "Updating to Version 86..."
     version86Update
     HSHQ_VERSION=86
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 87 ]; then
     echo "Updating to Version 87..."
     version87Update
     HSHQ_VERSION=87
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 91 ]; then
     echo "Updating to Version 91..."
     version91Update
     HSHQ_VERSION=91
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 98 ]; then
     echo "Updating to Version 98..."
     version98Update
     HSHQ_VERSION=98
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 102 ]; then
     echo "Updating to Version 102..."
     version102Update
     HSHQ_VERSION=102
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 105 ]; then
     echo "Updating to Version 105..."
     version105Update
     HSHQ_VERSION=105
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 106 ]; then
     echo "Updating to Version 106..."
     version106Update
     HSHQ_VERSION=106
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 108 ]; then
     echo "Updating to Version 108..."
     version108Update
     HSHQ_VERSION=108
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 111 ]; then
     echo "Updating to Version 111..."
     version111Update
     HSHQ_VERSION=111
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 113 ]; then
     echo "Updating to Version 113..."
     version113Update
     HSHQ_VERSION=113
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 114 ]; then
     echo "Updating to Version 114..."
     version114Update
     HSHQ_VERSION=114
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 119 ]; then
     echo "Updating to Version 119..."
     version119Update
     HSHQ_VERSION=119
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 120 ]; then
     echo "Updating to Version 120..."
     version120Update
     HSHQ_VERSION=120
-    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt 121 ]; then
     echo "Updating to Version 121..."
@@ -18944,8 +18955,10 @@ function checkUpdateAllIPTables()
   # Docker likes to append this during boot
   sudo iptables -D DOCKER-USER -j RETURN > /dev/null 2>&1
 
-  sudo iptables -t filter -n -L > $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
-  sudo iptables -t raw -n -L >> $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
+  sudo iptables -t filter -n -L > /tmp/ipt.txt
+  sudo iptables -t raw -n -L >> /tmp/ipt.txt
+  sudo rm -f /tmp/newRules.txt
+  touch /tmp/newRules.txt
 
   # See https://gist.github.com/mattia-beta/bd5b1c68e3d51db933181d8a3dc0ba64?permalink_comment_id=3728715#gistcomment-3728715
   # chain-icmp
@@ -19180,7 +19193,7 @@ function checkUpdateAllIPTables()
     allIPTCommentsArr=($(sudo iptables -t $curTable -n -L | grep -o "HSHQ_BEGIN.*HSHQ_END"))
     for curComment in "${allIPTCommentsArr[@]}"
     do
-      grep "$curComment" $HSHQ_SCRIPT_OPEN_DIR/newRules.txt > /dev/null 2>&1
+      grep "$curComment" /tmp/newRules.txt > /dev/null 2>&1
       if [ $? -ne 0 ]; then
         curChain=$(echo $curComment | cut -d" " -f2 | xargs)
         deleteIPTableEntryByChainAndComment "$curTable" "$curChain" "$curComment"
@@ -19205,7 +19218,8 @@ function checkUpdateAllIPTables()
   if [ -f $HSHQ_CUSTOM_POST_IPTABLES_SCRIPT ]; then
     bash $HSHQ_CUSTOM_POST_IPTABLES_SCRIPT "$netstate"
   fi
-  
+  sudo rm -f /tmp/ipt.txt
+  sudo rm -f /tmp/newRules.txt
   if [ "$isLogInfo" = "true" ]; then
     logHSHQEvent info "IPTables ($netstate) - END"
   fi
@@ -19215,14 +19229,14 @@ function checkAddRule()
 {
   comment="$1"
   ip_cmd="$2"
-  echo "$comment" >> $HSHQ_SCRIPT_OPEN_DIR/newRules.txt
-  sudo grep "$comment" $HSHQ_SCRIPT_OPEN_DIR/ipt.txt > /dev/null 2>&1
+  echo "$comment" >> /tmp/newRules.txt
+  sudo grep "$comment" /tmp/ipt.txt > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     eval " $ip_cmd"
     if [ $? -ne 0 ]; then
       logHSHQEvent error "IPTables ($netstate) - Error adding rule: $ip_cmd"
     fi
-    echo "$comment" >> $HSHQ_SCRIPT_OPEN_DIR/ipt.txt
+    echo "$comment" >> /tmp/ipt.txt
     logHSHQEvent info "IPTables ($netstate) - Added rule: $comment"
   fi
 }
@@ -19375,6 +19389,7 @@ function addIPTablesSpoofRule()
 
 function outputRestartStacksBootscript()
 {
+  sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/afterdocker
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -21355,7 +21370,8 @@ EOFCA
 
 function initDHParams()
 {
-  openssl dhparam -out $HSHQ_SSL_DIR/dhparam.pem $CERTS_INTERNAL_DHPARAMS_KEYLENGTH
+  echo "Generating DH parameters, $CERTS_INTERNAL_DHPARAMS_KEYLENGTH bit long safe prime..."
+  openssl dhparam -out $HSHQ_SSL_DIR/dhparam.pem $CERTS_INTERNAL_DHPARAMS_KEYLENGTH > /dev/null 2>&1
   chmod 0444 $HSHQ_SSL_DIR/dhparam.pem
 }
 
