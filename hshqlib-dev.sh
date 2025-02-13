@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=125
+HSHQ_LIB_SCRIPT_VERSION=126
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -30,18 +30,28 @@ function init()
   cd ~
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
-  HSHQ_SCRIPT_OPEN_DIR=/tmp/hshqopen
-  HSHQ_SCRIPT_OPEN_FILENAME=lastCaller
+  LAST_RELAYSERVER_VERSION_UPDATE=121
+  IS_DESKTOP_ENV=false
+  if [ -d $HOME/Desktop ]; then
+    IS_DESKTOP_ENV=true
+  fi
+  IS_CONSOLE_ENV=false
+  LOCK_UTILS_FILENAME=lockUtils.sh
+  LOCKHOLDER_FILENAME=lastCaller
+  ALL_LOCKS="hshqopen networkchecks"
   CONFIG_FILE_DEFAULT_FILENAME=config.cnf
   ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME=config.enc
   ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME=config-enc.bak
+  IS_CONFIG_FILE_UNENCRYPTED=false
   RS_INSTALL_SETUP_SCRIPT_NAME=setup.sh
   RS_INSTALL_FRESH_SCRIPT_NAME=install.sh
   RS_INSTALL_TRANSFER_SCRIPT_NAME=transfer.sh
   NUKE_SCRIPT_NAME=nuke.sh
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
+  RELAYSERVER_INSTALL_COMPLETE_FILE=installed
   HSHQ_LOG_FILE=/var/log/hshq.log
+  HSHQ_INSTALL_NOTES_FILENAME='HSHQ Install Notes.txt'
   SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
@@ -103,8 +113,8 @@ function init()
   DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
   DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
   MAX_DOCKER_PULL_TRIES=10
-  MENU_WIDTH=85
-  MENU_HEIGHT=25
+  MENU_WIDTH=69
+  MENU_HEIGHT=24
   MENU_INT_HEIGHT=10
   ENABLE_STACK_DELETE=false
   SUDO_NORMAL_TIMEOUT=15
@@ -137,6 +147,7 @@ function init()
   HSHQ_LIB_TMP=$HOME/hshqlib.tmp
   HSHQ_WRAP_TMP=$HOME/hshqwrap.tmp
   HSHQ_LIB_FILENAME=hshqlib.sh
+  HSHQ_NEW_LIB_FILENAME=hshqlib.new
   HSHQ_WRAP_FILENAME=hshq.sh
   APPLICATION_FIRST_LINE="###################### Application Begin #######################"
   APPLICATION_LAST_LINE="####################### Application End ########################"
@@ -153,18 +164,27 @@ function init()
   HSHQ_CUSTOM_POST_IPTABLES_SCRIPT=$HSHQ_SCRIPTS_DIR/root/userCustomPostIPTables.sh
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
+  SCRIPT_STATE_FILENAME=$HSHQ_CONFIG_DIR/scriptstate
   UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential"
+  DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
-  hshqlogo=$(cat << EOF
-
-        #===============================================================#
-        # ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
-        #  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
-        #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
-        #===============================================================#
-
-EOF
+  hshqlogo=$(cat << EOFLG
+#===============================================================#
+# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
+#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
+#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
+#===============================================================#\n
+EOFLG
+  )
+  hshqwarninglogo=$(cat << EOFLG
+#===============================================================#
+# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
+#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
+#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
+#===============================================================#
+        ***** WARNING - Config File is UNENCRYPTED! *****        
+EOFLG
   )
 }
 
@@ -175,7 +195,6 @@ function main()
   case "$1" in
     "install")
       CONNECTING_IP=$2
-      USER_SUDO_PW=$3
       IS_PERFORM_INSTALL=true
       ;;
     "-a")
@@ -184,33 +203,47 @@ function main()
     "run")
       IS_NEW_LIB=$2
       CONNECTING_IP=$3
-      USER_SUDO_PW=$4
       ;;
     "restore")
       CONNECTING_IP=$2
-      USER_SUDO_PW=$3
       IS_PERFORM_RESTORE=true
+      ;;
+    "update")
+      IS_PERFORM_UPDATE=true
+      ;;
+    "getsuper")
+      IS_GET_SUPER=true
       ;;
     *)
       ;;
   esac
-  # Check and capture the user sudo password, only for the installation/restore processes.
-  # This change was implemented on version 10 of the wrapper (hshq.sh), and 
-  # version 68 of the lib (hshqlib.sh), in order to speed up the installation
-  # process and eliminate duplicate prompting.
-  if ! [ -z "$USER_SUDO_PW" ]; then
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      USER_SUDO_PW=""
-    fi
-  fi
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
   fi
-  
+  if [ "$IS_PERFORM_UPDATE" = "true" ]; then
+    checkUpdateVersion
+    return
+  fi
+  if [ "$IS_GET_SUPER" = "true" ]; then
+    read -s -p "" USER_SUDO_PW
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    retVal=$?
+    unset USER_SUDO_PW
+    USER_SUDO_PW=""
+    exit $retVal
+  fi
+  if ! [ -z "$USER_SUDO_PW" ]; then
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      unset USER_SUDO_PW
+      USER_SUDO_PW=""
+    fi
+  fi
   if [ "$IS_PERFORM_INSTALL" = "true" ]; then
     if [ "$USERNAME" = "root" ]; then
-      echo "Cannot install as root user, exiting..."
+      strErr="Cannot install as root user, exiting..."
+      logHSHQEvent error "$strErr"
+      echo "$strErr"
       exit 1
     fi
     performBaseInstallation
@@ -225,7 +258,7 @@ function main()
     exit 0
   fi
   set +e
-  checkRes=$(tryOpenHSHQScript User-Console)
+  checkRes=$(tryGetLock hshqopen User-Console)
   if ! [ -z "$checkRes" ]; then
     showNoYesMessageBox "Script Running" "It appears that this script is already running in another session ($checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. Unknown and damaging consequences can occur if running two different instances at the same time. Are you certain that you wish to continue?"
     mbres=$?
@@ -234,8 +267,8 @@ function main()
     fi
     sudo -k
     sudo -v
-    closeHSHQScript "main"
-    checkRes=$(tryOpenHSHQScript User-Console)
+    releaseLock hshqopen "User-Console" true
+    checkRes=$(tryGetLock hshqopen User-Console)
   fi
   set -e
   checkConfigAvailable
@@ -247,6 +280,7 @@ function main()
     else
       is_hshq_installed=false
     fi
+    IS_CONFIG_FILE_UNENCRYPTED=true
   elif ! [ -z $ENC_CONFIG_FILE ] && [ -f $ENC_CONFIG_FILE ]; then
     # Encrypted file found, assume installed.
     is_hshq_installed=true
@@ -274,8 +308,9 @@ function showNotInstalledMenu()
   checkSupportedHostOS
   while [ -z "$USER_SUDO_PW" ]
   do
-    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME (This is only used for the installation process to eliminate duplicate prompting): ")
+    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME. This is only used for the\ninstallation process to eliminate duplicate prompting: ")
     if [ $? -ne 0 ]; then
+      releaseLock hshqopen "User-Console" false
       exit 3
     fi
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -293,8 +328,7 @@ function showNotInstalledMenu()
   fi
   notinstalledmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$notinstalledmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -329,7 +363,7 @@ EOF
       checkLoadConfig
       initConfig
       nano $CONFIG_FILE
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     3)
@@ -350,12 +384,20 @@ EOF
   esac
 }
 
+function getLogo()
+{
+  if [ "$IS_CONFIG_FILE_UNENCRYPTED" = "true" ]; then
+    echo "$hshqwarninglogo"
+  else
+    echo "$hshqlogo"
+  fi
+}
+
 function showInstalledMenu()
 {
   installedmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$installedmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -415,8 +457,7 @@ function showRestoreMenu()
   fi
   restoremenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -442,8 +483,7 @@ function showRestoreEncryptedMenu()
 {
   restoremenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -472,7 +512,7 @@ function showRestoreUnencryptedMenu()
   if [ $? -ne 0 ]; then
     return
   fi
-  confirmRestore=$(promptUserInputMenu "" "Confirm" "The main restore process is ready to start. This will take awhile to complete, as all of the docker images must be re-downloaded. You will be prompted shortly for your config decrypt password. Enter the word 'restore' below to continue:")
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The main restore process is ready to start. This will take awhile\nto complete, as all of the docker images must be re-downloaded.\nYou will be prompted shortly for your config decrypt password.\nEnter the word 'restore' below to continue:")
   if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -489,15 +529,25 @@ function showRestoreUnencryptedMenu()
   else
     rm -f $HOME/$HSHQ_LIB_FILENAME
   fi
-  screen -L -Logfile $HSHQ_LOG_FILE -S hshqRestore bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
+  scName=hshqRestore
+  initSuperScreen $scName
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was an unknown error starting the restore screen, exiting..."
+  else
+    screen -S $scName -X stuff "bash $HSHQ_LIB_SCRIPT restore $CONNECTING_IP\n"
+  fi
   exit 0
 }
 
 function performFullRestore()
 {
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  unset USER_SUDO_PW
+  USER_SUDO_PW=""
   createHSHQLog
   checkLoadConfig
+  releaseLock networkchecks performFullRestore true
+  tryGetLock networkchecks performFullRestore
   IS_INSTALLED=false
   IS_INSTALLING=true
   set +e
@@ -507,15 +557,16 @@ function performFullRestore()
   if ! [ "$USERNAME" = "$origUsername" ] || ! [ "$curUID" = "$USERID" ] || ! [ "$curGID" = "$GROUPID" ]; then
     msgmenu=$(cat << EOF
 
-$hshqlogo
-
- The current username (UID:GID) does not match the original username (UID:GID).
+$(getLogo)
+ The current username(UID:GID) does not match the original.
 
    Current: $USERNAME ($curUID:$curGID)
    Original: $origUsername ($USERID:$GROUPID)
 
  The restore cannot be performed.
- Please ensure to have the exact same username and UID:GID as the Original.
+ Please ensure to have the exact same username
+ and UID:GID as the Original.
+
 EOF
     )
     whiptail --title "ERROR" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -615,9 +666,10 @@ EOF
     unloadSSHKey
   fi
   removeSudoTimeoutInstall
-  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+  wgDockInternetUpAll
   initCronJobs
   performExitFunctions
+  releaseLock networkchecks performFullRestore false
   clear
   echo -e "\n\n\n\n##########################################\n"
   echo -e "HomeServer Restore Process Complete!\n"
@@ -667,8 +719,7 @@ function showRestoreMountDriveMenu()
   fi
   dbackmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -764,8 +815,7 @@ function showRestoreDuplicatiRestoreMenu()
   curListNum=0
   dbackupmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -806,8 +856,8 @@ EOF
   else
     mkdir -p $HSHQ_RESTORE_DIR
   fi
-  dup_pw=$(promptPasswordMenu "Enter Passphrase" "Enter the passphrase that you used to encrypt your Duplicati backup data: ")
-  confirmRestore=$(promptUserInputMenu "" "Confirm" "The decryption process is ready to start. It could take anywhere from 15 minutes to many hours to decrypt the data from the encrypted state, depending on how much data. After this step, you will be prompted for additional information. So check back in an hour or so to complete the full server restore process. Enter the word 'decrypt' below to continue:")
+  dup_pw=$(promptPasswordMenu "Enter Passphrase" "Enter the passphrase that you used to\nencrypt your Duplicati backup data: ")
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The decryption process is ready to start. It could take anywhere\nfrom 15 minutes to many hours to decrypt the data from the\nencrypted state, depending on how much data. After this step,\nyou will be prompted for additional information. So check back\nin an hour or so to complete the full server restore process.\nEnter the word 'decrypt' below to continue:")
   if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "decrypt" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -941,14 +991,13 @@ function showHSHQUtilsMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-  "1" "Edit Encrypted Configuration File" \
-  "2" "Edit Plaintext Root Configuration File" \
-  "3" "Edit Plaintext User Configuration File" \
+  "1" "Edit Encrypted Config File" \
+  "2" "Edit Plaintext Root Config File" \
+  "3" "Edit Plaintext User Config File" \
   "4" "Generate Signed Certificate" \
   "5" "Reset Caddy Data" \
   "6" "Restart All Stacks" \
@@ -966,19 +1015,19 @@ EOF
     1)
       checkLoadConfig
       nano $CONFIG_FILE
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     2)
       checkLoadConfig
       sudo nano $HSHQ_PLAINTEXT_ROOT_CONFIG
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     3)
       checkLoadConfig
       nano $HSHQ_PLAINTEXT_USER_CONFIG
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     4)
@@ -1018,8 +1067,7 @@ function showSysUtilsMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -1073,9 +1121,9 @@ function showResetCaddyMenu()
   set +e
   caddymenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the Caddy instances that you wish to reset:
+
 EOF
   )
   caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
@@ -1196,7 +1244,7 @@ function checkSupportedHostOS()
     echo "@                                                                      @"
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   fi
-  closeHSHQScript "checkSupportedHostOS"
+  releaseLock hshqopen "checkSupportedHostOS" false
   exit 2
 }
 
@@ -1319,7 +1367,7 @@ echo "#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄
 echo "#===============================================================#"
 echo
 
-echo "    Linux OS:  \$(lsb_release -d | cut -d":" -f2 | xargs)"
+echo "    Linux OS:  \$(lsb_release -d | cut -d":" -f2 | cut -d"(" -f1 | xargs)"
 if [ -f $HSHQ_LIB_SCRIPT ]; then
   echo "HSHQ Version:  \$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d'=' -f2)"
 fi
@@ -1450,7 +1498,6 @@ function installDependencies()
   sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
-  
   sudo sed -i "s/^#DefaultLimitNOFILE.*/DefaultLimitNOFILE=65536:524288/g" /etc/systemd/system.conf
   sudo sed -i "s/^#DefaultLimitNOFILE.*/DefaultLimitNOFILE=65536:524288/g" /etc/systemd/user.conf
   sudo sed -i "s/^DefaultLimitNOFILE.*/DefaultLimitNOFILE=65536:524288/g" /etc/systemd/system.conf
@@ -1461,29 +1508,16 @@ function installDependencies()
   fi
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target > /dev/null 2>&1
 
-  installDocker
-  if ! [ -z $DESKTOP_ENV ]; then
-    case $DESKTOP_ENV in
-      "kde")
-        performAptInstall kde-full
-	    ;;
-      "gnome")
-        performAptInstall ubuntu-gnome-desktop
-	    ;;
-    esac
-    if ! [ $DESKTOP_ENV = "na" ]; then
-      # Default browsers are so-so...
-      sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
-      echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg arch=amd64] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
-      sudo DEBIAN_FRONTEND=noninteractive apt update
-      performAptInstall brave-browser
-      if ! [ -z "$CERTS_ROOT_CA_NAME" ]; then
-        mkdir -p $HOME/.pki
-        mkdir -p $HOME/.pki/nssdb
-        certutil -d sql:$HOME/.pki/nssdb -A -t "CT,C,C" -n "$HOMESERVER_NAME Root CA" -i /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    for util in $DESKTOP_APT_LIST; do
+      if [[ "$(isProgramInstalled $util)" = "false" ]]; then
+        lib_name=$(echo $util | cut -d"|" -f2)
+        echo "Installing $lib_name, please wait..."
+        performAptInstall $lib_name
       fi
-    fi
+    done
   fi
+  installDocker
   for rem_util in $APT_REMOVE_LIST; do
     sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
   done
@@ -1545,7 +1579,7 @@ function checkLoadConfig()
     set +e
     showYesNoMessageBox "Encrypted Config Found" "Encrypted configuration file found. Do you wish to decrypt it?"
     if [ $? -ne 0 ]; then
-      closeHSHQScript "checkLoadConfig"
+      releaseLock hshqopen "checkLoadConfig" false
       exit 1
     fi
     set -e
@@ -1553,7 +1587,7 @@ function checkLoadConfig()
     ENC_CONFIG_FILE=""
   fi
   if ! [ -z "$CONFIG_FILE" ] && [ -f $CONFIG_FILE ]; then
-    loadConfigVars
+    loadConfigVars true
   fi
 }
 
@@ -1561,10 +1595,12 @@ function checkConfigAvailable()
 {
   if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
     CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=true
     return
   fi
   if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
     ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=false
     return
   fi
 }
@@ -1613,7 +1649,7 @@ function initConfig()
     # Create new directories and config file
     showYesNoMessageBox "No Config Found" "No configuration file found, create initial environment (y/n)?"
 	createInitialEnv
-    loadConfigVars
+    loadConfigVars true
   fi
 
   set +e
@@ -1666,7 +1702,7 @@ function initConfig()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       PORTAINER_LOCAL_HTTPS_PORT=$tmp_port
     else
-      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between 9000-9999 has been generated for you.")
+      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between\n9000-9999 has been generated for you.")
       if [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]; then
         showMessageBox "Portainer Port Error" "The port cannot be empty or the same as the SSH port"
       elif [ "$(checkValidNumber $PORTAINER_LOCAL_HTTPS_PORT '-')" = "false" ]; then
@@ -1687,7 +1723,7 @@ function initConfig()
     DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT,$PORTAINER_LOCAL_HTTPS_PORT
     updatePlaintextUserConfigVar DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT $DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT
   done
-
+  
   is_add_error=false
   default_iface=$(getDefaultIface)
   add_interface=""
@@ -1696,11 +1732,12 @@ function initConfig()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ] && [ "$is_add_error" = "false" ]; then
       add_interface=$default_iface
     else
-      add_interface=$(promptUserInputMenu "$default_iface" "Enter Primary Interface" "Enter the primary network interface. The interface for the default route has been entered for you.")
+      add_interface=$(promptUserInputMenu "$default_iface" "Enter Primary Interface" "Enter the primary network interface. The interface for\nthe default route has been entered for you.")
       if [ $? -ne 0 ]; then
         exit 5
       fi
     fi
+    set +e
     addHSInterface $add_interface true
     retVal=$?
     if [ $retVal -ne 0 ] && [ $retVal -ne 1 ]; then
@@ -1708,6 +1745,7 @@ function initConfig()
       add_interface=""
       is_add_error=true
     fi
+    set -e
   done
 
   if [ "$(checkIsIPPrivate $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "false" ]; then
@@ -1748,7 +1786,7 @@ function initConfig()
 
   while [ -z "$HOMESERVER_DOMAIN" ]
   do
-	HOMESERVER_DOMAIN=$(promptUserInputMenu "example.com" "Enter HomeServer Domain" "Enter your HomeServer domain name. You must own this domain to route external emails and/or post services on the public internet: ")
+	HOMESERVER_DOMAIN=$(promptUserInputMenu "example.com" "Enter HomeServer Domain" "Enter your HomeServer domain name. You must own this\ndomain to route external emails and/or post services\non the public internet: ")
 	if [ -z "$HOMESERVER_DOMAIN" ]; then
 	  showMessageBox "Domain Empty" "The domain cannot be empty"
     elif [ $(checkValidString "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
@@ -1796,7 +1834,7 @@ function initConfig()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       INT_DOMAIN_PREFIX="internal"
     else
-      INT_DOMAIN_PREFIX=$(promptUserInputMenu "internal" "Internal Domain Prefix" "Enter the prefix for your RelayServer to be reached internally (if applicable):")
+      INT_DOMAIN_PREFIX=$(promptUserInputMenu "internal" "Internal Domain Prefix" "Enter the prefix for your RelayServer to be reached\ninternally (if applicable):")
     fi
 	if [ -z "$INT_DOMAIN_PREFIX" ]; then
 	  showMessageBox "Prefix Empty" "The Prefix cannot be empty"
@@ -1810,7 +1848,7 @@ function initConfig()
 
   while [ -z "$HOMESERVER_NAME" ]
   do
-	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc (No special characters except for commas, hyphens, or periods). This will appear in window titles, certificates, among other things: ")
+	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting,\ni.e. capitalization, spaces, etc. No special characters\nexcept for commas, hyphens, or periods. This will appear\nin window titles, certificates, among other things: ")
 	if [ -z "$HOMESERVER_NAME" ]; then
 	  showMessageBox "HomeServer Name Empty" "The name cannot be empty"
     elif [ $(checkValidStringUpperLowerNumbers "$HOMESERVER_NAME" "[:space:],.-") = "false" ]; then
@@ -1822,7 +1860,7 @@ function initConfig()
   done
   while [ -z "$HOMESERVER_ABBREV" ]
   do
-    HOMESERVER_ABBREV=$(promptUserInputMenu "abc" "Enter HomeServer Abbrev" "Enter an abbreviation for your HomeServer (3 to 10 lowercase alpha-numeric characters). This will be used as a default prefix for admin usernames as well as some other uses: ")
+    HOMESERVER_ABBREV=$(promptUserInputMenu "abc" "Enter HomeServer Abbrev" "Enter an abbreviation for your HomeServer, 3 to 10 lowercase\nalpha-numeric characters. This will be used as a default prefix\nfor admin usernames as well as some other uses: ")
     if [ -z "$HOMESERVER_ABBREV" ]; then
       showMessageBox "HomeServer Abbrev Empty" "The abbreviation cannot be empty."
     elif [ $(checkValidString "$HOMESERVER_ABBREV") = "false" ]; then
@@ -1837,7 +1875,7 @@ function initConfig()
   done
   while [ -z "$TZ" ]
   do
-    TZ=$(promptUserInputMenu "$(cat /etc/timezone)" "Enter Time Zone" "Enter your time zone. For a list of all time zones, visit https://en.wikipedia.org/wiki/List_of_tz_database_time_zones and enter the value in the [TZ database name] column: ")
+    TZ=$(promptUserInputMenu "$(cat /etc/timezone)" "Enter Time Zone" "Enter your time zone. For a list of all time zones, visit\nhttps://en.wikipedia.org/wiki/List_of_tz_database_time_zones\nand enter the value in the [TZ database name] column: ")
     if [ $? -ne 0 ]; then
       exit 2
     fi
@@ -1873,7 +1911,7 @@ function initConfig()
   set -e
   while [ -z "$SSH_PORT" ]
   do
-    SSH_PORT=$(promptUserInputMenu $((9000 + $RANDOM % 999)) "Enter HomeServer SSH Port" "It is highly advised to change your default SSH port (22), since bots will constantly probe port 22. A random port between 9000-9999 has been generated for you. Ensure you remember this port in order to log back in.")
+    SSH_PORT=$(promptUserInputMenu $((9000 + $RANDOM % 999)) "Enter HomeServer SSH Port" "It is highly advised to change your default SSH port (22), since\nbots will constantly probe port 22. A random port between\n9000-9999 has been generated for you. Ensure you remember\nthis port in order to log back in.")
     if [ -z "$SSH_PORT" ]; then
       showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
     else
@@ -1988,47 +2026,6 @@ function initConfig()
     fi
     updateConfigVar EMAIL_ADMIN_USERNAME $EMAIL_ADMIN_USERNAME
   done
-  if [ -z "$DESKTOP_ENV" ] && [ "$DISTRO_ID" = "ubuntu" ]; then
-    set +e
-    guimenu=$(cat << EOF
-
-$hshqlogo
-
-Do you want to install a desktop GUI environment for this machine? This is generally not recommended, as this machine should be used as a dedicated server. However, it can be used this way if necessary. Ensure you have plenty of RAM (32GB) for this option. This can easily be added or removed later.
-EOF
-  )
-    whiptail --title "Install Desktop GUI" --yesno "$guimenu" $MENU_HEIGHT $MENU_WIDTH --yes-button "No" --no-button "Yes"
-    mbres=$?
-    if [ $mbres -eq 0 ]; then
-      DESKTOP_ENV="na"
-      updatePlaintextRootConfigVar DESKTOP_ENV $DESKTOP_ENV
-    else
-      desktopmenu=$(cat << EOF
-
-$hshqlogo
-
-EOF
-)
-     menures=$(whiptail --title "Select Desktop Environment" --menu "$desktopmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-      "1" "No Desktop Environment" \
-      "2" "Gnome" \
-      "3" "KDE" 3>&1 1>&2 2>&3)
-      if [ $? -ne 0 ]; then
-        menures=1
-      fi
-      set -e
-      case $menures in
-        1)
-          DESKTOP_ENV="na" ;;
-        2)
-          DESKTOP_ENV="gnome" ;;
-        3)
-          DESKTOP_ENV="kde" ;;
-      esac
-      updatePlaintextRootConfigVar DESKTOP_ENV $DESKTOP_ENV
-      set -e
-    fi
-  fi
   initServicesCredentials
 }
 
@@ -2083,7 +2080,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}                      INSTRUCTIONS                     \n"
   strInstallConfig="${strInstallConfig}The system is prepped for installation. It will take around\n"
   strInstallConfig="${strInstallConfig}10-15 minutes to perform the base installation, depending on\n"
-  strInstallConfig="${strInstallConfig}hardward specs and download speeds. Copy all of this info\n"
+  strInstallConfig="${strInstallConfig}hardware specs and download speeds. Copy all of this info\n"
   strInstallConfig="${strInstallConfig}before proceeding. Ensure to scroll to the top and retain\n"
   strInstallConfig="${strInstallConfig}everything between the ##### borders. Simply select the\n"
   strInstallConfig="${strInstallConfig}information with your mouse, and it will automatically be\n"
@@ -2110,14 +2107,22 @@ function initInstallation()
   while true;
   do
     echo -e "________________________________________________________________________\n"
-    echo -e "Do you want to retain this information in a file in the home directory,"
-    echo -e "i.e. (/home/$USERNAME/install.txt)? Note that this information is very"
-    echo -e "sensitive and you should delete the file as soon as you are finished"
-    read -p "with it. Enter 'y' or 'n': " is_keep_config
+    if [ "$IS_DESKTOP_ENV" = "true" ]; then
+      hdir=/home/$USERNAME/Desktop
+      echo -e "Do you want to retain this information in a file on your Desktop,"
+      echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
+    else
+      hdir=/home/$USERNAME
+      echo -e "Do you want to retain this information in a file in the home directory,"
+      echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
+    fi
+    echo -e "information is very sensitive and you should delete the file as soon"
+    read -p "as you are finished with it. Enter 'y' or 'n': " is_keep_config
     if [ "$is_keep_config" = "y" ]; then
-      rm -f /home/$USERNAME/install.txt
-      echo -e "${strInstallConfig}" > /home/$USERNAME/install.txt
-      chmod 0400 /home/$USERNAME/install.txt
+      rm -f "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "\n***** You should permanently delete this file as soon as you are finished with it *****\n\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "${strInstallConfig}" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      chmod 0400 "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       break
     elif [ "$is_keep_config" = "n" ]; then
       break
@@ -2134,7 +2139,7 @@ function initInstallation()
       break
     elif [ "$is_install" = "exit" ]; then
       echo "Exiting..."
-      closeHSHQScript "initConfig"
+      releaseLock hshqopen "initConfig" false
       exit 1
     else
       echo "Unknown response, please try again."
@@ -2144,15 +2149,21 @@ function initInstallation()
     echo "Starting installation on RelayServer..."
     sleep 1
     loadSSHKey
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -p $USER_RELAY_SUDO_PW"
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
   fi
   set -e
   sudo -v
   echo "Starting installation on HomeServer..."
   sleep 1
-  closeHSHQScript "preInstallation"
-  screen -L -Logfile $HSHQ_LOG_FILE -S hshqInstall bash $0 install "$CONNECTING_IP" "$USER_SUDO_PW"
+  releaseLock hshqopen "preInstallation" false
+  scName=hshqInstall
+  initSuperScreen $scName
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was an unknown error starting the install screen, exiting..."
+  else
+    screen -S $scName -X stuff "bash $HSHQ_LIB_SCRIPT install $CONNECTING_IP\n"
+  fi
   exit 0
 }
 
@@ -2172,42 +2183,62 @@ function removeSudoTimeoutInstall()
 
 function performBaseInstallation()
 {
-  checkRes=$(tryOpenHSHQScript Installation)
+  checkRes=$(tryGetLock hshqopen Installation)
   if ! [ -z "$checkRes" ]; then
-    echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). Please remove the directory: $HSHQ_SCRIPT_OPEN_DIR, then restart the installation."
+    strErr="ERROR: The HSHQ script is already open or running in a different instance ($checkRes). Please remove the directory: /tmp/hshqopen, then restart the installation."
+    logHSHQEvent error "$strErr"
+    echo "$strErr"
     exit 7
   fi
+  set +e
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    logHSHQEvent error "Password Error"
+    exit 10
+  fi
+  unset USER_SUDO_PW
+  USER_SUDO_PW=""
   setSudoTimeoutInstall
   checkLoadConfig
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
-    echo "Already installed or existing installation is in progress, exiting..."
+    strErr="Already installed or existing installation is in progress, exiting..."
+    logHSHQEvent error "$strErr"
+    echo "$strErr"
     exit 1
   fi
   IS_INSTALLING=true
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
+  enable_trapping
+  setup_scroll_area
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
   outputScripts
+  draw_progress_bar 5
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
+  draw_progress_bar 10
   logHSHQEvent info "Install Dependencies"
   installMailUtils
   installDependencies
+  draw_progress_bar 15
   set +e
   performClearIPTables true
   checkUpdateAllIPTables performBaseInstallation-Early
   set -e
+  draw_progress_bar 20
   pullBaseServicesDockerImages
+  draw_progress_bar 50
   logHSHQEvent info "Init DH Params"
   initDHParams
   getUpdateAssets
+  draw_progress_bar 55
   logHSHQEvent info "Starting Stack Installs"
   installBaseStacks
+  draw_progress_bar 85
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -2228,6 +2259,7 @@ function performBaseInstallation()
     sleep 30
   fi
   initCronJobs
+  draw_progress_bar 90
   clearQueryLogAndStatsAdguardHS
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -2238,9 +2270,13 @@ function performBaseInstallation()
   fi
   set -e
   logHSHQEvent info "Post Installation"
-  removeSudoTimeoutInstall
+  draw_progress_bar 95
   checkUpdateAllIPTables performBaseInstallation-Late
   set -e
+  draw_progress_bar 99
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
+  draw_progress_bar 100
+  destroy_scroll_area
   postInstallation
 }
 
@@ -2265,12 +2301,66 @@ function postInstallation()
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
   echo "Sanitizing installation log..."
-  sanitizeFullLog
+  sanitizeHSHQLog
   echo "Installed"
   IS_INSTALLED=true
   updateConfigVar IS_INSTALLED $IS_INSTALLED
   IS_INSTALLING=false
   updateConfigVar IS_INSTALLING $IS_INSTALLING
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    echo "Configuring Desktop environment..."
+    set +e
+    rm -f ~/Desktop/InstallHSHQ.desktop
+    if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+      sudo cp /usr/share/icons/HSHQ/Homepage_HSHQ.png /usr/share/icons/HSHQ/Homepage.png
+    fi
+    cat <<EOFHP > ~/Desktop/HomePage.desktop
+[Desktop Entry]
+Name=$HOMESERVER_NAME
+Exec=firefox $SUB_HSHQHOME.$HOMESERVER_DOMAIN
+Comment=Opens your HomeServer home page
+Terminal=false
+Icon=/usr/share/icons/HSHQ/Homepage.png
+Type=Application
+EOFHP
+    chmod 755 ~/Desktop/HomePage.desktop
+    cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
+[Desktop Entry]
+Name=HSHQ Console
+Exec=bash -ic "~/hshq.sh"
+Comment=Runs the HSHQ console-based utility
+Terminal=true
+Icon=/usr/share/icons/HSHQ/Settings_HSHQ.png
+Type=Application
+EOFHP
+    chmod 755 ~/Desktop/HSHQConsole.desktop
+    cat <<EOFHP > ~/Desktop/HSHQHelp.desktop
+[Desktop Entry]
+Name=Help!
+Exec=firefox forum.homeserverhq.com
+Comment=Ask for help on the HomeServerHQ Forum
+Terminal=false
+Icon=/usr/share/icons/HSHQ/Help_HSHQ.png
+Type=Application
+EOFHP
+    chmod 755 ~/Desktop/HSHQHelp.desktop
+    if [ -f /etc/profile.d/desktop-truster.sh ]; then
+      # This is dumb and pointless...
+      bash /etc/profile.d/desktop-truster.sh
+    fi
+    which gsettings > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      # This is also dumb, spell check doesn't
+      # belong in a basic text editor, especially
+      # if it's insanely intrusive.
+      gsettings set org.gnome.TextEditor spellcheck false
+      # Just because
+      gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+    fi
+    addRootCertificateToApps
+    configureFirefox
+    set -e
+  fi
   encryptConfigFile
   echo -e "\n\n\n\n########################################\n\n"
   echo "HomeServer Installation Complete!"
@@ -2278,11 +2368,12 @@ function postInstallation()
   echo -e "\n\n########################################\n\n"
   sleep 60
   logHSHQEvent info "Rebooting"
-  closeHSHQScript "postInstallation"
+  releaseLock hshqopen "postInstallation" false
+  removeSudoTimeoutInstall
   sudo reboot
 }
 
-function sanitizeFullLog()
+function sanitizeHSHQLog()
 {
   sudo sed -i "s|$USERNAME|hshquser|g" $HSHQ_LOG_FILE
   sudo sed -i "s|$LDAP_PRIMARY_USER_USERNAME|hshquser|g" $HSHQ_LOG_FILE
@@ -2295,8 +2386,7 @@ function showSimpleBackupMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -2348,8 +2438,7 @@ function showConfigureSimpleBackupMenu()
   fi
   dbackmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -2382,7 +2471,7 @@ EOF
     return
   fi
   selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
-  confirmFormat=$(promptUserInputMenu "" "Confirm Format" "WARNING - This operation will entirely ERASE the contents of the selected drive. To confirm, enter the word 'format' below:")
+  confirmFormat=$(promptUserInputMenu "" "Confirm Format" "WARNING - This operation will entirely ERASE the contents\nof the selected drive. To confirm, enter the word 'format' below:")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -2392,7 +2481,7 @@ EOF
   fi
   while true;
   do
-    backupHour=$(promptUserInputMenu "" "Daily Backup Time" "Enter the hour of the day(0-23) that you wish to perform the daily backup (this can be modified later in Duplicati):")
+    backupHour=$(promptUserInputMenu "" "Daily Backup Time" "Enter the hour of the day(0-23) that you wish to perform\nthe daily backup. This can be modified later in Duplicati:")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -2407,7 +2496,7 @@ EOF
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a quantum super-computer) and you will NOT be able to recover your data: ")
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE\nyou remember this or you will be IRREVERSIBLY locked out of\nyour backup files (unless you have a quantum super-computer)\nand you will NOT be able to recover your data: ")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -2432,7 +2521,7 @@ EOF
   backupPW="$tmp_pw1"
   tmp_pw1=""
   tmp_pw2=""
-  confirmFinal=$(promptUserInputMenu "" "Confirm" "The backup configuration is ready. To perform all actions, including erasing and formatting the selected disk, enter the word 'confirm' below:")
+  confirmFinal=$(promptUserInputMenu "" "Confirm" "The backup configuration is ready. To perform all actions,\nincluding erasing and formatting the selected disk,\nenter the word 'confirm' below:")
   if [ $? -ne 0 ] || [ -z $confirmFinal ] || ! [ "$confirmFinal" = "confirm" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -2591,8 +2680,7 @@ function showMountBackupDriveMenu()
 
   dbackmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -2660,6 +2748,66 @@ EOF
   fi
 }
 
+function initSuperScreen()
+{
+  # This function may appear to be overly complex and
+  # contrived, but the main purpose is to inject the
+  # super-user (sudo) password into the running screen
+  # with as minimal of a security footprint as possible.
+  # There's also some race conditions to overcome, hence
+  # the added complexity. This method avoids environment
+  # variables, writing anything to file, and/or anything
+  # (long-running) from showing up in the process list
+  # (ps auxwwe).
+  screenName="$1"
+  set +e
+  dirtest1=/tmp/sctest1
+  dirtest2=/tmp/sctest2
+  isScreenSuccess=false
+  curScreenAttempt=0
+  maxScreenAttempt=5
+  screen -XS $screenName quit > /dev/null 2>&1
+  while [ $curScreenAttempt -lt $maxScreenAttempt ]
+  do
+    ((curScreenAttempt++))
+    rm -fr $dirtest1
+    rm -fr $dirtest2
+    screen -L -Logfile $HSHQ_LOG_FILE -dmS $screenName
+    screen -S $screenName -X stuff "stty -echo;mkdir $dirtest1\n"
+    curCheckCount=0
+    while ! [ -d $dirtest1 ] && [ $curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d $dirtest1 ]; then
+      screen -XS $screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S $screenName -X stuff "bash $HSHQ_LIB_SCRIPT getsuper\n"
+    screen -S $screenName -X stuff "$USER_SUDO_PW\n"
+    screen -S $screenName -X stuff "mkdir $dirtest2\n"
+    curCheckCount=0
+    while ! [ -d $dirtest2 ] && [ $curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d $dirtest2 ]; then
+      screen -XS $screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S $screenName -X stuff "stty echo\n"
+    rm -fr $dirtest1
+    rm -fr $dirtest2
+    isScreenSuccess=true
+    break
+  done
+  if ! [ "$isScreenSuccess" = "true" ]; then
+    return 1
+  fi
+}
+
 # Stacks Functions
 function showStacksMenu()
 {
@@ -2670,8 +2818,7 @@ function showStacksMenu()
   fi
   svcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$svcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -2730,9 +2877,9 @@ function installStacksFromList()
   fi
   selsvcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the services that you wish to install:
+
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
@@ -2888,9 +3035,9 @@ function performStackUpdatesFromList()
   fi
   selsvcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the services that you wish to update:
+
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
@@ -2950,6 +3097,7 @@ function updateListOfStacks()
   do
     if [ -z "$cur_svc" ]; then continue; fi
     unset is_upgrade_error
+    is_upgrade_error=""
     echo -e "\n\nUpdating ${cur_svc}..."
     if ! [ "$(isItemInCSVList $cur_svc $stacks_need_update_list)" = "true" ]; then
       continue
@@ -2993,9 +3141,9 @@ function deleteStacksFromList()
   fi
   selsvcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the services that you wish to remove:
+
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
@@ -3077,8 +3225,7 @@ function setupVPNConnection()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "none" ]; then
     vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
     menures=$(whiptail --title "Select an option for your PRIMARY VPN connection" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -3118,8 +3265,7 @@ function setupJoinPrimaryVPN()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -3130,7 +3276,7 @@ EOF
   case $menures in
     1)
       applyHomeServerPrimaryVPNConfig
-      closeHSHQScript "setupJoinPrimaryVPN"
+      releaseLock hshqopen "setupJoinPrimaryVPN" false
       return 1 ;;
     2)
       createNetworkJoin false
@@ -3220,7 +3366,7 @@ function setupHostedVPN()
   RELAYSERVER_SSH_PORT=""
   while [ -z "$RELAYSERVER_SSH_PORT" ]
   do
-	RELAYSERVER_SSH_PORT=$(promptUserInputMenu "$SSH_PORT" "Enter NEW RelayServer SSH Port" "Enter your desired SSH Port for your RelayServer. It is highly advised to change your default SSH port (22). (Bots will constantly probe port 22)")
+	RELAYSERVER_SSH_PORT=$(promptUserInputMenu "$SSH_PORT" "Enter NEW RelayServer SSH Port" "Enter your desired SSH Port for your RelayServer. It is highly\nadvised to change your default SSH port (22). Bots will\nconstantly probe port 22:")
 	if [ -z "$RELAYSERVER_SSH_PORT" ]; then
 	  showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
     elif [ "$(checkValidNumber $RELAYSERVER_SSH_PORT)" = "false" ]; then
@@ -3254,7 +3400,7 @@ function setupHostedVPN()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       RELAYSERVER_LE_CERT_DOMAINS="$lecert_def"
     else
-      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$lecert_def" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
+      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$lecert_def" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be\nmanaged by LetsEncrypt (comma-separated):")
 	  if [ $(checkValidString "$RELAYSERVER_LE_CERT_DOMAINS" ",.-") = "false" ]; then
         showMessageBox "Invalid Character(s)" "The domain list contains invalid character(s). It must consist of a-z (lowercase), 0-9, -, and/or ."
         RELAYSERVER_LE_CERT_DOMAINS=unset
@@ -3492,16 +3638,6 @@ Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVE
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
-
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-restartWG.sh >/dev/null <<EOFPO
-#!/bin/bash
-
-systemctl restart wg-quick@${RELAYSERVER_WG_VPN_NETNAME}
-$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf restart
-
-EOFPO
-  sudo chmod 0500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-restartWG.sh
-
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf >/dev/null <<EOFCF
 [Interface]
@@ -3599,7 +3735,14 @@ function transferHostedVPN()
     return
   fi
   set +e
-  is_transfer=$(promptUserInputMenu "" "Transfer RelayServer" "If you wish to transfer your RelayServer, enter the word 'transfer' below:")
+  checkRes=$(tryGetLock networkchecks transferHostedVPN)
+  if ! [ -z "$checkRes" ]; then
+    strErr="Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
+    logHSHQEvent error "$strErr"
+    showMessageBox "ERROR" "ERROR: $strErr"
+    return
+  fi
+  is_transfer=$(promptUserInputMenu "" "Transfer RelayServer" "If you wish to transfer your RelayServer,\nenter the word 'transfer' below:")
   if ! [ $is_transfer = "transfer" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return 0
@@ -3618,6 +3761,7 @@ function transferHostedVPN()
       continue
     fi
   done
+  unset temp_pw=""
   temp_pw=""
   setSudoTimeoutInstall
   # Pause syncthing RelayServer
@@ -3670,7 +3814,7 @@ function transferHostedVPN()
   fi
   removeRelayServerAgentFromWazuhManager
   echo "Updating endpoint IP addresses..."
-  sudo $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
+  updateEndpointIPs
   numTries=1
   isMatch=false
   timeout_length=5
@@ -3839,7 +3983,7 @@ echo "#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄
 echo "#===============================================================#"
 echo
 
-echo "    Linux OS:  \\\$(lsb_release -d | cut -d":" -f2 | xargs)"
+echo "    Linux OS:  \\\$(lsb_release -d | cut -d":" -f2 | cut -d"(" -f1 | xargs)"
 printf "Memory Usage:  %.1f%% of \\\$(free -h | awk  '/Mem:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
 printf "  Swap Usage:  %.1f%% of \\\$(free -h | awk  '/Swap:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
 
@@ -4239,7 +4383,7 @@ EOFRE
   sudo rm -fr \\\$HSHQ_BASE_DIR
   sudo rm -f \$HOME/$NUKE_SCRIPT_NAME
   sudo rm -fr \$HOME/.ssh/*
-  sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  sudo rm -fr /tmp/hshqopen
   sudo rm -f /etc/update-motd.d/88-hshq
   if [ -f /etc/motd.old ]; then
     sudo mv /etc/motd.old /etc/motd
@@ -4658,23 +4802,42 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
-  while getopts ':p:i' opt; do
+  while getopts ':pi' opt; do
     case "\$opt" in
       i)
         IS_PERFORM_INSTALL=true ;;
       p)
-        USER_RELAY_SUDO_PW="\$OPTARG" ;;
+        IS_GET_SUPER=true ;;
       ?|h)
         echo "Usage: \$(basename \$0)"
         exit 1 ;;
     esac
   done
   shift "\$((\$OPTIND -1))"
+  set +e
+  if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
+    is_detach=true
+    while [ -z "\$USER_RELAY_SUDO_PW" ]
+    do
+      is_detach=false
+      read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
+      echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+      if [ \$? -ne 0 ]; then
+        echo "Sorry, try again."
+        USER_RELAY_SUDO_PW=""
+        continue
+      fi
+    done
+    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ "\$IS_GET_SUPER" = "true" ]; then
+      exit
+    fi
+  fi
   loadVersionVars
   set -e
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   installLogNotify "Begin Main"
-  if [ -d $HSHQ_SCRIPT_OPEN_DIR ]; then
+  if [ -d /tmp/hshqopen ]; then
     echo "Installation already in progess, exiting..."
     exit 2
   fi
@@ -4682,21 +4845,6 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 3
   fi
-  set +e
-  is_detach=true
-  while [ -z "\$USER_RELAY_SUDO_PW" ]
-  do
-    is_detach=false
-    read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
-    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      echo "Sorry, try again."
-      USER_RELAY_SUDO_PW=""
-      continue
-    fi
-  done
-  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  set -e
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo dpkg --configure -a
   echo -e "\n\nInstalling a few utilities..."
@@ -4704,14 +4852,70 @@ function main()
   performAptInstall dnsutils > /dev/null 2>&1
   performAptInstall screen > /dev/null 2>&1
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
-    mkdir $HSHQ_SCRIPT_OPEN_DIR
+    mkdir /tmp/hshqopen
     install
   else
+    scName=hshqInstall
+    initSuperScreen "\$scName"
     if [ "\$is_detach" = "true" ]; then
-      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
+      screen -S "\$scName" -X stuff "bash \$0 -i\n"
     else
-      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i -p \$USER_RELAY_SUDO_PW
+      screen -S "\$scName" -X stuff "bash \$0 -i\n"
+      screen -r "\$scName"
     fi
+  fi
+  unset USER_RELAY_SUDO_PW
+  USER_RELAY_SUDO_PW=""
+}
+
+function initSuperScreen()
+{
+  screenName="\$1"
+  set +e
+  dirtest1=/tmp/sctest1
+  dirtest2=/tmp/sctest2
+  isScreenSuccess=false
+  curScreenAttempt=0
+  maxScreenAttempt=5
+  screen -XS \$screenName quit > /dev/null 2>&1
+  while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
+  do
+    ((curScreenAttempt++))
+    rm -fr \$dirtest1
+    rm -fr \$dirtest2
+    screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -dmS \$screenName
+    screen -S \$screenName -X stuff "stty -echo;mkdir \$dirtest1\n"
+    curCheckCount=0
+    while ! [ -d \$dirtest1 ] && [ \$curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d \$dirtest1 ]; then
+      screen -XS \$screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S \$screenName -X stuff "bash \$0 -p\n"
+    screen -S \$screenName -X stuff "\$USER_RELAY_SUDO_PW\n"
+    screen -S \$screenName -X stuff "mkdir \$dirtest2\n"
+    curCheckCount=0
+    while ! [ -d \$dirtest2 ] && [ \$curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d \$dirtest2 ]; then
+      screen -XS \$screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S \$screenName -X stuff "stty echo\n"
+    rm -fr \$dirtest1
+    rm -fr \$dirtest2
+    isScreenSuccess=true
+    break
+  done
+  if ! [ "\$isScreenSuccess" = "true" ]; then
+    return 1
   fi
 }
 
@@ -4839,11 +5043,11 @@ function checkSupportedHostOS()
   echo "@                                                                      @"
   echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
   echo "@  - Ubuntu 24.04 (Noble Numbat)        [Experimental]                 @"
-  echo "@  - Debian 12 (Bookworm)               [Experimental]                 @"
+  echo "@  - Debian 12 (Bookworm)               [Stable]                       @"
   echo "@  - Mint 22 (Wilma)                    [Experimental]                 @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  rm -fr /tmp/hshqopen
   exit 2
 }
 
@@ -4892,14 +5096,12 @@ function install()
   installLogNotify "Rebooting"
   echo -e "\n\n\n\n########################################\n\n"
   echo "RelayServer Installation Complete!"
-  echo "The system will reboot in 5 seconds..."
   echo -e "\n\n########################################\n\n"
-  rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  rm -fr /tmp/hshqopen
   # Successfull installation, clean up the logs
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME
-  sleep 5
-  sudo reboot
+  touch \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_INSTALL_COMPLETE_FILE
 }
 
 function outputCerts()
@@ -7584,7 +7786,7 @@ function uploadVPNInstallScripts()
   do
     nonroot_username=""
     trUsername=$RELAYSERVER_REMOTE_USERNAME
-    RELAYSERVER_REMOTE_USERNAME=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host (a fresh installation will typically default to root): ")
+    RELAYSERVER_REMOTE_USERNAME=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host.\nA fresh installation will typically default to root: ")
     if [ $? -ne 0 ]; then
       return 1
     fi
@@ -7606,12 +7808,11 @@ function uploadVPNInstallScripts()
       showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the RelayServer."
       continue
     fi
-
     tmp_pw1=""
     tmp_pw2=""
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
-      tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
+      tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer\nLinux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
       if [ -z "$tmp_pw1" ]; then
         showMessageBox "Password Empty" "The password cannot be empty, please try again."
         continue
@@ -7635,7 +7836,6 @@ function uploadVPNInstallScripts()
     remote_pw=$tmp_pw1
     tmp_pw1=""
     tmp_pw2=""
-
     domain_ip_guess=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
     if [ -z $domain_ip_guess ] || [ "$isTransfer" = "true" ]; then
       domain_ip_guess="0.0.0.0"
@@ -7643,7 +7843,7 @@ function uploadVPNInstallScripts()
     RELAYSERVER_SERVER_IP=""
     while [ -z "$RELAYSERVER_SERVER_IP" ]
     do
-      RELAYSERVER_SERVER_IP=$(promptUserInputMenu $domain_ip_guess "Enter IP Address" "Enter the IP Address of the RelayServer. It is IMPORTANT that you enter this value correctly. If you have already pointed your DNS of your HomeServer domain to your RelayServer, then ensure the guessed IP is correct.")
+      RELAYSERVER_SERVER_IP=$(promptUserInputMenu $domain_ip_guess "Enter IP Address" "Enter the IP Address of the RelayServer. It is IMPORTANT that\nyou enter this value correctly. If you have already pointed your\nDNS of your HomeServer domain to your RelayServer, then ensure\nthe guessed IP is correct.")
       if [ $? -ne 0 ]; then
         return 1
       fi
@@ -7657,15 +7857,13 @@ function uploadVPNInstallScripts()
     done
     updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
     addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
-
     if [ "$IS_INSTALLED" = "true" ]; then
       addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
     fi
-
     RELAYSERVER_CURRENT_SSH_PORT=""
     while [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]
     do
-      RELAYSERVER_CURRENT_SSH_PORT=$(promptUserInputMenu "22" "Enter CURRENT SSH Port" "Enter the CURRENT SSH port for the RelayServer host (a fresh installation defaults to port 22): ")
+      RELAYSERVER_CURRENT_SSH_PORT=$(promptUserInputMenu "22" "Enter CURRENT SSH Port" "Enter the CURRENT SSH port for the RelayServer host,\n(a fresh installation defaults to port 22): ")
       if [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]; then
         showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
       fi
@@ -7676,7 +7874,7 @@ function uploadVPNInstallScripts()
       pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
       pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
-      sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
+      SSHPASS="$remote_pw" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
         showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
@@ -7689,12 +7887,12 @@ function uploadVPNInstallScripts()
       if [ $? -ne 0 ]; then
         # Key not present
         echo "Adding key to RelayServer..."
-        sshpass -p $USER_RELAY_SUDO_PW ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
+        SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
       fi
       is_err=$?
       if [ $is_err -eq 0 ]; then
         echo "Logging into RelayServer..."
-        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $USER_RELAY_SUDO_PW | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
+        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME" <<< "$USER_RELAY_SUDO_PW"
         is_err=$?
       fi
     fi
@@ -7717,9 +7915,10 @@ function uploadVPNInstallScripts()
       set +e
       if [ "$isHSHQDir" = "true" ]; then
         errmenu=$(cat << EOF
-$hshqlogo
 
+$(getLogo)
 It appears that there is already an existing installation on the RelayServer. Please remove this installation by logging in and running 'bash nuke.sh' and follow the provided instructions to clear everything out before continuing. Press Retry or Cancel to proceed.
+
 EOF
   )
         if ! (whiptail --title "Install Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
@@ -7734,9 +7933,10 @@ EOF
       break
     else
       errmenu=$(cat << EOF
-$hshqlogo
 
+$(getLogo)
 There is a problem logging into the RelayServer host. Press Retry or Cancel.
+
 EOF
   )
       if ! (whiptail --title "Login Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
@@ -7855,7 +8055,6 @@ function connectVPN()
   vpn_subnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$db_id;")
   rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
   is_primary=$(sqlite3 $HSHQ_DB "select IsPrimary from hsvpn_connections where ID=$db_id;")
-  
   enableWGInterfaceQuick $ifaceName
 
   # If not hosting or non-primary VPN, then add CA domain.
@@ -7889,18 +8088,18 @@ function connectVPN()
     set +e
     while true;
     do
+      max_attempts=2
       total_attempts=1
-      max_attempts=5
       isBreak=false
       while [ $total_attempts -le $max_attempts ]
       do
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logging in to RelayServer...\"; docker ps > /dev/null 2>&1"
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logged in to RelayServer...\"; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1"
         if [ $? -eq 0 ]; then
           isBreak=true
           break
         fi
-        echo "Problem connecting to RelayServer, retrying in 5 seconds..."
-        sleep 5
+        echo "Problem connecting to RelayServer, retrying in 30 seconds..."
+        sleep 30
         total_attempts=$((total_attempts + 1))
       done
       if ! [ "$isBreak" = "true" ]; then
@@ -7946,6 +8145,7 @@ function connectVPN()
     jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/folders
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
+    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S reboot" <<< "$USER_RELAY_SUDO_PW"
     set -e
     unloadSSHKey
     sleep 10
@@ -7968,7 +8168,7 @@ function resetRelayServerData()
 function createOrJoinPrimaryVPN()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    is_remove=$(promptUserInputMenu "" "Existing RelayServer" "There is already a RelayServer set up. If you wish to remove all connections/data, enter the word 'remove' below:")
+    is_remove=$(promptUserInputMenu "" "Existing RelayServer" "There is already a RelayServer set up. If you wish to remove\nall connections/data, enter the word 'remove' below:")
     if ! [ "$is_remove" = "remove" ]; then
       showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
       return 0
@@ -7980,8 +8180,7 @@ function createOrJoinPrimaryVPN()
 
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option for your PRIMARY VPN connection" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -7991,7 +8190,7 @@ EOF
 
     case $menures in
       1)
-        confirmHost=$(promptUserInputMenu "" "Confirmation" "This function will set up a hosted VPN. Ensure you have the RelayServer ready and you can readily log into it. Enter the word 'confirm' below:")
+        confirmHost=$(promptUserInputMenu "" "Confirmation" "This function will set up a hosted VPN. Ensure you have\nthe RelayServer ready and you can readily log into it.\nEnter the word 'confirm' below:")
         if ! [ "$confirmHost" = "confirm" ]; then
           showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
           return 0
@@ -8038,7 +8237,7 @@ EOF
         connectPrimaryVPN
         ;;
       2)
-        confirmJoin=$(promptUserInputMenu "" "Confirmation" "This function will prepare you server to join another hosted VPN as your primary. Enter the word 'confirm' below:")
+        confirmJoin=$(promptUserInputMenu "" "Confirmation" "This function will prepare you server to join another hosted VPN\nas your primary. Enter the word 'confirm' below:")
         if ! [ "$confirmJoin" = "confirm" ]; then
           showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
           return 0
@@ -8067,7 +8266,7 @@ EOF
 function showRemovePrimaryVPN()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    is_remove=$(promptUserInputMenu "" "Remove RelayServer" "If you wish to remove all connections/data, enter the word 'remove' below:")
+    is_remove=$(promptUserInputMenu "" "Remove RelayServer" "If you wish to remove all connections/data,\nenter the word 'remove' below:")
     if [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
       showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
       return 0
@@ -8085,8 +8284,7 @@ function showNetworkMenu()
 {
   networkmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$networkmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8118,8 +8316,7 @@ function showMyNetworkMenu()
 {
   networkmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$networkmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8146,8 +8343,7 @@ function showOtherNetworksMenu()
 {
   networkmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$networkmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8177,8 +8373,7 @@ function showRelayServerUtilsMenu()
 {
   netutilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$netutilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8214,8 +8409,7 @@ function showMyNetworkRemoveMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8242,8 +8436,7 @@ function showMyNetworkUtilsMenu()
 {
   netutilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$netutilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8273,8 +8466,7 @@ function showOtherNetworkApplyMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8301,8 +8493,7 @@ function showOtherNetworkJoinMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8334,8 +8525,7 @@ function showOtherNetworkDisconnectMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8359,8 +8549,7 @@ function showOtherNetworkUtilsMenu()
 {
   utilsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8384,9 +8573,9 @@ function showMyNetworkRemoveVPNMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork';"))
@@ -8400,7 +8589,7 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8417,9 +8606,9 @@ function showMyNetworkRemoveInternetMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_internet' and NetworkType='mynetwork';"))
@@ -8433,7 +8622,7 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8468,9 +8657,9 @@ function showMyNetworkRemoveUserMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='user' and NetworkType='mynetwork';"))
@@ -8485,7 +8674,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   removal_reason=$(promptUserInputMenu "" "Removal Reason" "Enter a reason for removal: ")
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8518,7 +8707,7 @@ function notifyUserNetworkRemoval()
 
 function showMyNetworkCreateClientDNSMenu()
 {
-  clientdns_stack_name=$(promptUserInputMenu "" "ClientDNS Stack Name" "Enter a unique name for this stack (3-10 alpha-numeric lowercase characters): ")
+  clientdns_stack_name=$(promptUserInputMenu "" "ClientDNS Stack Name" "Enter a unique name for this stack,\n3-10 alpha-numeric lowercase characters: ")
   if [ -z "$clientdns_stack_name" ]; then
     showMessageBox "Stack Name Empty" "The name cannot be empty."
   fi
@@ -8604,9 +8793,9 @@ function showMyNetworkRemoveClientDNSMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType='mynetwork';"))
@@ -8620,7 +8809,7 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8658,9 +8847,9 @@ function showOtherNetworkDisconnectVPNMenu()
 {
   vpndisconnectmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to disconnect:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_vpn' and NetworkType='other';"))
@@ -8675,7 +8864,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
-  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections.\nTo confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8692,9 +8881,9 @@ function showOtherNetworkDisconnectInternetMenu()
 {
   vpndisconnectmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to disconnect:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_internet' and NetworkType='other';"))
@@ -8709,7 +8898,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
-  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections.\nTo confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8729,7 +8918,7 @@ function applyHomeServerPrimaryVPNConfig()
   le_cert_domains=unset
   while [ "$le_cert_domains" = "unset" ]
   do
-    le_cert_domains=$(promptUserInputMenu "$(getLetsEncryptCertsDefault)" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
+    le_cert_domains=$(promptUserInputMenu "$(getLetsEncryptCertsDefault)" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will\nbe managed by LetsEncrypt (comma-separated):")
     if [ $? -ne 0 ]; then
       return 1
     fi
@@ -8745,7 +8934,7 @@ function createOtherNetworkApplyHomeServerVPNConfig()
 {
   is_primary=$1
   le_cert_domains="$2"
-  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network to which you are applying:")
+  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network\nto which you are applying:")
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -8855,7 +9044,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
 
 function createOtherNetworkApplyHomeServerInternetConfig()
 {
-  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network to which you are applying:")
+  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network\nto which you are applying:")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -8891,7 +9080,7 @@ function sendOtherNetworkApplyHomeServerInternetConfig()
 
 function createOtherNetworkApplyUserConfig()
 {
-  email_address=$(promptUserInputMenu "$EMAIL_ADMIN_EMAIL_ADDRESS" "Enter Email Address" "Enter the email address that you wish to associate with this request: ")
+  email_address=$(promptUserInputMenu "$EMAIL_ADMIN_EMAIL_ADDRESS" "Enter Email Address" "Enter the email address that you wish\nto associate with this request: ")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -8901,7 +9090,7 @@ function createOtherNetworkApplyUserConfig()
   else
     isInternetAccess=false
   fi
-  ip_address=$(promptUserInputMenu "" "Enter IP Address" "Enter your client device IP address. Leave blank if you do not have one and want it generated for you: ")
+  ip_address=$(promptUserInputMenu "" "Enter IP Address" "Enter your client device IP address. Leave blank if you\ndo not have one and want it generated for you: ")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -8920,7 +9109,7 @@ function createOtherNetworkApplyUserConfig()
       return
     fi
   fi
-  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network to which you are applying:")
+  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network\nto which you are applying:")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -10408,79 +10597,155 @@ function changeDeviceIPAddress()
   sendEmail -s "$email_subj" -b "$email_body" -t "$email_address" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
-# Util Functions
-function tryOpenHSHQScript()
+function outputLockUtilsScript()
 {
-  cohs_curE=${-//[^e]/}
+  rm -f $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+  cat <<EOFUS > $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+#!/bin/bash
+
+LOCKHOLDER_FILENAME=$LOCKHOLDER_FILENAME
+ALL_LOCKS="$ALL_LOCKS"
+
+function tryGetLock()
+{
+  lockName="\$1"
+  callerName="\$2"
+  cohs_curE=\${-//[^e]/}
   set +e
-  callerName="$1"
-  if [ -z "$callerName" ]; then
-    callerName=User
+  if [ -z "\$callerName" ]; then
+    callerName=UnknownCaller
   fi
-  if [ "$callerName" = "boot" ]; then
-    closeHSHQScript
+  isLockFound=false
+  for curLock in \$ALL_LOCKS
+  do
+    if [ "\$lockName" = "\$curLock" ]; then
+      isLockFound=true
+      break
+    fi
+  done
+  if [ "\$isLockFound" = "false" ]; then
+    if ! [ -z "\$cohs_curE" ]; then
+      set -e
+    fi
+    # Unknown lock name
+    echo "Unknown lock name (\$lockName)"
+    return
   fi
-  # This ensures only one instance of the script is open at a time.
-  if mkdir -- "$HSHQ_SCRIPT_OPEN_DIR" > /dev/null 2>&1; then
-    echo $callerName > $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo $(date '+%s') >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo 1 >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    chmod 755 $HSHQ_SCRIPT_OPEN_DIR
-    chmod 644 $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
+  # BeforeNetwork is always the first one called during boot,
+  # so this will clean up any mess prior to the last reboot.
+  if [ "\$callerName" = "BeforeNetwork" ]; then
+    releaseLock "\$lockName" "BeforeNetwork" false
+  fi
+  # mkdir is an atomic operation, so its the best mechanism
+  # for performing locking operations
+  if mkdir -- "/tmp/\$lockName" > /dev/null 2>&1; then
+    echo \$callerName > /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo \$(date '+%s') >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo 1 >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    chmod 755 /tmp/\$lockName
+    chmod 644 /tmp/\$lockName/\$LOCKHOLDER_FILENAME
   else
-    echo "$(getHSHQScriptOpenMsg)"
+    lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    totAttempts=\$((\$lastAttempts + 1))
+    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo "\$(getLockOpenMsg \$lockName)"
   fi
-  if ! [ -z "$cohs_curE" ]; then
+  if ! [ -z "\$cohs_curE" ]; then
     set -e
   fi
 }
 
-function getHSHQScriptOpenMsg()
+function getLockOpenMsg()
 {
-  if test -f $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME; then
-    lastCaller=$(sed -n 1p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    lastExecute=$(sed -n 2p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    lastAttempts=$(sed -n 3p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    lastExecuteDate=$(date -d @${lastExecute} '+%Y-%m-%d %H:%M:%S')
-    dtNow=$(date '+%s')
-    secondsDiff=$(($dtNow - $lastExecute))
+  lockName="\$1"
+  if test -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME; then
+    lastCaller=\$(sed -n 1p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    lastExecute=\$(sed -n 2p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    lastExecuteDate=\$(date -d @\${lastExecute} '+%Y-%m-%d %H:%M:%S')
+    dtNow=\$(date '+%s')
+    secondsDiff=\$((\$dtNow - \$lastExecute))
     strMessage=""
-    if [ $secondsDiff -lt 60 ]; then
-      strMessage="$secondsDiff seconds ago by"
+    if [ \$secondsDiff -lt 60 ]; then
+      strMessage="\$secondsDiff seconds ago by"
     else
-      totMinutes=$(($secondsDiff / 60))
-      strMessage="$totMinutes minutes ago by"
+      totMinutes=\$((\$secondsDiff / 60))
+      strMessage="\$totMinutes minutes ago by"
     fi
-    strMessage="$strMessage $lastCaller @ $lastExecuteDate"
+    strMessage="\$strMessage \$lastCaller @ \$lastExecuteDate (\$lastAttempts)"
   else
     strMessage="Unknown-User"
   fi
-  echo "$strMessage"
+  echo "\$strMessage"
+}
+
+function checkIsLockEnabled()
+{
+  lockName="\$1"
+  if [ -d "/tmp/\$lockName" ]; then
+    echo "\$(getLockOpenMsg \$lockName)"
+  fi
+}
+
+function releaseLock()
+{
+  lockName="\$1"
+  callerName="\$2"
+  isForceRelease="\$3"
+  if [ "\$isForceRelease" = "true" ]; then
+    sudo rm -fr /tmp/\$lockName
+  else
+    rm -fr /tmp/\$lockName
+  fi
+}
+
+
+EOFUS
+}
+
+function tryOpenHSHQScript()
+{
+  tryGetLock hshqopen "$1"
+}
+
+function getHSHQScriptOpenMsg()
+{
+  getLockOpenMsg hshqopen
 }
 
 function checkIsOpenHSHQScript()
 {
-  if [ -d "$HSHQ_SCRIPT_OPEN_DIR" ]; then
-    echo "$(getHSHQScriptOpenMsg)"
-  fi
+  checkIsLockEnabled hshqopen
 }
 
 function closeHSHQScript()
 {
-  sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  releaseLock hshqopen "$1" false
 }
 
-function incrementHSHQScriptOpenCount()
+function acquireAllLocks()
 {
-  if [ -f $HSHQ_SCRIPT_OPEN ]; then
-    lastAttempts=$(sed -n 3p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    totAttempts=$(($lastAttempts + 1))
-    sed -i '$d' $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo "$totAttempts" >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo "$totAttempts"
+  checkRes=$(tryGetLock networkchecks acquireAllLocks)
+  if ! [ -z "$checkRes" ]; then
+    echo "networkchecks: $strErr"
+    return 23
+  fi
+  checkRes=$(tryGetLock hshqopen acquireAllLocks)
+  if ! [ -z "$checkRes" ]; then
+    releaseLock networkchecks acquireAllLocks false
+    echo "hshqopen: $strErr"
+    return 24
   fi
 }
 
+function releaseAllLocks()
+{
+  releaseLock hshqopen "releaseAllLocks" false
+  releaseLock networkchecks "releaseAllLocks" false
+}
+
+# Util Functions
 function isConfigVar()
 {
   isVar=$(grep ^$1= $CONFIG_FILE)
@@ -10815,7 +11080,12 @@ function getSubnetOfInterface()
   while [ -z "$this_subnet" ] && [ $num_tries -lt $max_tries ]
   do
     if [ "$is_priv" = "true" ]; then
-      this_subnet=$(ip route | grep $net_interface | grep / | awk '{print $1}' | head -1)
+      rpt="$(sipcalc $(ip -o -f inet addr show $net_interface | awk '/scope global/ {print $4}'))"
+      netaddr=$(echo "$rpt" | grep -o "Network address.*" | cut -d"-" -f2 | xargs | cut -d" " -f1)
+      netsize=$(echo "$rpt" | grep -o "Network mask (bits).*" | cut -d"-" -f2 | xargs | cut -d" " -f1)
+      if ! [ -z "$netaddr" ] && ! [ -z "$netsize" ]; then
+        this_subnet="${netaddr}/${netsize}"
+      fi
     else
       this_subnet="${net_ip}/32"
     fi
@@ -11111,7 +11381,8 @@ function displayWifiNetworks()
   fi
   numItems=$((${#resArr[@]} - 1))
   unset fmtArr
-  sudo rm -f $HSHQ_SCRIPT_OPEN_DIR/wifi.txt
+  fmtArr=""
+  sudo rm -f /tmp/wifi.txt
   curIndex=0
   fmtArr=()
   for curID in $(seq 0 $numItems);
@@ -11141,11 +11412,11 @@ function displayWifiNetworks()
     fi
     curESSID="$(echo $curESSID | cut -d":" -f2- | tr -d '"' | xargs -0)"
     fmtArr+=( "$curESSID|$curQualityNum|$curSignal|$curFrequency|$curEncryption" )
-    echo "$curQualityNum $curSignalNum $curIndex" >> $HSHQ_SCRIPT_OPEN_DIR/wifi.txt
+    echo "$curQualityNum $curSignalNum $curIndex" >> /tmp/wifi.txt
     ((curIndex+=1))
   done
-  sort -k1 -k2 -rn <$HSHQ_SCRIPT_OPEN_DIR/wifi.txt > $HSHQ_SCRIPT_OPEN_DIR/wifi-sorted.txt
-  readarray -t sortedArr < $HSHQ_SCRIPT_OPEN_DIR/wifi-sorted.txt
+  sort -k1 -k2 -rn </tmp/wifi.txt > /tmp/wifi-sorted.txt
+  readarray -t sortedArr < /tmp/wifi-sorted.txt
   echo "----------------------------------------------------------------"
   echo "       SSID          Quality     Signal     Frequency    Open   "
   echo "----------------------------------------------------------------"
@@ -11164,6 +11435,8 @@ function displayWifiNetworks()
   done
   echo "----------------------------------------------------------------"
   IFS=$OLDIFS
+  rm -f /tmp/wifi.txt
+  rm -f /tmp/wifi-sorted.txt
 }
 
 function addUpdateWifiAccessPoint()
@@ -11977,8 +12250,7 @@ function getPasswordWithSymbol()
 function performExitFunctions()
 {
   is_show_msgbox="$1"
-  removeSudoTimeoutInstall
-  closeHSHQScript "performExitFunctions"
+  releaseLock hshqopen "performExitFunctions" false
   #unloadSSHKey
   # This is more aggressive, but cleans up any pre-existing sessions (in case the script terminated abnormally)
   set +e
@@ -11999,13 +12271,14 @@ function performExitFunctions()
 
 function encryptConfigFile()
 {
-  if ! [ -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME ]; then
+  if ! [ -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME ] && ! [ -f $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME]; then
     echo "ERROR: Plain text config file does not exist"
   elif ! [ -z "$CONFIG_ENCRYPTION_PASSPHRASE" ]; then
     rm -f $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     openssl enc -e -aes256 -pbkdf2 -pass pass:$CONFIG_ENCRYPTION_PASSPHRASE -in $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME -out $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     chmod 0400 $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     rm -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=false
   fi
 }
 
@@ -12013,15 +12286,14 @@ function decryptFile()
 {
   encFile=$1
   resFile=$2
-  encPass=$3
   rm -f $resFile
   touch $resFile
   # Set the file permissions BEFORE decrypting...
   chmod 600 $resFile
-  if [ -z "$encPass" ]; then
+  if [ -z "$USER_CONFIG_PW" ]; then
     openssl enc -d -aes256 -pbkdf2 -in $encFile >> $resFile 2>/dev/null
   else
-    openssl enc -d -aes256 -pbkdf2 -pass pass:$encPass -in $encFile >> $resFile 2>/dev/null
+    openssl enc -d -aes256 -pbkdf2 -in $encFile -pass file:<( echo -n "$USER_CONFIG_PW" ) >> $resFile 2>/dev/null
   fi
   retVal=$?
   if [ $retVal -ne 0 ]; then
@@ -12053,7 +12325,7 @@ function decryptConfigFile()
       rm -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
       showYesNoMessageBox "Password Error" "You did not enter the correct password, try again?"
       if [ $? -ne 0 ]; then
-        closeHSHQScript "decryptConfigFile"
+        releaseLock hshqopen "decryptConfigFile" false
         exit 1
       fi
     fi
@@ -12061,30 +12333,41 @@ function decryptConfigFile()
   rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   mv $encConfig $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+  IS_CONFIG_FILE_UNENCRYPTED=true
   set -e
 }
 
 function decryptConfigFileAndLoadEnvNoPrompts()
 {
-  checkRes=$(tryOpenHSHQScript User-ScriptServer)
+  checkRes=$(tryGetLock hshqopen User-ScriptServer)
   if ! [ -z "$checkRes" ]; then
+    USER_CONFIG_PW=""
     echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset HSHQ Open Status function to reset it."
     exit 9
   fi
   set -e
-  decrypt_pass="$1"
+  decryptAndLoad true
+}
+
+function decryptAndLoad()
+{
   ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
   if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
-    decryptFile "$ENC_CONFIG_FILE" "$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME" "$decrypt_pass"
+    decryptFile "$ENC_CONFIG_FILE" "$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME"
     rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
     mv $ENC_CONFIG_FILE $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   fi
+  USER_CONFIG_PW=""
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
-  loadConfigVars
+  IS_CONFIG_FILE_UNENCRYPTED=true
+  loadConfigVars "$1"
 }
 
 function checkDecryptConfigFile()
 {
+  if [ -z "$USER_CONFIG_PW" ]; then
+    USER_CONFIG_PW="$1"
+  fi
   set +e
   if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
     if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
@@ -12094,16 +12377,38 @@ function checkDecryptConfigFile()
       exit 2
     fi
     if ! [ -z "$DEF_ENC_CONFIG_FILE" ]; then
-      openssl enc -d -aes256 -pbkdf2 -pass pass:$1 -in "$DEF_ENC_CONFIG_FILE" > /dev/null 2>&1
+      openssl enc -d -aes256 -pbkdf2 -in "$DEF_ENC_CONFIG_FILE" -pass file:<( echo -n "$USER_CONFIG_PW" ) > /dev/null 2>&1
       if [ $? -ne 0 ]; then
+        echo "bad"
         echo "ERROR: Incorrect password for encrypted configuration file."
         exit 3
+      else
+        echo "good"
       fi
     else
       echo "ERROR: Unknown error decrypting configuration file."
       exit 4
     fi
   fi
+}
+
+function promptTestDecryptConfigFile()
+{
+  while [ -z "$USER_CONFIG_PW" ]
+  do
+    USER_CONFIG_PW=$(promptPasswordMenu "Enter Decrypt Password" "Enter your config decrypt password: ")
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      exit 3
+    fi
+    checkDecryptConfigFile > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      USER_CONFIG_PW=""
+    fi
+  done
+  decryptAndLoad false
+  USER_CONFIG_PW=""
 }
 
 function checkFileShellExpansion()
@@ -12393,10 +12698,9 @@ function waitForStack()
 function showMessageBox()
 {
   msgmenu=$(cat << EOF
-
-$hshqlogo
-
+$(getLogo)
 $2
+
 EOF
   )
   whiptail --title "$1" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -12405,10 +12709,9 @@ EOF
 function showYesNoMessageBox()
 {
   msgmenu=$(cat << EOF
-
-$hshqlogo
-
+$(getLogo)
 $2
+
 EOF
   )
   whiptail --title "$1" --yesno "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -12417,10 +12720,9 @@ EOF
 function showNoYesMessageBox()
 {
   msgmenu=$(cat << EOF
-
-$hshqlogo
-
+$(getLogo)
 $2
+
 EOF
   )
   whiptail --title "$1" --yesno "$msgmenu" $MENU_HEIGHT $MENU_WIDTH --yes-button "No" --no-button "Yes"
@@ -12429,10 +12731,9 @@ EOF
 function promptUserInputMenu()
 {
   usermenu=$(cat << EOF
-
-$hshqlogo
-
+$(getLogo)
 $3
+
 EOF
   )
   menures=$(whiptail --title "$2" --inputbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH "$1" 3>&1 1>&2 2>&3)
@@ -12445,10 +12746,9 @@ EOF
 function promptPasswordMenu()
 {
   usermenu=$(cat << EOF
-
-$hshqlogo
-
+$(getLogo)
 $2
+
 EOF
   )
   menures=$(whiptail --title "$1" --passwordbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH 3>&1 1>&2 2>&3)
@@ -12773,6 +13073,7 @@ function checkValidPortsList()
     do
       port_no=$(echo "$curPort" | cut -d"/" -f1 | xargs)
       unset port_prot
+      port_prot=""
       if [[ $curPort =~ "/" ]]; then
         port_prot=$(echo "$curPort" | cut -d"/" -f2- | xargs)
       fi
@@ -13063,6 +13364,7 @@ function loadSvcVars()
 
 function loadConfigVars()
 {
+  is_chk_update="$1"
   initServiceVars
   if sudo test -f $HSHQ_PLAINTEXT_ROOT_CONFIG; then
     source <(sudo cat $HSHQ_PLAINTEXT_ROOT_CONFIG)
@@ -13072,7 +13374,9 @@ function loadConfigVars()
   fi
   source $CONFIG_FILE
   loadSvcVars
-  checkUpdateVersion
+  if ! [ "$is_chk_update" = "false" ]; then
+    checkUpdateVersion
+  fi
 }
 
 function checkAddSvc()
@@ -13104,9 +13408,13 @@ function loadDirectoryStructure()
   HSHQ_STACKS_DIR=$HSHQ_DATA_DIR/stacks
   HSHQ_WIREGUARD_DIR=$HSHQ_DATA_DIR/wireguard
   HSHQ_RESTORE_DIR=$HOME/hshqrestore
-
   HSHQ_WRAP_SCRIPT=$HOME/$HSHQ_WRAP_FILENAME
   HSHQ_LIB_SCRIPT=$HSHQ_LIB_DIR/$HSHQ_LIB_FILENAME
+  HSHQ_NEW_LIB_SCRIPT=$HSHQ_LIB_DIR/$HSHQ_NEW_LIB_FILENAME
+  if ! [ -f $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME ]; then
+    outputLockUtilsScript
+  fi
+  source $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
 }
 
 function getLatestVersionWrapper()
@@ -13152,6 +13460,13 @@ function getThisVersionLib()
   echo $(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
 }
 
+function getPendingVersionLib()
+{
+  if [ -f $HSHQ_NEW_LIB_SCRIPT ]; then
+    echo $(sed -n 2p $HSHQ_NEW_LIB_SCRIPT | cut -d"=" -f2)
+  fi
+}
+
 function verifyFile()
 {
   # Perform 3 checks:
@@ -13187,6 +13502,255 @@ function getRandomRequestID()
   # Could use a GUID/UUID, but date is more informative.
   echo "$(date '+%Y%m%d%H%M%S')$((1000 + RANDOM % 9999))$((1000 + RANDOM % 9999))$((10 + RANDOM % 99))"
 }
+
+# BEGIN bash_progress_bar
+#
+# The following section of code was obtained
+# from the project:
+# https://github.com/pollev/bash_progress_bar
+# It consists of a total of 12 functions,
+# and the code is enclosed between the comments:
+# BEGIN bash_progress_bar and END bash_progress_bar
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright (c) 2018--2020 Polle Vanhoof
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Usage:
+# Source this script
+# enable_trapping <- optional to clean up properly if user presses ctrl-c
+# setup_scroll_area <- create empty progress bar
+# draw_progress_bar 10 <- advance progress bar
+# draw_progress_bar 40 <- advance progress bar
+# block_progress_bar 45 <- turns the progress bar yellow to indicate some action is requested from the user
+# draw_progress_bar 90 <- advance progress bar
+# destroy_scroll_area <- remove progress bar
+
+function pb_init_constants()
+{
+  # Constants
+  CODE_SAVE_CURSOR="\033[s"
+  CODE_RESTORE_CURSOR="\033[u"
+  CODE_CURSOR_IN_SCROLL_AREA="\033[1A"
+  COLOR_FG="\e[30m"
+  COLOR_BG="\e[42m"
+  COLOR_BG_BLOCKED="\e[43m"
+  RESTORE_FG="\e[39m"
+  RESTORE_BG="\e[49m"
+  # Variables
+  PROGRESS_BLOCKED="false"
+  TRAPPING_ENABLED="false"
+  ETA_ENABLED="false"
+  TRAP_SET="false"
+  CURRENT_NR_LINES=0
+  PROGRESS_TITLE=""
+  PROGRESS_TOTAL=100
+  PROGRESS_START=0
+  BLOCKED_START=0
+}
+
+function setup_scroll_area()
+{
+  pb_init_constants
+  # If trapping is enabled, we will want to activate it whenever we setup the scroll area and remove it when we break the scroll area
+  if [ "$TRAPPING_ENABLED" = "true" ]; then
+    trap_on_interrupt
+  fi
+  # Handle first parameter: alternative progress bar title
+  [ -n "$1" ] && PROGRESS_TITLE="$1" || PROGRESS_TITLE="Progress"
+  # Handle second parameter : alternative total count
+  [ -n "$2" ] && PROGRESS_TOTAL=$2 || PROGRESS_TOTAL=100
+  lines=$(tput lines)
+  CURRENT_NR_LINES=$lines
+  lines=$((lines-1))
+  # Scroll down a bit to avoid visual glitch when the screen area shrinks by one row
+  echo -en "\n"
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Set scroll region (this will place the cursor in the top left)
+  echo -en "\033[0;${lines}r"
+  # Restore cursor but ensure its inside the scrolling area
+  echo -en "$CODE_RESTORE_CURSOR"
+  echo -en "$CODE_CURSOR_IN_SCROLL_AREA"
+  # Store start timestamp to compute ETA
+  if [ "$ETA_ENABLED" = "true" ]; then
+    PROGRESS_START=$( date +%s )
+  fi
+  # Start empty progress bar
+  draw_progress_bar 0
+}
+
+function destroy_scroll_area()
+{
+  lines=$(tput lines)
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Set scroll region (this will place the cursor in the top left)
+  echo -en "\033[0;${lines}r"
+  # Restore cursor but ensure its inside the scrolling area
+  echo -en "$CODE_RESTORE_CURSOR"
+  echo -en "$CODE_CURSOR_IN_SCROLL_AREA"
+  # We are done so clear the scroll bar
+  clear_progress_bar
+  # Scroll down a bit to avoid visual glitch when the screen area grows by one row
+  echo -en "\n\n"
+  # Reset title for next usage
+  PROGRESS_TITLE=""
+  # Once the scroll area is cleared, we want to remove any trap previously set. Otherwise, ctrl+c will exit our shell
+  if [ "$TRAP_SET" = "true" ]; then
+    trap - EXIT
+  fi
+}
+
+function format_eta()
+{
+  local T=$1
+  local D=$((T/60/60/24))
+  local H=$((T/60/60%24))
+  local M=$((T/60%60))
+  local S=$((T%60))
+  [ $D -eq 0 -a $H -eq 0 -a $M -eq 0 -a $S -eq 0 ] && echo "--:--:--" && return
+  [ $D -gt 0 ] && printf '%d days, ' $D
+  printf 'ETA: %d:%02.f:%02.f' $H $M $S
+}
+
+function draw_progress_bar()
+{
+  eta=""
+  if [ "$ETA_ENABLED" = "true" -a $1 -gt 0 ]; then
+    if [ "$PROGRESS_BLOCKED" = "true" ]; then
+      blocked_duration=$(($(date +%s)-$BLOCKED_START))
+      PROGRESS_START=$((PROGRESS_START+blocked_duration))
+    fi
+    running_time=$(($(date +%s)-PROGRESS_START))
+    total_time=$((PROGRESS_TOTAL*running_time/$1))
+    eta=$( format_eta $(($total_time-$running_time)) )
+  fi
+  percentage=$1
+  if [ $PROGRESS_TOTAL -ne 100 ]
+  then [ $PROGRESS_TOTAL -eq 0 ] && percentage=100 || percentage=$((percentage*100/$PROGRESS_TOTAL))
+  fi
+  extra=$2
+  lines=$(tput lines)
+  lines=$((lines))
+  # Check if the window has been resized. If so, reset the scroll area
+  if [ "$lines" -ne "$CURRENT_NR_LINES" ]; then
+    setup_scroll_area
+  fi
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Move cursor position to last row
+  echo -en "\033[${lines};0f"
+  # Clear progress bar
+  tput el
+  # Draw progress bar
+  PROGRESS_BLOCKED="false"
+  print_bar_text $percentage "$extra" "$eta"
+  # Restore cursor position
+  echo -en "$CODE_RESTORE_CURSOR"
+}
+
+function block_progress_bar()
+{
+  percentage=$1
+  lines=$(tput lines)
+  lines=$((lines))
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Move cursor position to last row
+  echo -en "\033[${lines};0f"
+  # Clear progress bar
+  tput el
+  # Draw progress bar
+  PROGRESS_BLOCKED="true"
+  BLOCKED_START=$( date +%s )
+  print_bar_text $percentage
+  # Restore cursor position
+  echo -en "$CODE_RESTORE_CURSOR"
+}
+
+function clear_progress_bar()
+{
+  lines=$(tput lines)
+  lines=$((lines))
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Move cursor position to last row
+  echo -en "\033[${lines};0f"
+  # clear progress bar
+  tput el
+  # Restore cursor position
+  echo -en "$CODE_RESTORE_CURSOR"
+}
+
+function print_bar_text()
+{
+  local percentage=$1
+  local extra=$2
+  [ -n "$extra" ] && extra=" ($extra)"
+  local eta=$3
+  if [ -n "$eta" ]; then
+    [ -n "$extra" ] && extra="$extra "
+    extra="$extra$eta"
+  fi
+  local cols=$(tput cols)
+  bar_size=$((cols-9-${#PROGRESS_TITLE}-${#extra}))
+  local color="${COLOR_FG}${COLOR_BG}"
+  if [ "$PROGRESS_BLOCKED" = "true" ]; then
+    color="${COLOR_FG}${COLOR_BG_BLOCKED}"
+  fi
+  # Prepare progress bar
+  complete_size=$(((bar_size*percentage)/100))
+  remainder_size=$((bar_size-complete_size))
+  progress_bar=$(echo -ne "["; echo -en "${color}"; printf_new "#" $complete_size; echo -en "${RESTORE_FG}${RESTORE_BG}"; printf_new "." $remainder_size; echo -ne "]");
+  # Print progress bar
+  echo -ne " $PROGRESS_TITLE ${percentage}% ${progress_bar}${extra}"
+}
+
+function enable_trapping()
+{
+  TRAPPING_ENABLED="true"
+}
+
+function trap_on_interrupt()
+{
+  # If this function is called, we setup an interrupt handler to cleanup the progress bar
+  TRAP_SET="true"
+  trap cleanup_on_interrupt EXIT
+}
+
+function cleanup_on_interrupt()
+{
+  destroy_scroll_area
+  exit
+}
+
+function printf_new()
+{
+  str=$1
+  num=$2
+  v=$(printf "%-${num}s" "$str")
+  echo -ne "${v// /$str}"
+}
+# END bash_progress_bar
 
 # RelayServer Utils
 function resetCaddyDataRelayServer()
@@ -13227,7 +13791,7 @@ function addDomainsToRelayServer()
   domains_to_add=""
   while [ -z "$domains_to_add" ]
   do
-    domains_to_add=$(promptUserInputMenu "" "Enter New Domains" "Enter the new domain names that you wish to add, separated by comma (no spaces):")
+    domains_to_add=$(promptUserInputMenu "" "Enter New Domains" "Enter the new domain names that you wish to add,\nseparated by comma (no spaces):")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
@@ -13250,9 +13814,9 @@ function addDomainsToRelayServer()
 
   deliveryhostmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the mail delivery host for this domain:
+
 EOF
   )
   dh_arr=($(sqlite3 $HSHQ_DB "select ID,MailHost from mailhosts;"))
@@ -13305,9 +13869,9 @@ function removeDomainsFromRelayServer()
   set +e
   rem_menu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the domains that you wish to remove:
+
 EOF
   )
   domains_to_rem_qry=($(sqlite3 $HSHQ_DB "select Domain,MailHost from mailhostmap join mailhosts on mailhostmap.MailHostID = mailhosts.ID where IsFirstDomain=false;"))
@@ -13321,7 +13885,7 @@ EOF
     menu_items=${menu_items}"$(echo $(echo $curdom | sed 's/|/(/1')")") | OFF "
   done
   sel_doms=($(whiptail --title "Select Domains" --checklist "$rem_menu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains ($domains_to_remove) from the RelayServer. To confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains from the RelayServer.\nTo confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -13439,15 +14003,15 @@ function removeSecondaryDomainFromRelayServer()
 function addLECertPathsToRelayServerMsgbox()
 {
   set +e
-  add_subdomains=$(promptUserInputMenu "" "Enter Subdomain" "Enter the subdomains for which you want LetsEncrypt to manage the certificates(separated by comma):")
+  add_subdomains=$(promptUserInputMenu "" "Enter Subdomain" "Enter the subdomains for which you want LetsEncrypt\nto manage the certificates(separated by comma):")
   if [ $? -ne 0 ]; then
     return
   fi
   seldomainmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the base domain to associate with these subdomains:
+
 EOF
   )
   dom_arr=($(sqlite3 $HSHQ_DB "select Domain from mailhostmap order by MailHostID asc;"))
@@ -14811,6 +15375,1407 @@ function checkPortForwardingIntersect()
   IFS=$OIFS
 }
 
+# Desktop Functions
+function addRootCertificateToApps()
+{
+  set +e
+  which firefox > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    tryFind=$(findCertByKeyword firefox)
+    if [ -z "$tryFind" ] || ! [ "$tryFind" = "true" ]; then
+      initDesktopApp firefox true findCertByKeyword
+    fi
+  fi
+  which thunderbird > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    tryFind=$(findCertByKeyword thunderbird)
+    if [ -z "$tryFind" ] || ! [ "$tryFind" = "true" ]; then
+      initDesktopApp thunderbird true findCertByKeyword
+    fi
+  fi
+  # This is a little bit kludgy, but it covers the case when
+  # Firefox is installed via snap vs apt, i.e. the profile
+  # directory is not the same.
+  for certDB in $(find ~ -name "cert9.db" 2> /dev/null)
+  do
+    certDir=$(dirname $certDB)
+    echo "Adding certificate (${CERTS_ROOT_CA_NAME}.crt) to app..."
+    certutil -A -n "${HOMESERVER_NAME} Root CA" -t "CT,C,C" -i "/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt" -d sql:${certDir}
+  done
+  which brave-browser > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    tryFind=$(getBraveCertDB)
+    if [ -z "$tryFind" ] || ! [ -f "$tryFind" ]; then
+      initDesktopApp brave-browser true getBraveCertDB
+    fi
+  fi
+  if [ -d ~/.pki/nssdb ]; then
+    echo "Adding certificate (${CERTS_ROOT_CA_NAME}.crt) to Chromium-based browser(s) pki..."
+    certutil -A -n "${HOMESERVER_NAME} Root CA" -t "CT,C,C" -i "/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt" -d sql:~/.pki/nssdb 2> /dev/null
+  fi
+}
+
+function findCertByKeyword()
+{
+  keyw="$1"
+  findres=$(find ~ -name "cert9.db" 2> /dev/null)
+  echo "$findres" | grep "$keyw" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function getBraveCertDB()
+{
+  find ~/.pki -type d -name nssdb 2> /dev/null
+}
+
+function initDesktopApp()
+{
+  appName="$1"
+  isRunHeadless="$2"
+  checkFunction="$3"
+  # 1. Start app on desktop
+  # 2. Wait for checkFunction to return a result
+  # 3. Kill app
+  export DISPLAY=:0
+  if [ "$isRunHeadless" = "true" ]; then
+    nohup $appName --headless > /dev/null 2>&1 & > /dev/null 2>&1
+  else
+    nohup $appName > /dev/null 2>&1 & > /dev/null 2>&1
+  fi
+  sleep 5
+  curCount=0
+  maxCount=30
+  while [ $curCount -lt $maxCount ]
+  do
+    tryFind=$($checkFunction "$appName")
+    if ! [ -z "$tryFind" ] && [ "$tryFind" = "true" ]; then
+      break
+    fi
+    sleep 1
+    ((curCount++))
+  done
+  pkill $appName > /dev/null 2>&1
+}
+
+function configureFirefox()
+{
+  # The settings in the file below are taken directly from
+  # https://github.com/pyllyukko/user.js. It is an active,
+  # well-documented project that seeks to provide
+  # security-hardened settings for the Firefox browser.
+  # These settings are very aggressive and can detract
+  # from a normal user experience. However, keep in mind
+  # that this is a server, not a client device. It should
+  # not be used in a traditional everyday environment.
+  # If you want to remove these settings, then the
+  # easiest way is to close Firefox, remove the profile
+  # directory (likely ~/.mozilla/firefox, then restart
+  # Firefox. This will remove all related Firefox data,
+  # such as bookmarks, etc. So backup everything accordingly.
+  cat <<EOFUS > $HOME/user.js
+//
+// A few more added
+user_pref("extensions.formautofill.addresses.enabled", false);
+user_pref("extensions.formautofill.addresses.capture.enabled", false);
+user_pref("extensions.formautofill.addresses.ignoreAutocompleteOff", false);
+user_pref("extensions.formautofill.creditCards.available", false);
+user_pref("extensions.formautofill.creditCards.enabled", false);
+user_pref("browser.urlbar.suggest.topsites", false);
+user_pref("identity.fxaccounts.enabled", false);
+user_pref("browser.startup.couldRestoreSession.count", -1);
+
+// Always dark mode:)
+user_pref("layout.css.prefers-color-scheme.content-override", 0);
+user_pref("browser.in-content.dark-mode", true);
+user_pref("ui.systemUsesDarkTheme", 1);
+
+/******************************************************************************
+ * user.js                                                                    *
+ * https://github.com/pyllyukko/user.js                                       *
+ ******************************************************************************/
+
+/******************************************************************************
+ * SECTION: HTML5 / APIs / DOM                                                *
+ ******************************************************************************/
+
+// PREF: Disable Service Workers
+// https://developer.mozilla.org/en-US/docs/Web/API/Worker
+// https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorker_API
+// https://wiki.mozilla.org/Firefox/Push_Notifications#Service_Workers
+// NOTICE: Disabling ServiceWorkers breaks functionality on some sites (Google Street View...)
+// NOTICE: Disabling ServiceWorkers breaks Firefox Sync
+// Unknown security implications
+// CVE-2016-5259, CVE-2016-2812, CVE-2016-1949, CVE-2016-5287 (fixed)
+user_pref("dom.serviceWorkers.enabled",				false);
+
+// PREF: Disable web notifications
+// https://support.mozilla.org/en-US/questions/1140439
+user_pref("dom.webnotifications.enabled",			false);
+
+// PREF: Disable DOM timing API
+// https://wiki.mozilla.org/Security/Reviews/Firefox/NavigationTimingAPI
+// https://www.w3.org/TR/navigation-timing/#privacy
+// NOTICE: Disabling DOM timing API breaks item pages in AliExpress (https://github.com/pyllyukko/user.js/issues/561)
+user_pref("dom.enable_performance",				false);
+
+// PREF: Disable resource timing API
+// https://www.w3.org/TR/resource-timing/#privacy-security
+// NOTICE: Disabling resource timing API breaks some DDoS protection pages (Cloudflare)
+user_pref("dom.enable_resource_timing",				false);
+
+// PREF: Make sure the User Timing API does not provide a new high resolution timestamp
+// https://trac.torproject.org/projects/tor/ticket/16336
+// https://www.w3.org/TR/2013/REC-user-timing-20131212/#privacy-security
+user_pref("dom.enable_user_timing",				false);
+
+// PREF: Disable Web Audio API
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1288359
+// NOTICE: Web Audio API is required for Unity web player/games
+user_pref("dom.webaudio.enabled",				false);
+
+// PREF: Disable Location-Aware Browsing (geolocation)
+// https://www.mozilla.org/en-US/firefox/geolocation/
+user_pref("geo.enabled",					false);
+
+// PREF: When geolocation is enabled, use Mozilla geolocation service instead of Google
+// https://bugzilla.mozilla.org/show_bug.cgi?id=689252
+user_pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
+
+// PREF: When geolocation is enabled, don't log geolocation requests to the console
+user_pref("geo.wifi.logging.enabled", false);
+
+// PREF: Disable raw TCP socket support (mozTCPSocket)
+// https://trac.torproject.org/projects/tor/ticket/18863
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-97/
+// https://developer.mozilla.org/docs/Mozilla/B2G_OS/API/TCPSocket
+user_pref("dom.mozTCPSocket.enabled",				false);
+
+// PREF: Disable DOM storage (disabled)
+// http://kb.mozillazine.org/Dom.storage.enabled
+// https://html.spec.whatwg.org/multipage/webstorage.html
+// NOTICE-DISABLED: Disabling DOM storage is known to cause TypeError: localStorage is null  errors
+//user_pref("dom.storage.enabled",		false);
+
+// PREF: Disable leaking network/browser connection information via Javascript
+// Network Information API provides general information about the system's connection type (WiFi, cellular, etc.)
+// https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API
+// https://wicg.github.io/netinfo/#privacy-considerations
+// https://bugzilla.mozilla.org/show_bug.cgi?id=960426
+user_pref("dom.netinfo.enabled",				false);
+
+// PREF: Disable network API (Firefox < 32)
+// https://developer.mozilla.org/en-US/docs/Web/API/Connection/onchange
+// https://www.torproject.org/projects/torbrowser/design/#fingerprinting-defenses
+user_pref("dom.network.enabled",				false);
+
+// PREF: Disable WebRTC entirely to prevent leaking internal IP addresses (Firefox < 42)
+// NOTICE: Disabling WebRTC breaks peer-to-peer file sharing tools (reep.io ...)
+user_pref("media.peerconnection.enabled",			false);
+
+// PREF: Don't reveal your internal IP when WebRTC is enabled (Firefox >= 42)
+// https://wiki.mozilla.org/Media/WebRTC/Privacy
+// https://github.com/beefproject/beef/wiki/Module%3A-Get-Internal-IP-WebRTC
+user_pref("media.peerconnection.ice.default_address_only",	true); // Firefox 42-51
+user_pref("media.peerconnection.ice.no_host",			true); // Firefox >= 52
+
+// PREF: Disable WebRTC getUserMedia, screen sharing, audio capture, video capture
+// https://wiki.mozilla.org/Media/getUserMedia
+// https://blog.mozilla.org/futurereleases/2013/01/12/capture-local-camera-and-microphone-streams-with-getusermedia-now-enabled-in-firefox/
+// https://developer.mozilla.org/en-US/docs/Web/API/Navigator
+user_pref("media.navigator.enabled",				false);
+user_pref("media.navigator.video.enabled",			false);
+user_pref("media.getusermedia.screensharing.enabled",		false);
+user_pref("media.getusermedia.audiocapture.enabled",		false);
+
+// PREF: Disable battery API (Firefox < 52)
+// https://developer.mozilla.org/en-US/docs/Web/API/BatteryManager
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1313580
+user_pref("dom.battery.enabled",				false);
+
+// PREF: Disable telephony API
+// https://wiki.mozilla.org/WebAPI/Security/WebTelephony
+user_pref("dom.telephony.enabled",				false);
+
+// PREF: Disable "beacon" asynchronous HTTP transfers (used for analytics)
+// https://developer.mozilla.org/en-US/docs/Web/API/navigator.sendBeacon
+user_pref("beacon.enabled",					false);
+
+// PREF: Disable clipboard event detection (onCut/onCopy/onPaste) via Javascript
+// https://web.archive.org/web/20210416195937/https://developer.mozilla.org/en-US/docs/Mozilla/Preferences/Preference_reference/dom.event.clipboardevents.enabled
+// https://github.com/pyllyukko/user.js/issues/287
+// NOTICE: Disabling clipboard events breaks Ctrl+C/X/V copy/cut/paste functionaility in JS-based web applications (Google Docs...)
+user_pref("dom.event.clipboardevents.enabled",			false);
+
+// PREF: Disable "copy to clipboard" functionality via Javascript (Firefox >= 41)
+// https://hg.mozilla.org/mozilla-central/rev/2f9f8ea4b9c3
+// https://github.com/pyllyukko/user.js/issues/287
+// NOTICE: Disabling clipboard operations will break legitimate JS-based "copy to clipboard" functionality
+user_pref("dom.allow_cut_copy", false);
+
+// PREF: Disable speech recognition
+// https://dvcs.w3.org/hg/speech-api/raw-file/tip/speechapi.html
+// https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition
+// https://wiki.mozilla.org/HTML5_Speech_API
+user_pref("media.webspeech.recognition.enable",			false);
+
+// PREF: Disable speech synthesis
+// https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis
+user_pref("media.webspeech.synth.enabled",			false);
+
+// PREF: Disable sensor API
+// https://wiki.mozilla.org/Sensor_API
+user_pref("device.sensors.enabled",				false);
+
+// PREF: Disable pinging URIs specified in HTML <a> ping= attributes
+// http://kb.mozillazine.org/Browser.send_pings
+user_pref("browser.send_pings",					false);
+
+// PREF: When browser pings are enabled, only allow pinging the same host as the origin page
+// http://kb.mozillazine.org/Browser.send_pings.require_same_host
+user_pref("browser.send_pings.require_same_host",		true);
+
+// PREF: Disable IndexedDB (disabled)
+// https://developer.mozilla.org/en-US/docs/IndexedDB
+// https://en.wikipedia.org/wiki/Indexed_Database_API
+// https://wiki.mozilla.org/Security/Reviews/Firefox4/IndexedDB_Security_Review
+// http://forums.mozillazine.org/viewtopic.php?p=13842047
+// https://github.com/pyllyukko/user.js/issues/8
+// NOTICE-DISABLED: IndexedDB could be used for tracking purposes, but is required for some add-ons to work (notably uBlock), so is left enabled
+//user_pref("dom.indexedDB.enabled",		false);
+
+// TODO: "Access Your Location" "Maintain Offline Storage" "Show Notifications"
+
+// PREF: Disable gamepad API to prevent USB device enumeration
+// https://www.w3.org/TR/gamepad/
+// https://trac.torproject.org/projects/tor/ticket/13023
+user_pref("dom.gamepad.enabled",				false);
+
+// PREF: Disable virtual reality devices APIs
+// https://developer.mozilla.org/en-US/Firefox/Releases/36#Interfaces.2FAPIs.2FDOM
+// https://developer.mozilla.org/en-US/docs/Web/API/WebVR_API
+user_pref("dom.vr.enabled",					false);
+
+// PREF: Disable vibrator API
+user_pref("dom.vibrator.enabled",           false);
+
+// PREF: Disable Archive API (Firefox < 54)
+// https://wiki.mozilla.org/WebAPI/ArchiveAPI
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1342361
+user_pref("dom.archivereader.enabled",				false);
+
+// PREF: Disable webGL
+// https://en.wikipedia.org/wiki/WebGL
+// https://www.contextis.com/resources/blog/webgl-new-dimension-browser-exploitation/
+// NOTICE: Disabling WebGL breaks WebGL-based websites/applications (windy, meteoblue...)
+user_pref("webgl.disabled",					true);
+// PREF: When webGL is enabled, use the minimum capability mode
+user_pref("webgl.min_capability_mode",				true);
+// PREF: When webGL is enabled, disable webGL extensions
+// https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API#WebGL_debugging_and_testing
+user_pref("webgl.disable-extensions",				true);
+// PREF: When webGL is enabled, force enabling it even when layer acceleration is not supported
+// https://trac.torproject.org/projects/tor/ticket/18603
+user_pref("webgl.disable-fail-if-major-performance-caveat",	true);
+// PREF: When webGL is enabled, do not expose information about the graphics driver
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1171228
+// https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info
+user_pref("webgl.enable-debug-renderer-info",			false);
+// somewhat related...
+//user_pref("pdfjs.enableWebGL",					false);
+
+// PREF: Spoof dual-core CPU
+// https://trac.torproject.org/projects/tor/ticket/21675
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1360039
+user_pref("dom.maxHardwareConcurrency",				2);
+
+// PREF: Disable WebAssembly
+// https://webassembly.org/
+// https://en.wikipedia.org/wiki/WebAssembly
+// https://trac.torproject.org/projects/tor/ticket/21549
+// NOTICE: WebAssembly is required for Unity web player/games
+user_pref("javascript.options.wasm",				false);
+
+/******************************************************************************
+ * SECTION: Misc                                                              *
+ ******************************************************************************/
+
+// PREF: Disable face detection
+user_pref("camera.control.face_detection.enabled",		false);
+
+// PREF: Disable GeoIP lookup on your address to set default search engine region
+// https://trac.torproject.org/projects/tor/ticket/16254
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_geolocation-for-default-search-engine
+user_pref("browser.search.countryCode",				"US");
+user_pref("browser.search.region",				"US");
+user_pref("browser.search.geoip.url",				"");
+
+// PREF: Set Accept-Language HTTP header to en-US regardless of Firefox localization
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Language
+user_pref("intl.accept_languages",				"en-US, en");
+
+// PREF: Don't use OS values to determine locale, force using Firefox locale setting
+// http://kb.mozillazine.org/Intl.locale.matchOS
+user_pref("intl.locale.matchOS",				false);
+
+// Use LANG environment variable to choose locale (disabled)
+//pref("intl.locale.requested", "");
+
+// PREF: Don't use Mozilla-provided location-specific search engines
+user_pref("browser.search.geoSpecificDefaults",			false);
+
+// PREF: Do not automatically send selection to clipboard on some Linux platforms
+// http://kb.mozillazine.org/Clipboard.autocopy
+user_pref("clipboard.autocopy",					false);
+
+// PREF: Prevent leaking application locale/date format using JavaScript
+// https://bugzilla.mozilla.org/show_bug.cgi?id=867501
+// https://hg.mozilla.org/mozilla-central/rev/52d635f2b33d
+user_pref("javascript.use_us_english_locale",			true);
+
+// PREF: Do not submit invalid URIs entered in the address bar to the default search engine
+// http://kb.mozillazine.org/Keyword.enabled
+//user_pref("keyword.enabled",					false);
+
+// PREF: Don't trim HTTP off of URLs in the address bar.
+// https://bugzilla.mozilla.org/show_bug.cgi?id=665580
+user_pref("browser.urlbar.trimURLs",				false);
+
+// PREF: Disable preloading of autocomplete URLs.
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+user_pref("browser.urlbar.speculativeConnect.enabled", false);
+
+// PREF: Don't try to guess domain names when entering an invalid domain name in URL bar
+// http://www-archive.mozilla.org/docs/end-user/domain-guessing.html
+user_pref("browser.fixup.alternate.enabled",			false);
+
+// PREF: When browser.fixup.alternate.enabled is enabled, strip password from 'user:password@...' URLs
+// https://github.com/pyllyukko/user.js/issues/290#issuecomment-303560851
+user_pref("browser.fixup.hide_user_pass", true);
+
+// PREF: Send DNS request through SOCKS when SOCKS proxying is in use
+// https://trac.torproject.org/projects/tor/wiki/doc/TorifyHOWTO/WebBrowsers
+user_pref("network.proxy.socks_remote_dns",			true);
+
+// PREF: Don't monitor OS online/offline connection state
+// https://trac.torproject.org/projects/tor/ticket/18945
+user_pref("network.manage-offline-status",			false);
+
+// PREF: Enforce Mixed Active Content Blocking
+// https://support.mozilla.org/t5/Protect-your-privacy/Mixed-content-blocking-in-Firefox/ta-p/10990
+// https://developer.mozilla.org/en-US/docs/Site_Compatibility_for_Firefox_23#Non-SSL_contents_on_SSL_pages_are_blocked_by_default
+// https://blog.mozilla.org/tanvi/2013/04/10/mixed-content-blocking-enabled-in-firefox-23/
+user_pref("security.mixed_content.block_active_content",	true);
+
+// PREF: Enforce Mixed Passive Content blocking (a.k.a. Mixed Display Content)
+// NOTICE: Enabling Mixed Display Content blocking can prevent images/styles... from loading properly when connection to the website is only partially secured
+user_pref("security.mixed_content.block_display_content",	true);
+
+// PREF: Disable JAR from opening Unsafe File Types
+// http://kb.mozillazine.org/Network.jar.open-unsafe-types
+// CIS Mozilla Firefox 24 ESR v1.0.0 - 3.7 
+user_pref("network.jar.open-unsafe-types",			false);
+
+// CIS 2.7.4 Disable Scripting of Plugins by JavaScript
+// http://forums.mozillazine.org/viewtopic.php?f=7&t=153889
+user_pref("security.xpconnect.plugin.unrestricted",		false);
+
+// PREF: Set File URI Origin Policy
+// http://kb.mozillazine.org/Security.fileuri.strict_origin_policy
+// CIS Mozilla Firefox 24 ESR v1.0.0 - 3.8
+user_pref("security.fileuri.strict_origin_policy",		true);
+
+// PREF: Disable Displaying Javascript in History URLs
+// http://kb.mozillazine.org/Browser.urlbar.filter.javascript
+// CIS 2.3.6 
+user_pref("browser.urlbar.filter.javascript",			true);
+
+// PREF: Disable asm.js
+// http://asmjs.org/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-29/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-50/
+// https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2015-2712
+user_pref("javascript.options.asmjs",				false);
+
+// PREF: Disable SVG in OpenType fonts
+// https://wiki.mozilla.org/SVGOpenTypeFonts
+// https://github.com/iSECPartners/publications/tree/master/reports/Tor%20Browser%20Bundle
+user_pref("gfx.font_rendering.opentype_svg.enabled",		false);
+
+// PREF: Disable in-content SVG rendering (Firefox >= 53) (disabled)
+// NOTICE-DISABLED: Disabling SVG support breaks many UI elements on many sites
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1216893
+// https://github.com/iSECPartners/publications/raw/master/reports/Tor%20Browser%20Bundle/Tor%20Browser%20Bundle%20-%20iSEC%20Deliverable%201.3.pdf#16
+//user_pref("svg.disabled", true);
+
+// PREF: Disable video stats to reduce fingerprinting threat
+// https://bugzilla.mozilla.org/show_bug.cgi?id=654550
+// https://github.com/pyllyukko/user.js/issues/9#issuecomment-100468785
+// https://github.com/pyllyukko/user.js/issues/9#issuecomment-148922065
+user_pref("media.video_stats.enabled",				false);
+
+// PREF: Don't reveal build ID
+// Value taken from Tor Browser
+// https://bugzilla.mozilla.org/show_bug.cgi?id=583181
+user_pref("general.buildID.override",				"20100101");
+user_pref("browser.startup.homepage_override.buildID",		"20100101");
+
+// PREF: Don't use document specified fonts to prevent installed font enumeration (fingerprinting)
+// https://github.com/pyllyukko/user.js/issues/395
+// https://browserleaks.com/fonts
+// https://github.com/pyllyukko/user.js/issues/120
+user_pref("browser.display.use_document_fonts",			0);
+
+// PREF: Enable only whitelisted URL protocol handlers
+// http://kb.mozillazine.org/Network.protocol-handler.external-default
+// http://kb.mozillazine.org/Network.protocol-handler.warn-external-default
+// http://kb.mozillazine.org/Network.protocol-handler.expose.%28protocol%29
+// https://news.ycombinator.com/item?id=13047883
+// https://bugzilla.mozilla.org/show_bug.cgi?id=167475
+// https://github.com/pyllyukko/user.js/pull/285#issuecomment-298124005
+// NOTICE: Disabling nonessential protocols breaks all interaction with custom protocols such as mailto:, irc:, magnet: ... and breaks opening third-party mail/messaging/torrent/... clients when clicking on links with these protocols
+// TODO: Add externally-handled protocols from Windows 8.1 and Windows 10 (currently contains protocols only from Linux and Windows 7) that might pose a similar threat (see e.g. https://news.ycombinator.com/item?id=13044991)
+// TODO: Add externally-handled protocols from Mac OS X that might pose a similar threat (see e.g. https://news.ycombinator.com/item?id=13044991)
+// If you want to enable a protocol, set network.protocol-handler.expose.(protocol) to true and network.protocol-handler.external.(protocol) to:
+//   * true, if the protocol should be handled by an external application
+//   * false, if the protocol should be handled internally by Firefox
+user_pref("network.protocol-handler.warn-external-default",	true);
+user_pref("network.protocol-handler.external.http",		false);
+user_pref("network.protocol-handler.external.https",		false);
+user_pref("network.protocol-handler.external.javascript",	false);
+user_pref("network.protocol-handler.external.moz-extension",	false);
+user_pref("network.protocol-handler.external.ftp",		false);
+user_pref("network.protocol-handler.external.file",		false);
+user_pref("network.protocol-handler.external.about",		false);
+user_pref("network.protocol-handler.external.chrome",		false);
+user_pref("network.protocol-handler.external.blob",		false);
+user_pref("network.protocol-handler.external.data",		false);
+user_pref("network.protocol-handler.expose-all",		false);
+user_pref("network.protocol-handler.expose.http",		true);
+user_pref("network.protocol-handler.expose.https",		true);
+user_pref("network.protocol-handler.expose.javascript",		true);
+user_pref("network.protocol-handler.expose.moz-extension",	true);
+user_pref("network.protocol-handler.expose.ftp",		true);
+user_pref("network.protocol-handler.expose.file",		true);
+user_pref("network.protocol-handler.expose.about",		true);
+user_pref("network.protocol-handler.expose.chrome",		true);
+user_pref("network.protocol-handler.expose.blob",		true);
+user_pref("network.protocol-handler.expose.data",		true);
+
+/******************************************************************************
+ * SECTION: Extensions / plugins                                                       *
+ ******************************************************************************/
+
+// PREF: Ensure you have a security delay when installing add-ons (milliseconds)
+// http://kb.mozillazine.org/Disable_extension_install_delay_-_Firefox
+// http://www.squarefree.com/2004/07/01/race-conditions-in-security-dialogs/
+user_pref("security.dialog_enable_delay",			1000);
+
+// PREF: Require signatures
+// https://wiki.mozilla.org/Addons/Extension_Signing
+//user_pref("xpinstall.signatures.required",		true);
+
+// PREF: Opt-out of add-on metadata updates
+// https://blog.mozilla.org/addons/how-to-opt-out-of-add-on-metadata-updates/
+user_pref("extensions.getAddons.cache.enabled",			false);
+
+// PREF: Opt-out of themes (Persona) updates
+// https://support.mozilla.org/t5/Firefox/how-do-I-prevent-autoamtic-updates-in-a-50-user-environment/td-p/144287
+user_pref("lightweightThemes.update.enabled",			false);
+
+// PREF: Disable Flash Player NPAPI plugin
+// http://kb.mozillazine.org/Flash_plugin
+user_pref("plugin.state.flash",					0);
+
+// PREF: Disable Java NPAPI plugin
+user_pref("plugin.state.java",					0);
+
+// PREF: Disable sending Flash Player crash reports
+user_pref("dom.ipc.plugins.flash.subprocess.crashreporter.enabled",	false);
+
+// PREF: When Flash crash reports are enabled, don't send the visited URL in the crash report
+user_pref("dom.ipc.plugins.reportCrashURL",			false);
+
+// PREF: When Flash is enabled, download and use Mozilla SWF URIs blocklist
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1237198
+// https://github.com/mozilla-services/shavar-plugin-blocklist
+user_pref("browser.safebrowsing.blockedURIs.enabled", true);
+
+// PREF: Disable Gnome Shell Integration NPAPI plugin
+user_pref("plugin.state.libgnome-shell-browser-plugin",		0);
+
+// PREF: Disable the bundled OpenH264 video codec (disabled)
+// http://forums.mozillazine.org/viewtopic.php?p=13845077&sid=28af2622e8bd8497b9113851676846b1#p13845077
+//user_pref("media.gmp-provider.enabled",		false);
+
+// PREF: Enable plugins click-to-play
+// https://wiki.mozilla.org/Firefox/Click_To_Play
+// https://blog.mozilla.org/security/2012/10/11/click-to-play-plugins-blocklist-style/
+user_pref("plugins.click_to_play",				true);
+
+// PREF: Updates addons automatically
+// https://blog.mozilla.org/addons/how-to-turn-off-add-on-updates/
+user_pref("extensions.update.enabled",				true);
+
+// PREF: Enable add-on and certificate blocklists (OneCRL) from Mozilla
+// https://wiki.mozilla.org/Blocklisting
+// https://blocked.cdn.mozilla.net/
+// http://kb.mozillazine.org/Extensions.blocklist.enabled
+// http://kb.mozillazine.org/Extensions.blocklist.url
+// https://blog.mozilla.org/security/2015/03/03/revoking-intermediate-certificates-introducing-onecrl/
+// Updated at interval defined in extensions.blocklist.interval (default: 86400)
+user_pref("extensions.blocklist.enabled",			true);
+user_pref("services.blocklist.update_enabled",			true);
+
+// PREF: Decrease system information leakage to Mozilla blocklist update servers
+// https://trac.torproject.org/projects/tor/ticket/16931
+user_pref("extensions.blocklist.url",				"https://blocklist.addons.mozilla.org/blocklist/3/%APP_ID%/%APP_VERSION%/");
+
+// PREF: Disable system add-on updates (hidden & always-enabled add-ons from Mozilla)
+// https://firefox-source-docs.mozilla.org/toolkit/mozapps/extensions/addon-manager/SystemAddons.html
+// https://blog.mozilla.org/data/2018/08/20/effectively-measuring-search-in-firefox/
+// https://github.com/pyllyukko/user.js/issues/419
+// https://dxr.mozilla.org/mozilla-central/source/toolkit/mozapps/extensions/AddonManager.jsm#1248-1257
+// NOTICE: Disabling system add-on updates prevents Mozilla from "hotfixing" your browser to patch critical problems (one possible use case from the documentation)
+user_pref("extensions.systemAddon.update.enabled",		false);
+
+/******************************************************************************
+ * SECTION: Firefox (anti-)features / components                              *                            *
+ ******************************************************************************/
+
+// PREF: Disable Extension recommendations (Firefox >= 65)
+// https://support.mozilla.org/en-US/kb/extension-recommendations
+user_pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr",	false);
+
+// PREF: Trusted Recursive Resolver (DNS-over-HTTPS) (disabled)
+// https://wiki.mozilla.org/Trusted_Recursive_Resolver
+//user_pref("network.trr.mode",					0);
+
+// PREF: Disable WebIDE
+// https://trac.torproject.org/projects/tor/ticket/16222
+// https://developer.mozilla.org/docs/Tools/WebIDE
+user_pref("devtools.webide.enabled",				false);
+user_pref("devtools.webide.autoinstallADBHelper",		false);
+user_pref("devtools.webide.autoinstallFxdtAdapters",		false);
+
+// PREF: Disable remote debugging
+// https://developer.mozilla.org/en-US/docs/Tools/Remote_Debugging/Debugging_Firefox_Desktop
+// https://developer.mozilla.org/en-US/docs/Tools/Tools_Toolbox#Advanced_settings
+user_pref("devtools.debugger.remote-enabled",			false);
+user_pref("devtools.chrome.enabled",				false);
+user_pref("devtools.debugger.force-local",			true);
+
+// PREF: Disable Mozilla telemetry/experiments
+// https://wiki.mozilla.org/Platform/Features/Telemetry
+// https://wiki.mozilla.org/Privacy/Reviews/Telemetry
+// https://wiki.mozilla.org/Telemetry
+// https://www.mozilla.org/en-US/legal/privacy/firefox.html#telemetry
+// https://support.mozilla.org/t5/Firefox-crashes/Mozilla-Crash-Reporter/ta-p/1715
+// https://wiki.mozilla.org/Security/Reviews/Firefox6/ReviewNotes/telemetry
+// https://gecko.readthedocs.io/en/latest/browser/experiments/experiments/manifest.html
+// https://wiki.mozilla.org/Telemetry/Experiments
+// https://support.mozilla.org/en-US/questions/1197144
+// https://firefox-source-docs.mozilla.org/toolkit/components/telemetry/telemetry/internals/preferences.html#id1
+user_pref("toolkit.telemetry.enabled",				false);
+user_pref("toolkit.telemetry.unified",				false);
+user_pref("toolkit.telemetry.archive.enabled",			false);
+user_pref("experiments.supported",				false);
+user_pref("experiments.enabled",				false);
+user_pref("experiments.manifest.uri",				"");
+
+// PREF: Disallow Necko to do A/B testing
+// https://trac.torproject.org/projects/tor/ticket/13170
+user_pref("network.allow-experiments",				false);
+
+// PREF: Disable sending Firefox crash reports to Mozilla servers
+// https://wiki.mozilla.org/Breakpad
+// http://kb.mozillazine.org/Breakpad
+// https://dxr.mozilla.org/mozilla-central/source/toolkit/crashreporter
+// https://bugzilla.mozilla.org/show_bug.cgi?id=411490
+// A list of submitted crash reports can be found at about:crashes
+user_pref("breakpad.reportURL",					"");
+
+// PREF: Disable sending reports of tab crashes to Mozilla (about:tabcrashed), don't nag user about unsent crash reports
+// https://hg.mozilla.org/mozilla-central/file/tip/browser/app/profile/firefox.js
+user_pref("browser.tabs.crashReporting.sendReport",		false);
+user_pref("browser.crashReports.unsubmittedCheck.enabled",	false);
+
+// PREF: Disable FlyWeb (discovery of LAN/proximity IoT devices that expose a Web interface)
+// https://wiki.mozilla.org/FlyWeb
+// https://wiki.mozilla.org/FlyWeb/Security_scenarios
+// https://docs.google.com/document/d/1eqLb6cGjDL9XooSYEEo7mE-zKQ-o-AuDTcEyNhfBMBM/edit
+// http://www.ghacks.net/2016/07/26/firefox-flyweb
+user_pref("dom.flyweb.enabled",					false);
+
+// PREF: Disable the UITour backend
+// https://trac.torproject.org/projects/tor/ticket/19047#comment:3
+user_pref("browser.uitour.enabled",				false);
+
+// PREF: Enable Firefox Tracking Protection
+// https://wiki.mozilla.org/Security/Tracking_protection
+// https://support.mozilla.org/en-US/kb/tracking-protection-firefox
+// https://support.mozilla.org/en-US/kb/tracking-protection-pbm
+// https://kontaxis.github.io/trackingprotectionfirefox/
+// https://feeding.cloud.geek.nz/posts/how-tracking-protection-works-in-firefox/
+user_pref("privacy.trackingprotection.enabled",			true);
+user_pref("privacy.trackingprotection.pbmode.enabled",		true);
+
+// PREF: Enable contextual identity Containers feature (Firefox >= 52)
+// NOTICE: Containers are not available in Private Browsing mode
+// https://wiki.mozilla.org/Security/Contextual_Identity_Project/Containers
+user_pref("privacy.userContext.enabled",			true);
+
+// PREF: Enable Firefox's anti-fingerprinting mode ("resist fingerprinting" or RFP) (Tor Uplift project)
+// https://wiki.mozilla.org/Security/Tor_Uplift/Tracking
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1333933
+// https://wiki.mozilla.org/Security/Fingerprinting
+// NOTICE: RFP breaks some keyboard shortcuts used in certain websites (see #443)
+// NOTICE: RFP changes your time zone
+// NOTICE: RFP breaks some DDoS protection pages (Cloudflare)
+user_pref("privacy.resistFingerprinting",			true);
+
+// PREF: disable mozAddonManager Web API [FF57+]
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1384330
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1406795
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1415644
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1453988
+// https://trac.torproject.org/projects/tor/ticket/26114
+user_pref("privacy.resistFingerprinting.block_mozAddonManager", true);
+user_pref("extensions.webextensions.restrictedDomains", "");
+
+// PREF: enable RFP letterboxing / resizing of inner window [FF67+] (disabled)
+// https://bugzilla.mozilla.org/1407366
+//user_pref("privacy.resistFingerprinting.letterboxing", true);
+//user_pref("privacy.resistFingerprinting.letterboxing.dimensions", "800x600, 1000x1000, 1600x900");
+
+// PREF: disable showing about:blank/maximized window as soon as possible during startup [FF60+]
+// https://bugzilla.mozilla.org/1448423
+user_pref("browser.startup.blankWindow", false);
+
+// PREF: Disable the built-in PDF viewer
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2015-2743
+// https://blog.mozilla.org/security/2015/08/06/firefox-exploit-found-in-the-wild/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-69/
+user_pref("pdfjs.disabled",					true);
+
+// PREF: Disable collection/sending of the health report (healthreport.sqlite*)
+// https://support.mozilla.org/en-US/kb/firefox-health-report-understand-your-browser-perf
+// https://gecko.readthedocs.org/en/latest/toolkit/components/telemetry/telemetry/preferences.html
+user_pref("datareporting.healthreport.uploadEnabled",		false);
+user_pref("datareporting.healthreport.service.enabled",		false);
+user_pref("datareporting.policy.dataSubmissionEnabled",		false);
+// "Allow Firefox to make personalized extension recommendations"
+user_pref("browser.discovery.enabled",				false);
+
+// PREF: Disable Shield/Heartbeat/Normandy (Mozilla user rating telemetry)
+// https://wiki.mozilla.org/Advocacy/heartbeat
+// https://trac.torproject.org/projects/tor/ticket/19047
+// https://trac.torproject.org/projects/tor/ticket/18738
+// https://wiki.mozilla.org/Firefox/Shield
+// https://github.com/mozilla/normandy
+// https://support.mozilla.org/en-US/kb/shield
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1370801
+// https://wiki.mozilla.org/Firefox/Normandy/PreferenceRollout
+user_pref("app.normandy.enabled", false);
+user_pref("app.normandy.api_url", "");
+user_pref("extensions.shield-recipe-client.enabled",		false);
+user_pref("app.shield.optoutstudies.enabled",			false);
+
+
+// PREF: Disable Firefox Hello (disabled) (Firefox < 49)
+// https://wiki.mozilla.org/Loop
+// https://support.mozilla.org/t5/Chat-and-share/Support-for-Hello-discontinued-in-Firefox-49/ta-p/37946
+// NOTICE-DISABLED: Firefox Hello requires setting  media.peerconnection.enabled  and  media.getusermedia.screensharing.enabled  to true,  security.OCSP.require  to false to work.
+//user_pref("loop.enabled",		false);
+
+// PREF: Disable Firefox Hello metrics collection
+// https://groups.google.com/d/topic/mozilla.dev.platform/nyVkCx-_sFw/discussion
+user_pref("loop.logDomains",					false);
+
+// PREF: Enable Auto Update (disabled)
+// NOTICE: Fully automatic updates are disabled and left to package management systems on Linux. Windows users may want to change this setting.
+// CIS 2.1.1
+//user_pref("app.update.auto",					true);
+
+// PREF: Enforce checking for Firefox updates
+// http://kb.mozillazine.org/App.update.enabled
+// NOTICE: Update check page might incorrectly report Firefox ESR as out-of-date
+user_pref("app.update.enabled",                 true);
+
+// PREF: Enable blocking reported web forgeries
+// https://wiki.mozilla.org/Security/Safe_Browsing
+// http://kb.mozillazine.org/Safe_browsing
+// https://support.mozilla.org/en-US/kb/how-does-phishing-and-malware-protection-work
+// http://forums.mozillazine.org/viewtopic.php?f=39&t=2711237&p=12896849#p12896849
+// CIS 2.3.4
+user_pref("browser.safebrowsing.enabled",			true); // Firefox < 50
+user_pref("browser.safebrowsing.phishing.enabled",		true); // firefox >= 50
+
+// PREF: Enable blocking reported attack sites
+// http://kb.mozillazine.org/Browser.safebrowsing.malware.enabled
+// CIS 2.3.5
+user_pref("browser.safebrowsing.malware.enabled",		true);
+
+// PREF: Disable querying Google Application Reputation database for downloaded binary files
+// https://www.mozilla.org/en-US/firefox/39.0/releasenotes/
+// https://wiki.mozilla.org/Security/Application_Reputation
+user_pref("browser.safebrowsing.downloads.remote.enabled",	false);
+
+// PREF: Disable Pocket
+// https://support.mozilla.org/en-US/kb/save-web-pages-later-pocket-firefox
+// https://github.com/pyllyukko/user.js/issues/143
+user_pref("browser.pocket.enabled",				false);
+user_pref("extensions.pocket.enabled",				false);
+
+// PREF: Disable "Recommended by Pocket" in Firefox Quantum
+user_pref("browser.newtabpage.activity-stream.feeds.section.topstories",	false);
+
+// PREF: Enable Global Privacy Control (GPC) (Firefox >= 120)
+// https://support.mozilla.org/1/firefox/126.0/Linux/en-US/global-privacy-control
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-GPC
+// https://globalprivacycontrol.org/
+user_pref("privacy.globalprivacycontrol.enabled",		true);
+
+/******************************************************************************
+ * SECTION: Automatic connections                                             *
+ ******************************************************************************/
+
+// PREF: Limit the connection keep-alive timeout to 15 seconds (disabled)
+// https://github.com/pyllyukko/user.js/issues/387
+// http://kb.mozillazine.org/Network.http.keep-alive.timeout
+// https://httpd.apache.org/docs/current/mod/core.html#keepalivetimeout
+//user_pref("network.http.keep-alive.timeout",			15);
+
+// PREF: Disable prefetching of <link rel="next"> URLs
+// http://kb.mozillazine.org/Network.prefetch-next
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Link_prefetching_FAQ#Is_there_a_preference_to_disable_link_prefetching.3F
+user_pref("network.prefetch-next",				false);
+
+// PREF: Disable DNS prefetching
+// http://kb.mozillazine.org/Network.dns.disablePrefetch
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Controlling_DNS_prefetching
+user_pref("network.dns.disablePrefetch",			true);
+user_pref("network.dns.disablePrefetchFromHTTPS",		true);
+
+// PREF: Disable the predictive service (Necko)
+// https://wiki.mozilla.org/Privacy/Reviews/Necko
+user_pref("network.predictor.enabled",				false);
+
+// PREF: Reject .onion hostnames before passing the to DNS
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1228457
+// RFC 7686
+user_pref("network.dns.blockDotOnion",				true);
+
+// PREF: Disable search suggestions in the search bar
+// http://kb.mozillazine.org/Browser.search.suggest.enabled
+user_pref("browser.search.suggest.enabled",			false);
+
+// PREF: Disable "Show search suggestions in location bar results"
+user_pref("browser.urlbar.suggest.searches",			false);
+// PREF: When using the location bar, don't suggest URLs from browsing history
+user_pref("browser.urlbar.suggest.history",			false);
+// PREF: Disable Firefox Suggest
+// https://www.ghacks.net/2021/09/09/how-to-disable-firefox-suggest/
+// https://support.mozilla.org/en-US/kb/navigate-web-faster-firefox-suggest
+user_pref("browser.urlbar.groupLabels.enabled", false); // Firefox >= 93
+
+// PREF: Disable SSDP
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1111967
+user_pref("browser.casting.enabled",				false);
+
+// PREF: Disable automatic downloading of OpenH264 codec
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_media-capabilities
+// https://andreasgal.com/2014/10/14/openh264-now-in-firefox/
+user_pref("media.gmp-gmpopenh264.enabled",			false);
+user_pref("media.gmp-manager.url",				"");
+
+// PREF: Disable speculative pre-connections
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_speculative-pre-connections
+// https://bugzilla.mozilla.org/show_bug.cgi?id=814169
+user_pref("network.http.speculative-parallel-limit",		0);
+
+// PREF: Disable downloading homepage snippets/messages from Mozilla
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_mozilla-content
+// https://wiki.mozilla.org/Firefox/Projects/Firefox_Start/Snippet_Service
+user_pref("browser.aboutHomeSnippets.updateUrl",		"");
+
+// PREF: Never check updates for search engines
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_auto-update-checking
+user_pref("browser.search.update",				false);
+
+// PREF: Disable automatic captive portal detection (Firefox >= 52.0)
+// https://support.mozilla.org/en-US/questions/1157121
+user_pref("network.captive-portal-service.enabled",		false);
+
+// PREF: Disable (parts of?) "TopSites"
+user_pref("browser.topsites.contile.enabled",				false);
+user_pref("browser.newtabpage.activity-stream.feeds.topsites",		false);
+user_pref("browser.newtabpage.activity-stream.showSponsoredTopSites",	false);
+
+/******************************************************************************
+ * SECTION: HTTP                                                              *
+ ******************************************************************************/
+
+// PREF: Disallow NTLMv1
+// https://bugzilla.mozilla.org/show_bug.cgi?id=828183
+user_pref("network.negotiate-auth.allow-insecure-ntlm-v1",	false);
+// it is still allowed through HTTPS. uncomment the following to disable it completely.
+//user_pref("network.negotiate-auth.allow-insecure-ntlm-v1-https",		false);
+
+// PREF: Enable CSP 1.1 script-nonce directive support
+// https://bugzilla.mozilla.org/show_bug.cgi?id=855326
+user_pref("security.csp.experimentalEnabled",			true);
+
+// PREF: Enable Content Security Policy (CSP)
+// https://developer.mozilla.org/en-US/docs/Web/Security/CSP/Introducing_Content_Security_Policy
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+user_pref("security.csp.enable",				true);
+
+// PREF: Enable Subresource Integrity
+// https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+// https://wiki.mozilla.org/Security/Subresource_Integrity
+user_pref("security.sri.enable",				true);
+
+// PREF: DNT HTTP header (disabled)
+// https://www.mozilla.org/en-US/firefox/dnt/
+// https://en.wikipedia.org/wiki/Do_not_track_header
+// https://dnt-dashboard.mozilla.org
+// https://github.com/pyllyukko/user.js/issues/11
+// NOTICE: Do No Track must be enabled manually
+//user_pref("privacy.donottrackheader.enabled",		true);
+
+// PREF: Send a referer header with the target URI as the source (disabled)
+// https://bugzilla.mozilla.org/show_bug.cgi?id=822869
+// https://github.com/pyllyukko/user.js/issues/227
+// NOTICE-DISABLED: Spoofing referers breaks functionality on websites relying on authentic referer headers
+// NOTICE-DISABLED: Spoofing referers breaks visualisation of 3rd-party sites on the Lightbeam addon
+// NOTICE-DISABLED: Spoofing referers disables CSRF protection on some login pages not implementing origin-header/cookie+token based CSRF protection
+// TODO: https://github.com/pyllyukko/user.js/issues/94, commented-out XOriginPolicy/XOriginTrimmingPolicy = 2 prefs
+//user_pref("network.http.referer.spoofSource",			true);
+
+// PREF: Don't send referer headers when following links across different domains
+// https://github.com/pyllyukko/user.js/issues/227
+// https://github.com/pyllyukko/user.js/issues/328
+// https://feeding.cloud.geek.nz/posts/tweaking-referrer-for-privacy-in-firefox/
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+// NOTICE: Blocking referers across same eTLD sites breaks some login flows relying on them, consider lowering this pref to 1
+user_pref("network.http.referer.XOriginPolicy",		2);
+
+// PREF: Trim HTTP referer headers to only send the scheme, host, and port
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+user_pref("network.http.referer.trimmingPolicy",	2);
+
+// PREF: When sending Referer across domains, only send scheme, host, and port in the Referer header
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+user_pref("network.http.referer.XOriginTrimmingPolicy",	2);
+
+// PREF: Accept Only 1st Party Cookies
+// http://kb.mozillazine.org/Network.cookie.cookieBehavior#1
+// NOTICE: Blocking 3rd-party cookies breaks a number of payment gateways
+// CIS 2.5.1
+//user_pref("network.cookie.cookieBehavior",			1);
+
+// PREF: Enable first-party isolation
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1299996
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1260931
+// https://wiki.mozilla.org/Security/FirstPartyIsolation
+// NOTICE: First-party isolation breaks Microsoft Teams
+// NOTICE: First-party isolation causes HTTP basic auth to ask for credentials for every new tab (see #425)
+user_pref("privacy.firstparty.isolate",				true);
+
+// PREF: Make sure that third-party cookies (if enabled) never persist beyond the session.
+// https://feeding.cloud.geek.nz/posts/tweaking-cookies-for-privacy-in-firefox/
+// http://kb.mozillazine.org/Network.cookie.thirdparty.sessionOnly
+// https://developer.mozilla.org/en-US/docs/Cookies_Preferences_in_Mozilla#network.cookie.thirdparty.sessionOnly
+//user_pref("network.cookie.thirdparty.sessionOnly",		true);
+
+// PREF: Spoof User-agent (disabled)
+//user_pref("general.useragent.override",				"Mozilla/5.0 (Windows NT 6.1; rv:45.0) Gecko/20100101 Firefox/45.0");
+//user_pref("general.appname.override",				"Netscape");
+//user_pref("general.appversion.override",			"5.0 (Windows)");
+//user_pref("general.platform.override",				"Win32");
+//user_pref("general.oscpu.override",				"Windows NT 6.1");
+
+/*******************************************************************************
+ * SECTION: Caching                                                            *
+ ******************************************************************************/
+
+// PREF: Permanently enable private browsing mode
+// https://support.mozilla.org/en-US/kb/Private-Browsing
+// https://wiki.mozilla.org/PrivateBrowsing
+// NOTICE: You can not view or inspect cookies when in private browsing: https://bugzilla.mozilla.org/show_bug.cgi?id=823941
+// NOTICE: When Javascript is enabled, Websites can detect use of Private Browsing mode
+// NOTICE: Private browsing breaks Kerberos authentication
+// NOTICE: Disables "Containers" functionality (see below)
+// NOTICE: "Always use private browsing mode" (browser.privatebrowsing.autostart) disables the possibility to use password manager: https://support.mozilla.org/en-US/kb/usernames-and-passwords-are-not-saved#w_private-browsing
+//user_pref("browser.privatebrowsing.autostart",			true);
+
+// PREF: Do not download URLs for the offline cache
+// http://kb.mozillazine.org/Browser.cache.offline.enable
+user_pref("browser.cache.offline.enable",			false);
+
+// PREF: Clear history when Firefox closes
+// https://support.mozilla.org/en-US/kb/Clear%20Recent%20History#w_how-do-i-make-firefox-clear-my-history-automatically
+// NOTICE: Installing user.js will remove your browsing history, caches and local storage.
+// NOTICE: Installing user.js **will remove your saved passwords** (https://github.com/pyllyukko/user.js/issues/27)
+// NOTICE: Clearing open windows on Firefox exit causes 2 windows to open when Firefox starts https://bugzilla.mozilla.org/show_bug.cgi?id=1334945
+//user_pref("privacy.sanitize.sanitizeOnShutdown",		true);
+//user_pref("privacy.clearOnShutdown.cache",			true);
+//user_pref("privacy.clearOnShutdown.cookies",			true);
+user_pref("privacy.clearOnShutdown.downloads",			true);
+user_pref("privacy.clearOnShutdown.formdata",			true);
+//user_pref("privacy.clearOnShutdown.history",			true);
+user_pref("privacy.clearOnShutdown.offlineApps",		true);
+//user_pref("privacy.clearOnShutdown.sessions",			true);
+//user_pref("privacy.clearOnShutdown.openWindows",		true);
+
+// PREF: Set time range to "Everything" as default in "Clear Recent History"
+//user_pref("privacy.sanitize.timeSpan",				0);
+
+// PREF: Clear everything but "Site Preferences" in "Clear Recent History"
+user_pref("privacy.cpd.offlineApps",				true);
+//user_pref("privacy.cpd.cache",					true);
+//user_pref("privacy.cpd.cookies",				true);
+user_pref("privacy.cpd.downloads",				true);
+user_pref("privacy.cpd.formdata",				true);
+//user_pref("privacy.cpd.history",				true);
+//user_pref("privacy.cpd.sessions",				true);
+
+// PREF: Don't remember browsing history
+user_pref("places.history.enabled",				false);
+
+// PREF: Don't remember recently closed tabs
+//user_pref("browser.sessionstore.max_tabs_undo",		0);
+
+// PREF: Disable disk cache
+// http://kb.mozillazine.org/Browser.cache.disk.enable
+user_pref("browser.cache.disk.enable",				false);
+
+// PREF: Disable memory cache (disabled)
+// http://kb.mozillazine.org/Browser.cache.memory.enable
+//user_pref("browser.cache.memory.enable",		false);
+
+// PREF: Disable Caching of SSL Pages
+// CIS Version 1.2.0 October 21st, 2011 2.5.8
+// http://kb.mozillazine.org/Browser.cache.disk_cache_ssl
+user_pref("browser.cache.disk_cache_ssl",			false);
+
+// PREF: Disable download history
+// CIS Version 1.2.0 October 21st, 2011 2.5.5
+user_pref("browser.download.manager.retention",			0);
+
+// PREF: Disable password manager (use an external password manager!)
+// CIS Version 1.2.0 October 21st, 2011 2.5.2
+user_pref("signon.rememberSignons",				false);
+
+// PREF: Disable form autofill, don't save information entered in web page forms and the Search Bar
+user_pref("browser.formfill.enable",				false);
+
+// PREF: Cookies expires at the end of the session (when the browser closes)
+// http://kb.mozillazine.org/Network.cookie.lifetimePolicy#2
+//user_pref("network.cookie.lifetimePolicy",			2);
+
+// PREF: Require manual intervention to autofill known username/passwords sign-in forms
+// http://kb.mozillazine.org/Signon.autofillForms
+// https://www.torproject.org/projects/torbrowser/design/#identifier-linkability
+user_pref("signon.autofillForms",				false);
+
+// PREF: Disable formless login capture
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1166947
+user_pref("signon.formlessCapture.enabled",			false);
+
+// PREF: When username/password autofill is enabled, still disable it on non-HTTPS sites
+// https://hg.mozilla.org/integration/mozilla-inbound/rev/f0d146fe7317
+user_pref("signon.autofillForms.http",				false);
+
+// PREF: Show in-content login form warning UI for insecure login fields
+// https://hg.mozilla.org/integration/mozilla-inbound/rev/f0d146fe7317
+user_pref("security.insecure_field_warning.contextual.enabled", true);
+
+// PREF: Disable the password manager for pages with autocomplete=off (disabled)
+// https://bugzilla.mozilla.org/show_bug.cgi?id=956906
+// OWASP ASVS V9.1
+// Does not prevent any kind of auto-completion (see browser.formfill.enable, signon.autofillForms)
+//user_pref("signon.storeWhenAutocompleteOff",			false);
+
+// PREF: Delete Search and Form History
+// CIS Version 1.2.0 October 21st, 2011 2.5.6
+user_pref("browser.formfill.expire_days",			0);
+
+// PREF: Clear SSL Form Session Data
+// http://kb.mozillazine.org/Browser.sessionstore.privacy_level#2
+// Store extra session data for unencrypted (non-HTTPS) sites only.
+// CIS Version 1.2.0 October 21st, 2011 2.5.7
+// NOTE: CIS says 1, we use 2
+user_pref("browser.sessionstore.privacy_level",			2);
+
+// PREF: Delete temporary files on exit
+// https://bugzilla.mozilla.org/show_bug.cgi?id=238789
+user_pref("browser.helperApps.deleteTempFileOnExit",		true);
+
+// PREF: Do not create screenshots of visited pages (relates to the "new tab page" feature)
+// https://support.mozilla.org/en-US/questions/973320
+// https://developer.mozilla.org/en-US/docs/Mozilla/Preferences/Preference_reference/browser.pagethumbnails.capturing_disabled
+user_pref("browser.pagethumbnails.capturing_disabled",		true);
+
+// PREF: Don't fetch and permanently store favicons for Windows .URL shortcuts created by drag and drop
+// NOTICE: .URL shortcut files will be created with a generic icon
+// Favicons are stored as .ico files in \profile_dir\shortcutCache
+user_pref("browser.shell.shortcutFavicons",					false);
+
+// PREF: Disable bookmarks backups (default: 15)
+// http://kb.mozillazine.org/Browser.bookmarks.max_backups
+user_pref("browser.bookmarks.max_backups", 0);
+
+// PREF: Export bookmarks to HTML automatically when closing Firefox (disabled)
+// https://support.mozilla.org/en-US/questions/1176242
+//user_pref("browser.bookmarks.autoExportHTML", 				true);
+//user_pref("browser.bookmarks.file",	'/path/to/bookmarks-export.html');
+
+// PREF: Disable downloading of favicons in response to favicon fingerprinting techniques
+// https://github.com/jonasstrehle/supercookie
+// http://kb.mozillazine.org/Browser.chrome.site_icons
+// https://blog.mozilla.org/security/2021/01/26/supercookie-protections/
+user_pref("browser.chrome.site_icons",				false);
+
+/*******************************************************************************
+ * SECTION: UI related                                                         *
+ *******************************************************************************/
+
+// PREF: Enable insecure password warnings (login forms in non-HTTPS pages)
+// https://blog.mozilla.org/tanvi/2016/01/28/no-more-passwords-over-http-please/
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1319119
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1217156
+user_pref("security.insecure_password.ui.enabled",		true);
+
+// PREF: Disable right-click menu manipulation via JavaScript (disabled)
+//user_pref("dom.event.contextmenu.enabled",		false);
+
+// PREF: Disable "Are you sure you want to leave this page?" popups on page close
+// https://support.mozilla.org/en-US/questions/1043508
+// NOTICE: disabling "beforeunload" events may lead to losing data entered in web forms
+// Does not prevent JS leaks of the page close event.
+// https://developer.mozilla.org/en-US/docs/Web/Events/beforeunload
+//user_pref("dom.disable_beforeunload",    true);
+
+// PREF: Disable Downloading on Desktop
+// CIS 2.3.2
+user_pref("browser.download.folderList",			2);
+
+// PREF: Always ask the user where to download
+// https://developer.mozilla.org/en/Download_Manager_preferences (obsolete)
+user_pref("browser.download.useDownloadDir",			false);
+
+// PREF: Disable the "new tab page" feature and show a blank tab instead
+// https://wiki.mozilla.org/Privacy/Reviews/New_Tab
+// https://support.mozilla.org/en-US/kb/new-tab-page-show-hide-and-customize-top-sites#w_how-do-i-turn-the-new-tab-page-off
+user_pref("browser.newtabpage.enabled",				false);
+user_pref("browser.newtab.url",					"about:blank");
+
+// PREF: Disable Snippets
+// https://wiki.mozilla.org/Firefox/Projects/Firefox_Start/Snippet_Service
+// https://support.mozilla.org/en-US/kb/snippets-firefox-faq
+user_pref("browser.newtabpage.activity-stream.feeds.snippets",	false);
+
+// PREF: Disable Activity Stream
+// https://wiki.mozilla.org/Firefox/Activity_Stream
+user_pref("browser.newtabpage.activity-stream.enabled",		false);
+
+// PREF: Disable new tab tile ads & preload
+// http://www.thewindowsclub.com/disable-remove-ad-tiles-from-firefox
+// http://forums.mozillazine.org/viewtopic.php?p=13876331#p13876331
+// https://wiki.mozilla.org/Tiles/Technical_Documentation#Ping
+// https://gecko.readthedocs.org/en/latest/browser/browser/DirectoryLinksProvider.html#browser-newtabpage-directory-source
+// https://gecko.readthedocs.org/en/latest/browser/browser/DirectoryLinksProvider.html#browser-newtabpage-directory-ping
+// TODO: deprecated? not in DXR, some dead links
+user_pref("browser.newtabpage.enhanced",			false);
+user_pref("browser.newtab.preload",				false);
+user_pref("browser.newtabpage.directory.ping",			"");
+user_pref("browser.newtabpage.directory.source",		"data:text/plain,{}");
+
+// PREF: Disable Mozilla VPN ads on the about:protections page
+// https://support.mozilla.org/en-US/kb/what-mozilla-vpn-and-how-does-it-work
+// https://en.wikipedia.org/wiki/Mozilla_VPN
+// https://blog.mozilla.org/security/2021/08/31/mozilla-vpn-security-audit/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2021-31/
+user_pref("browser.vpn_promo.enabled",			false);
+
+// PREF: Enable Auto Notification of Outdated Plugins (Firefox < 50)
+// https://wiki.mozilla.org/Firefox3.6/Plugin_Update_Awareness_Security_Review
+// CIS Version 1.2.0 October 21st, 2011 2.1.2
+// https://hg.mozilla.org/mozilla-central/rev/304560
+user_pref("plugins.update.notifyUser",				true);
+
+// PREF: Force Punycode for Internationalized Domain Names
+// http://kb.mozillazine.org/Network.IDN_show_punycode
+// https://www.xudongz.com/blog/2017/idn-phishing/
+// https://wiki.mozilla.org/IDN_Display_Algorithm
+// https://en.wikipedia.org/wiki/IDN_homograph_attack
+// https://www.mozilla.org/en-US/security/advisories/mfsa2017-02/
+// CIS Mozilla Firefox 24 ESR v1.0.0 - 3.6
+user_pref("network.IDN_show_punycode",				true);
+
+// PREF: Disable inline autocomplete in URL bar
+// http://kb.mozillazine.org/Inline_autocomplete
+user_pref("browser.urlbar.autoFill",				false);
+user_pref("browser.urlbar.autoFill.typed",			false);
+
+// PREF: Disable CSS :visited selectors
+// https://blog.mozilla.org/security/2010/03/31/plugging-the-css-history-leak/
+// https://dbaron.org/mozilla/visited-privacy
+user_pref("layout.css.visited_links_enabled",			false);
+
+// PREF: Disable URL bar autocomplete and history/bookmarks suggestions dropdown
+// http://kb.mozillazine.org/Disabling_autocomplete_-_Firefox#Firefox_3.5
+user_pref("browser.urlbar.autocomplete.enabled",		false);
+
+// PREF: Do not check if Firefox is the default browser
+user_pref("browser.shell.checkDefaultBrowser",			false);
+
+// PREF: When password manager is enabled, lock the password storage periodically
+// CIS Version 1.2.0 October 21st, 2011 2.5.3 Disable Prompting for Credential Storage
+user_pref("security.ask_for_password",				2);
+
+// PREF: Lock the password storage every 1 minutes (default: 30)
+user_pref("security.password_lifetime",				1);
+
+// PREF: Display a notification bar when websites offer data for offline use
+// http://kb.mozillazine.org/Browser.offline-apps.notify
+user_pref("browser.offline-apps.notify",			true);
+
+/******************************************************************************
+ * SECTION: Cryptography                                                      *
+ ******************************************************************************/
+
+// PREF: Enable HTTPS-Only Mode
+// https://blog.mozilla.org/security/2020/11/17/firefox-83-introduces-https-only-mode/
+// https://www.feistyduck.com/bulletproof-tls-newsletter/issue_71_firefox_introduces_https_only_mode
+user_pref("dom.security.https_only_mode",			true);
+
+// PREF: Enable HSTS preload list (pre-set HSTS sites list provided by Mozilla)
+// https://blog.mozilla.org/security/2012/11/01/preloading-hsts/
+// https://wiki.mozilla.org/Privacy/Features/HSTS_Preload_List
+// https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security
+user_pref("network.stricttransportsecurity.preloadlist",	true);
+
+// PREF: Enable Online Certificate Status Protocol
+// https://en.wikipedia.org/wiki/Online_Certificate_Status_Protocol
+// https://www.imperialviolet.org/2014/04/19/revchecking.html
+// https://www.maikel.pro/blog/current-state-certificate-revocation-crls-ocsp/
+// https://wiki.mozilla.org/CA:RevocationPlan
+// https://wiki.mozilla.org/CA:ImprovingRevocation
+// https://wiki.mozilla.org/CA:OCSP-HardFail
+// https://news.netcraft.com/archives/2014/04/24/certificate-revocation-why-browsers-remain-affected-by-heartbleed.html
+// https://news.netcraft.com/archives/2013/04/16/certificate-revocation-and-the-performance-of-ocsp.html
+// NOTICE: OCSP leaks your IP and domains you visit to the CA when OCSP Stapling is not available on visited host
+// NOTICE: OCSP is vulnerable to replay attacks when nonce is not configured on the OCSP responder
+// NOTICE: OCSP adds latency (performance)
+// NOTICE: Short-lived certificates are not checked for revocation (security.pki.cert_short_lifetime_in_days, default:10)
+// CIS Version 1.2.0 October 21st, 2011 2.2.4
+user_pref("security.OCSP.enabled",				1);
+
+// PREF: Enable OCSP Stapling support
+// https://en.wikipedia.org/wiki/OCSP_stapling
+// https://blog.mozilla.org/security/2013/07/29/ocsp-stapling-in-firefox/
+// https://www.digitalocean.com/community/tutorials/how-to-configure-ocsp-stapling-on-apache-and-nginx
+user_pref("security.ssl.enable_ocsp_stapling",			true);
+
+// PREF: Enable OCSP Must-Staple support (Firefox >= 45)
+// https://blog.mozilla.org/security/2015/11/23/improving-revocation-ocsp-must-staple-and-short-lived-certificates/
+// https://www.entrust.com/ocsp-must-staple/
+// https://github.com/schomery/privacy-settings/issues/40
+// NOTICE: Firefox falls back on plain OCSP when must-staple is not configured on the host certificate
+user_pref("security.ssl.enable_ocsp_must_staple",		true);
+
+// PREF: Require a valid OCSP response for OCSP enabled certificates (disabled)
+// https://groups.google.com/forum/#!topic/mozilla.dev.security/n1G-N2-HTVA
+// https://www.feistyduck.com/newsletter/issue_121_the_slow_death_of_ocsp
+// Disabling this will make OCSP bypassable by MitM attacks suppressing OCSP responses
+// NOTICE:  security.OCSP.require  will make the connection fail when the OCSP responder is unavailable
+// NOTICE:  security.OCSP.require  is known to break browsing on some [captive portals](https://en.wikipedia.org/wiki/Captive_portal)
+//user_pref("security.OCSP.require",				true);
+
+// PREF: Disable TLS Session Tickets
+// https://www.blackhat.com/us-13/briefings.html#NextGen
+// https://media.blackhat.com/us-13/US-13-Daigniere-TLS-Secrets-Slides.pdf
+// https://media.blackhat.com/us-13/US-13-Daigniere-TLS-Secrets-WP.pdf
+// https://bugzilla.mozilla.org/show_bug.cgi?id=917049
+// https://bugzilla.mozilla.org/show_bug.cgi?id=967977
+user_pref("security.ssl.disable_session_identifiers",		true);
+
+// PREF: Only allow TLS 1.[2-3]
+// http://kb.mozillazine.org/Security.tls.version.*
+// 1 = TLS 1.0 is the minimum required / maximum supported encryption protocol. (This is the current default for the maximum supported version.)
+// 2 = TLS 1.1 is the minimum required / maximum supported encryption protocol.
+// 3 = TLS 1.2 is the minimum required / maximum supported encryption protocol.
+// 4 = TLS 1.3 is the minimum required / maximum supported encryption protocol.
+user_pref("security.tls.version.min",				3);
+user_pref("security.tls.version.max",				4);
+
+// PREF: Disable insecure TLS version fallback
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1084025
+// https://github.com/pyllyukko/user.js/pull/206#issuecomment-280229645
+user_pref("security.tls.version.fallback-limit",		4);
+
+// PREF: Enforce Public Key Pinning
+// https://en.wikipedia.org/wiki/HTTP_Public_Key_Pinning
+// https://wiki.mozilla.org/SecurityEngineering/Public_Key_Pinning
+// "2. Strict. Pinning is always enforced."
+user_pref("security.cert_pinning.enforcement_level",		2);
+
+// PREF: Disallow SHA-1
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1302140
+// https://shattered.io/
+user_pref("security.pki.sha1_enforcement_level",		1);
+
+// PREF: Warn the user when server doesn't support RFC 5746 ("safe" renegotiation)
+// https://wiki.mozilla.org/Security:Renegotiation#security.ssl.treat_unsafe_negotiation_as_broken
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2009-3555
+user_pref("security.ssl.treat_unsafe_negotiation_as_broken",	true);
+
+// PREF: Disallow connection to servers not supporting safe renegotiation (disabled)
+// https://wiki.mozilla.org/Security:Renegotiation#security.ssl.require_safe_negotiation
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2009-3555
+// TODO:  security.ssl.require_safe_negotiation  is more secure but makes browsing next to impossible (2012-2014-... -  ssl_error_unsafe_negotiation  errors), so is left disabled
+//user_pref("security.ssl.require_safe_negotiation",		true);
+
+// PREF: Disable automatic reporting of TLS connection errors
+// https://support.mozilla.org/en-US/kb/certificate-pinning-reports
+// we could also disable security.ssl.errorReporting.enabled, but I think it's
+// good to leave the option to report potentially malicious sites if the user
+// chooses to do so.
+// you can test this at https://pinningtest.appspot.com/
+user_pref("security.ssl.errorReporting.automatic",		false);
+
+// PREF: Pre-populate the current URL but do not pre-fetch the certificate in the "Add Security Exception" dialog
+// http://kb.mozillazine.org/Browser.ssl_override_behavior
+// https://github.com/pyllyukko/user.js/issues/210
+user_pref("browser.ssl_override_behavior",			1);
+
+// PREF: Encrypted SNI (when TRR is enabled)
+// https://www.cloudflare.com/ssl/encrypted-sni/
+// https://wiki.mozilla.org/Trusted_Recursive_Resolver#ESNI
+// https://en.wikipedia.org/wiki/Server_Name_Indication#Security_implications_(ESNI)
+user_pref("network.security.esni.enabled",			true);
+
+// PREF: Disable the Enterprise Roots preference
+// https://support.mozilla.org/en-US/kb/how-disable-enterprise-roots-preference
+// https://github.com/pyllyukko/user.js/issues/560
+user_pref("security.certerrors.mitm.auto_enable_enterprise_roots",	false);
+user_pref("security.enterprise_roots.enabled",				false);
+
+/******************************************************************************
+ * SECTION: Cipher suites                                                     *
+ ******************************************************************************/
+
+// PREF: Disable null ciphers
+user_pref("security.ssl3.rsa_null_sha",				false);
+user_pref("security.ssl3.rsa_null_md5",				false);
+user_pref("security.ssl3.ecdhe_rsa_null_sha",			false);
+user_pref("security.ssl3.ecdhe_ecdsa_null_sha",			false);
+user_pref("security.ssl3.ecdh_rsa_null_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_null_sha",			false);
+
+// PREF: Disable SEED cipher
+// https://en.wikipedia.org/wiki/SEED
+user_pref("security.ssl3.rsa_seed_sha",				false);
+
+// PREF: Disable 40/56/128-bit ciphers
+// 40-bit ciphers
+user_pref("security.ssl3.rsa_rc4_40_md5",			false);
+user_pref("security.ssl3.rsa_rc2_40_md5",			false);
+// 56-bit ciphers
+user_pref("security.ssl3.rsa_1024_rc4_56_sha",			false);
+// 128-bit ciphers
+user_pref("security.ssl3.rsa_camellia_128_sha",			false);
+user_pref("security.ssl3.ecdhe_rsa_aes_128_sha",		false);
+user_pref("security.ssl3.ecdhe_ecdsa_aes_128_sha",		false);
+user_pref("security.ssl3.ecdh_rsa_aes_128_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_aes_128_sha",		false);
+user_pref("security.ssl3.dhe_rsa_camellia_128_sha",		false);
+user_pref("security.ssl3.dhe_rsa_aes_128_sha",			false);
+
+// PREF: Disable RC4
+// https://developer.mozilla.org/en-US/Firefox/Releases/38#Security
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1138882
+// https://rc4.io/
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2013-2566
+user_pref("security.ssl3.ecdh_ecdsa_rc4_128_sha",		false);
+user_pref("security.ssl3.ecdh_rsa_rc4_128_sha",			false);
+user_pref("security.ssl3.ecdhe_ecdsa_rc4_128_sha",		false);
+user_pref("security.ssl3.ecdhe_rsa_rc4_128_sha",		false);
+user_pref("security.ssl3.rsa_rc4_128_md5",			false);
+user_pref("security.ssl3.rsa_rc4_128_sha",			false);
+user_pref("security.tls.unrestricted_rc4_fallback",		false);
+
+// PREF: Disable 3DES (effective key size is < 128)
+// https://en.wikipedia.org/wiki/3des#Security
+// http://en.citizendium.org/wiki/Meet-in-the-middle_attack
+// http://www-archive.mozilla.org/projects/security/pki/nss/ssl/fips-ssl-ciphersuites.html
+user_pref("security.ssl3.dhe_dss_des_ede3_sha",			false);
+user_pref("security.ssl3.dhe_rsa_des_ede3_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_des_ede3_sha",		false);
+user_pref("security.ssl3.ecdh_rsa_des_ede3_sha",		false);
+user_pref("security.ssl3.ecdhe_ecdsa_des_ede3_sha",		false);
+user_pref("security.ssl3.ecdhe_rsa_des_ede3_sha",		false);
+user_pref("security.ssl3.rsa_des_ede3_sha",			false);
+user_pref("security.ssl3.rsa_fips_des_ede3_sha",		false);
+
+// PREF: Disable ciphers with ECDH (non-ephemeral)
+user_pref("security.ssl3.ecdh_rsa_aes_256_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_aes_256_sha",		false);
+
+// PREF: Disable 256 bits ciphers without PFS
+user_pref("security.ssl3.rsa_camellia_256_sha",			false);
+
+// PREF: Enable GCM ciphers (TLSv1.2 only)
+// https://en.wikipedia.org/wiki/Galois/Counter_Mode
+user_pref("security.ssl3.ecdhe_ecdsa_aes_128_gcm_sha256",	true); // 0xc02b
+user_pref("security.ssl3.ecdhe_rsa_aes_128_gcm_sha256",		true); // 0xc02f
+
+// PREF: Enable ChaCha20 and Poly1305 (Firefox >= 47)
+// https://www.mozilla.org/en-US/firefox/47.0/releasenotes/
+// https://tools.ietf.org/html/rfc7905
+// https://bugzilla.mozilla.org/show_bug.cgi?id=917571
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1247860
+// https://cr.yp.to/chacha.html
+user_pref("security.ssl3.ecdhe_ecdsa_chacha20_poly1305_sha256",	true);
+user_pref("security.ssl3.ecdhe_rsa_chacha20_poly1305_sha256",	true);
+
+// PREF: Disable ciphers susceptible to the logjam attack
+// https://weakdh.org/
+user_pref("security.ssl3.dhe_rsa_camellia_256_sha",		false);
+user_pref("security.ssl3.dhe_rsa_aes_256_sha",			false);
+
+// PREF: Disable ciphers with DSA (max 1024 bits)
+user_pref("security.ssl3.dhe_dss_aes_128_sha",			false);
+user_pref("security.ssl3.dhe_dss_aes_256_sha",			false);
+user_pref("security.ssl3.dhe_dss_camellia_128_sha",		false);
+user_pref("security.ssl3.dhe_dss_camellia_256_sha",		false);
+
+// PREF: Ciphers with CBC & SHA-1 (disabled)
+//user_pref("security.ssl3.rsa_aes_256_sha",			false); // 0x35
+//user_pref("security.ssl3.rsa_aes_128_sha",			false); // 0x2f
+//user_pref("security.ssl3.ecdhe_rsa_aes_256_sha",		false); // 0xc014
+//user_pref("security.ssl3.ecdhe_ecdsa_aes_256_sha",		false); // 0xc00a
+
+// PREF: Enable X25519Kyber768Draft00 (post-quantum key exchange) [FF Nightly 2024-01-18+]
+// https://datatracker.ietf.org/doc/draft-tls-westerbaan-xyber768d00/
+// https://twitter.com/bwesterb/status/1748017372764475519
+// https://pq.cloudflareresearch.com/
+user_pref("security.tls.enable_kyber",				true);
+EOFUS
+  for curFile in $(find ~ -name prefs.js 2> /dev/null | grep firefox)
+  do
+    curDir=$(dirname $curFile)
+    cp $HOME/user.js $curDir/
+  done
+  rm -f $HOME/user.js
+}
+
 # Initialization
 function createInitialEnv()
 {
@@ -14860,7 +16825,7 @@ function createInitialEnv()
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of your configuration file (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file.\nENSURE you remember this or you will be IRREVERSIBLY locked\nout of your configuration file (unless you have a quantum\nsuper-computer) and you will not be able to apply updates,\nadd new services, do networking functions, etc.: ")
     if [ $? -ne 0 ]; then exit; fi
     if [ -z "$tmp_pw1" ]; then
       showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -14901,18 +16866,20 @@ function createHSHQLog()
   fi
 }
 
+# Version Updates
 function checkUpdateVersion()
 {
   if [ "$IS_INSTALLED" = "false" ] || [ "$IS_PERFORM_RESTORE" = "true" ]; then
     return
   fi
   is_update_performed=false
-  if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
+  if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     set +e
     checkAddAllNewSvcs
     set -e
     is_update_performed=true
     sudo -v
+    pauseCronService
   fi
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
@@ -15160,12 +17127,6 @@ function checkUpdateVersion()
     HSHQ_VERSION=80
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 82 ]; then
-    echo "Updating to Version 82..."
-    version82Update
-    HSHQ_VERSION=82
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
   if [ $HSHQ_VERSION -lt 83 ]; then
     echo "Updating to Version 83..."
     version83Update
@@ -15268,20 +17229,68 @@ function checkUpdateVersion()
     HSHQ_VERSION=121
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
-    echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
-    HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
+  if [ $HSHQ_VERSION -lt 126 ]; then
+    echo "Updating to Version 126..."
+    version126Update
+    HSHQ_VERSION=126
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
+    echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
+    HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ "$is_update_performed" = "true" ]; then
     set +e
     outputStackListsScriptServer
-    outputAllScriptServerScripts
+    outputAllScriptServerScripts true false
+    resumeCronService
     set -e
   fi
+  unset USER_RELAY_SUDO_PW
+  USER_RELAY_SUDO_PW=""
 }
 
-# Version Updates
+function performPreUpdateCheck()
+{
+  # This function is more of a placeholder at the moment,
+  # reserved for future possible use. We already have sudo
+  # and decrypted config file, so just return.
+  return
+}
+
+function promptTestRelayServerPassword()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ $PRIOR_HSHQ_VERSION -ge $LAST_RELAYSERVER_VERSION_UPDATE ]; then
+    return
+  fi
+  while [ -z "$USER_RELAY_SUDO_PW" ]
+  do
+    USER_RELAY_SUDO_PW=$(promptPasswordMenu "Enter Relay Password" "Enter your RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: ")
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      exit 3
+    fi
+    if [ "$(testRelayServerPassword)" = "false" ]; then
+      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      USER_RELAY_SUDO_PW=""
+    fi
+  done
+}
+
+function testRelayServerPassword()
+{
+  set +e
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v" <<< "$USER_RELAY_SUDO_PW" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+  unloadSSHKey
+}
+
 function version14Update()
 {
   v14_curE=${-//[^e]/}
@@ -15834,7 +17843,7 @@ EOFR
 
 function version26Update()
 {
-  outputRestartStacksBootscript
+  outputPerformPostDockerBootActionsScript
   deleteFromRootCron "restartHomeAssistantStack.sh"
   appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh"
 }
@@ -16261,7 +18270,7 @@ function version46Update()
     sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set name='Script-server', url='https://script-server.$HOMESERVER_DOMAIN' where name='HSHQ Manager';"
     docker container restart authelia > /dev/null 2>&1
     installStackByName script-server
-    closeHSHQScript "version46Update"
+    releaseLock hshqopen "version46Update" false
     sudo systemctl disable runHSHQManager
     sudo systemctl stop runHSHQManager
     echo -e "\n\nPlease restart the hshq.sh script to complete the update.\n"
@@ -16518,7 +18527,7 @@ function version53Update()
 {
   set +e
   outputMaintenanceScripts
-  outputWGInternetUpBootscript
+  outputPerformPostDockerBootActionsScript
   deleteFromRootCron "restartHomeAssistantStack.sh"
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
@@ -16533,14 +18542,10 @@ EOFBS
   if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then
     sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   fi
-  if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh ]; then
-    sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/20-restartWG.sh
-  fi
   if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/dockerWireGuardCaddyFix.sh ]; then
     sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/dockerWireGuardCaddyFix.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/50-dockerWireGuardCaddyFix.sh
   fi
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartHomeAssistantStack.sh
-  outputRestartStacksBootscript
   updateSysctl false
   if [ -f $HSHQ_STACKS_DIR/coturn/turnserver.conf ]; then
     grep $COTURN_COMMS_MIN_PORT $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
@@ -16771,8 +18776,7 @@ function version72Update()
 {
   mkdir -p $HSHQ_WIREGUARD_DIR/logs
   outputWGDockInternetScript
-  outputUpdateEndpointIPsScript
-  outputWGInternetUpBootscript
+  outputPerformPostDockerBootActionsScript
   sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
   sudo systemctl start networkd-dispatcher > /dev/null 2>&1
   sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
@@ -16808,7 +18812,6 @@ function version75Update()
 
 function version76Update()
 {
-  outputUpdateEndpointIPsScript
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     outputRelayServerInstallSetupScript
     outputRelayServerInstallTransferScript
@@ -16817,7 +18820,7 @@ function version76Update()
 
 function version78Update()
 {
-  outputPingGatewayBootscript
+  outputPerformPostDockerBootActionsScript
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\nUpdating the mail relay postfix image on the RelayServer."
     set +e
@@ -16826,7 +18829,7 @@ function version78Update()
     set -e
     if [ $nrsl_retVal -eq 0 ]; then
       loadSSHKey
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"  <<< "$USER_RELAY_SUDO_PW"
       unloadSSHKey
     fi
   fi
@@ -16836,13 +18839,6 @@ function version80Update()
 {
   set +e
   clearAllScriptServerScripts
-  set -e
-}
-
-function version82Update()
-{
-  set +e
-  outputUpdateEndpointIPsScript
   set -e
 }
 
@@ -16857,7 +18853,7 @@ function version84Update()
 {
   set +e
   outputWGDockInternetScript
-  outputWGInternetUpBootscript
+  outputPerformPostDockerBootActionsScript
   set -e
 }
 
@@ -16899,7 +18895,7 @@ function version86Update()
   do
     sudo ip rule delete priority 20 > /dev/null 2>&1
   done
-  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh > /dev/null 2>&1
+  wgDockInternetUpAll
   set -e
 }
 
@@ -16938,7 +18934,7 @@ function version98Update()
 {
   set +e
   initServicesCredentials
-  outputPingGatewayBootscript
+  outputPerformPostDockerBootActionsScript
   set -e
 }
 
@@ -16996,7 +18992,7 @@ EOFWZ
       chmod 640 $HOME/authd.pass
       loadSSHKey
       scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent"
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v;sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent" <<< "$USER_RELAY_SUDO_PW"
       unloadSSHKey
       rm -f $HOME/authd.pass
     fi
@@ -17110,7 +19106,7 @@ EOFHS
 function version119Update()
 {
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh
-  outputRestartStacksBootscript
+  outputPerformPostDockerBootActionsScript
 }
 
 function version120Update()
@@ -17511,7 +19507,6 @@ EOFRS
   echo "Updating Sysctl..."
   updateSysctl true
   outputMaintenanceScripts
-  outputUpdateEndpointIPsScript
   outputWGDockInternetScript
   PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   jitsiStackID=$(getStackID jitsi "$PORTAINER_TOKEN")
@@ -17537,12 +19532,30 @@ EOFRS
   fi
   outputBootScripts
   echo "Updating cronjobs..."
-  sudo crontab -l > $HOME/rootcron
-  echo "*/$CHECKIP_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$UPDATE_IPTABLES_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  sudo crontab $HOME/rootcron
-  sudo rm -f $HOME/rootcron
+  initCronJobs
   set -e
+}
+
+function version126Update()
+{
+  ema1=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $CONFIG_FILE)
+  ema2=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $HSHQ_PLAINTEXT_ROOT_CONFIG)
+  if ! [ -z "$ema1" ] && [ -z "$ema2" ]; then
+    updatePlaintextRootConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
+    sed -i "/^EMAIL_ADMIN_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
+  fi
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
+  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/*.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
+  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+  sudo sed -i "s/CHECKIP_REFRESH_RATE/NETWORK_UPDATE_INTERVAL/" $HSHQ_PLAINTEXT_ROOT_CONFIG >/dev/null
+  outputUpdateIPTablesBeforeNetworkBootscript
+  outputPerformPostDockerBootActionsScript
+  outputPerformNetworkingChecks
+  outputWireGuardScripts
+  initCronJobs
 }
 
 function updateRelayServerWithScript()
@@ -17559,7 +19572,7 @@ function updateRelayServerWithScript()
     if [ $nrsl_retVal -eq 0 ]; then
       loadSSHKey
       scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh; rm -f ~/rsUpdateScript.sh"
+      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v;bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" <<< "$USER_RELAY_SUDO_PW"
       unloadSSHKey
     fi
   fi
@@ -17690,6 +19703,8 @@ function moveVarsToPlaintextFile()
   sudo sed -i "/^JITSI_ADVERTISE_IPS=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^# Jitsi (Service Details) BEGIN/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^# Jitsi (Service Details) END/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Adguard (Service Details) BEGIN/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Adguard (Service Details) END/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^HOMESERVER_HOST_IP=/d" $CONFIG_FILE >/dev/null
   cat -s $CONFIG_FILE > $HSHQ_CONFIG_DIR/tmpfile
   mv $HSHQ_CONFIG_DIR/tmpfile $CONFIG_FILE
@@ -18734,7 +20749,8 @@ function nukeHSHQ()
   sudo systemctl stop createWGDockerNetworks
   sudo systemctl disable createWGDockerNetworks
   sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
-  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
+  sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
   sudo systemctl stop runOnBootRootBeforeNetwork
   sudo systemctl disable runOnBootRootBeforeNetwork
   sudo rm -f /etc/systemd/system/runOnBootRootBeforeNetwork.service
@@ -18784,8 +20800,9 @@ function nukeHSHQ()
   else
     sudo chmod +x /etc/update-motd.d/*
   fi
-  sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
-  rm -f /home/$USERNAME/install.txt
+  releaseLock hshqopen "nukem" true
+  rm -f "/home/$USERNAME/$HSHQ_INSTALL_NOTES_FILENAME"
+  rm -f "/home/$USERNAME/Desktop/$HSHQ_INSTALL_NOTES_FILENAME"
   #sudo reboot
   exit 2
 }
@@ -18848,8 +20865,9 @@ EOFBS
   sudo tee $HSHQ_SCRIPTS_DIR/boot/runOnBootRootAfterDocker.service >/dev/null <<EOFBS
 [Unit]
 Description=HSHQ Startup Script (After Docker)
-After=docker.service
+After=docker.service runOnBootRootBeforeNetwork.service
 BindsTo=docker.service
+Requires=runOnBootRootBeforeNetwork.service
 
 [Service]
 Type=oneshot
@@ -18866,12 +20884,8 @@ EOFBS
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRootAfterDocker
 
-  outputRestartStacksBootscript
-  outputWGInternetUpBootscript
-  outputPingGatewayBootscript
-  outputSysCtlBootscript
   outputUpdateIPTablesBeforeNetworkBootscript
-  outputUpdateIPTablesAfterDockerBootscript
+  outputPerformPostDockerBootActionsScript
 }
 
 function checkUpdateAllIPTables()
@@ -18895,13 +20909,6 @@ function checkUpdateAllIPTables()
   if [ -f $HSHQ_CUSTOM_PRE_IPTABLES_SCRIPT ]; then
     bash $HSHQ_CUSTOM_PRE_IPTABLES_SCRIPT "$netstate"
   fi
-
-  echo "Test Write" | sudo tee $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt > /dev/null
-  if ! sudo test -f $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt; then
-    logHSHQEvent error "IPTables ($netstate) - Could not write to temp file, exiting..."
-    return
-  fi
-  sudo rm -f $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt
 
   isInit=false
   sudo iptables -t raw -n -L chain-icmp > /dev/null 2>&1
@@ -19200,6 +21207,7 @@ function checkUpdateAllIPTables()
       fi
     done
     unset allIPTCommentsArr
+    allIPTCommentsArr=""
   done
   IFS=$OLDIFS
 
@@ -19359,6 +21367,7 @@ function deleteIPTableEntryByChainAndComment()
   IFS=$(echo -en "\n\b")
   ipt_list=($(sudo iptables -t $ipt_table -n -L $ipt_chain --line-numbers | grep "$ipt_comment"))
   unset rule_list
+  rule_list=""
   for cur_ipt in "${ipt_list[@]}"
   do
     rule_list+=( $(echo $cur_ipt | cut -d" " -f1 | xargs) )
@@ -19385,28 +21394,6 @@ function addIPTablesSpoofRule()
   checkAddRule "$comment" 'sudo iptables -t raw -A chain-ipspoof -s $ipt_source_subnet ! -i $ipt_interface_name -m comment --comment "$comment" -j DROP'
   comment="HSHQ_BEGIN chain-ipspoof ! -s $ipt_source_subnet -i $ipt_interface_name HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -t raw -A chain-ipspoof ! -s $ipt_source_subnet -i $ipt_interface_name -m comment --comment "$comment" -j DROP'
-}
-
-function outputRestartStacksBootscript()
-{
-  sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/afterdocker
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
-
-function main()
-{
-  source \$HSHQ_LIB_SCRIPT lib
-  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  restartStacksOnBoot
-}
-main
-EOFBS
-
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh
 }
 
 function restartStacksOnBoot()
@@ -19495,66 +21482,36 @@ function restartStacksOnBoot()
 
 function outputPerformNetworkingChecks()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh >/dev/null <<EOFBS
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
 
 function main()
 {
-  sleep 30
+  source \$HSHQ_LIB_DIR/\$LOCK_UTILS_FILENAME
+  checkRes=\$(tryGetLock networkchecks performNetworkingChecks)
+  if ! [ -z "\$checkRes" ]; then
+    strErr="Cannot obtain networkchecks lock: \$checkRes, exiting..."
+    logHSHQEvent error "\$strErr"
+    echo "ERROR: \$strErr"
+    exit 7
+  fi
   source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  if [ "\$IS_AUTO_UPDATE_NETWORK" = "true" ]; then
-    checkHostAllInterfaceIPChanges false checkIP-cronjob > /dev/null 2>&1
-  fi
-}
-main
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
-
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
-
-function main()
-{
-  sleep 5
-  source \$HSHQ_LIB_SCRIPT lib
-  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  if [ "\$IS_AUTO_UPDATE_NETWORK" = "true" ]; then
-    checkUpdateIPTablesCron > /dev/null 2>&1
-  fi
-}
-main
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
+  source \$HSHQ_PLAINTEXT_USER_CONFIG
+  set +e
+  checkAllHSHQNetworking "\$@"
+  releaseLock networkchecks "performNetworkingChecks" false
 }
 
-function outputWGInternetUpBootscript()
-{
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh >/dev/null <<EOFWC
-#!/bin/bash
-set +e
-# This script initializes all of the tunnelled WireGuard internet-bound connections that are bound to a docker network.
-
-HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
-
-function main()
-{
-  sudo \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
-}
 main "\$@"
-
-EOFWC
-
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh
+EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
 }
 
 function outputDBExportScripts()
@@ -19626,7 +21583,7 @@ function main()
       fi
     done
     if [ "\$is_new_certs" = "true" ]; then
-      docker ps --filter name=caddy- -aq | xargs docker restart
+      docker ps --filter name=caddy- -aq | xargs docker restart > /dev/null 2>&1
     fi
   fi
 }
@@ -19787,100 +21744,170 @@ EOFWG
   outputPerformNetworkingChecks
 }
 
-function outputPingGatewayBootscript()
-{
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/15-pingGateway.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/15-pingGateway.sh >/dev/null <<EOFPO
-#!/bin/bash
-
-# This script pings the gateway/router on boot.
-# It's purpose is to address issues on older routers
-# with hosts on the network that have static IP
-# addresses (as this server does).
-
-timeout_length=30
-ping_count=10
-
-cur_gate=\$(ip route | grep -e "^default" | head -n 1 | awk '{print \$3}')
-timeout \$timeout_length ping -c \$ping_count \$cur_gate > /dev/null
-
-EOFPO
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/15-pingGateway.sh
-}
-
-function outputSysCtlBootscript()
-{
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-updateSysctl.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-updateSysctl.sh >/dev/null <<EOFPO
-#!/bin/bash
-
-sysctl --system > /dev/null 2>&1
-EOFPO
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-updateSysctl.sh
-}
-
 function outputUpdateIPTablesBeforeNetworkBootscript()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh >/dev/null <<EOFBS
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/10-updateIPTablesBeforeNetwork.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/beforenetwork/10-updateIPTablesBeforeNetwork.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
 
 function main()
 {
+  source \$HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+  releaseLock hshqopen performPostDockerBootActions true
+  tryGetLock hshqopen performPostDockerBootActions
+  releaseLock networkchecks performPostDockerBootActions true
+  tryGetLock networkchecks performPostDockerBootActions
+
   source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  checkRes=\$(tryOpenHSHQScript boot)
-  if ! [ -z "\$checkRes" ]; then
-    echo "The HSHQ script is running in another instance (\$checkRes), returning..."
-    return
-  fi
+  notifyBootInit
   checkUpdateAllIPTables prenetwork
-  closeHSHQScript "updateIPTablesBeforeNetwork"
+  releaseLock networkchecks BeforeNetwork false
+  releaseLock hshqopen BeforeNetwork false
 }
 main
 EOFBS
-
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/beforenetwork/10-updateIPTablesBeforeNetwork.sh
 }
 
-function outputUpdateIPTablesAfterDockerBootscript()
+function outputPerformPostDockerBootActionsScript()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-updateIPTablesAfterDocker.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-updateIPTablesAfterDocker.sh >/dev/null <<EOFBS
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
 
 function main()
 {
+  source \$HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+  checkRes=\$(tryGetLock hshqopen performPostDockerBootActions)
+  if ! [ -z "\$checkRes" ]; then
+    # This should absolutely never happen due to boot order
+    strErr="performPostDockerBootActions - Cannot obtain hshqopen lock: \$checkRes, exiting..."
+    logHSHQEvent error "\$strErr"
+    echo "ERROR: \$strErr"
+    exit 2
+  fi
+  checkRes=\$(tryGetLock networkchecks performPostDockerBootActions)
+  if ! [ -z "\$checkRes" ]; then
+    # This should absolutely never happen due to boot order
+    strErr="performPostDockerBootActions - Cannot obtain networkchecks lock: \$checkRes, exiting..."
+    logHSHQEvent error "\$strErr"
+    echo "ERROR: \$strErr"
+    exit 3
+  fi
   source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  checkRes=\$(tryOpenHSHQScript AfterDocker)
-  if ! [ -z "\$checkRes" ]; then
-    echo "The HSHQ script is running in another instance (\$checkRes), returning..."
-    return
-  fi
-  checkUpdateAllIPTables postdocker
-  closeHSHQScript "updateIPTablesAfterDocker"
+  source \$HSHQ_PLAINTEXT_USER_CONFIG
+  performPostDockerBootActions
+  notifyBootComplete
+  releaseLock networkchecks performPostDockerBootActions false
+  releaseLock hshqopen performPostDockerBootActions false
 }
 main
 EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh
+}
 
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-updateIPTablesAfterDocker.sh
+function performPostDockerBootActions()
+{
+  # Replaces 10-updateIPTablesAfterDocker.sh
+  checkUpdateAllIPTables performPostDockerBootActions
+
+  # Replaces 10-updateSysctl.sh
+  sysctl --system > /dev/null 2>&1
+
+  # Replaces 15-pingGateway.sh
+  cur_gate=$(ip route | grep -e "^default" | head -n 1 | awk '{print $3}')
+  timeout 30 ping -c 10 $cur_gate > /dev/null
+
+  # Replaces 20-restartWG.sh
+  if [ -f /etc/wireguard/${RELAYSERVER_WG_VPN_NETNAME}.conf ]; then
+    systemctl restart wg-quick@${RELAYSERVER_WG_VPN_NETNAME}
+  fi
+  if [ -f $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf ]; then
+    $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf restart
+  fi
+
+  # Replaces 50-wgDockInternetUpAll.sh
+  wgDockInternetUpAll
+
+  # Replaces 90-restartSelectedStacks.sh
+  restartStacksOnBoot
+
+}
+
+function checkInitScriptState()
+{
+  if ! [ -f "$SCRIPT_STATE_FILENAME" ]; then
+    tee $SCRIPT_STATE_FILENAME >/dev/null <<EOFSS
+BOOT_STATE=complete
+LAST_NETWORK_CHECK=0
+EOFSS
+  fi
+}
+
+function isNetworkCheckIntervalExpired()
+{
+  checkInitScriptState
+  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SCRIPT_STATE_FILENAME)
+  cur_dt=$(date +%s)
+  s_diff=$(($cur_dt - $last_check))
+  s_inter=$(($NETWORK_UPDATE_INTERVAL * 60))
+  if [ $s_diff -gt $s_inter ]; then
+    echo "true"
+  else
+    echo "false"
+  fi 
+}
+
+function resetLastNetworkCheckTimestamp()
+{
+  checkInitScriptState
+  updateConfigVarInFile "LAST_NETWORK_CHECK" "0" $SCRIPT_STATE_FILENAME
+}
+
+function updateLastNetworkCheck()
+{
+  checkInitScriptState
+  updateConfigVarInFile "LAST_NETWORK_CHECK" "$(date +%s)" $SCRIPT_STATE_FILENAME
+}
+
+function notifyBootInit()
+{
+  checkInitScriptState
+  updateConfigVarInFile "BOOT_STATE" "init" $SCRIPT_STATE_FILENAME
+}
+
+function checkIsBootComplete()
+{
+  checkInitScriptState
+  if [ "$(getConfigVarFromFile BOOT_STATE $SCRIPT_STATE_FILENAME)" = "complete" ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function notifyBootComplete()
+{
+  checkInitScriptState
+  updateConfigVarInFile "BOOT_STATE" "complete" $SCRIPT_STATE_FILENAME
 }
 
 function initCronJobs()
 {
   echo "MAILTO=$EMAIL_ADMIN_EMAIL_ADDRESS" | sudo tee $HOME/rootcron >/dev/null
   echo "*/$LECERTS_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$WIREGUARD_DNS_REFRESH_RATE * * * * bash $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$CHECKIP_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$UPDATE_IPTABLES_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "* * * * * bash $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh cron" | sudo tee -a $HOME/rootcron >/dev/null
   sudo crontab $HOME/rootcron
   sudo rm -f $HOME/rootcron
 }
@@ -19911,6 +21938,16 @@ function deleteFromRootCron()
   fi
   sudo rm -f $HOME/rootcron
   set -e
+}
+
+function pauseCronService()
+{
+  sudo systemctl stop cron > /dev/null 2>&1
+}
+
+function resumeCronService()
+{
+  sudo systemctl restart cron > /dev/null 2>&1
 }
 
 function updateHomeServerLogoImages()
@@ -19997,44 +22034,192 @@ function uploadHomeServerLogo()
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${HOMESERVER_DOMAIN}-${rand_string}.png' where url='https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN';"
   echo "Restarting Heimdall..."
   docker container restart heimdall > /dev/null 2>&1
+  # Update desktop icon (if exists)
+  if [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+    sudo rm -f /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-*
+    sudo cp -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png
+    if [ -f ~/Desktop/HomePage.desktop ]; then
+      updateConfigVarInFile Icon /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png ~/Desktop/HomePage.desktop root
+    fi
+  fi
   echo "HomeServer logo updated succesfully!"
+}
+
+function checkAllHSHQNetworking()
+{
+  # Check/Update All Networking
+  # This function assumes that the networking lock
+  # has already been obtained. Here is a list of
+  # actions performed in this function:
+  #
+  #  1. Check all host interfaces for IP address change
+  #  2. Check if adguard is working
+  #  3. Check all VPN connections for Endpoint IP change
+  #  4. Cheak health of all VPN connections (ping relay)
+  #  5. Check masq IP of WG Internet connections (curl internet)
+  #  6. If no locking errors, update last timestamp
+  #
+  # Notes: 
+  #  - Ensure at least NETWORK_UPDATE_INTERVAL minutes
+  #    have passed since last update (check last timestamp)
+  #  - This function is tied into:
+  #     - routable.d (if systemd-network)
+  #     - dispatcher.d (if NetworkManager)
+  #     - cron job every minute, but only actually excutes
+  #       after every NETWORK_UPDATE_INTERVAL(def 5) minutes
+  #       unless the previous attempt at obtaining a lock
+  #       resulted in an error
+  #
+
+  set +e
+  # This is for NetworkManager-dispatcher function calls.
+  # See https://manpages.ubuntu.com/manpages/lunar/man8/NetworkManager-dispatcher.8.html
+  # We'll only focus on 'up' actions.
+  if ! [ -z "$2" ] && ! [ "$2" = "up" ]; then
+    return
+  fi
+  callerName=unknown
+  if [ "$1" = "cron" ]; then
+    callerName=cron
+  elif [ "$2" = "up" ]; then
+    callerName=NetworkManager
+  elif [ -z "$@" ]; then
+    callerName=networkd
+  fi
+  if [ "$(checkIsBootComplete)" = "false" ]; then
+    logHSHQEvent error "checkAllHSHQNetworking ($callerName) - Boot process is not yet complete."
+    resetLastNetworkCheckTimestamp
+    return
+  fi
+  if [ "$callerName" = "cron" ] && [ "$(isNetworkCheckIntervalExpired)" = "false" ]; then
+    return
+  fi
+  logHSHQEvent info "checkAllHSHQNetworking ($callerName) - BEGIN"
+  isLockError=false
+  isAnyChanged="$(checkHostInterfacesIsChanged)"
+  if [ "$isAnyChanged" = "true" ]; then
+    checkRes=$(tryGetLock hshqopen checkAllHSHQNetworking)
+    if ! [ -z "$checkRes" ]; then
+      logHSHQEvent error "checkAllHSHQNetworking  ($callerName) - Unable to obtain lock ($checkRes)"
+      isLockError=true
+    else
+      checkHostAllInterfaceIPChanges true checkAllHSHQNetworking
+    fi
+  fi
+  # Perform curl https://api.ipify.org. If an error,
+  # assume Adguard is not working and restart stack.
+  curIP=$(curl --silent --max-time 5 https://api.ipify.org)
+  if [ $? -ne 0 ]; then
+    startStopStack adguard stop
+    sleep 1
+    startStopStack adguard start
+  fi
+  updateEndpointIPs
+  wgDockInternetUpAll
+  if [ "$isLockError" = "false" ]; then
+    updateLastNetworkCheck
+  fi
+  logHSHQEvent info "checkAllHSHQNetworking ($callerName) - END"
+}
+
+function updateEndpointIPs()
+{
+  ping_timeout=5
+  conn_list=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
+
+  for cur_id in "${conn_list[@]}"
+  do
+    is_int=$(sqlite3 $HSHQ_DB "select IsInternet from connections where ID='$cur_id';")
+    iname=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID='$cur_id';")
+    cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_id;")
+    if [ "$(checkIPByID $cur_id)" = "true" ]; then
+      echo "IP changed, restarting $cname..."
+      logHSHQEvent info "IP changed, restarting $cname..."
+      if [ $is_int = 0 ]; then
+        systemctl restart wg-quick@$iname > /dev/null 2>&1
+      else
+        $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${iname}.conf restart > /dev/null 2>&1
+      fi
+    fi
+    if [ $is_int = 0 ]; then
+      # Also need to check health of connection and reset if issues
+      rs_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$cur_id;")
+      if ! [ -z "$rs_ip" ]; then
+        timeout $ping_timeout ping -c 1 $rs_ip > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+          logHSHQEvent error "Connection Error, restarting(HSVPN) $cname..."
+          systemctl restart wg-quick@$iname > /dev/null 2>&1
+        fi
+      fi
+    fi
+  done
+  # Check/fix ClientDNS
+  cdns_id=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
+  for cur_cdns in "${cdns_id[@]}"
+  do
+    cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_cdns;")
+    # First, check if container is actually running
+    docker ps | grep ${cname}-wireguard > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      continue
+    fi
+    if ! [ -z "$cur_cdns" ] && [ "$(checkIPByID $cur_cdns)" = "true" ]; then
+      echo "IP changed, restarting $cname..."
+      logHSHQEvent info "IP changed, restarting(ClientDNS) $cname..."
+      restartStackIfRunning "${cname}" 1
+    fi
+  done
+  # Check/fix tunnelled WireGuard internet connections
+  ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+  do
+    resOut=$($HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      logHSHQEvent error "Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
+      $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
+    fi
+  done
+}
+
+function checkIPByID()
+{
+  dbID=$1
+  ehost=$(sqlite3 $HSHQ_DB "select EndpointHostname from connections where ID='$dbID';")
+  eip=$(sqlite3 $HSHQ_DB "select EndpointIP from connections where ID='$dbID';")
+  if ! [ -z "$ehost" ]; then
+    check_ip=$(getIPFromHostname $ehost)
+  fi
+  if ! [ -z "$check_ip" ] && ! [ "$check_ip" = "$eip" ]; then
+    curdt=$(date '+%Y-%m-%d %H:%M:%S')
+    sudo sqlite3 $HSHQ_DB "update connections set EndpointIP='$check_ip',LastUpdated='$curdt' where ID='$dbID';"
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function wgDockInternetUpAll()
+{
+  $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
+  ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+    do
+      $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf up
+    done
+  fi
 }
 
 function outputWireGuardScripts()
 {
   if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
     echo "Installing networkd-dispatcher, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
     performAptInstall networkd-dispatcher > /dev/null 2>&1
   fi
   sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
   sudo systemctl start networkd-dispatcher > /dev/null 2>&1
   outputWGDockInternetScript
-  sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-
-if [ -f /tmp/wgDockInternetUpAll-Updating ]; then
-  exit
-fi
-touch /tmp/wgDockInternetUpAll-Updating
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scripts_dir=$HSHQ_SCRIPTS_DIR
-
-\$scripts_dir/root/dockPrivateIP.sh
-
-ls \$wgdir/internet/*.conf > /dev/null 2>&1
-if [ \$? -eq 0 ]; then
-  ls \$wgdir/internet/*.conf | while read conf
-  do
-    \$wgdir/scripts/wgDockInternet.sh \$conf up
-  done
-fi
-
-rm -f /tmp/wgDockInternetUpAll-Updating
-EOFWG
-  sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh >/dev/null <<EOFWG
 #!/bin/bash
 
@@ -20045,9 +22230,14 @@ do
 done
 EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
-  outputUpdateEndpointIPsScript
-  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
-  sudo ln -s $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
+  sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  if sudo test -d "/etc/networkd-dispatcher/routable.d"; then
+    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  fi
+  sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+  if sudo test -d "/etc/NetworkManager/dispatcher.d"; then
+    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+  fi
   outputCreateWGDockerNetworksScript
   sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service >/dev/null <<EOFWG
 [Unit]
@@ -20332,124 +22522,6 @@ EOFWG
   sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
 }
 
-function outputUpdateEndpointIPsScript()
-{
-  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
-  sudo tee $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null <<EOFWG
-#!/bin/bash
-
-set +e
-HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
-db=$HSHQ_DB
-ping_timeout=5
-
-function main()
-{
-  conn_list=(\$(sqlite3 \$db "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
-
-  for cur_id in "\${conn_list[@]}"
-  do
-    is_int=\$(sqlite3 \$db "select IsInternet from connections where ID='\$cur_id';")
-    iname=\$(sqlite3 \$db "select InterfaceName from connections where ID='\$cur_id';")
-    cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_id;")
-    if [ "\$(checkByID \$cur_id)" = "true" ]; then
-      echo "IP changed, restarting \$cname..."
-      logHSHQEvent info "IP changed, restarting \$cname..."
-      if [ \$is_int = 0 ]; then
-        resetVPN \$iname
-      else
-        resetInternet \$iname
-      fi
-    fi
-    if [ \$is_int = 0 ]; then
-      # Also need to check health of connection and reset if issues
-      rs_ip=\$(sqlite3 \$db "select RS_VPN_IP from hsvpn_connections where ID=\$cur_id;")
-      if ! [ -z "\$rs_ip" ]; then
-        timeout \$ping_timeout ping -c 1 \$rs_ip > /dev/null 2>&1
-        if [ \$? -ne 0 ]; then
-          logHSHQEvent error "Connection Error, restarting(HSVPN) \$cname..."
-          resetVPN \$iname
-        fi
-      fi
-    fi
-  done
-
-  # Check/fix ClientDNS
-  cdns_id=(\$(sqlite3 \$db "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
-  for cur_cdns in "\${cdns_id[@]}"
-  do
-    cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_cdns;")
-    # First, check if container is actually running
-    docker ps | grep \${cname}-wireguard > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      continue
-    fi
-    if ! [ -z "\$cur_cdns" ] && [ "\$(checkByID \$cur_cdns)" = "true" ]; then
-      echo "IP changed, restarting \$cname..."
-      logHSHQEvent info "IP changed, restarting(ClientDNS) $cname..."
-      docker container restart \${cname}-wireguard
-      docker container restart \${cname}-dnsmasq
-    fi
-  done
-
-  # Check/fix tunnelled WireGuard internet connections
-  ls \$HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-  do
-    resOut=\$(\$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf status)
-    retVal=\$?
-    if [ \$retVal -ne 0 ]; then
-      logHSHQEvent error "Connection Error, restarting(HSInternet)[\$retVal - \$resOut] \$conf..."
-      \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf restart > /dev/null 2>&1
-    fi
-  done
-}
-
-function checkByID()
-{
-  dbID=\$1
-  ehost=\$(sqlite3 \$db "select EndpointHostname from connections where ID='\$dbID';")
-  eip=\$(sqlite3 \$db "select EndpointIP from connections where ID='\$dbID';")
-  if ! [ -z "\$ehost" ]; then
-    check_ip=\$(getIPFromHostname \$ehost)
-  fi
-  if ! [ -z "\$check_ip" ] && ! [ "\$check_ip" = "\$eip" ]; then
-    curdt=\$(date '+%Y-%m-%d %H:%M:%S')
-    sudo sqlite3 \$db "update connections set EndpointIP='\$check_ip',LastUpdated='\$curdt' where ID='\$dbID';"
-    echo "true"
-  else
-    echo "false"
-  fi
-}
-
-function resetVPN()
-{
-  iname=\$1
-  systemctl restart wg-quick@\$iname > /dev/null 2>&1
-}
-
-function resetInternet()
-{
-  iname=\$1
-  \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$HSHQ_WIREGUARD_DIR/internet/\${iname}.conf restart > /dev/null 2>&1
-}
-
-function getIPFromHostname()
-{
-  echo \$(dig \$1 +short | grep '^[.0-9]*\$')
-}
-
-function logHSHQEvent()
-{
-  msgType="\$1"
-  msgContent="WireGuard - \$2"
-  echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [\$msgType] \$msgContent" >> $HSHQ_LOG_FILE
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
-}
-
 function enableAllWGVPNInterfaces()
 {
   sudo ls /etc/wireguard | while read fname
@@ -20692,6 +22764,29 @@ function setHSInterfaceIsExpose()
   sudo sqlite3 $HSHQ_DB "update connections set IsExposeToNetwork=$iface_isExpose where InterfaceName = '$iface_name';"
 }
 
+function checkInterfaceIPChanged()
+{
+  iface_name="$1"
+  db_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName = '$iface_name';")
+  current_ip=$(getIPAddressOfInterface $iface_name)
+  if [ "$(checkValidIPAddress $current_ip)" = "false" ] || [ -z "$db_ip" ] || [ -z "$current_ip" ] || [ "$db_ip" = "$current_ip" ] || [ "$current_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ] || [ "$db_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+    echo "false"
+    return
+  fi
+  is_private=$(checkIsIPPrivate "$current_ip")
+  interface_subnet=$(getSubnetOfInterface "$iface_name" "$current_ip" "$is_private")
+  if [ -z "$interface_subnet" ]; then
+    echo "false"
+    return
+  fi
+  chk_conflict=$(checkIPConflict "$current_ip" "$interface_subnet" "$is_private")
+  if ! [ -z "$chk_conflict" ]; then
+    echo "false"
+    return
+  fi
+  echo "true"
+}
+
 function updateHSInterface()
 {
   iface_name="$1"
@@ -20851,7 +22946,6 @@ function checkUpdateHostInterface()
       return 16
       ;;
   esac
-
   case $iface_operation in
     add|update)
       if ! [ "$newIP" = "127.0.0.1" ]; then
@@ -20885,10 +22979,8 @@ function checkUpdateHostInterface()
       fi
       ;;
   esac
-
   # Update IP tables
   checkUpdateAllIPTables checkUpdateHostInterface
-
   case $iface_operation in
     add)
       # Add Caddy instance
@@ -20914,7 +23006,6 @@ function checkUpdateHostInterface()
     *)
       ;;
   esac
-
   case $iface_operation in
     add|update)
       if ! [ "$is_close_hshq" = "false" ]; then
@@ -20956,6 +23047,20 @@ function updatePortainerJitsiIPChanges()
   startStopStack jitsi start > /dev/null 2>&1
 }
 
+function checkHostInterfacesIsChanged()
+{
+  interfaceListArr=($(echo $HOMESERVER_HOST_NETWORK_INTERFACES | tr "," "\n"))
+  for curInterface in "${interfaceListArr[@]}"
+  do
+    checkIsChanged=$(checkInterfaceIPChanged "$curInterface")
+    if [ "$checkIsChanged" = "true" ]; then
+      echo "true"
+      return
+    fi
+  done
+  echo "false"
+}
+
 function checkHostAllInterfaceIPChanges()
 {
   isBypassHSHQStatus=$1
@@ -20966,19 +23071,22 @@ function checkHostAllInterfaceIPChanges()
     echo "Docker is not yet up and running, returning..."
     return 1
   fi
+  if [ "$(checkHostInterfacesIsChanged)" = "false" ]; then
+    # Nothing has changed, no need to continue
+    return
+  fi
   if [ -z "$$callerName" ]; then
     callerName=checkHostAllInterfaceIPChanges
   fi
   checkRes=""
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
-    checkRes=$(tryOpenHSHQScript $callerName)
+    checkRes=$(tryGetLock hshqopen $callerName)
   fi
   if ! [ -z "$checkRes" ]; then
     echo "The HSHQ script is running in another instance ($checkRes), returning..."
-    logHSHQEvent error "ERROR: (checkHostAllInterfaceIPChanges) The HSHQ script is already open or running in a different instance ($checkRes)"
+    logHSHQEvent error "checkHostAllInterfaceIPChanges - The HSHQ script is already open or running in a different instance ($checkRes)"
     return
   fi
-  #logHSHQEvent info "Check IP ($callerName) - BEGIN"
   interfaceListArr=($(echo $HOMESERVER_HOST_NETWORK_INTERFACES | tr "," "\n"))
   isUpdateIPT=false
   for curInterface in "${interfaceListArr[@]}"
@@ -20989,9 +23097,8 @@ function checkHostAllInterfaceIPChanges()
     fi
   done
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
-    closeHSHQScript "$callerName"
+    releaseLock hshqopen "$callerName" false
   fi
-  #logHSHQEvent info "Check IP ($callerName) - END"
 }
 
 function checkUpdateSingleHostInterface()
@@ -21001,17 +23108,6 @@ function checkUpdateSingleHostInterface()
   if [ $? -eq 0 ]; then
     checkUpdateAllIPTables checkUpdateSingleHostInterface
   fi
-}
-
-function checkUpdateIPTablesCron()
-{
-  checkRes=$(tryOpenHSHQScript checkFirewall-cronjob)
-  if ! [ -z "$checkRes" ]; then
-    logHSHQEvent error "ERROR: (checkUpdateIPTablesCron) The HSHQ script is already open or running in a different instance ($checkRes)"
-    return
-  fi
-  checkUpdateAllIPTables checkFirewall-cronjob > /dev/null 2>&1
-  closeHSHQScript "checkFirewall-cronjob"
 }
 
 function logHSHQEvent()
@@ -21270,7 +23366,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_COUNTRY="US"
     else
-      CERTS_INTERNAL_COUNTRY=$(promptUserInputMenu "US" "Enter Certificate Country" "Enter the country abbreviation you would like to appear on your certificates: ")
+      CERTS_INTERNAL_COUNTRY=$(promptUserInputMenu "US" "Enter Certificate Country" "Enter the country abbreviation you would like\nto appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_COUNTRY "$CERTS_INTERNAL_COUNTRY"
   done
@@ -21279,7 +23375,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_STATE="Missouri"
     else
-      CERTS_INTERNAL_STATE=$(promptUserInputMenu "Missouri" "Enter Certificate State" "Enter the state name you would like to appear on your certificates: ")
+      CERTS_INTERNAL_STATE=$(promptUserInputMenu "Missouri" "Enter Certificate State" "Enter the state name you would like\nto appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_STATE "$CERTS_INTERNAL_STATE"
   done
@@ -21288,7 +23384,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_LOCALITY="St. Louis"
     else
-      CERTS_INTERNAL_LOCALITY=$(promptUserInputMenu "St. Louis" "Enter Certificate Locality" "Enter the locality you would like to appear on your certificates: ")
+      CERTS_INTERNAL_LOCALITY=$(promptUserInputMenu "St. Louis" "Enter Certificate Locality" "Enter the locality you would like\nto appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_LOCALITY "$CERTS_INTERNAL_LOCALITY"
   done
@@ -21297,7 +23393,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_ROOT_CN="$HOMESERVER_NAME Root CA"
     else
-      CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "$HOMESERVER_NAME Root CA" "Enter Certificate Root CN" "Enter the root CN you would like to appear on your certificates: ")
+      CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "$HOMESERVER_NAME Root CA" "Enter Certificate Root CN" "Enter the root CN you would like\nto appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_ROOT_CN "$CERTS_INTERNAL_ROOT_CN"
   done
@@ -21306,7 +23402,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_INTERMEDIATE_CN="$HOMESERVER_NAME ECC Intermediate"
     else
-      CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "$HOMESERVER_NAME ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like to appear on your certificates: ")
+      CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "$HOMESERVER_NAME ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like\nto appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_INTERMEDIATE_CN "$CERTS_INTERNAL_INTERMEDIATE_CN"
   done
@@ -21317,7 +23413,7 @@ function initCertificateAuthority()
   fi
 
   if [ -f $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt ]; then
-    showYesNoMessageBox "Root CA Exists" "Root CA certificate($HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt) exists. Do you wish to bypass this step and continue installing?"
+    showYesNoMessageBox "Root CA Exists" "Root CA certificate($HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt) exists.\nDo you wish to bypass this step and continue installing?"
 	mbres=$?
 	if [ $mbres -eq 0 ]; then
       return
@@ -21508,7 +23604,7 @@ function generateCertDialog()
   cert_dom_string=""
   while [ -z "$cert_dom_string" ]
   do
-    cert_dom_string=$(promptUserInputMenu "" "Enter Certificate CN" "Enter the domain names for this certificate. Domain names should be grouped together as a comma separated list:")
+    cert_dom_string=$(promptUserInputMenu "" "Enter Certificate CN" "Enter the domain names for this certificate. Domain names\nshould be grouped together as a comma separated list:")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
@@ -21518,12 +23614,12 @@ function generateCertDialog()
     fi
   done
 
-  cert_ip_string=$(promptUserInputMenu "" "Enter IP Addresses" "Enter the IP addresses for this certificate. IP addresses should be grouped together as a comma separated list:")
+  cert_ip_string=$(promptUserInputMenu "" "Enter IP Addresses" "Enter the IP addresses for this certificate. IP addresses\nshould be grouped together as a comma separated list:")
 
   ft_string=""
   while [ -z "$ft_string" ]
   do
-    ft_string=$(promptUserInputMenu "$(date '+%Y-%m-%d %H:%M:%S %Z')" "Enter Start Date" "Enter the Start Date for the Certificate (must be formatted as follows - 2023-01-01 00:00:00 GMT):")
+    ft_string=$(promptUserInputMenu "$(date '+%Y-%m-%d %H:%M:%S %Z')" "Enter Start Date" "Enter the Start Date for the Certificate. It must be\nformatted as follows - 2023-01-01 00:00:00 GMT:")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
@@ -21655,6 +23751,7 @@ function prepPerformUpdate()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   unset image_update_map
+  image_update_map=""
   oldVer=v"$perform_stack_ver"
 }
 
@@ -21716,6 +23813,7 @@ function upgradeStack()
   $stackModFunction
   if [ "$isStartStackFromStopped" = "true" ] && [ "$isReinstallStack" = "false" ]; then
     unset isStartStackFromStopped
+    isStartStackFromStopped=""
     startStopStack $comp_stack_name start "$portainerToken"
   else
     if [ "$isReinstallStack" = "true" ]; then
@@ -22408,7 +24506,6 @@ LDAP_ACCOUNT_REQUESTS_EMAIL=
 # Mailu (Service Details) BEGIN
 EMAIL_ADMIN_USERNAME=
 EMAIL_ADMIN_PASSWORD=
-EMAIL_ADMIN_EMAIL_ADDRESS=
 EMAIL_SMTP_USERNAME=
 EMAIL_SMTP_PASSWORD=
 EMAIL_SMTP_EMAIL_ADDRESS=
@@ -22865,7 +24962,7 @@ function outputPlainTextRootConfig()
 $hshqlogo
 
 # General Info BEGIN
-HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
+HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
 HOMESERVER_DOMAIN=
 HOMESERVER_NAME=
 HOMESERVER_ABBREV=
@@ -22893,8 +24990,7 @@ DOCKER_NETWORK_RESERVED_RANGE=172.16.0.0/15
 DOCKER_NETWORK_SIZE=24
 DOCKER_METRICS_PORT=8323
 IS_AUTO_UPDATE_NETWORK=true
-CHECKIP_REFRESH_RATE=1
-UPDATE_IPTABLES_REFRESH_RATE=5
+NETWORK_UPDATE_INTERVAL=5
 HOST_INTERNET_TRAFFIC_INTERFACE=default
 # General Info END
 
@@ -22975,7 +25071,7 @@ function initServicesCredentials()
   fi
   if [ -z "$EMAIL_ADMIN_EMAIL_ADDRESS" ]; then
     EMAIL_ADMIN_EMAIL_ADDRESS="$EMAIL_ADMIN_USERNAME@$HOMESERVER_DOMAIN"
-    updateConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
+    updatePlaintextRootConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$EMAIL_SMTP_USERNAME" ]; then
     EMAIL_SMTP_USERNAME="mailsender"
@@ -25673,6 +27769,7 @@ function performUpdatePortainer()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   unset image_update_map
+  image_update_map=""
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -25706,7 +27803,9 @@ function restartPortainer()
   stopPortainer
   sleep 3
   startPortainer
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if ! [ -z "$PORTAINER_ADMIN_USERNAME" ] && ! [ -z "$PORTAINER_ADMIN_PASSWORD" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
 }
 
 function stopPortainer()
@@ -43174,7 +45273,7 @@ function mfClearMeiliData()
 function mfUpdateBarAssistantV4()
 {
   mfClearMeiliData
-  unset isStartStackFromStopped
+  isStartStackFromStopped=""
   sed -i "s/localhost:3000/localhost:8080/g" $HOME/bar-assistant-compose.yml
   sed -i "s/bar-assistant-app:3000/bar-assistant-app:8080/g" $HSHQ_STACKS_DIR/bar-assistant/web/nginx.conf
   sudo chown -R 33:33 $HSHQ_STACKS_DIR/bar-assistant/app
@@ -47684,7 +49783,7 @@ function installScriptServer()
   sudo systemctl enable runScriptServer
   sudo systemctl start runScriptServer
   sleep 3
-  fullResetScriptServer
+  fullResetScriptServer true
   if ! [ "$SCRIPTSERVER_INIT_ENV" = "true" ]; then
     sendEmail -s "Script-server Login Info" -b "Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\nScript-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     SCRIPTSERVER_INIT_ENV=true
@@ -47807,7 +49906,7 @@ html:root {
 
 EOFHS
 
-  outputAllScriptServerScripts
+  outputAllScriptServerScripts true true
   outputStackListsScriptServer
 }
 
@@ -47825,14 +49924,26 @@ function clearAllScriptServerScripts()
 
 function fullResetScriptServer()
 {
+  isReplaceSSScripts="$1"
   clearAllScriptServerScripts
   rm -f $HSHQ_STACKS_DIR/script-server/logs/processes/*
   rm -fr $HSHQ_STACKS_DIR/script-server/temp/uploadFiles/*
-  outputAllScriptServerScripts
+  outputAllScriptServerScripts "$isReplaceSSScripts" true
 }
 
 function outputAllScriptServerScripts()
 {
+  isReplaceSSScripts="$1"
+  isReplaceUpdateScript="$2"
+  sudo_stdin_prompt="Checking sudo password..."
+  config_stdin_prompt="Checking config decrypt password..."
+  relaysudo_stdin_prompt="Getting RelayServer password..."
+  if [ -z "$isReplaceSSScripts" ]; then
+    isReplaceSSScripts=true
+  fi
+  if [ -z "$isReplaceUpdateScript" ]; then
+    isReplaceUpdateScript=true
+  fi
   group_id_misc="01 Misc Utils"
   group_id_services="02 Services"
   group_id_scriptserver="03 Script-server Utils"
@@ -47876,26 +49987,87 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 #!/bin/bash
 
-echo "\$1" | sudo -S -v -p "" > /dev/null 2>&1
-if [ \$? -ne 0 ]; then
-  echo "ERROR: Password is incorrect."
-  exit 1
-fi
+# Reading from stdin is better than parameters or environment variables,
+# since they can easily be seen in plaintext by running 'ps auxwwe'
+# However, using stdin redirection introduces a bit of a timing issue
+# between processes. The code below addresses this in the best possible
+# way, but some more analysis should be done to ensure that this cannot
+# be exploited.
 
+function main()
+{
+  read -s -p "$sudo_stdin_prompt" sudopw
+  if [ -z "\$sudopw" ]; then
+    read -t 5 -s -p "" sudopw
+  fi
+  if [ -z "\$sudopw" ]; then
+    sudopw=""
+    cat <<< "ERROR: Password is incorrect." 1>&2
+    exit 1
+  fi
+  echo "\$sudopw" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "bad"
+    sudopw=""
+    cat <<< "ERROR: Password is incorrect." 1>&2
+    exit 1
+  else
+    echo "good"
+  fi
+  sudopw=""
+}
+
+main
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
-checkDecryptConfigFile \$1
+# See note in checkPass.sh
 
+function main()
+{
+  source $HSHQ_LIB_SCRIPT lib
+  read -s -p "$config_stdin_prompt" USER_CONFIG_PW
+  if [ -z "\$USER_CONFIG_PW" ]; then
+    read -t 5 -s -p "" USER_CONFIG_PW
+  fi
+  if [ -z "\$USER_CONFIG_PW" ]; then
+    USER_CONFIG_PW=""
+    cat <<< "ERROR: Incorrect password for encrypted configuration file." 1>&2
+    exit 3
+  fi
+  checkDecryptConfigFile
+}
+
+main
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkRelayPass.sh
+#!/bin/bash
+
+function main()
+{
+  read -s -p "$relaysudo_stdin_prompt" relaysudopw
+  if [ -z "\$relaysudopw" ]; then
+    read -t 5 -s -p "" relaysudopw
+  fi
+  if [ -z "\$relaysudopw" ]; then
+    relaysudopw=""
+    cat <<< "ERROR: RelayServer password was not captured." 1>&2
+    exit 1
+  fi
+  USER_RELAY_SUDO_PW="\$relaysudopw"
+  echo "good"
+}
+
+main
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 #!/bin/bash
 
-checkRes=\$(checkIsOpenHSHQScript SS-Test)
+checkRes=\$(checkIsLockEnabled hshqopen SS-Test)
 if ! [ -z "\$checkRes" ]; then
   echo "ERROR: The HSHQ script is already open or running in a different instance (\$checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset HSHQ Open Status function to reset it."
   exit 8
@@ -48081,7 +50253,6 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
-
 source $HSHQ_LIB_SCRIPT lib
 restartAllCaddyContainers
 echo "Caddy containers successfully restarted."
@@ -48139,13 +50310,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 certs_filename=\$(getArgumentValue filename "\$@")
 certs_domains=\$(getArgumentValue domains "\$@")
@@ -48170,8 +50338,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48180,22 +50346,22 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
-      "secure": true,
       "ui": {
         "width_weight": 2,
         "separator_before": {
           "type": "new_line"
         }
       },
-      "pass_as": "argument"
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the filename",
@@ -48281,13 +50447,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 caddyinstance=\$(getArgumentValue caddyinstance "\$@")
 
@@ -48309,8 +50472,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48319,13 +50480,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48334,7 +50494,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Caddy Instance",
@@ -48363,13 +50524,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Restarting all stacks..."
@@ -48389,8 +50547,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48399,13 +50555,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48414,7 +50569,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48425,13 +50581,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing login credentials in Vaultwarden format..."
@@ -48451,8 +50604,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48461,13 +50612,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48476,7 +50626,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48487,13 +50638,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing Root CA..."
@@ -48513,8 +50661,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48523,13 +50669,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48538,7 +50683,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48549,13 +50695,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 username=\$(getArgumentValue username "\$@")
 emailaddr=\$(getArgumentValue emailaddr "\$@")
@@ -48578,8 +50721,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48588,13 +50729,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48603,7 +50743,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter LDAP username",
@@ -48644,13 +50785,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing login credentials for all services..."
@@ -48670,8 +50808,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48680,13 +50816,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48695,7 +50830,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48707,13 +50843,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 services=\$(getArgumentValue services "\$@")
 
@@ -48734,8 +50867,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48744,13 +50875,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48759,7 +50889,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "List of Services To Install",
@@ -48790,13 +50921,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 installAllAvailableStacks false
@@ -48815,8 +50943,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48825,13 +50951,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48840,7 +50965,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48851,13 +50977,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 services=\$(getArgumentValue services "\$@")
 
@@ -48878,8 +51001,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48888,13 +51009,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48903,7 +51023,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "List of Services To Update",
@@ -48932,13 +51053,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 performAllAvailableStackUpdates false
@@ -48957,8 +51075,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48967,13 +51083,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48982,7 +51097,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48993,13 +51109,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 services=\$(getArgumentValue services "\$@")
 
@@ -49021,8 +51134,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49031,13 +51142,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49046,7 +51156,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "List of Services To Remove",
@@ -49077,13 +51188,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Refreshing all services lists..."
@@ -49103,8 +51211,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49113,13 +51219,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49128,7 +51233,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -49141,13 +51247,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selstack=\$(getArgumentValue selstack "\$@")
 
@@ -49169,8 +51272,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49179,13 +51280,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49194,7 +51294,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select stack",
@@ -49258,24 +51359,31 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-outputAllScriptServerScripts
+outputAllScriptServerScripts false true
 echo "Script-server scripts restored."
 set -e
 performExitFunctions false
 
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+fi
+}
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restoreScriptServerScripts.json
@@ -49288,8 +51396,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49298,13 +51404,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49313,32 +51418,40 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 clearAllScriptServerScripts
-outputAllScriptServerScripts
+outputAllScriptServerScripts false true
 echo "Script-server scripts cleared and restored."
 set -e
 performExitFunctions false
 
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+fi
+}
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/clearRestoreScriptServerScripts.json
@@ -49351,8 +51464,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49361,13 +51472,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49376,31 +51486,39 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-fullResetScriptServer
+fullResetScriptServer false
 echo "Script-server fully reset."
 set -e
 performExitFunctions false
 
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+fi
+}
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/fullResetScriptServerScripts.json
@@ -49413,8 +51531,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49423,13 +51539,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49438,12 +51553,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
 
 EOFSC
+
+  if [ "$isReplaceSSScripts" = "true" ]; then
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+  fi
 
   # 04 System Utils
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkUpdateHSHQ.sh
@@ -49455,6 +51577,7 @@ latest_ver_wrapper=\$(getLatestVersionWrapper)
 this_ver_wrapper=\$(getThisVersionWrapper)
 latest_ver_lib=\$(getLatestVersionLib)
 this_ver_lib=\$(getThisVersionLib)
+pending_ver_lib=\$(getPendingVersionLib)
 
 if [ -z \$latest_ver_wrapper ]; then
   echo "ERROR: Could not obtain latest wrapper version, check your internet connection and try again."
@@ -49486,7 +51609,12 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
   is_any_avail=true
 fi
 
-if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
+if ! [ -z "\$pending_ver_lib" ] && [ \$latest_ver_lib -eq \$pending_ver_lib ]; then
+  output_rep="\${output_rep}There is a a pending version of the lib script available.\n"
+  output_rep="\${output_rep}Current lib version: \${this_ver_lib}\n"
+  output_rep="\${output_rep}Pending lib version: \${pending_ver_lib}\n\n"
+  is_any_avail=true
+elif [ \$this_ver_lib -lt \$latest_ver_lib ]; then
   output_rep="\${output_rep}There is a a new version of the lib script available.\n"
   output_rep="\${output_rep}Current lib version: \${this_ver_lib}\n"
   output_rep="\${output_rep}Latest lib version: \${latest_ver_lib}\n\n"
@@ -49519,13 +51647,11 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkRelayPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
@@ -49536,6 +51662,7 @@ latest_ver_wrapper=\$(getLatestVersionWrapper)
 this_ver_wrapper=\$(getThisVersionWrapper)
 latest_ver_lib=\$(getLatestVersionLib)
 this_ver_lib=\$(getThisVersionLib)
+pending_ver_lib=\$(getPendingVersionLib)
 
 if [ -z \$latest_ver_wrapper ]; then
   echo "ERROR: Could not obtain latest wrapper version, check your internet connection and try again."
@@ -49584,7 +51711,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
   echo "Wrapper script verified and updated."
 fi
 
-if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
+if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && [ \$pending_ver_lib -lt \$latest_ver_lib ] ); then
   wget -q4 -O \$HSHQ_LIB_TMP \$(getLatestLibURL)
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_LIB_TMP
@@ -49605,13 +51732,55 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
     exit 8
   fi
-  rm -f \$HSHQ_LIB_SCRIPT
-  mv \$HSHQ_LIB_TMP \$HSHQ_LIB_SCRIPT
+  rm -f \$HSHQ_NEW_LIB_SCRIPT
+  mv \$HSHQ_LIB_TMP \$HSHQ_NEW_LIB_SCRIPT
   echo "Lib script verified!"
 fi
 
-source $HSHQ_LIB_SCRIPT lib
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+# Aquire all locks
+checkRes="\$(acquireAllLocks)"
+if ! [ -z "\$checkRes" ]; then
+  # Could not get all locks, try again later.
+  echo "The necessary locks could not be obtained (\$checkRes). Please try applying the update later."
+  return
+fi
+decryptAndLoad false
+USER_CONFIG_PW=""
+
+if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
+  source \$HSHQ_NEW_LIB_SCRIPT lib
+  PRIOR_HSHQ_VERSION=\$(sed -n 2p \$HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ \$PRIOR_HSHQ_VERSION -lt \$LAST_RELAYSERVER_VERSION_UPDATE ]; then
+    testRelayServerPassword 
+    if [ \$? -ne 0 ]; then
+      echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
+      performExitFunctions false
+      releaseAllLocks
+      return
+    fi
+  fi
+  performPreUpdateCheck
+  if [ \$? -eq 0 ]; then
+    mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
+  else
+    performExitFunctions false
+    releaseAllLocks
+    return
+  fi
+else
+  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    testRelayServerPassword 
+    if [ \$? -ne 0 ]; then
+      echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
+      performExitFunctions false
+      releaseAllLocks
+      return
+    fi
+  fi
+fi
+
+source \$HSHQ_LIB_SCRIPT lib
+decryptConfigFileAndLoadEnvNoPrompts
 
 if ! [ "\$is_any_updated" = "true" ]; then
   is_any_updated="\$is_update_performed"
@@ -49625,23 +51794,29 @@ fi
 
 set -e
 performExitFunctions false
+releaseAllLocks
 
+# Check if this got replaced by itself, and replace it if so
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+fi
+}
 EOFSC
 
-  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+  if [ "$isReplaceUpdateScript" = "true" ]; then
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+  fi
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/performUpdateHSHQ.json
 {
   "name": "02 Perform Update HSHQ",
   "script_path": "conf/scripts/performUpdateHSHQ.sh",
-  "description": "Performs HSHQ Updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.",
+  "description": "Performs HSHQ Updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.<br/><br/>The RelayServer password will only apply if you are hosting a VPN and the server requires an update. The field requires an entry, so just leave the default value if not applicable.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49650,13 +51825,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49665,7 +51839,23 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter RelayServer sudo password",
+      "required": true,
+      "type": "text",
+      "default": "pass",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$relaysudo_stdin_prompt"
     }
   ]
 }
@@ -49676,8 +51866,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
@@ -49701,8 +51890,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49711,7 +51898,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -49722,8 +51910,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 
 echo "Powering down..."
 sudo poweroff
@@ -49740,8 +51927,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49750,7 +51935,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -49799,11 +51985,9 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
-closeHSHQScript "resetHSHQOpenStatus"
+releaseLock hshqopen "resetHSHQOpenStatus" false
 echo "HSHQ status successfully reset."
 EOFSC
 
@@ -49817,8 +52001,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49827,7 +52009,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -49838,13 +52021,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 newemail=\$(getArgumentValue newemail "\$@")
@@ -49877,8 +52057,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49887,13 +52065,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49902,7 +52079,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -49967,13 +52145,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 img=\$(getArgumentValue img "\$@")
 uploadHomeServerLogo "\$img"
@@ -49984,14 +52159,12 @@ EOFSC
 {
   "name": "09 Upload HomeServer Logo",
   "script_path": "conf/scripts/uploadHomeServerLogo.sh",
-  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 04 System Utils -> 10 Update HomeServer Logos function). The image must be a .png and it can be no larger than 1MB (1024 KB).",
+  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 04 System Utils -> 10 Update HomeServer Logos function). Finally, it will replace the image /usr/share/icons/HSHQ/Homepage.png, which is the default source for the Homepage icon on the desktop (if applicable). The image must be a .png and it can be no larger than 1 MB.",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50000,13 +52173,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50015,7 +52187,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select Image",
@@ -50060,8 +52233,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 
 echo "Sudo password is correct."
 
@@ -50077,8 +52249,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50087,7 +52257,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -50098,10 +52269,8 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+USER_CONFIG_PW=""
 
 echo "Config decrypt password is correct."
 
@@ -50117,8 +52286,6 @@ EOFSC
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50127,7 +52294,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -50159,13 +52327,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 ischeckall=\$(getArgumentValue ischeckall "\$@")
 ipaddr=\$(getArgumentValue ipaddr "\$@")
@@ -50197,8 +52362,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50207,13 +52370,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50222,7 +52384,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Check all possible connections?",
@@ -50331,15 +52494,12 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/testPortainer.sh
 #!/bin/bash
-
+echo "Start script"
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Testing Portainer"
@@ -50356,7 +52516,6 @@ if [ \$? -eq 0 ]; then
 else
   echo "ERROR: Could not get auth token - either there is a problem with the service or bad credentials"
 fi
-
 echo "End Test"
 set -e
 performExitFunctions false
@@ -50373,8 +52532,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50383,13 +52540,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50398,7 +52554,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -50410,13 +52567,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 configname=\$(getArgumentValue configname "\$@")
 
@@ -50443,8 +52597,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50453,13 +52605,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50468,7 +52619,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a name for this configuration (User device invites only)",
@@ -50507,13 +52659,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 configname=\$(getArgumentValue configname "\$@")
 requestemailaddress=\$(getArgumentValue requestemailaddress "\$@")
@@ -50548,8 +52697,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50558,13 +52705,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50573,7 +52719,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a name for this configuration",
@@ -50679,13 +52826,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 ipaddr=\$(getArgumentValue ipaddr "\$@")
 
@@ -50706,8 +52850,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50716,13 +52858,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50731,7 +52872,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a new IP address",
@@ -50760,13 +52902,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 ipaddr=\$(getArgumentValue ipaddr "\$@")
@@ -50789,8 +52928,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50799,13 +52936,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50814,7 +52950,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -50862,13 +52999,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 removeReason="\$4"
@@ -50891,8 +53025,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50901,13 +53033,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50916,7 +53047,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -50959,13 +53091,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 removeReason="\$4"
@@ -50988,8 +53117,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50998,13 +53125,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51013,7 +53139,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -51056,13 +53183,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 removeReason="\$4"
@@ -51085,8 +53209,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51095,13 +53217,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51110,7 +53231,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -51153,13 +53275,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing HomeServers DNS list..."
@@ -51179,8 +53298,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51189,13 +53306,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51204,7 +53320,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -51215,13 +53332,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing HomeServer DNS list for user devices..."
@@ -51241,8 +53355,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51251,13 +53363,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51266,7 +53377,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -51277,13 +53389,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing user details..."
@@ -51303,8 +53412,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51313,13 +53420,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51328,7 +53434,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -51339,13 +53446,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 strMsg="\$3"
 
@@ -51367,8 +53471,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51377,13 +53479,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51392,7 +53493,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the message",
@@ -51416,13 +53518,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 cdnsname=\$(getArgumentValue cdnsname "\$@")
 set +e
@@ -51443,8 +53542,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51453,13 +53550,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51468,7 +53564,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a name",
@@ -51494,13 +53591,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selserver=\$(getArgumentValue selserver "\$@")
 set +e
@@ -51522,8 +53616,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51532,13 +53624,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51547,7 +53638,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select server",
@@ -51577,13 +53669,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 disconnectReason="\$3"
 
@@ -51604,8 +53693,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51614,13 +53701,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51629,7 +53715,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a reason for disconnect/removal",
@@ -51654,13 +53741,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
 
@@ -51681,8 +53765,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51691,13 +53773,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51706,7 +53787,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the recipient email address",
@@ -51732,13 +53814,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
 
@@ -51759,8 +53838,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51769,13 +53846,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51784,7 +53860,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the recipient email address",
@@ -51810,13 +53887,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
 requestemailaddress=\$(getArgumentValue requestemailaddress "\$@")
@@ -51846,8 +53920,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51856,13 +53928,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51871,7 +53942,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the recipient email address",
@@ -51977,13 +54049,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 lecertsubs=\$(getArgumentValue lecertsubs "\$@")
 
@@ -52004,8 +54073,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52014,13 +54081,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52029,7 +54095,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the LE cert subdomains",
@@ -52056,13 +54123,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "\$3" > \$HOME/join_hsv.cnf
@@ -52084,8 +54148,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52094,13 +54156,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52109,7 +54170,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the invitation",
@@ -52133,13 +54195,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 disconnectReason="\$4"
@@ -52162,8 +54221,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52172,13 +54229,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52187,7 +54243,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -52230,13 +54287,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 disconnectReason="\$4"
@@ -52259,8 +54313,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52269,13 +54321,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52284,7 +54335,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -52327,13 +54379,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 dnsconfig="\$3"
 
@@ -52357,8 +54406,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52367,13 +54414,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52382,7 +54428,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter DNS config",
@@ -52406,13 +54453,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Sync Adguard DNS server from database..."
@@ -52432,8 +54476,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52442,13 +54484,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52457,7 +54498,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -52469,13 +54511,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 adddomain=\$(getArgumentValue adddomain "\$@")
 mailsubdomain=\$(getArgumentValue mailsubdomain "\$@")
@@ -52500,8 +54539,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52510,13 +54547,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52525,7 +54561,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter domain name",
@@ -52570,13 +54607,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 seldomain=\$(getArgumentValue seldomain "\$@")
 
@@ -52600,8 +54634,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52610,13 +54642,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52625,7 +54656,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter domain name",
@@ -52655,13 +54687,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 adddomain=\$(getArgumentValue adddomain "\$@")
 basedom=\$(getArgumentValue basedom "\$@")
@@ -52701,8 +54730,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52711,13 +54738,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52726,7 +54752,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -52771,13 +54798,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 seldomain=\$(getArgumentValue seldomain "\$@")
 set +e
@@ -52799,8 +54823,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52809,13 +54831,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52824,7 +54845,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -52873,13 +54895,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 adddomain=\$(getArgumentValue adddomain "\$@")
 basedom=\$(getArgumentValue basedom "\$@")
@@ -52918,8 +54937,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52928,13 +54945,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52943,7 +54959,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -52988,13 +55005,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 seldomain=\$(getArgumentValue seldomain "\$@")
 set +e
@@ -53016,8 +55030,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53026,13 +55038,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53041,7 +55052,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -53090,13 +55102,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Resetting Caddy data on RelayServer..."
@@ -53116,8 +55125,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53126,13 +55133,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53141,7 +55147,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -53152,13 +55159,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 pfName=\$(getArgumentValue pfName "\$@")
 pfExtStart=\$(getArgumentValue pfExtStart "\$@")
@@ -53191,8 +55195,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53201,14 +55203,13 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
 
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53217,7 +55218,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter rule name",
@@ -53365,13 +55367,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 pfRemRule=\$(getArgumentValue pfRemRule "\$@")
 pfRemID=\$(echo "\$pfRemRule" | cut -d"-" -f1)
@@ -53400,8 +55399,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53410,13 +55407,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53425,7 +55421,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the rule to remove",
@@ -53475,13 +55472,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 cursshport=\$(getArgumentValue cursshport "\$@")
 curusername=\$(getArgumentValue curusername "\$@")
@@ -53507,8 +55501,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53517,13 +55509,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53532,7 +55523,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter current SSH port",
@@ -53659,13 +55651,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 addinterface=\$(getArgumentValue addinterface "\$@")
 createcaddy=\$(getArgumentValue createcaddy "\$@")
@@ -53699,8 +55688,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53709,13 +55696,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53724,7 +55710,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter interface name",
@@ -53770,13 +55757,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selinterface=\$(getArgumentValue selinterface "\$@")
 selinterface=\$(echo "\$selinterface" | cut -d" " -f1 | xargs)
@@ -53871,8 +55855,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53881,19 +55863,22 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the interface to edit",
@@ -54027,13 +56012,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 removeinterface=\$(getArgumentValue removeinterface "\$@")
 
@@ -54059,8 +56041,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54069,13 +56049,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54084,7 +56063,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the interface to remove",
@@ -54114,13 +56094,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 ruleName=\$(getArgumentValue ruleName "\$@")
 ipaddr=\$(getArgumentValue ipaddr "\$@")
@@ -54139,14 +56116,12 @@ EOFSC
 {
   "name": "05 Add Custom Subnet",
   "script_path": "conf/scripts/addCustomFirewallSubnet.sh",
-  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to add a custom subnet, which can then be selected in the 07 Edit Exposed Ports function. The use case for this is if you have any other VPN and/or networking interfaces that are not mananaged by HSHQ, but provide an easy means in which ports/services can be exposed to that corresponding network.",
+  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to add a custom subnet, which can then be selected in the 07 Edit Exposed Ports function. The use case for this is if you have any other VPN and/or networking interfaces that are not managed by HSHQ, but provide an easy means in which ports/services can be exposed to that corresponding network.",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54155,13 +56130,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54170,7 +56144,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter rule name",
@@ -54227,13 +56202,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 pfRemRule=\$(getArgumentValue pfRemRule "\$@")
 pfRemID=\$(echo "\$pfRemRule" | cut -d" " -f1)
@@ -54261,8 +56233,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54271,13 +56241,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54286,7 +56255,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the rule to remove",
@@ -54316,13 +56286,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selchain=\$(getArgumentValue selchain "\$@")
 sellist=\$(getArgumentValue sellist "\$@")
@@ -54347,8 +56314,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54357,13 +56322,12 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54372,7 +56336,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the firewall chain",
@@ -54437,14 +56402,13 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
 source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-checkRes=\$(tryOpenHSHQScript boot)
+checkRes=\$(tryGetLock hshqopen ResetFirewall)
 if ! [ -z "\$checkRes" ]; then
   echo "The HSHQ script is running in another instance (\$checkRes), returning..."
   return
@@ -54455,7 +56419,7 @@ echo "Adding rules to iptables..."
 checkUpdateAllIPTables resetFirewall
 echo "Reset firewall complete!"
 retVal=\$?
-closeHSHQScript "resetFirewall"
+releaseLock hshqopen "resetFirewall" false
 exit \$retVal
 
 EOFSC
@@ -54470,8 +56434,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54480,7 +56442,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -54491,8 +56454,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
@@ -54517,8 +56479,6 @@ EOFSC
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54527,7 +56487,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Select the WireGuard interface",
