@@ -192,6 +192,12 @@ function main()
 {
   init
   checkWrapperVersion
+  IS_PERFORM_INSTALL=false
+  IS_NEW_LIB=false
+  CONNECTING_IP=""
+  IS_PERFORM_RESTORE=false
+  IS_PERFORM_UPDATE=false
+  IS_GET_SUPER=false
   case "$1" in
     "install")
       CONNECTING_IP=$2
@@ -241,7 +247,7 @@ function main()
   fi
   if [ "$IS_PERFORM_INSTALL" = "true" ]; then
     if [ "$USERNAME" = "root" ]; then
-      strErr="Cannot install as root user, exiting..."
+      strErr="main - Cannot install as root user, exiting..."
       logHSHQEvent error "$strErr"
       echo "$strErr"
       exit 1
@@ -266,7 +272,10 @@ function main()
       exit
     fi
     sudo -k
-    sudo -v
+    promptTestSudoPW
+    if [ $? -ne 0 ]; then
+      exit 3
+    fi
     releaseLock hshqopen "User-Console" true
     checkRes=$(tryGetLock hshqopen User-Console)
   fi
@@ -277,10 +286,10 @@ function main()
     isInstalled=$(getConfigVarFromFile IS_INSTALLED $CONFIG_FILE)
     if [ "$isInstalled" = "true" ]; then
       is_hshq_installed=true
+      IS_CONFIG_FILE_UNENCRYPTED=true
     else
       is_hshq_installed=false
     fi
-    IS_CONFIG_FILE_UNENCRYPTED=true
   elif ! [ -z $ENC_CONFIG_FILE ] && [ -f $ENC_CONFIG_FILE ]; then
     # Encrypted file found, assume installed.
     is_hshq_installed=true
@@ -308,7 +317,7 @@ function showNotInstalledMenu()
   checkSupportedHostOS
   while [ -z "$USER_SUDO_PW" ]
   do
-    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME. This is only used for the\ninstallation process to eliminate duplicate prompting: ")
+    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
     if [ $? -ne 0 ]; then
       releaseLock hshqopen "User-Console" false
       exit 3
@@ -386,7 +395,7 @@ EOF
 
 function getLogo()
 {
-  if [ "$IS_CONFIG_FILE_UNENCRYPTED" = "true" ]; then
+  if [ "$IS_INSTALLED" = "true" ] && [ "$IS_CONFIG_FILE_UNENCRYPTED" = "true" ]; then
     echo "$hshqwarninglogo"
   else
     echo "$hshqlogo"
@@ -512,7 +521,7 @@ function showRestoreUnencryptedMenu()
   if [ $? -ne 0 ]; then
     return
   fi
-  confirmRestore=$(promptUserInputMenu "" "Confirm" "The main restore process is ready to start. This will take awhile\nto complete, as all of the docker images must be re-downloaded.\nYou will be prompted shortly for your config decrypt password.\nEnter the word 'restore' below to continue:")
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The main restore process is ready to start. This will take awhile to complete, as all of the docker images must be re-downloaded. You will be prompted shortly for your config decrypt password. Enter the word 'restore' below to continue:")
   if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -856,8 +865,8 @@ EOF
   else
     mkdir -p $HSHQ_RESTORE_DIR
   fi
-  dup_pw=$(promptPasswordMenu "Enter Passphrase" "Enter the passphrase that you used to\nencrypt your Duplicati backup data: ")
-  confirmRestore=$(promptUserInputMenu "" "Confirm" "The decryption process is ready to start. It could take anywhere\nfrom 15 minutes to many hours to decrypt the data from the\nencrypted state, depending on how much data. After this step,\nyou will be prompted for additional information. So check back\nin an hour or so to complete the full server restore process.\nEnter the word 'decrypt' below to continue:")
+  dup_pw=$(promptPasswordMenu "Enter Passphrase" "Enter the passphrase that you used to encrypt your Duplicati backup data: ")
+  confirmRestore=$(promptUserInputMenu "" "Confirm" "The decryption process is ready to start. It could take anywhere from 15 minutes to many hours to decrypt the data from the encrypted state, depending on how much data. After this step, you will be prompted for additional information. So check back in an hour or so to complete the full server restore process. Enter the word 'decrypt' below to continue:")
   if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "decrypt" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -1073,11 +1082,12 @@ EOF
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Update Linux OS and Reboot" \
   "2" "Download All Docker Images" \
-  "3" "Check For IP Address Changes" \
-  "4" "Refresh Firewall" \
-  "5" "Configure Simple Backup" \
-  "6" "Uninstall and Remove Everything" \
-  "7" "Exit" 3>&1 1>&2 2>&3)
+  "3" "Release All Locks" \
+  "4" "Check For IP Address Changes" \
+  "5" "Refresh Firewall" \
+  "6" "Configure Simple Backup" \
+  "7" "Uninstall and Remove Everything" \
+  "8" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -1095,23 +1105,29 @@ EOF
       set +e
       return 1 ;;
     3)
+      sudo -k
+      set +e
+      promptTestSudoPW
+      releaseAllLocks
+      return 1 ;;
+    4)
       checkLoadConfig
       checkHostAllInterfaceIPChanges true User-Console
       set +e
       return 1 ;;
-    4)
+    5)
       checkLoadConfig
       checkUpdateAllIPTables User-Console
       set +e
       return 1 ;;
-    5)
+    6)
       checkLoadConfig
       showSimpleBackupMenu
       set +e
       return 1 ;;
-    6)
-      nukeHSHQ ;;
     7)
+      nukeHSHQ ;;
+    8)
 	  return 0 ;;
   esac
 }
@@ -1562,7 +1578,10 @@ EOFSM
 function checkLoadConfig()
 {
   set -e
-  if [ -z "$CONFIG_FILE" ] || ! [ -f $CONFIG_FILE ]; then
+  if ! [ -z "$ENC_CONFIG_FILE" ] && ! [ -f "$ENC_CONFIG_FILE" ]; then
+    ENC_CONFIG_FILE=""
+  fi
+  if [ -z "$CONFIG_FILE" ] || ! [ -f "$CONFIG_FILE" ]; then
     DEF_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
     if [ -f $DEF_CONFIG_FILE ]; then
       CONFIG_FILE=$DEF_CONFIG_FILE
@@ -1575,20 +1594,83 @@ function checkLoadConfig()
       ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     fi
   fi
+  set +e
   if ! [ -z "$ENC_CONFIG_FILE" ]; then
-    set +e
     showYesNoMessageBox "Encrypted Config Found" "Encrypted configuration file found. Do you wish to decrypt it?"
     if [ $? -ne 0 ]; then
       releaseLock hshqopen "checkLoadConfig" false
       exit 1
     fi
-    set -e
+    # Prompt for config password, test it.
+    # Check if sudo, if not, get it and test it.
+    # If either fails, exit.
+    confirmUnlockCreds
+    if [ $? -ne 0 ]; then
+      releaseLock hshqopen "checkLoadConfig" false
+      exit 1
+    fi
     decryptConfigFile "$ENC_CONFIG_FILE"
     ENC_CONFIG_FILE=""
   fi
+  confirmUnlockCreds
+  if [ $? -ne 0 ]; then
+    releaseLock hshqopen "checkLoadConfig" false
+    exit 1
+  fi
+  set -e
   if ! [ -z "$CONFIG_FILE" ] && [ -f $CONFIG_FILE ]; then
     loadConfigVars true
   fi
+}
+
+function confirmUnlockCreds()
+{
+  promptTestSudoPW
+  if [ $? -ne 0 ]; then
+    return 3
+  fi
+  if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
+    CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=true
+    return
+  fi
+  if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
+    # Assume this is pre-install, so just return
+    return
+  fi
+  promptTestDecryptConfigFile
+  if [ $? -ne 0 ]; then
+    return 3
+  fi
+}
+
+function promptTestSudoPW()
+{
+  sudo -n true 2>/dev/null
+  if [ $? -eq 0 ]; then
+    sudo -v
+    return
+  fi
+  if ! [ -z "$USER_SUDO_PW" ]; then
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_SUDO_PW=""
+    fi
+  fi
+  while [ -z "$USER_SUDO_PW" ]
+  do
+    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your sudo password for $USERNAME: ")
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      return 3
+    fi
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      USER_SUDO_PW=""
+      continue
+    fi
+  done
 }
 
 function checkConfigAvailable()
@@ -1647,11 +1729,9 @@ function initConfig()
   fi
   if [ -z "$CONFIG_FILE" ]; then
     # Create new directories and config file
-    showYesNoMessageBox "No Config Found" "No configuration file found, create initial environment (y/n)?"
-	createInitialEnv
+    createInitialEnv
     loadConfigVars true
   fi
-
   set +e
   if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
     showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
@@ -1702,7 +1782,7 @@ function initConfig()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       PORTAINER_LOCAL_HTTPS_PORT=$tmp_port
     else
-      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between\n9000-9999 has been generated for you.")
+      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between 9000-9999 has been generated for you.")
       if [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]; then
         showMessageBox "Portainer Port Error" "The port cannot be empty or the same as the SSH port"
       elif [ "$(checkValidNumber $PORTAINER_LOCAL_HTTPS_PORT '-')" = "false" ]; then
@@ -1732,7 +1812,7 @@ function initConfig()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ] && [ "$is_add_error" = "false" ]; then
       add_interface=$default_iface
     else
-      add_interface=$(promptUserInputMenu "$default_iface" "Enter Primary Interface" "Enter the primary network interface. The interface for\nthe default route has been entered for you.")
+      add_interface=$(promptUserInputMenu "$default_iface" "Enter Primary Interface" "Enter the primary network interface. The interface for the default route has been entered for you.")
       if [ $? -ne 0 ]; then
         exit 5
       fi
@@ -1786,7 +1866,7 @@ function initConfig()
 
   while [ -z "$HOMESERVER_DOMAIN" ]
   do
-	HOMESERVER_DOMAIN=$(promptUserInputMenu "example.com" "Enter HomeServer Domain" "Enter your HomeServer domain name. You must own this\ndomain to route external emails and/or post services\non the public internet: ")
+	HOMESERVER_DOMAIN=$(promptUserInputMenu "" "Enter HomeServer Domain" "Enter your HomeServer domain name, i.e. example.com. You must own this domain to route external emails and/or post services on the public internet: ")
 	if [ -z "$HOMESERVER_DOMAIN" ]; then
 	  showMessageBox "Domain Empty" "The domain cannot be empty"
     elif [ $(checkValidString "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
@@ -1834,7 +1914,7 @@ function initConfig()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       INT_DOMAIN_PREFIX="internal"
     else
-      INT_DOMAIN_PREFIX=$(promptUserInputMenu "internal" "Internal Domain Prefix" "Enter the prefix for your RelayServer to be reached\ninternally (if applicable):")
+      INT_DOMAIN_PREFIX=$(promptUserInputMenu "internal" "Internal Domain Prefix" "Enter the prefix for your RelayServer to be reached internally (if applicable):")
     fi
 	if [ -z "$INT_DOMAIN_PREFIX" ]; then
 	  showMessageBox "Prefix Empty" "The Prefix cannot be empty"
@@ -1848,7 +1928,7 @@ function initConfig()
 
   while [ -z "$HOMESERVER_NAME" ]
   do
-	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting,\ni.e. capitalization, spaces, etc. No special characters\nexcept for commas, hyphens, or periods. This will appear\nin window titles, certificates, among other things: ")
+	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc. No special characters except for commas, hyphens, or periods. This will appear in window titles, certificates, among other things: ")
 	if [ -z "$HOMESERVER_NAME" ]; then
 	  showMessageBox "HomeServer Name Empty" "The name cannot be empty"
     elif [ $(checkValidStringUpperLowerNumbers "$HOMESERVER_NAME" "[:space:],.-") = "false" ]; then
@@ -1860,7 +1940,7 @@ function initConfig()
   done
   while [ -z "$HOMESERVER_ABBREV" ]
   do
-    HOMESERVER_ABBREV=$(promptUserInputMenu "abc" "Enter HomeServer Abbrev" "Enter an abbreviation for your HomeServer, 3 to 10 lowercase\nalpha-numeric characters. This will be used as a default prefix\nfor admin usernames as well as some other uses: ")
+    HOMESERVER_ABBREV=$(promptUserInputMenu "" "Enter HomeServer Abbrev" "Enter an abbreviation for your HomeServer, 3 to 10 lowercase alpha-numeric characters. This will be used as a default prefix for admin usernames as well as some other uses: ")
     if [ -z "$HOMESERVER_ABBREV" ]; then
       showMessageBox "HomeServer Abbrev Empty" "The abbreviation cannot be empty."
     elif [ $(checkValidString "$HOMESERVER_ABBREV") = "false" ]; then
@@ -1875,7 +1955,7 @@ function initConfig()
   done
   while [ -z "$TZ" ]
   do
-    TZ=$(promptUserInputMenu "$(cat /etc/timezone)" "Enter Time Zone" "Enter your time zone. For a list of all time zones, visit\nhttps://en.wikipedia.org/wiki/List_of_tz_database_time_zones\nand enter the value in the [TZ database name] column: ")
+    TZ=$(promptUserInputMenu "$(cat /etc/timezone)" "Enter Time Zone" "Enter your time zone. For a list of all time zones, visit https://en.wikipedia.org/wiki/List_of_tz_database_time_zones and enter the value in the [TZ database name] column: ")
     if [ $? -ne 0 ]; then
       exit 2
     fi
@@ -1911,7 +1991,7 @@ function initConfig()
   set -e
   while [ -z "$SSH_PORT" ]
   do
-    SSH_PORT=$(promptUserInputMenu $((9000 + $RANDOM % 999)) "Enter HomeServer SSH Port" "It is highly advised to change your default SSH port (22), since\nbots will constantly probe port 22. A random port between\n9000-9999 has been generated for you. Ensure you remember\nthis port in order to log back in.")
+    SSH_PORT=$(promptUserInputMenu $((9000 + $RANDOM % 999)) "Enter HomeServer SSH Port" "It is highly advised to change your default SSH port (22), since bots will constantly probe port 22. A random port between 9000-9999 has been generated for you. Ensure you remember this port in order to log back in.")
     if [ -z "$SSH_PORT" ]; then
       showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
     else
@@ -2109,22 +2189,24 @@ function initInstallation()
     echo -e "________________________________________________________________________\n"
     if [ "$IS_DESKTOP_ENV" = "true" ]; then
       hdir=/home/$USERNAME/Desktop
-      echo -e "Do you want to retain this information in a file on your Desktop,"
+      echo -e "Do you want to retain the above information in a file on your Desktop,"
       echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
     else
       hdir=/home/$USERNAME
-      echo -e "Do you want to retain this information in a file in the home directory,"
+      echo -e "Do you want to retain the above information in a file in the home directory,"
       echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
     fi
     echo -e "information is very sensitive and you should delete the file as soon"
     read -p "as you are finished with it. Enter 'y' or 'n': " is_keep_config
     if [ "$is_keep_config" = "y" ]; then
+      final_prompt="After reading the above section, enter 'install' or 'exit': "
       rm -f "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "\n***** You should permanently delete this file as soon as you are finished with it *****\n\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "${strInstallConfig}" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       chmod 0400 "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       break
     elif [ "$is_keep_config" = "n" ]; then
+      final_prompt="After reading/copying the above section, enter 'install' or 'exit': "
       break
     else
       echo "Unknown response, please try again."
@@ -2134,7 +2216,7 @@ function initInstallation()
   while true;
   do
     echo -e "\n\n________________________________________________________________________\n"
-    read -p "After reading/copying the above section, enter 'install' or 'exit': " is_install
+    read -p "$final_prompt" is_install
     if [ "$is_install" = "install" ]; then
       break
     elif [ "$is_install" = "exit" ]; then
@@ -2157,12 +2239,16 @@ function initInstallation()
   echo "Starting installation on HomeServer..."
   sleep 1
   releaseLock hshqopen "preInstallation" false
+  truncate -s 0 $HSHQ_LOG_FILE
   scName=hshqInstall
   initSuperScreen $scName
   if [ $? -ne 0 ]; then
     showMessageBox "ERROR" "There was an unknown error starting the install screen, exiting..."
   else
+    screen -S $scName -X stuff "clear\n"
+    sleep 1
     screen -S $scName -X stuff "bash $HSHQ_LIB_SCRIPT install $CONNECTING_IP\n"
+    screen -r $scName
   fi
   exit 0
 }
@@ -2183,9 +2269,9 @@ function removeSudoTimeoutInstall()
 
 function performBaseInstallation()
 {
-  checkRes=$(tryGetLock hshqopen Installation)
+  checkRes="$(acquireAllLocks)"
   if ! [ -z "$checkRes" ]; then
-    strErr="ERROR: The HSHQ script is already open or running in a different instance ($checkRes). Please remove the directory: /tmp/hshqopen, then restart the installation."
+    strErr="performBaseInstallation - The HSHQ script is already open or running in a different instance ($checkRes). If you are certain that it is not, then please remove the directories: /tmp/hshqopen and /tmp/networkchecks, then restart the installation."
     logHSHQEvent error "$strErr"
     echo "$strErr"
     exit 7
@@ -2193,7 +2279,7 @@ function performBaseInstallation()
   set +e
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    logHSHQEvent error "Password Error"
+    logHSHQEvent error "performBaseInstallation - Password Error"
     exit 10
   fi
   unset USER_SUDO_PW
@@ -2201,7 +2287,7 @@ function performBaseInstallation()
   setSudoTimeoutInstall
   checkLoadConfig
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
-    strErr="Already installed or existing installation is in progress, exiting..."
+    strErr="performBaseInstallation - Already installed or existing installation is in progress, exiting..."
     logHSHQEvent error "$strErr"
     echo "$strErr"
     exit 1
@@ -2209,40 +2295,44 @@ function performBaseInstallation()
   IS_INSTALLING=true
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
-  enable_trapping
-  setup_scroll_area
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt autoremove -y
   set -e
   outputScripts
-  draw_progress_bar 5
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
-  draw_progress_bar 10
-  logHSHQEvent info "Install Dependencies"
+  logHSHQEvent info "performBaseInstallation - Install Dependencies"
   installMailUtils
   installDependencies
-  draw_progress_bar 15
+  clear
+  echo -e "\n\n##########################################"
+  echo -e "     Starting Base HSHQ Installation"
+  echo -e "##########################################\n\n"
+  enable_trapping
+  setup_scroll_area
+  is_draw_pb=true
+  draw_progress_bar 0
   set +e
   performClearIPTables true
   checkUpdateAllIPTables performBaseInstallation-Early
   set -e
-  draw_progress_bar 20
+  draw_progress_bar 5
   pullBaseServicesDockerImages
   draw_progress_bar 50
-  logHSHQEvent info "Init DH Params"
+  logHSHQEvent info "performBaseInstallation - Init DH Params"
   initDHParams
+  draw_progress_bar 53
   getUpdateAssets
   draw_progress_bar 55
-  logHSHQEvent info "Starting Stack Installs"
+  logHSHQEvent info "performBaseInstallation - Starting Stack Installs"
   installBaseStacks
-  draw_progress_bar 85
+  draw_progress_bar 80
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-      logHSHQEvent info "Configure Docker WireGuard Network"
+      logHSHQEvent info "performBaseInstallation - Configure Docker WireGuard Network"
       connectPrimaryInternet
     elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
       dns_file=$HOME/dns.tmp
@@ -2253,13 +2343,14 @@ function performBaseInstallation()
         docker container start heimdall >/dev/null
       fi
     fi
-    logHSHQEvent info "Connect Services To VPN"
+    draw_progress_bar 81
+    logHSHQEvent info "performBaseInstallation - Connect Services To VPN"
     connectPrimaryVPN
+    draw_progress_bar 83
     echo "Waiting 30s for services to initialize..."
     sleep 30
   fi
-  initCronJobs
-  draw_progress_bar 90
+  draw_progress_bar 85
   clearQueryLogAndStatsAdguardHS
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -2269,14 +2360,13 @@ function performBaseInstallation()
     fi
   fi
   set -e
-  logHSHQEvent info "Post Installation"
-  draw_progress_bar 95
+  logHSHQEvent info "performBaseInstallation - Post Installation"
+  draw_progress_bar 86
   checkUpdateAllIPTables performBaseInstallation-Late
   set -e
-  draw_progress_bar 99
+  draw_progress_bar 88
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
-  draw_progress_bar 100
-  destroy_scroll_area
+  draw_progress_bar 90
   postInstallation
 }
 
@@ -2291,18 +2381,22 @@ function postInstallation()
   #sendEmail -s "Configuration File" -b "$mail_msg" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
   sendRootCAEmail true
+  draw_progress_bar 91
   emailFormattedCredentials
+  draw_progress_bar 92
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     #echo "Emailing DNS Info..."
     #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
     echo ""
   fi
   sleep 5
+  draw_progress_bar 94
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
   echo "Sanitizing installation log..."
   sanitizeHSHQLog
   echo "Installed"
+  draw_progress_bar 95
   IS_INSTALLED=true
   updateConfigVar IS_INSTALLED $IS_INSTALLED
   IS_INSTALLING=false
@@ -2314,6 +2408,7 @@ function postInstallation()
     if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
       sudo cp /usr/share/icons/HSHQ/Homepage_HSHQ.png /usr/share/icons/HSHQ/Homepage.png
     fi
+    rm -f ~/Desktop/HomePage.desktop
     cat <<EOFHP > ~/Desktop/HomePage.desktop
 [Desktop Entry]
 Name=$HOMESERVER_NAME
@@ -2324,6 +2419,7 @@ Icon=/usr/share/icons/HSHQ/Homepage.png
 Type=Application
 EOFHP
     chmod 755 ~/Desktop/HomePage.desktop
+    rm -f ~/Desktop/HSHQConsole.desktop
     cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
 [Desktop Entry]
 Name=HSHQ Console
@@ -2334,6 +2430,7 @@ Icon=/usr/share/icons/HSHQ/Settings_HSHQ.png
 Type=Application
 EOFHP
     chmod 755 ~/Desktop/HSHQConsole.desktop
+    rm -f ~/Desktop/HSHQHelp.desktop
     cat <<EOFHP > ~/Desktop/HSHQHelp.desktop
 [Desktop Entry]
 Name=Help!
@@ -2357,24 +2454,30 @@ EOFHP
       # Just because
       gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
     fi
+    draw_progress_bar 96
     addRootCertificateToApps
     configureFirefox
     set -e
   fi
+  draw_progress_bar 99
+  initCronJobs
   encryptConfigFile
+  destroy_scroll_area
   echo -e "\n\n\n\n########################################\n\n"
   echo "HomeServer Installation Complete!"
   echo "The system will automatically reboot in 60 seconds..."
   echo -e "\n\n########################################\n\n"
   sleep 60
-  logHSHQEvent info "Rebooting"
+  logHSHQEvent info "postInstallation - Rebooting"
   releaseLock hshqopen "postInstallation" false
   removeSudoTimeoutInstall
+  rm -f ~/dead.letter
   sudo reboot
 }
 
 function sanitizeHSHQLog()
 {
+  sudo sed -i 's/\x1b//g' $HSHQ_LOG_FILE
   sudo sed -i "s|$USERNAME|hshquser|g" $HSHQ_LOG_FILE
   sudo sed -i "s|$LDAP_PRIMARY_USER_USERNAME|hshquser|g" $HSHQ_LOG_FILE
   sudo sed -i "s|$LDAP_ADMIN_USER_USERNAME|hshqadmin|g" $HSHQ_LOG_FILE
@@ -2471,7 +2574,7 @@ EOF
     return
   fi
   selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
-  confirmFormat=$(promptUserInputMenu "" "Confirm Format" "WARNING - This operation will entirely ERASE the contents\nof the selected drive. To confirm, enter the word 'format' below:")
+  confirmFormat=$(promptUserInputMenu "" "Confirm Format" "WARNING - This operation will entirely ERASE the contents of the selected drive. To confirm, enter the word 'format' below:")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -2481,7 +2584,7 @@ EOF
   fi
   while true;
   do
-    backupHour=$(promptUserInputMenu "" "Daily Backup Time" "Enter the hour of the day(0-23) that you wish to perform\nthe daily backup. This can be modified later in Duplicati:")
+    backupHour=$(promptUserInputMenu "" "Daily Backup Time" "Enter the hour of the day(0-23) that you wish to perform the daily backup. This can be modified later in Duplicati:")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -2496,7 +2599,7 @@ EOF
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE\nyou remember this or you will be IRREVERSIBLY locked out of\nyour backup files (unless you have a quantum super-computer)\nand you will NOT be able to recover your data: ")
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a quantum super-computer) and you will NOT be able to recover your data: ")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -2521,7 +2624,7 @@ EOF
   backupPW="$tmp_pw1"
   tmp_pw1=""
   tmp_pw2=""
-  confirmFinal=$(promptUserInputMenu "" "Confirm" "The backup configuration is ready. To perform all actions,\nincluding erasing and formatting the selected disk,\nenter the word 'confirm' below:")
+  confirmFinal=$(promptUserInputMenu "" "Confirm" "The backup configuration is ready. To perform all actions, including erasing and formatting the selected disk, enter the word 'confirm' below:")
   if [ $? -ne 0 ] || [ -z $confirmFinal ] || ! [ "$confirmFinal" = "confirm" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -3245,9 +3348,9 @@ EOF
         PRIMARY_VPN_SETUP_TYPE=manual
         updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         # Determine if this is a private IP, and if so, let the user know about networking.
-        showMsg="Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_PRIMARY_INTERFACE_IP), in order to access your services internally. "
+        showMsg="Since you will set up a RelayServer later, you will need to manually change the DNS server on any client devices to the IP address of this HomeServer ($HOMESERVER_HOST_PRIMARY_INTERFACE_IP), in order to access your services. "
         if [ "$(checkIsIPPrivate $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "true" ]; then
-          showMsg=$showMsg"You will also need to ensure the device from which you are accessing the HomeServer is on the same local private network, and if you have any firewalls around your HomeServer, that the following ports are accessible: 443 (https),$SSH_PORT(ssh),$SCRIPTSERVER_LOCALHOST_PORT(Script-server),$PORTAINER_LOCAL_HTTPS_PORT(Portainer). Do not open these ports on your router, only ensure that you can reach them internally on the HomeServer."
+          showMsg=$showMsg"The client devices must be on the same local network (connected to the same router) as well."
         fi
         showMessageBox "DNS Server" "$showMsg"
         ;;
@@ -3366,7 +3469,7 @@ function setupHostedVPN()
   RELAYSERVER_SSH_PORT=""
   while [ -z "$RELAYSERVER_SSH_PORT" ]
   do
-	RELAYSERVER_SSH_PORT=$(promptUserInputMenu "$SSH_PORT" "Enter NEW RelayServer SSH Port" "Enter your desired SSH Port for your RelayServer. It is highly\nadvised to change your default SSH port (22). Bots will\nconstantly probe port 22:")
+	RELAYSERVER_SSH_PORT=$(promptUserInputMenu "$SSH_PORT" "Enter NEW RelayServer SSH Port" "Enter your desired SSH Port for your RelayServer. It is highly advised to change your default SSH port (22). Bots will constantly probe port 22:")
 	if [ -z "$RELAYSERVER_SSH_PORT" ]; then
 	  showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
     elif [ "$(checkValidNumber $RELAYSERVER_SSH_PORT)" = "false" ]; then
@@ -3400,7 +3503,7 @@ function setupHostedVPN()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       RELAYSERVER_LE_CERT_DOMAINS="$lecert_def"
     else
-      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$lecert_def" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be\nmanaged by LetsEncrypt (comma-separated):")
+      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$lecert_def" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
 	  if [ $(checkValidString "$RELAYSERVER_LE_CERT_DOMAINS" ",.-") = "false" ]; then
         showMessageBox "Invalid Character(s)" "The domain list contains invalid character(s). It must consist of a-z (lowercase), 0-9, -, and/or ."
         RELAYSERVER_LE_CERT_DOMAINS=unset
@@ -3737,12 +3840,12 @@ function transferHostedVPN()
   set +e
   checkRes=$(tryGetLock networkchecks transferHostedVPN)
   if ! [ -z "$checkRes" ]; then
-    strErr="Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
-    logHSHQEvent error "$strErr"
-    showMessageBox "ERROR" "ERROR: $strErr"
+    strErr="transferHostedVPN - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
+    logHSHQEvent warning "$strErr"
+    showMessageBox "WARNING" "WARNING: $strErr"
     return
   fi
-  is_transfer=$(promptUserInputMenu "" "Transfer RelayServer" "If you wish to transfer your RelayServer,\nenter the word 'transfer' below:")
+  is_transfer=$(promptUserInputMenu "" "Transfer RelayServer" "If you wish to transfer your RelayServer, enter the word 'transfer' below:")
   if ! [ $is_transfer = "transfer" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return 0
@@ -7786,7 +7889,7 @@ function uploadVPNInstallScripts()
   do
     nonroot_username=""
     trUsername=$RELAYSERVER_REMOTE_USERNAME
-    RELAYSERVER_REMOTE_USERNAME=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host.\nA fresh installation will typically default to root: ")
+    RELAYSERVER_REMOTE_USERNAME=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host. A fresh installation will typically default to root: ")
     if [ $? -ne 0 ]; then
       return 1
     fi
@@ -7812,7 +7915,7 @@ function uploadVPNInstallScripts()
     tmp_pw2=""
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
-      tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer\nLinux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
+      tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
       if [ -z "$tmp_pw1" ]; then
         showMessageBox "Password Empty" "The password cannot be empty, please try again."
         continue
@@ -7843,7 +7946,7 @@ function uploadVPNInstallScripts()
     RELAYSERVER_SERVER_IP=""
     while [ -z "$RELAYSERVER_SERVER_IP" ]
     do
-      RELAYSERVER_SERVER_IP=$(promptUserInputMenu $domain_ip_guess "Enter IP Address" "Enter the IP Address of the RelayServer. It is IMPORTANT that\nyou enter this value correctly. If you have already pointed your\nDNS of your HomeServer domain to your RelayServer, then ensure\nthe guessed IP is correct.")
+      RELAYSERVER_SERVER_IP=$(promptUserInputMenu $domain_ip_guess "Enter IP Address" "Enter the IP Address of the RelayServer. It is IMPORTANT that you enter this value correctly. If you have already pointed your DNS of your HomeServer domain to your RelayServer, then ensure the guessed IP is correct.")
       if [ $? -ne 0 ]; then
         return 1
       fi
@@ -7863,7 +7966,7 @@ function uploadVPNInstallScripts()
     RELAYSERVER_CURRENT_SSH_PORT=""
     while [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]
     do
-      RELAYSERVER_CURRENT_SSH_PORT=$(promptUserInputMenu "22" "Enter CURRENT SSH Port" "Enter the CURRENT SSH port for the RelayServer host,\n(a fresh installation defaults to port 22): ")
+      RELAYSERVER_CURRENT_SSH_PORT=$(promptUserInputMenu "22" "Enter CURRENT SSH Port" "Enter the CURRENT SSH port for the RelayServer host, (a fresh installation defaults to port 22): ")
       if [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]; then
         showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
       fi
@@ -8168,7 +8271,7 @@ function resetRelayServerData()
 function createOrJoinPrimaryVPN()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    is_remove=$(promptUserInputMenu "" "Existing RelayServer" "There is already a RelayServer set up. If you wish to remove\nall connections/data, enter the word 'remove' below:")
+    is_remove=$(promptUserInputMenu "" "Existing RelayServer" "There is already a RelayServer set up. If you wish to remove all connections/data, enter the word 'remove' below:")
     if ! [ "$is_remove" = "remove" ]; then
       showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
       return 0
@@ -8190,7 +8293,7 @@ EOF
 
     case $menures in
       1)
-        confirmHost=$(promptUserInputMenu "" "Confirmation" "This function will set up a hosted VPN. Ensure you have\nthe RelayServer ready and you can readily log into it.\nEnter the word 'confirm' below:")
+        confirmHost=$(promptUserInputMenu "" "Confirmation" "This function will set up a hosted VPN. Ensure you have the RelayServer ready and you can readily log into it. Enter the word 'confirm' below:")
         if ! [ "$confirmHost" = "confirm" ]; then
           showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
           return 0
@@ -8237,7 +8340,7 @@ EOF
         connectPrimaryVPN
         ;;
       2)
-        confirmJoin=$(promptUserInputMenu "" "Confirmation" "This function will prepare you server to join another hosted VPN\nas your primary. Enter the word 'confirm' below:")
+        confirmJoin=$(promptUserInputMenu "" "Confirmation" "This function will prepare you server to join another hosted VPN as your primary. Enter the word 'confirm' below:")
         if ! [ "$confirmJoin" = "confirm" ]; then
           showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
           return 0
@@ -8266,7 +8369,7 @@ EOF
 function showRemovePrimaryVPN()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    is_remove=$(promptUserInputMenu "" "Remove RelayServer" "If you wish to remove all connections/data,\nenter the word 'remove' below:")
+    is_remove=$(promptUserInputMenu "" "Remove RelayServer" "If you wish to remove all connections/data, enter the word 'remove' below:")
     if [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
       showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
       return 0
@@ -8589,7 +8692,7 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8622,7 +8725,7 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8674,7 +8777,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   removal_reason=$(promptUserInputMenu "" "Removal Reason" "Enter a reason for removal: ")
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8707,7 +8810,7 @@ function notifyUserNetworkRemoval()
 
 function showMyNetworkCreateClientDNSMenu()
 {
-  clientdns_stack_name=$(promptUserInputMenu "" "ClientDNS Stack Name" "Enter a unique name for this stack,\n3-10 alpha-numeric lowercase characters: ")
+  clientdns_stack_name=$(promptUserInputMenu "" "ClientDNS Stack Name" "Enter a unique name for this stack, 3-10 alpha-numeric lowercase characters: ")
   if [ -z "$clientdns_stack_name" ]; then
     showMessageBox "Stack Name Empty" "The name cannot be empty."
   fi
@@ -8809,7 +8912,7 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curvpn | sed 's/|/)/1')) | OFF "
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections.\nTo confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
   if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8864,7 +8967,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
-  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections.\nTo confirm, enter the word 'disconnect' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8898,7 +9001,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
-  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections.\nTo confirm, enter the word 'disconnect' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -8918,7 +9021,7 @@ function applyHomeServerPrimaryVPNConfig()
   le_cert_domains=unset
   while [ "$le_cert_domains" = "unset" ]
   do
-    le_cert_domains=$(promptUserInputMenu "$(getLetsEncryptCertsDefault)" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will\nbe managed by LetsEncrypt (comma-separated):")
+    le_cert_domains=$(promptUserInputMenu "$(getLetsEncryptCertsDefault)" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
     if [ $? -ne 0 ]; then
       return 1
     fi
@@ -8934,7 +9037,7 @@ function createOtherNetworkApplyHomeServerVPNConfig()
 {
   is_primary=$1
   le_cert_domains="$2"
-  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network\nto which you are applying:")
+  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network to which you are applying:")
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -9044,7 +9147,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
 
 function createOtherNetworkApplyHomeServerInternetConfig()
 {
-  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network\nto which you are applying:")
+  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network to which you are applying:")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -9080,7 +9183,7 @@ function sendOtherNetworkApplyHomeServerInternetConfig()
 
 function createOtherNetworkApplyUserConfig()
 {
-  email_address=$(promptUserInputMenu "$EMAIL_ADMIN_EMAIL_ADDRESS" "Enter Email Address" "Enter the email address that you wish\nto associate with this request: ")
+  email_address=$(promptUserInputMenu "$EMAIL_ADMIN_EMAIL_ADDRESS" "Enter Email Address" "Enter the email address that you wish to associate with this request: ")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -9090,7 +9193,7 @@ function createOtherNetworkApplyUserConfig()
   else
     isInternetAccess=false
   fi
-  ip_address=$(promptUserInputMenu "" "Enter IP Address" "Enter your client device IP address. Leave blank if you\ndo not have one and want it generated for you: ")
+  ip_address=$(promptUserInputMenu "" "Enter IP Address" "Enter your client device IP address. Leave blank if you do not have one and want it generated for you: ")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -9109,7 +9212,7 @@ function createOtherNetworkApplyUserConfig()
       return
     fi
   fi
-  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network\nto which you are applying:")
+  recipient_email=$(promptUserInputMenu "" "Enter Recipient" "Enter the administrator email address of the network to which you are applying:")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -10641,14 +10744,10 @@ function tryGetLock()
   if mkdir -- "/tmp/\$lockName" > /dev/null 2>&1; then
     echo \$callerName > /tmp/\$lockName/\$LOCKHOLDER_FILENAME
     echo \$(date '+%s') >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
-    echo 1 >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo 0 >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
     chmod 755 /tmp/\$lockName
     chmod 644 /tmp/\$lockName/\$LOCKHOLDER_FILENAME
   else
-    lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
-    totAttempts=\$((\$lastAttempts + 1))
-    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME
-    echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
     echo "\$(getLockOpenMsg \$lockName)"
   fi
   if ! [ -z "\$cohs_curE" ]; then
@@ -10668,16 +10767,28 @@ function getLockOpenMsg()
     secondsDiff=\$((\$dtNow - \$lastExecute))
     strMessage=""
     if [ \$secondsDiff -lt 60 ]; then
-      strMessage="\$secondsDiff seconds ago by"
+      strMessage="Lock obtained \$secondsDiff second(s) ago by"
     else
       totMinutes=\$((\$secondsDiff / 60))
-      strMessage="\$totMinutes minutes ago by"
+      strMessage="Lock obtained \$totMinutes minute(s) ago by"
     fi
-    strMessage="\$strMessage \$lastCaller @ \$lastExecuteDate (\$lastAttempts)"
+    strMessage="\$strMessage \$lastCaller @ \$lastExecuteDate"
   else
     strMessage="Unknown-User"
   fi
   echo "\$strMessage"
+}
+
+function getIncrementLockAttempts()
+{
+  lockName="\$1"
+  if test -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME; then
+    lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    totAttempts=\$((\$lastAttempts + 1))
+    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo "\$totAttempts"
+  fi
 }
 
 function checkIsLockEnabled()
@@ -10728,21 +10839,22 @@ function acquireAllLocks()
 {
   checkRes=$(tryGetLock networkchecks acquireAllLocks)
   if ! [ -z "$checkRes" ]; then
-    echo "networkchecks: $strErr"
+    echo "networkchecks: $checkRes"
     return 23
   fi
   checkRes=$(tryGetLock hshqopen acquireAllLocks)
   if ! [ -z "$checkRes" ]; then
     releaseLock networkchecks acquireAllLocks false
-    echo "hshqopen: $strErr"
+    echo "hshqopen: $checkRes"
     return 24
   fi
 }
 
 function releaseAllLocks()
 {
-  releaseLock hshqopen "releaseAllLocks" false
-  releaseLock networkchecks "releaseAllLocks" false
+  isForce="$1"
+  releaseLock hshqopen "releaseAllLocks" "$isForce"
+  releaseLock networkchecks "releaseAllLocks" "$isForce"
 }
 
 # Util Functions
@@ -11617,14 +11729,14 @@ function setHostInternetTrafficWGInterface()
     if ! sudo test -f $HSHQ_WIREGUARD_DIR/internet/${selWG}.conf; then
       strMsg="Could not find WireGuard interface ($selWG)"
       echo "$strMsg"
-      logHSHQEvent error "(setHostInternetTrafficWGInterface) $strMsg"
+      logHSHQEvent error "setHostInternetTrafficWGInterface - $strMsg"
       return 1
     fi
     rTable=$(getConfigVarFromFile \#ROUTING_TABLE_ID $HSHQ_WIREGUARD_DIR/internet/${selWG}.conf root)
     if [ -z "$rTable" ]; then
       strMsg="Could not determine routing table ($selWG)"
       echo "$strMsg"
-      logHSHQEvent error "(setHostInternetTrafficWGInterface) $strMsg"
+      logHSHQEvent error "setHostInternetTrafficWGInterface - $strMsg"
       return 2
     fi
   fi
@@ -12256,7 +12368,7 @@ function performExitFunctions()
   set +e
   killall ssh-agent > /dev/null 2>&1
   set -e
-  if [ -z "$IS_CONFIG_INIT" ] || ! [ "$IS_INSTALLED" = "true" ]; then
+  if ([ -z "$IS_CONFIG_INIT" ] || ! [ "$IS_INSTALLED" = "true" ]) && ! [ "$IS_CONFIG_FILE_UNENCRYPTED" = "true" ]; then
     return
   fi
   encryptConfigFile
@@ -12276,9 +12388,11 @@ function encryptConfigFile()
   elif ! [ -z "$CONFIG_ENCRYPTION_PASSPHRASE" ]; then
     rm -f $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     openssl enc -e -aes256 -pbkdf2 -pass pass:$CONFIG_ENCRYPTION_PASSPHRASE -in $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME -out $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
-    chmod 0400 $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
-    rm -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
-    IS_CONFIG_FILE_UNENCRYPTED=false
+    if [ -f $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
+      chmod 0400 $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
+      rm -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
+      IS_CONFIG_FILE_UNENCRYPTED=false
+    fi
   fi
 }
 
@@ -12306,14 +12420,11 @@ function decryptConfigFile()
 {
   encConfig=$1
   if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
-    set +e
-    showYesNoMessageBox "Replace Existing File?" "Do you wish to use replace the existing configuration file?"
-    mbres=$?
-    if [ $mbres -ne 0 ]; then
-      return
-    fi
+    CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=true
+    set -e
+    return
   fi
-  rm -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
   set +e
   decrypt_res=1
   while [ $decrypt_res -ne 0 ]
@@ -12330,8 +12441,7 @@ function decryptConfigFile()
       fi
     fi
   done
-  rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
-  mv $encConfig $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
+  mv -f $encConfig $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
   IS_CONFIG_FILE_UNENCRYPTED=true
   set -e
@@ -12354,11 +12464,14 @@ function decryptAndLoad()
   ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
   if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
     decryptFile "$ENC_CONFIG_FILE" "$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME"
-    rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
-    mv $ENC_CONFIG_FILE $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
+    mv -f $ENC_CONFIG_FILE $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   fi
   USER_CONFIG_PW=""
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+  if ! [ -f $CONFIG_FILE ]; then
+    echo "There was a critical error with the configuration file, exiting..."
+    exit 9
+  fi
   IS_CONFIG_FILE_UNENCRYPTED=true
   loadConfigVars "$1"
 }
@@ -12374,14 +12487,14 @@ function checkDecryptConfigFile()
       DEF_ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     else
       echo "ERROR: Could not find encrypted configuration file."
-      exit 2
+      return 2
     fi
     if ! [ -z "$DEF_ENC_CONFIG_FILE" ]; then
       openssl enc -d -aes256 -pbkdf2 -in "$DEF_ENC_CONFIG_FILE" -pass file:<( echo -n "$USER_CONFIG_PW" ) > /dev/null 2>&1
       if [ $? -ne 0 ]; then
         echo "bad"
         echo "ERROR: Incorrect password for encrypted configuration file."
-        exit 3
+        return 3
       else
         echo "good"
       fi
@@ -12394,12 +12507,18 @@ function checkDecryptConfigFile()
 
 function promptTestDecryptConfigFile()
 {
+  if ! [ -z "$USER_CONFIG_PW" ]; then
+    checkDecryptConfigFile > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_CONFIG_PW=""
+    fi
+  fi
   while [ -z "$USER_CONFIG_PW" ]
   do
     USER_CONFIG_PW=$(promptPasswordMenu "Enter Decrypt Password" "Enter your config decrypt password: ")
     retVal=$?
     if [ $retVal -ne 0 ]; then
-      exit 3
+      return 3
     fi
     checkDecryptConfigFile > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -12458,7 +12577,7 @@ function installStack()
   if [ -z $max_interval ]; then
     max_interval=300
   fi
-  logHSHQEvent info "Installing Stack ($stack_name)"
+  logHSHQEvent info "installStack - Installing Stack ($stack_name)"
   # Refresh the sudo timestamp
   sudo -v
   if [ -z "$PORTAINER_TOKEN" ]; then
@@ -12486,7 +12605,7 @@ function installStack()
     ((ins_numTries++))
   done
   if [ $ins_retVal -ne 0 ]; then
-    logHSHQEvent error "Error installing stack ($stack_name)"
+    logHSHQEvent error "installStack - Error installing stack ($stack_name)"
     echo "ERROR: Could not install stack ($stack_name) in Portainer..." 1>&2
     return $ins_retVal
   fi
@@ -12699,6 +12818,7 @@ function showMessageBox()
 {
   msgmenu=$(cat << EOF
 $(getLogo)
+
 $2
 
 EOF
@@ -12710,6 +12830,7 @@ function showYesNoMessageBox()
 {
   msgmenu=$(cat << EOF
 $(getLogo)
+
 $2
 
 EOF
@@ -12721,6 +12842,7 @@ function showNoYesMessageBox()
 {
   msgmenu=$(cat << EOF
 $(getLogo)
+
 $2
 
 EOF
@@ -12732,6 +12854,7 @@ function promptUserInputMenu()
 {
   usermenu=$(cat << EOF
 $(getLogo)
+
 $3
 
 EOF
@@ -12747,6 +12870,7 @@ function promptPasswordMenu()
 {
   usermenu=$(cat << EOF
 $(getLogo)
+
 $2
 
 EOF
@@ -13634,6 +13758,9 @@ function format_eta()
 
 function draw_progress_bar()
 {
+  if ! [ "$is_draw_pb" = "true" ]; then
+    return
+  fi
   eta=""
   if [ "$ETA_ENABLED" = "true" -a $1 -gt 0 ]; then
     if [ "$PROGRESS_BLOCKED" = "true" ]; then
@@ -13791,7 +13918,7 @@ function addDomainsToRelayServer()
   domains_to_add=""
   while [ -z "$domains_to_add" ]
   do
-    domains_to_add=$(promptUserInputMenu "" "Enter New Domains" "Enter the new domain names that you wish to add,\nseparated by comma (no spaces):")
+    domains_to_add=$(promptUserInputMenu "" "Enter New Domains" "Enter the new domain names that you wish to add, separated by comma (no spaces):")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
@@ -13885,7 +14012,7 @@ EOF
     menu_items=${menu_items}"$(echo $(echo $curdom | sed 's/|/(/1')")") | OFF "
   done
   sel_doms=($(whiptail --title "Select Domains" --checklist "$rem_menu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains from the RelayServer.\nTo confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains from the RelayServer. To confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -14003,7 +14130,7 @@ function removeSecondaryDomainFromRelayServer()
 function addLECertPathsToRelayServerMsgbox()
 {
   set +e
-  add_subdomains=$(promptUserInputMenu "" "Enter Subdomain" "Enter the subdomains for which you want LetsEncrypt\nto manage the certificates(separated by comma):")
+  add_subdomains=$(promptUserInputMenu "" "Enter Subdomain" "Enter the subdomains for which you want LetsEncrypt to manage the certificates(separated by comma):")
   if [ $? -ne 0 ]; then
     return
   fi
@@ -15413,6 +15540,22 @@ function addRootCertificateToApps()
     echo "Adding certificate (${CERTS_ROOT_CA_NAME}.crt) to Chromium-based browser(s) pki..."
     certutil -A -n "${HOMESERVER_NAME} Root CA" -t "CT,C,C" -i "/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt" -d sql:~/.pki/nssdb 2> /dev/null
   fi
+}
+
+function tryDeleteRootCAFirefox()
+{
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  for certDB in $(find ~ -name "cert9.db" 2> /dev/null)
+  do
+    certDir=$(dirname $certDB)
+    certList=($(certutil -L -d sql:${certDir} | grep -o ".*Root CA"))
+    for curCert in "${certList[@]}"
+    do
+      certutil -D -n "$curCert" -d sql:${certDir}
+    done
+  done
+  IFS=$OLDIFS
 }
 
 function findCertByKeyword()
@@ -16825,7 +16968,7 @@ function createInitialEnv()
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file.\nENSURE you remember this or you will be IRREVERSIBLY locked\nout of your configuration file (unless you have a quantum\nsuper-computer) and you will not be able to apply updates,\nadd new services, do networking functions, etc.: ")
+    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of it (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
     if [ $? -ne 0 ]; then exit; fi
     if [ -z "$tmp_pw1" ]; then
       showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -18779,13 +18922,16 @@ function version72Update()
   outputPerformPostDockerBootActionsScript
   sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
   sudo systemctl start networkd-dispatcher > /dev/null 2>&1
-  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-  do
-    cur_ext_dom=$(sudo grep "^#EXT_DOMAIN=" $conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
-    if ! [[ $cur_ext_dom =~ ^$RELAYSERVER_SUB_WG.* ]]; then
-      sudo sed -i "s|^#EXT_DOMAIN=.*|#EXT_DOMAIN=${RELAYSERVER_SUB_WG}\.${cur_ext_dom}|g" $conf
-    fi
-  done
+  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+    do
+      cur_ext_dom=$(sudo grep "^#EXT_DOMAIN=" $conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+      if ! [[ $cur_ext_dom =~ ^$RELAYSERVER_SUB_WG.* ]]; then
+        sudo sed -i "s|^#EXT_DOMAIN=.*|#EXT_DOMAIN=${RELAYSERVER_SUB_WG}\.${cur_ext_dom}|g" $conf
+      fi
+    done
+  fi
 }
 
 function version73Update()
@@ -19539,7 +19685,7 @@ EOFRS
 function version126Update()
 {
   ema1=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $CONFIG_FILE)
-  ema2=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $HSHQ_PLAINTEXT_ROOT_CONFIG)
+  ema2=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $HSHQ_PLAINTEXT_ROOT_CONFIG root)
   if ! [ -z "$ema1" ] && [ -z "$ema2" ]; then
     updatePlaintextRootConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
     sed -i "/^EMAIL_ADMIN_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
@@ -19551,6 +19697,8 @@ function version126Update()
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
   sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
   sudo sed -i "s/CHECKIP_REFRESH_RATE/NETWORK_UPDATE_INTERVAL/" $HSHQ_PLAINTEXT_ROOT_CONFIG >/dev/null
+  NETWORK_UPDATE_INTERVAL=5
+  updatePlaintextRootConfigVar NETWORK_UPDATE_INTERVAL $NETWORK_UPDATE_INTERVAL
   outputUpdateIPTablesBeforeNetworkBootscript
   outputPerformPostDockerBootActionsScript
   outputPerformNetworkingChecks
@@ -20801,9 +20949,27 @@ function nukeHSHQ()
     sudo chmod +x /etc/update-motd.d/*
   fi
   releaseLock hshqopen "nukem" true
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    rm -f "/home/$USERNAME/Desktop/$HSHQ_INSTALL_NOTES_FILENAME"
+    rm -f ~/Desktop/HomePage.desktop
+    rm -f ~/Desktop/HSHQConsole.desktop
+    cat <<EOFHP > ~/Desktop/InstallHSHQ.desktop
+[Desktop Entry]
+Name=Install HSHQ
+Exec=bash -ic "~/hshq.sh"
+Comment=Starts the HSHQ installation script
+Terminal=true
+Icon=/usr/share/icons/HSHQ/Install_HSHQ.png
+Type=Application
+EOFHP
+    chmod 755 ~/Desktop/InstallHSHQ.desktop
+    if [ -f /etc/profile.d/desktop-truster.sh ]; then
+      # This is dumb and pointless...
+      bash /etc/profile.d/desktop-truster.sh
+    fi
+    tryDeleteRootCAFirefox
+  fi
   rm -f "/home/$USERNAME/$HSHQ_INSTALL_NOTES_FILENAME"
-  rm -f "/home/$USERNAME/Desktop/$HSHQ_INSTALL_NOTES_FILENAME"
-  #sudo reboot
   exit 2
 }
 
@@ -20901,7 +21067,7 @@ function checkUpdateAllIPTables()
     isLogInfo=false
   fi
   if [ "$isLogInfo" = "true" ]; then
-    logHSHQEvent info "IPTables ($netstate) - BEGIN"
+    logHSHQEvent info "checkUpdateAllIPTables ($netstate) - BEGIN"
   fi
   # If one wants to run any script(s) prior to this function,
   # then create the following bash script accordingly. There
@@ -20929,7 +21095,7 @@ function checkUpdateAllIPTables()
   fi
 
   if [ "$netstate" = "prenetwork" ] || [ "$isInit" = "true" ]; then
-    logHSHQEvent info "IPTables ($netstate) - Initializing chains..."
+    logHSHQEvent info "checkUpdateAllIPTables ($netstate) - Initializing chains..."
     sudo iptables -t raw -F PREROUTING > /dev/null 2>&1
     sudo iptables -t raw -F chain-icmp > /dev/null 2>&1
     sudo iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
@@ -21181,7 +21347,7 @@ function checkUpdateAllIPTables()
 #        fi
 #       ip a | grep $brName > /dev/null 2>&1
 #       if [ $? -ne 0 ]; then
-#          logHSHQEvent error "IPTables ($netstate) - Could not find bridge interface associated with docker network: $curNet"
+#          logHSHQEvent error "checkUpdateAllIPTables ($netstate) - Could not find bridge interface associated with docker network: $curNet"
 #          continue
 #        fi
 #        brSubnet=$(docker network inspect $curNet | jq -r '.[] | .IPAM.Config[0].Subnet')
@@ -21229,7 +21395,7 @@ function checkUpdateAllIPTables()
   sudo rm -f /tmp/ipt.txt
   sudo rm -f /tmp/newRules.txt
   if [ "$isLogInfo" = "true" ]; then
-    logHSHQEvent info "IPTables ($netstate) - END"
+    logHSHQEvent info "checkUpdateAllIPTables ($netstate) - END"
   fi
 }
 
@@ -21242,10 +21408,10 @@ function checkAddRule()
   if [ $? -ne 0 ]; then
     eval " $ip_cmd"
     if [ $? -ne 0 ]; then
-      logHSHQEvent error "IPTables ($netstate) - Error adding rule: $ip_cmd"
+      logHSHQEvent error "checkAddRule ($netstate) - Error adding rule: $ip_cmd"
     fi
     echo "$comment" >> /tmp/ipt.txt
-    logHSHQEvent info "IPTables ($netstate) - Added rule: $comment"
+    logHSHQEvent info "checkAddRule ($netstate) - Added rule: $comment"
   fi
 }
 
@@ -21295,7 +21461,7 @@ function appendINPUTBySubnetAndPortsList()
   checkValidPortsList "$portList"
   if [ $? -ne 0 ]; then
     strMsg="There was an error with the ports list: portList"
-    logHSHQEvent error "IPTables ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
+    logHSHQEvent error "appendINPUTBySubnetAndPortsList ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
     echo "ERROR: $strMsg"
     return
   fi
@@ -21335,7 +21501,7 @@ function addDOCKERUSERBySubnetAndPortsList()
   checkValidPortsList "$portList"
   if [ $? -ne 0 ]; then
     strMsg="There was an error with the ports list: portList"
-    logHSHQEvent error "IPTables ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
+    logHSHQEvent error "addDOCKERUSERBySubnetAndPortsList ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
     echo "ERROR: $strMsg"
     return
   fi
@@ -21378,10 +21544,10 @@ function deleteIPTableEntryByChainAndComment()
   do
     sudo iptables -t $ipt_table -D $ipt_chain $cur_rule
     isRuleFound=true
-    logHSHQEvent info "IPTables ($netstate) - Removed rule: $ipt_comment"
+    logHSHQEvent info "deleteIPTableEntryByChainAndComment ($netstate) - Removed rule: $ipt_comment"
   done
   if [ "$isRuleFound" = "false" ]; then
-    logHSHQEvent error "IPTables ($netstate) - Could not find rule to remove: $ipt_comment"
+    logHSHQEvent error "deleteIPTableEntryByChainAndComment ($netstate) - Could not find rule to remove: $ipt_comment"
   fi
   IFS=$OLDIFS
 }
@@ -21493,15 +21659,22 @@ LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
 
 function main()
 {
-  source \$HSHQ_LIB_DIR/\$LOCK_UTILS_FILENAME
+  source \$HSHQ_LIB_SCRIPT lib
+  if [ "\$(checkIsBootComplete)" = "false" ]; then
+    logHSHQEvent warning "performNetworkingChecks.sh - Boot process is not yet complete."
+    resetLastNetworkCheckTimestamp
+    return
+  fi
   checkRes=\$(tryGetLock networkchecks performNetworkingChecks)
   if ! [ -z "\$checkRes" ]; then
-    strErr="Cannot obtain networkchecks lock: \$checkRes, exiting..."
-    logHSHQEvent error "\$strErr"
-    echo "ERROR: \$strErr"
+    totLockAttempts=\$(getIncrementLockAttempts networkchecks)
+    strErr="performNetworkingChecks.sh - Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+    logHSHQEvent warning "\$strErr"
+    if [ \$((\$totLockAttempts % 60)) -eq 1 ]; then
+      echo "WARNING: \$strErr"
+    fi
     exit 7
   fi
-  source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
   source \$HSHQ_PLAINTEXT_USER_CONFIG
   set +e
@@ -21732,11 +21905,14 @@ do
 done
 
 ip route flush table 42
-sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-do
-  ip route flush table \$(grep ^\#ROUTING_TABLE_ID= \$conf | sed 's/^[^=]*=//')
-done
 
+sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+  do
+    ip route flush table \$(grep ^\#ROUTING_TABLE_ID= \$conf | sed 's/^[^=]*=//')
+  done
+fi
 EOFWG
   sudo chmod 0500 $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo chown root:root $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
@@ -21786,7 +21962,7 @@ HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
 
 function main()
 {
-  source \$HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+  source \$HSHQ_LIB_SCRIPT lib
   checkRes=\$(tryGetLock hshqopen performPostDockerBootActions)
   if ! [ -z "\$checkRes" ]; then
     # This should absolutely never happen due to boot order
@@ -21803,7 +21979,6 @@ function main()
     echo "ERROR: \$strErr"
     exit 3
   fi
-  source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
   source \$HSHQ_PLAINTEXT_USER_CONFIG
   performPostDockerBootActions
@@ -21859,7 +22034,7 @@ function isNetworkCheckIntervalExpired()
   checkInitScriptState
   last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SCRIPT_STATE_FILENAME)
   cur_dt=$(date +%s)
-  s_diff=$(($cur_dt - $last_check))
+  s_diff=$(($cur_dt - $last_check + 15))
   s_inter=$(($NETWORK_UPDATE_INTERVAL * 60))
   if [ $s_diff -gt $s_inter ]; then
     echo "true"
@@ -22086,11 +22261,7 @@ function checkAllHSHQNetworking()
   elif [ -z "$@" ]; then
     callerName=networkd
   fi
-  if [ "$(checkIsBootComplete)" = "false" ]; then
-    logHSHQEvent error "checkAllHSHQNetworking ($callerName) - Boot process is not yet complete."
-    resetLastNetworkCheckTimestamp
-    return
-  fi
+
   if [ "$callerName" = "cron" ] && [ "$(isNetworkCheckIntervalExpired)" = "false" ]; then
     return
   fi
@@ -22103,6 +22274,7 @@ function checkAllHSHQNetworking()
       logHSHQEvent error "checkAllHSHQNetworking  ($callerName) - Unable to obtain lock ($checkRes)"
       isLockError=true
     else
+      logHSHQEvent info "checkAllHSHQNetworking ($callerName) - Host interface IP changed..."
       checkHostAllInterfaceIPChanges true checkAllHSHQNetworking
     fi
   fi
@@ -22110,6 +22282,7 @@ function checkAllHSHQNetworking()
   # assume Adguard is not working and restart stack.
   curIP=$(curl --silent --max-time 5 https://api.ipify.org)
   if [ $? -ne 0 ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($callerName) - Restarting adguard..."
     startStopStack adguard stop
     sleep 1
     startStopStack adguard start
@@ -22134,7 +22307,7 @@ function updateEndpointIPs()
     cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_id;")
     if [ "$(checkIPByID $cur_id)" = "true" ]; then
       echo "IP changed, restarting $cname..."
-      logHSHQEvent info "IP changed, restarting $cname..."
+      logHSHQEvent info "updateEndpointIPs - IP changed, restarting $cname..."
       if [ $is_int = 0 ]; then
         systemctl restart wg-quick@$iname > /dev/null 2>&1
       else
@@ -22147,7 +22320,7 @@ function updateEndpointIPs()
       if ! [ -z "$rs_ip" ]; then
         timeout $ping_timeout ping -c 1 $rs_ip > /dev/null 2>&1
         if [ $? -ne 0 ]; then
-          logHSHQEvent error "Connection Error, restarting(HSVPN) $cname..."
+          logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname..."
           systemctl restart wg-quick@$iname > /dev/null 2>&1
         fi
       fi
@@ -22165,20 +22338,23 @@ function updateEndpointIPs()
     fi
     if ! [ -z "$cur_cdns" ] && [ "$(checkIPByID $cur_cdns)" = "true" ]; then
       echo "IP changed, restarting $cname..."
-      logHSHQEvent info "IP changed, restarting(ClientDNS) $cname..."
+      logHSHQEvent info "updateEndpointIPs - IP changed, restarting(ClientDNS) $cname..."
       restartStackIfRunning "${cname}" 1
     fi
   done
   # Check/fix tunnelled WireGuard internet connections
-  ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-  do
-    resOut=$($HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
-    retVal=$?
-    if [ $retVal -ne 0 ]; then
-      logHSHQEvent error "Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
-      $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
-    fi
-  done
+  ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+    do
+      resOut=$($HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
+      retVal=$?
+      if [ $retVal -ne 0 ]; then
+        logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
+        $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
+      fi
+    done
+  fi
 }
 
 function checkIPByID()
@@ -22222,12 +22398,16 @@ function outputWireGuardScripts()
   outputWGDockInternetScript
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh >/dev/null <<EOFWG
 #!/bin/bash
+set +e
+HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
 
-wgdir=$HSHQ_WIREGUARD_DIR
-sudo ls \$wgdir/internet/*.conf | while read conf
-do
-  \$wgdir/scripts/wgDockInternet.sh \$conf down
-done
+sudo ls \$HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
+if [ \$? -eq 0 ]; then
+  sudo ls \$HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+  do
+    \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf down
+  done
+fi
 EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
   sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
@@ -22501,16 +22681,19 @@ scriptsdir=$HSHQ_SCRIPTS_DIR
 
 function main()
 {
-  sudo ls \$wgdir/internet/*.conf | while read conf
-  do
-    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
-    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
-    MTU=\$(getConfigVar \#MTU)
-    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
-    fi
-  done
+  sudo ls \$wgdir/internet/*.conf > /dev/null 2>&1
+  if [ \$? -eq 0 ]; then
+    sudo ls \$wgdir/internet/*.conf | while read conf
+    do
+      DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
+      DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
+      MTU=\$(getConfigVar \#MTU)
+      docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
+      if [ \$? -ne 0 ]; then
+        docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
+      fi
+    done
+  fi
 }
 function getConfigVar()
 {
@@ -22610,7 +22793,7 @@ function addHSInterface()
   for curInterface in "${interfaceListArr[@]}"
   do
     if [ "$iface_name" = "$curInterface" ]; then
-      strMsg="Interface already added."
+      strMsg="addHSInterface - Interface already added."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 1
@@ -22620,7 +22803,7 @@ function addHSInterface()
   for curInterface in "${interfaceListArr[@]}"
   do
     if [ "$iface_name" = "$curInterface" ]; then
-      strMsg="Interface name already exists in database."
+      strMsg="addHSInterface - Interface name already exists in database."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 2
@@ -22636,13 +22819,13 @@ function addHSInterface()
     fi
   done
   if [ "$isFound" = "false" ]; then
-    strMsg="The selected interface is not available."
+    strMsg="addHSInterface - The selected interface is not available."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
   fi
   if [ "$(isInterfaceExists $iface_name)" = "false" ]; then
-    strMsg="The network interface was not found."
+    strMsg="addHSInterface - The network interface was not found."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
@@ -22650,7 +22833,7 @@ function addHSInterface()
   ip_addr=$(getIPAddressOfInterface $iface_name)
   if [ -z "$ip_addr" ] || [[ "$ip_addr" =~ ^169\.254\. ]]; then
     if [ "$iface_isPrimary" = "true" ]; then
-      strMsg="The IP address for this primary interface could not be determined."
+      strMsg="addHSInterface - The IP address for this primary interface could not be determined."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 3
@@ -22666,7 +22849,7 @@ function addHSInterface()
     fi
     chk_conflict=$(checkIPConflict "$ip_addr" "$interface_subnet" "$is_private")
     if ! [ -z "$chk_conflict" ]; then
-      strMsg="$chk_conflict"
+      strMsg="addHSInterface - $chk_conflict"
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 6
@@ -22715,20 +22898,20 @@ function setHSInterfaceAsPrimary()
     fi
   done
   if [ "$isFound" = "false" ]; then
-    strMsg="The selected network interface was not in the list."
+    strMsg="setHSInterfaceAsPrimary - The selected network interface was not in the list."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 1
   fi
   iface_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName = '$iface_name';")
   if [ -z "$iface_ip" ]; then
-    strMsg="The selected network interface was not found in the database."
+    strMsg="setHSInterfaceAsPrimary - The selected network interface was not found in the database."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 2
   fi
   if ! [ "$(checkValidIPAddress $iface_ip)" = "true" ]; then
-    strMsg="The IP address for this interface is invalid."
+    strMsg="setHSInterfaceAsPrimary - The IP address for this interface is invalid."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
@@ -22756,7 +22939,7 @@ function setHSInterfaceIsExpose()
     fi
   done
   if [ "$isFound" = "false" ]; then
-    strMsg="The selected network interface was not in the list."
+    strMsg="setHSInterfaceIsExpose - The selected network interface was not in the list."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 1
@@ -22798,7 +22981,7 @@ function updateHSInterface()
       sudo sqlite3 $HSHQ_DB "update connections set IPAddress = '$DEFAULT_UNFOUND_IP_ADDRESS', Network_Subnet = '$DEFAULT_UNFOUND_IP_SUBNET', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
       return
     fi
-    strMsg="Invalid IP address"
+    strMsg="updateHSInterface - Invalid IP address"
     echo "$strMsg"
     # Could be a lot of log spam, lets not log it
     #logHSHQEvent error "$strMsg"
@@ -22812,20 +22995,20 @@ function updateHSInterface()
   is_private=$(checkIsIPPrivate "$current_ip")
   interface_subnet=$(getSubnetOfInterface "$iface_name" "$current_ip" "$is_private")
   if [ -z "$interface_subnet" ]; then
-    strMsg="There was an error obtaining the subnet of this interface ($iface_name)."
+    strMsg="updateHSInterface - There was an error obtaining the subnet of this interface ($iface_name)."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
   fi
   chk_conflict=$(checkIPConflict "$current_ip" "$interface_subnet" "$is_private")
   if ! [ -z "$chk_conflict" ]; then
-    strMsg="$chk_conflict"
+    strMsg="updateHSInterface - $chk_conflict"
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 4
   fi
   if [ "$current_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
-    strMsg="The IP address is invalid ($DEFAULT_UNFOUND_IP_ADDRESS)."
+    strMsg="updateHSInterface - The IP address is invalid ($DEFAULT_UNFOUND_IP_ADDRESS)."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 4
@@ -22852,7 +23035,7 @@ function checkUpdateHostInterface()
   case $iface_operation in
     add)
       if [ -z "$iface_name" ] || [ -z "$iface_isPrimary" ]; then
-        strMsg="You must specify the interface name and if its the primary interface (true|false)."
+        strMsg="checkUpdateHostInterface - You must specify the interface name and if its the primary interface (true|false)."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 1
@@ -22868,13 +23051,13 @@ function checkUpdateHostInterface()
       ;;
     remove)
       if [ -z "$iface_name" ]; then
-        strMsg="You must specify the interface name."
+        strMsg="checkUpdateHostInterface - You must specify the interface name."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 4
       fi
       if [ "$iface_name" = "$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME" ]; then
-        strMsg="You cannot remove the primary interface."
+        strMsg="checkUpdateHostInterface - You cannot remove the primary interface."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 5
@@ -22886,19 +23069,19 @@ function checkUpdateHostInterface()
       ;;
     setisprimary)
       if [ -z "$iface_name" ] || [ -z "$iface_isPrimary" ]; then
-        strMsg="You must specify the interface name and if its the primary interface (true|false)."
+        strMsg="checkUpdateHostInterface - You must specify the interface name and if its the primary interface (true|false)."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 7
       fi
       if ! [ "$iface_isPrimary" = "true" ]; then
-        strMsg="This operation is only for changing the primary interface."
+        strMsg="checkUpdateHostInterface - This operation is only for changing the primary interface."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 8
       fi
       if [ "$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME" = "$iface_name" ]; then
-        strMsg="The selected interface is already the primary interface."
+        strMsg="checkUpdateHostInterface - The selected interface is already the primary interface."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 9
@@ -22910,13 +23093,13 @@ function checkUpdateHostInterface()
       ;;
     setisexpose)
       if [ -z "$iface_name" ] || [ -z "$iface_isExpose" ]; then
-        strMsg="You must specify the interface name and if its expose setting. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
+        strMsg="checkUpdateHostInterface - You must specify the interface name and if its expose setting. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 11
       fi
       if ! [ "$iface_isExpose" = "true" ] && ! [ "$iface_isExpose" = "false" ]; then
-        strMsg="The expose setting must be either true or false. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
+        strMsg="checkUpdateHostInterface - The expose setting must be either true or false. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 12
@@ -22928,7 +23111,7 @@ function checkUpdateHostInterface()
       ;;
     update)
       if [ -z "$iface_name" ]; then
-        strMsg="You must specify the interface name."
+        strMsg="checkUpdateHostInterface - You must specify the interface name."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 14
@@ -22940,7 +23123,7 @@ function checkUpdateHostInterface()
       updateIP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName='$iface_name';")
       ;;
     *)
-      strMsg="Unknown operation."
+      strMsg="checkUpdateHostInterface - Unknown operation."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 16
@@ -23366,7 +23549,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_COUNTRY="US"
     else
-      CERTS_INTERNAL_COUNTRY=$(promptUserInputMenu "US" "Enter Certificate Country" "Enter the country abbreviation you would like\nto appear on your certificates: ")
+      CERTS_INTERNAL_COUNTRY=$(promptUserInputMenu "US" "Enter Certificate Country" "Enter the country abbreviation you would like to appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_COUNTRY "$CERTS_INTERNAL_COUNTRY"
   done
@@ -23375,7 +23558,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_STATE="Missouri"
     else
-      CERTS_INTERNAL_STATE=$(promptUserInputMenu "Missouri" "Enter Certificate State" "Enter the state name you would like\nto appear on your certificates: ")
+      CERTS_INTERNAL_STATE=$(promptUserInputMenu "Missouri" "Enter Certificate State" "Enter the state name you would like to appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_STATE "$CERTS_INTERNAL_STATE"
   done
@@ -23384,7 +23567,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_LOCALITY="St. Louis"
     else
-      CERTS_INTERNAL_LOCALITY=$(promptUserInputMenu "St. Louis" "Enter Certificate Locality" "Enter the locality you would like\nto appear on your certificates: ")
+      CERTS_INTERNAL_LOCALITY=$(promptUserInputMenu "St. Louis" "Enter Certificate Locality" "Enter the locality you would like to appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_LOCALITY "$CERTS_INTERNAL_LOCALITY"
   done
@@ -23393,7 +23576,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_ROOT_CN="$HOMESERVER_NAME Root CA"
     else
-      CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "$HOMESERVER_NAME Root CA" "Enter Certificate Root CN" "Enter the root CN you would like\nto appear on your certificates: ")
+      CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "$HOMESERVER_NAME Root CA" "Enter Certificate Root CN" "Enter the root CN you would like to appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_ROOT_CN "$CERTS_INTERNAL_ROOT_CN"
   done
@@ -23402,7 +23585,7 @@ function initCertificateAuthority()
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
       CERTS_INTERNAL_INTERMEDIATE_CN="$HOMESERVER_NAME ECC Intermediate"
     else
-      CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "$HOMESERVER_NAME ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like\nto appear on your certificates: ")
+      CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "$HOMESERVER_NAME ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like to appear on your certificates: ")
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_INTERMEDIATE_CN "$CERTS_INTERNAL_INTERMEDIATE_CN"
   done
@@ -23604,7 +23787,7 @@ function generateCertDialog()
   cert_dom_string=""
   while [ -z "$cert_dom_string" ]
   do
-    cert_dom_string=$(promptUserInputMenu "" "Enter Certificate CN" "Enter the domain names for this certificate. Domain names\nshould be grouped together as a comma separated list:")
+    cert_dom_string=$(promptUserInputMenu "" "Enter Certificate CN" "Enter the domain names for this certificate. Domain names should be grouped together as a comma separated list:")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
@@ -23614,12 +23797,12 @@ function generateCertDialog()
     fi
   done
 
-  cert_ip_string=$(promptUserInputMenu "" "Enter IP Addresses" "Enter the IP addresses for this certificate. IP addresses\nshould be grouped together as a comma separated list:")
+  cert_ip_string=$(promptUserInputMenu "" "Enter IP Addresses" "Enter the IP addresses for this certificate. IP addresses should be grouped together as a comma separated list:")
 
   ft_string=""
   while [ -z "$ft_string" ]
   do
-    ft_string=$(promptUserInputMenu "$(date '+%Y-%m-%d %H:%M:%S %Z')" "Enter Start Date" "Enter the Start Date for the Certificate. It must be\nformatted as follows - 2023-01-01 00:00:00 GMT:")
+    ft_string=$(promptUserInputMenu "$(date '+%Y-%m-%d %H:%M:%S %Z')" "Enter Start Date" "Enter the Start Date for the Certificate. It must be formatted as follows - 2023-01-01 00:00:00 GMT:")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
@@ -24238,120 +24421,158 @@ function pullDockerImages()
   pullImage $IMG_HOMARR_APP
 }
 
+function pullImagesUpdatePB()
+{
+  pb_add="$1"
+  pb_cur=$(($pb_cur+$pb_add))
+  pb_res=$(($pb_base+$pb_cur))
+  draw_progress_bar $pb_res
+}
+
 function pullBaseServicesDockerImages()
 {
+  pb_base=5
+  pb_cur=0
   pullImage $IMG_PORTAINER
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_ADGUARD
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_DNSMASQ
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_WIREGUARD
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_OPENLDAP_SERVER
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_OPENLDAP_PHP
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_OPENLDAP_MANAGER
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_ADMIN
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_ANTISPAM
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_ANTIVIRUS
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_FETCHMAIL
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_FRONT
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_IMAP
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_OLETOOLS
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_SMTP
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_UNBOUND
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_WEBDAV
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_WEBMAIL
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_DUPLICATI
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_AUTHELIA
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_REDIS
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_SYNCTHING
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_HEIMDALL
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_OFELIA
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_CADDY
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_UPTIMEKUMA
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_POSTGRES
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MYSQL
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   rm -f $HOME/script-server.zip
   wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
   retVal=$?
@@ -26061,17 +26282,29 @@ function installBaseStacks()
 {
   initCaddyCommon
   installPortainer
+  draw_progress_bar 57
   installStackByName adguard
+  draw_progress_bar 59
   installStackByName openldap
+  draw_progress_bar 61
   installStackByName mailu
+  draw_progress_bar 63
   installStackByName duplicati
+  draw_progress_bar 65
   installStackByName authelia
+  draw_progress_bar 67
   installStackByName syncthing
+  draw_progress_bar 69
   installStackByName heimdall
+  draw_progress_bar 71
   installStackByName ofelia
+  draw_progress_bar 73
   installHostInterfaceCaddy $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
+  draw_progress_bar 75
   installStackByName uptimekuma
+  draw_progress_bar 77
   installStackByName script-server
+  draw_progress_bar 79
 }
 
 function initServiceVars()
@@ -31718,9 +31951,9 @@ function installMailu()
   sleep 5
   echo "Adding initial users..."
   docker exec mailu-admin flask mailu config-import /initconfig/mail-config.yaml > /dev/null 2>&1
-  sleep 5
-  rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+  sleep 2
   startStopStack mailu stop
+  rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   sudo mv $HSHQ_STACKS_DIR/mailu/dovecot-override.conf $HSHQ_STACKS_DIR/mailu/overrides/dovecot/dovecot.conf
   sudo mv $HSHQ_STACKS_DIR/mailu/custom.inc.php $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php
@@ -50038,6 +50271,9 @@ function main()
     exit 3
   fi
   checkDecryptConfigFile
+  if [ \$? -ne 0 ]; then
+    exit 4
+  fi
 }
 
 main
@@ -50178,13 +50414,17 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getWGInternetTrafficInterfaces.sh
 #!/bin/bash
+set +e
 
 echo "default"
-for curInt in $HSHQ_WIREGUARD_DIR/internet/*.conf;
-do
-  [ -e "\$curInt" ] || continue
-  echo \$(basename \${curInt%.*})
-done
+ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
+if [ \$? -eq 0 ]; then
+  ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+  do
+    [ -e "\$conf" ] || continue
+    echo \$(basename \${conf%.*})
+  done
+fi
 
 EOFSC
 
@@ -51603,21 +51843,21 @@ output_rep=""
 is_any_avail=false
 
 if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
-  output_rep="\${output_rep}There is a a new version of the wrapper script available.\n"
+  output_rep="\${output_rep}There is a a new version of the wrapper script available.\n\n"
   output_rep="\${output_rep}Current wrapper version: \${this_ver_wrapper}\n"
   output_rep="\${output_rep}Latest wrapper version: \${latest_ver_wrapper}\n\n"
   is_any_avail=true
 fi
 
-if ! [ -z "\$pending_ver_lib" ] && [ \$latest_ver_lib -eq \$pending_ver_lib ]; then
-  output_rep="\${output_rep}There is a a pending version of the lib script available.\n"
-  output_rep="\${output_rep}Current lib version: \${this_ver_lib}\n"
-  output_rep="\${output_rep}Pending lib version: \${pending_ver_lib}\n\n"
-  is_any_avail=true
-elif [ \$this_ver_lib -lt \$latest_ver_lib ]; then
-  output_rep="\${output_rep}There is a a new version of the lib script available.\n"
+if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
+  output_rep="\${output_rep}There is a a new version of the lib script available.\n\n"
   output_rep="\${output_rep}Current lib version: \${this_ver_lib}\n"
   output_rep="\${output_rep}Latest lib version: \${latest_ver_lib}\n\n"
+  is_any_avail=true
+elif ! [ -z "\$pending_ver_lib" ]; then
+  output_rep="\${output_rep}There is a a pending version of the lib script available.\n\n"
+  output_rep="\${output_rep}Current lib version: \${this_ver_lib}\n"
+  output_rep="\${output_rep}Pending lib version: \${pending_ver_lib}\n\n"
   is_any_avail=true
 fi
 
@@ -51737,7 +51977,7 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && 
   echo "Lib script verified!"
 fi
 
-# Aquire all locks
+# Acquire all locks
 checkRes="\$(acquireAllLocks)"
 if ! [ -z "\$checkRes" ]; then
   # Could not get all locks, try again later.
@@ -51755,7 +51995,7 @@ if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
     if [ \$? -ne 0 ]; then
       echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
       performExitFunctions false
-      releaseAllLocks
+      releaseAllLocks false
       return
     fi
   fi
@@ -51764,7 +52004,7 @@ if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
     mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
   else
     performExitFunctions false
-    releaseAllLocks
+    releaseAllLocks false
     return
   fi
 else
@@ -51773,14 +52013,14 @@ else
     if [ \$? -ne 0 ]; then
       echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
       performExitFunctions false
-      releaseAllLocks
+      releaseAllLocks false
       return
     fi
   fi
 fi
 
 source \$HSHQ_LIB_SCRIPT lib
-decryptConfigFileAndLoadEnvNoPrompts
+checkUpdateVersion
 
 if ! [ "\$is_any_updated" = "true" ]; then
   is_any_updated="\$is_update_performed"
@@ -51794,7 +52034,7 @@ fi
 
 set -e
 performExitFunctions false
-releaseAllLocks
+releaseAllLocks false
 
 # Check if this got replaced by itself, and replace it if so
 if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh ]; then
