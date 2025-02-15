@@ -133,14 +133,18 @@ function init()
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ] || [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
     IS_HSHQ_DEV_TEST=true
   fi
+  HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
+  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
+  HSHQ_WRAP_DEV_URL=https://homeserverhq.com/hshq-dev.sh
+  HSHQ_WRAP_DEV_VER_URL=https://homeserverhq.com/getwrapversion-dev
+  HSHQ_WRAP_TEST_URL=https://homeserverhq.com/hshq-test.sh
+  HSHQ_WRAP_TEST_VER_URL=https://homeserverhq.com/getwrapversion-test
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
   HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
   HSHQ_LIB_DEV_URL=https://homeserverhq.com/hshqlib-dev.sh
   HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/getversion-dev
   HSHQ_LIB_TEST_URL=https://homeserverhq.com/hshqlib-test.sh
   HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/getversion-test
-  HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
-  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
   HSHQ_GPG_FINGERPRINT=5B9C33067C71ABCFCE1ACF8A7F46128ABB7C1E42
@@ -13547,7 +13551,24 @@ function loadDirectoryStructure()
 
 function getLatestVersionWrapper()
 {
-  echo $(curl --silent $HSHQ_WRAP_VER_URL)
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo $(curl --silent $HSHQ_WRAP_DEV_VER_URL)
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo $(curl --silent $HSHQ_WRAP_TEST_VER_URL)
+  else
+    echo $(curl --silent $HSHQ_WRAP_VER_URL)
+  fi
+}
+
+function getLatestWrapperURL()
+{
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo "$HSHQ_WRAP_DEV_URL"
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo "$HSHQ_WRAP_TEST_URL"
+  else
+    echo "$HSHQ_WRAP_URL"
+  fi
 }
 
 function getThisVersionWrapper()
@@ -51942,7 +51963,7 @@ if [ \$this_ver_lib -eq 0 ]; then
 fi
 
 if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
-  wget -q4 -O \$HSHQ_WRAP_TMP \$HSHQ_WRAP_URL
+  wget -q4 -O \$HSHQ_WRAP_TMP \$(getLatestWrapperURL)
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_WRAP_TMP
     echo "ERROR: Could not obtain current version of wrapper script."
