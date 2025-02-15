@@ -11329,6 +11329,7 @@ function setAsWiredDHCP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
   fi
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=true"
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.optional=true"
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
   checkUpdateSingleHostInterface "$interfaceName"
@@ -11367,6 +11368,7 @@ function setAsWiredStaticIP()
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=[${ipAddress}/${cidrLength}]"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=false"
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.optional=true"
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
   checkUpdateSingleHostInterface "$interfaceName"
@@ -11395,15 +11397,16 @@ function setAsWirelessDHCP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
     if [ -z "$wifiPass" ]; then
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, access-points: {$wifiSSID: {}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, optional: true, access-points: {$wifiSSID: {}}}"
     else
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, optional: true, access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
     fi
   else
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.nameservers=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.routes=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=true"
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.optional=true"
   fi
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
@@ -11446,9 +11449,9 @@ function setAsWirelessStaticIP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
     if [ -z "$wifiPass" ]; then
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, optional: true, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {}}}"
     else
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, optional: true, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
     fi
   else
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=null" > /dev/null 2>&1
@@ -11457,6 +11460,7 @@ function setAsWirelessStaticIP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=[${ipAddress}/${cidrLength}]"
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=false"
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.optional=false"
   fi
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
@@ -19285,6 +19289,7 @@ function version120Update()
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
+  fixNetplanBackport
   rm -f $HOME/rsUpdateScript.sh
   cat <<EOFLO > $HOME/rsUpdateScript.sh
 #!/bin/bash
@@ -19876,6 +19881,18 @@ function moveVarsToPlaintextFile()
   sudo sed -i "/^HOMESERVER_HOST_IP=/d" $CONFIG_FILE >/dev/null
   cat -s $CONFIG_FILE > $HSHQ_CONFIG_DIR/tmpfile
   mv $HSHQ_CONFIG_DIR/tmpfile $CONFIG_FILE
+}
+
+function fixNetplanBackport()
+{
+  set +e
+  if sudo test -f /etc/netplan/00-installer-config.yaml; then
+    sudo grep "optional:" /etc/netplan/00-installer-config.yaml > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      sudo sed -i '/nameservers:/i\      optional: true' /etc/netplan/00-installer-config.yaml
+      sudo netplan apply > /dev/null 2>&1
+    fi
+  fi
 }
 
 function fixInterfaceNames()
@@ -21971,6 +21988,7 @@ EOFBS
 
 function outputPerformPostDockerBootActionsScript()
 {
+  sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/afterdocker
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh
   sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh >/dev/null <<EOFBS
 #!/bin/bash

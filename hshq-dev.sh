@@ -290,9 +290,14 @@ EOF
   checkAnyUpdates
   if [ $? -eq 0 ]; then
     checkDownloadWrapper
-    if [ $? -eq 0 ]; then
+    returnVal=$?
+    if [ $returnVal -eq 0 ]; then
       checkDownloadLib
+    else
+      echo "Error updating wrapper ($returnVal)"
     fi
+  else
+    echo "No updates"
   fi
   hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
   if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
@@ -361,7 +366,7 @@ EOF
         else
           performExitFunctions false
           releaseAllLocks false
-          return
+          return 0
         fi
       fi
     else
@@ -397,6 +402,9 @@ function checkAnyUpdates()
     return 2
   fi
   hshq_wrap_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_WRAP_VER_URL)
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+    return 3
+  fi
   hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
   if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
     isAny=true
@@ -404,13 +412,13 @@ function checkAnyUpdates()
   if ! [ -f $HSHQ_LIB_SCRIPT ]; then
     isAny=true
   fi
-  # No need to check if wrapper lookup failed. This will save time on a server not connected to internet.
-  if ! [ -z "$hshq_wrap_latest_version" ] && [ $hshq_wrap_latest_version -gt 1 ]; then
-    hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
-    hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
-    if [ $hshq_lib_local_version -lt $hshq_lib_latest_version ]; then
-      isAny=true
-    fi
+  hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+    return 4
+  fi
+  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  if [ $hshq_lib_local_version -lt $hshq_lib_latest_version ]; then
+    isAny=true
   fi
   if [ "$isAny" = "true" ]; then
     updateMenu=$(cat << EOF
@@ -423,15 +431,16 @@ See release info at $HSHQ_RELEASES_URL for more details.
 EOF
     )
     if (whiptail --title "HomeServerHQ" --yesno "$updateMenu" $MENU_HEIGHT $MENU_WIDTH); then
-      return
+      return 0
     fi
   fi
-  return 2
+  return 1
 }
 
 function checkDownloadWrapper()
 {
   if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
+    echo "Getting new wrapper.."
     wget -q4 -O $HSHQ_WRAP_TMP $HSHQ_WRAP_URL
     if [ $? -ne 0 ]; then
       rm -f $HSHQ_WRAP_TMP
@@ -446,8 +455,9 @@ function checkDownloadWrapper()
     fi
   else
     # No update needed
-    return
+    return 0
   fi
+  echo "Checking new wrapper..."
   hshq_wrap_dl_version=$(sed -n 2p $HSHQ_WRAP_TMP | cut -d"=" -f2)
   echo "Obtained Wrapper Version $hshq_wrap_dl_version"
   wget -q4 -O $HOME/wrap-${hshq_wrap_dl_version}.sig $HSHQ_SIG_BASE_URL/wrap-${hshq_wrap_dl_version}.sig
@@ -462,7 +472,7 @@ function checkDownloadWrapper()
       showMessageBox "Download Error" "There was an error obtaining the wrapper signature. Please try again later."
       exit 1
     fi
-    return
+    return 0
   fi
   echo "Verifying wrap with signature..."
   verifyFile $HSHQ_WRAP_TMP $HOME/wrap-${hshq_wrap_dl_version}.sig
@@ -482,7 +492,7 @@ function checkDownloadWrapper()
       showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
       exit 1
     fi
-    return
+    return 0
   fi
   # Verified
   chmod 744 $HSHQ_WRAP_TMP
@@ -498,12 +508,12 @@ function checkDownloadLib()
     if [ -z "$hshq_lib_latest_version" ]; then
       hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
       if [ $? -ne 0 ] || [ -z "$hshq_lib_latest_version" ]; then
-        return
+        return 0
       fi
     fi
     if [ $hshq_lib_local_version -ge $hshq_lib_latest_version ]; then
       # No updated needed
-      return
+      return 0
     fi
   fi
   echo "Downloading latest version..."
@@ -516,7 +526,7 @@ function checkDownloadLib()
       showMessageBox "Download Error" "There was an error obtaining the required lib. Please try again later."
       exit 1
     fi
-    return
+    return 0
   fi
   hshq_lib_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
   echo "Obtained Library Version $hshq_lib_dl_version"
@@ -530,7 +540,7 @@ function checkDownloadLib()
       showMessageBox "Download Error" "There was an error obtaining the lib signature. Please try again later."
       exit 1
     fi
-    return
+    return 0
   fi
   echo "Signature downloaded (lib-${hshq_lib_dl_version}.sig)..."
   echo "Verifying lib with signature..."
@@ -553,7 +563,7 @@ function checkDownloadLib()
       showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
       exit 1
     fi
-    return
+    return 0
   fi
   # Verified
   echo "Source code verified!"
