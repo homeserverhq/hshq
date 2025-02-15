@@ -297,10 +297,12 @@ EOF
       echo "Error updating wrapper ($returnVal)"
     fi
   fi
-  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
-  if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
-    showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
-    exit 1
+  if [ -f $HSHQ_LIB_SCRIPT ]; then
+    hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+    if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
+      showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
+      exit 1
+    fi
   fi
   is_apply_pending=false
   if ! [ "$is_download_lib" = "true" ] && [ "$is_pending_avail" = "true" ]; then
@@ -408,13 +410,13 @@ function checkAnyUpdates()
     isAny=true
   fi
   if ! [ -f $HSHQ_LIB_SCRIPT ]; then
-    isAny=true
+    return 0
   fi
   hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
   if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
     return 4
   fi
-  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT  | cut -d"=" -f2)
   if [ $hshq_lib_local_version -lt $hshq_lib_latest_version ]; then
     isAny=true
   fi

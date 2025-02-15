@@ -203,7 +203,6 @@ function main()
   CONNECTING_IP=""
   IS_PERFORM_RESTORE=false
   IS_PERFORM_UPDATE=false
-  IS_GET_SUPER=false
   case "$1" in
     "install")
       CONNECTING_IP=$2
@@ -223,9 +222,6 @@ function main()
     "update")
       IS_PERFORM_UPDATE=true
       ;;
-    "getsuper")
-      IS_GET_SUPER=true
-      ;;
     *)
       ;;
   esac
@@ -236,14 +232,6 @@ function main()
     checkUpdateVersion
     return
   fi
-  if [ "$IS_GET_SUPER" = "true" ]; then
-    read -s -p "" USER_SUDO_PW
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    retVal=$?
-    unset USER_SUDO_PW
-    USER_SUDO_PW=""
-    exit $retVal
-  fi
   if ! [ -z "$USER_SUDO_PW" ]; then
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -252,6 +240,9 @@ function main()
     fi
   fi
   if [ "$IS_PERFORM_INSTALL" = "true" ]; then
+    read -s -p "" USER_SUDO_PW
+    clear
+    stty echo
     if [ "$USERNAME" = "root" ]; then
       strErr="main - Cannot install as root user, exiting..."
       logHSHQEvent error "$strErr"
@@ -262,6 +253,9 @@ function main()
     exit 0
   fi
   if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+    read -s -p "" USER_SUDO_PW
+    clear
+    stty echo
     if [ "$USERNAME" = "root" ]; then
       echo "Cannot install as root user, exiting..."
       exit 1
@@ -546,12 +540,12 @@ function showRestoreUnencryptedMenu()
     rm -f $HOME/$HSHQ_LIB_FILENAME
   fi
   scName=hshqRestore
-  initSuperScreen $scName
+  initScreen $scName "bash $HSHQ_LIB_SCRIPT restore $CONNECTING_IP"
   if [ $? -ne 0 ]; then
-    showMessageBox "ERROR" "There was an unknown error starting the restore screen, exiting..."
-  else
-    screen -S $scName -X stuff "bash $HSHQ_LIB_SCRIPT restore $CONNECTING_IP\n"
+    showMessageBox "ERROR" "There was a problem starting the restore process, exiting..."
+    exit 1
   fi
+  screen -r $scName
   exit 0
 }
 
@@ -2245,15 +2239,12 @@ function initInstallation()
   releaseLock hshqopen "preInstallation" false
   truncate -s 0 $HSHQ_LOG_FILE
   scName=hshqInstall
-  initSuperScreen $scName
+  initScreen $scName "bash $HSHQ_LIB_SCRIPT install $CONNECTING_IP"
   if [ $? -ne 0 ]; then
-    showMessageBox "ERROR" "There was an unknown error starting the install screen, exiting..."
-  else
-    screen -S $scName -X stuff "clear\n"
-    sleep 1
-    screen -S $scName -X stuff "bash $HSHQ_LIB_SCRIPT install $CONNECTING_IP\n"
-    screen -r $scName
+    showMessageBox "ERROR" "There was a problem starting the installation, exiting..."
+    exit 1
   fi
+  screen -r $scName
   exit 0
 }
 
@@ -2281,15 +2272,10 @@ function performBaseInstallation()
     exit 7
   fi
   set +e
-  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    logHSHQEvent error "performBaseInstallation - Password Error"
-    exit 10
-  fi
+  checkLoadConfig
   unset USER_SUDO_PW
   USER_SUDO_PW=""
   setSudoTimeoutInstall
-  checkLoadConfig
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
     strErr="performBaseInstallation - Already installed or existing installation is in progress, exiting..."
     logHSHQEvent error "$strErr"
@@ -2855,7 +2841,7 @@ EOF
   fi
 }
 
-function initSuperScreen()
+function initScreen()
 {
   # This function may appear to be overly complex and
   # contrived, but the main purpose is to inject the
@@ -2867,9 +2853,9 @@ function initSuperScreen()
   # (long-running) from showing up in the process list
   # (ps auxwwe).
   screenName="$1"
+  screenCmd="$2"
   set +e
   dirtest1=/tmp/sctest1
-  dirtest2=/tmp/sctest2
   isScreenSuccess=false
   curScreenAttempt=0
   maxScreenAttempt=5
@@ -2878,7 +2864,6 @@ function initSuperScreen()
   do
     ((curScreenAttempt++))
     rm -fr $dirtest1
-    rm -fr $dirtest2
     screen -L -Logfile $HSHQ_LOG_FILE -dmS $screenName
     screen -S $screenName -X stuff "stty -echo;mkdir $dirtest1\n"
     curCheckCount=0
@@ -2891,22 +2876,9 @@ function initSuperScreen()
       screen -XS $screenName quit > /dev/null 2>&1
       continue
     fi
-    screen -S $screenName -X stuff "bash $HSHQ_LIB_SCRIPT getsuper\n"
+    screen -S $screenName -X stuff "$screenCmd\n"
     screen -S $screenName -X stuff "$USER_SUDO_PW\n"
-    screen -S $screenName -X stuff "mkdir $dirtest2\n"
-    curCheckCount=0
-    while ! [ -d $dirtest2 ] && [ $curCheckCount -lt 5 ]
-    do
-      ((curCheckCount++))
-      sleep 1
-    done
-    if ! [ -d $dirtest2 ]; then
-      screen -XS $screenName quit > /dev/null 2>&1
-      continue
-    fi
-    screen -S $screenName -X stuff "stty echo\n"
     rm -fr $dirtest1
-    rm -fr $dirtest2
     isScreenSuccess=true
     break
   done
@@ -3399,6 +3371,7 @@ EOF
 
 function setupHostedVPN()
 {
+  echo "Checking for required utils, please wait..."
   if [[ "$(isProgramInstalled dig)" = "false" ]]; then
     echo "Installing dig, please wait..."
     performAptInstall dnsutils > /dev/null 2>&1
@@ -3415,7 +3388,6 @@ function setupHostedVPN()
     echo "Installing jq, please wait..."
     performAptInstall jq > /dev/null 2>&1
   fi
-
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
     echo "setupHostedVPN - RelayServer is initialized, PRIMARY_VPN_SETUP_TYPE=$PRIMARY_VPN_SETUP_TYPE, RELAYSERVER_IS_INIT=$RELAYSERVER_IS_INIT"
     return 0
@@ -3547,6 +3519,7 @@ function setupHostedVPN()
     loadSvcVars
   fi
   resetRSInit
+  echo "Initializing RelayServer service credentials..."
   num_tries=1
   max_tries=100
   PRIMARY_VPN_SUBNET=""
@@ -3657,6 +3630,7 @@ function setupHostedVPN()
   fi
   RELAYSERVER_WG_SV_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
   updateConfigVar RELAYSERVER_WG_SV_IP $RELAYSERVER_WG_SV_IP
+  echo "Generating RelayServer WireGuard keys..."
   if [ -z "$RELAYSERVER_WG_SV_PRIVATEKEY" ]; then
     RELAYSERVER_WG_SV_PRIVATEKEY=$(wg genkey)
     updateConfigVar RELAYSERVER_WG_SV_PRIVATEKEY $RELAYSERVER_WG_SV_PRIVATEKEY
@@ -3781,6 +3755,7 @@ Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVE
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
+  echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
@@ -4924,6 +4899,7 @@ function main()
   set +e
   if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
     is_detach=true
+    read -s -t 10 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     while [ -z "\$USER_RELAY_SUDO_PW" ]
     do
       is_detach=false
@@ -4952,18 +4928,32 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 3
   fi
+  echo "Update apt..."
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo dpkg --configure -a
-  echo -e "\n\nInstalling a few utilities..."
-  performAptInstall curl > /dev/null 2>&1
-  performAptInstall dnsutils > /dev/null 2>&1
-  performAptInstall screen > /dev/null 2>&1
+  sudo dpkg --configure -a > /dev/null 2>&1
+  echo "Checking for required utils..."
+  set +e
+  which curl > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Installing curl..."
+    performAptInstall curl > /dev/null 2>&1
+  fi
+  which dig > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Installing dnsutils..."
+    performAptInstall dnsutils > /dev/null 2>&1
+  fi
+  which screen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Installing screen..."
+    performAptInstall screen > /dev/null 2>&1
+  fi
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
     mkdir /tmp/hshqopen
     install
   else
     scName=hshqInstall
-    initSuperScreen "\$scName"
+    initScreen "\$scName"
     if [ "\$is_detach" = "true" ]; then
       screen -S "\$scName" -X stuff "bash \$0 -i\n"
     else
@@ -4975,7 +4965,7 @@ function main()
   USER_RELAY_SUDO_PW=""
 }
 
-function initSuperScreen()
+function initScreen()
 {
   screenName="\$1"
   set +e
@@ -5209,6 +5199,7 @@ function install()
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME
   touch \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_INSTALL_COMPLETE_FILE
+  sudo reboot
 }
 
 function outputCerts()
@@ -7871,6 +7862,7 @@ function uploadVPNInstallScripts()
 {
   isTransfer=$1
   if [ -z "$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME" ]; then
+    echo "Generating keys, please wait..."
     RELAYSERVER_SSH_PRIVATE_KEY_FILENAME=$HOMESERVER_ABBREV".key"
     updateConfigVar RELAYSERVER_SSH_PRIVATE_KEY_FILENAME $RELAYSERVER_SSH_PRIVATE_KEY_FILENAME
     rm -f $HSHQ_CONFIG_DIR/$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME
@@ -7996,16 +7988,37 @@ function uploadVPNInstallScripts()
         echo "Adding key to RelayServer..."
         SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
       fi
+      unloadSSHKey
       is_err=$?
       if [ $is_err -eq 0 ]; then
         echo "Logging into RelayServer..."
-        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME" <<< "$USER_RELAY_SUDO_PW"
+        loadSSHKey
+        ssh -q -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new' -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN exit
+        unloadSSHKey
+        cat <<EOFRS > $HOME/rsUpdateScript.sh
+#!/bin/bash
+
+set +e
+function main()
+{
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
+  sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1
+  rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME
+  rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME
+  echo "Done"
+}
+main
+EOFRS
+        updateRelayServerWithScript
         is_err=$?
       fi
     fi
     if [ $is_err -eq 0 ]; then
       echo "Checking for existing installation..."
       set +e
+      loadSSHKey
       # Ensure there is not already an existing installation on the RelayServer
       isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d /home/$RELAYSERVER_REMOTE_USERNAME/hshq ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
       is_err=$?
@@ -8149,6 +8162,51 @@ function connectVPN()
     echo "ERROR: No database ID provided."
     return
   fi
+  if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
+    set +e
+    while true;
+    do
+      max_attempts=20
+      total_attempts=1
+      isBreak=false
+      while [ $total_attempts -le $max_attempts ]
+      do
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logged in to RelayServer...\"; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1"
+        if [ $? -eq 0 ]; then
+          isBreak=true
+          break
+        fi
+        echo "RelayServer installation has not completed, retrying in 30 seconds..."
+        sleep 30
+        total_attempts=$((total_attempts + 1))
+      done
+      if ! [ "$isBreak" = "true" ]; then
+        echo "Could not log in to RelayServer to setup Syncthing."
+        echo "If this step is skipped, you will have to manually"
+        echo "set up the RelayServer backup in Syncthing. "
+        while true;
+        do
+          read -p "Enter 'retry' or 'cancel': " isRetryConnect
+          case "$isRetryConnect" in
+            "retry")
+              break
+            ;;
+            "cancel")
+              isBreak=true
+              break
+            ;;
+            *)
+              echo "Unknown response..."
+            ;;
+          esac
+        done
+      fi
+      if [ "$isBreak" = "true" ]; then
+        break
+      fi
+    done
+  fi
   client_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
   ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
   hs_name=$(sqlite3 $HSHQ_DB "select HomeServerName from hsvpn_connections where ID=$db_id;")
@@ -8189,52 +8247,11 @@ function connectVPN()
   fi
   # If hosting VPN, add ClientDNS stack and setup Syncthing
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    set +e
     echo "Installing ClientDNS..."
     installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP $ADMIN_USERNAME_BASE"_clientdns" $(pwgen -c -n 32 1)
-    loadSSHKey
-    set +e
-    while true;
-    do
-      max_attempts=2
-      total_attempts=1
-      isBreak=false
-      while [ $total_attempts -le $max_attempts ]
-      do
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logged in to RelayServer...\"; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1"
-        if [ $? -eq 0 ]; then
-          isBreak=true
-          break
-        fi
-        echo "Problem connecting to RelayServer, retrying in 30 seconds..."
-        sleep 30
-        total_attempts=$((total_attempts + 1))
-      done
-      if ! [ "$isBreak" = "true" ]; then
-        echo "Could not log in to RelayServer to setup Syncthing."
-        echo "If this step is skipped, you will have to manually"
-        echo "set up the RelayServer backup in Syncthing. "
-        while true;
-        do
-          read -p "Enter 'retry' or 'cancel': " isRetryConnect
-          case "$isRetryConnect" in
-            "retry")
-              break
-            ;;
-            "cancel")
-              isBreak=true
-              break
-            ;;
-            *)
-              echo "Unknown response..."
-            ;;
-          esac
-        done
-      fi
-      if [ "$isBreak" = "true" ]; then
-        break
-      fi
-    done
     sleep 10
+    loadSSHKey
     # Setup syncthing link
     echo "Setting up Syncthing..."
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
@@ -8252,10 +8269,8 @@ function connectVPN()
     jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/folders
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
-    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S reboot" <<< "$USER_RELAY_SUDO_PW"
     set -e
     unloadSSHKey
-    sleep 10
   fi
 }
 
@@ -17448,7 +17463,6 @@ function promptTestRelayServerPassword()
         USER_RELAY_SUDO_PW=""
       fi
     else
-      clear
       echo -e "\n\n"
       read -s -p "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: " USER_RELAY_SUDO_PW
       echo
@@ -19015,7 +19029,7 @@ function version78Update()
     if [ $nrsl_retVal -eq 0 ]; then
       promptTestRelayServerPassword
       loadSSHKey
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"  <<< "$USER_RELAY_SUDO_PW"
+      ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"  <<< "$USER_RELAY_SUDO_PW"
       unloadSSHKey
     fi
   fi
@@ -19187,6 +19201,7 @@ function main()
   sudo chown root:wazuh ~/authd.pass
   sudo mv ~/authd.pass /var/ossec/etc/authd.pass
   sudo systemctl restart wazuh-agent
+  echo "Done"
 }
 main "\$@"
 EOFLO
@@ -19356,6 +19371,7 @@ function main()
 }
 EOFLR
   sudo systemctl restart logrotate
+  echo "Done"
 }
 main "\$@"
 EOFLO
@@ -19572,6 +19588,7 @@ EOFBS
   sudo ln -s \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRoot
+  echo "Done"
 }
 
 function getDefaultIface()
@@ -19782,7 +19799,17 @@ function updateRelayServerWithScript()
     set -e
     loadSSHKey
     scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    rsRet=$?
+    if [ $rsRet -ne 0 ]; then
+      unloadSSHKey
+      return $rsRet
+    fi
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" <<< "$USER_RELAY_SUDO_PW"
+    rsRet=$?
+    if [ $rsRet -ne 0 ]; then
+      unloadSSHKey
+      return $rsRet
+    fi
     unloadSSHKey
   fi
   set +e
@@ -21018,7 +21045,10 @@ function nukeHSHQ()
   else
     sudo chmod +x /etc/update-motd.d/*
   fi
-  releaseLock hshqopen "nukem" true
+  for curLock in $ALL_LOCKS
+  do
+    releaseLock $curLock "nukem" true
+  done
   if [ "$IS_DESKTOP_ENV" = "true" ]; then
     rm -f "/home/$USERNAME/Desktop/$HSHQ_INSTALL_NOTES_FILENAME"
     rm -f ~/Desktop/HomePage.desktop
@@ -21716,49 +21746,6 @@ function restartStacksOnBoot()
   echo "End restartStacksOnBoot.sh"
 }
 
-function outputPerformNetworkingChecks()
-{
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_LIB_DIR=$HSHQ_LIB_DIR
-HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
-LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
-
-function main()
-{
-  source \$HSHQ_LIB_SCRIPT lib
-  if [ "\$(checkIsBootComplete)" = "false" ]; then
-    logHSHQEvent warning "performNetworkingChecks.sh - Boot process is not yet complete."
-    resetLastNetworkCheckTimestamp
-    return
-  fi
-  checkRes=\$(tryGetLock networkchecks performNetworkingChecks)
-  if ! [ -z "\$checkRes" ]; then
-    totLockAttempts=\$(getIncrementLockAttempts networkchecks)
-    strErr="performNetworkingChecks.sh - Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
-    logHSHQEvent warning "\$strErr"
-    if [ \$((\$totLockAttempts % 60)) -eq 1 ]; then
-      echo "WARNING: \$strErr"
-    fi
-    exit 7
-  fi
-  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  source \$HSHQ_PLAINTEXT_USER_CONFIG
-  set +e
-  checkAllHSHQNetworking "\$@"
-  retVal=\$?
-  releaseLock networkchecks "performNetworkingChecks" false
-  return \$retVal
-}
-
-main "\$@"
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
-}
-
 function outputDBExportScripts()
 {
   rm -f $HSHQ_SCRIPTS_DIR/user/exportPostgres.sh
@@ -21795,6 +21782,14 @@ EOFDB
 
 function outputMaintenanceScripts()
 {
+  if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
+    echo "Installing networkd-dispatcher, please wait..."
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+    performAptInstall networkd-dispatcher > /dev/null 2>&1
+  fi
+  sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
+  sudo systemctl start networkd-dispatcher > /dev/null 2>&1
+
   sudo rm -f $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh
   sudo tee $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null <<EOFCS
 #!/bin/bash
@@ -21990,6 +21985,59 @@ EOFWG
   sudo chown root:root $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
 
   outputPerformNetworkingChecks
+}
+
+function outputPerformNetworkingChecks()
+{
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh >/dev/null <<EOFBS
+#!/bin/bash
+
+HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
+HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
+
+function main()
+{
+  source \$HSHQ_LIB_SCRIPT lib
+  if [ "\$(checkIsBootComplete)" = "false" ]; then
+    logHSHQEvent warning "performNetworkingChecks.sh - Boot process is not yet complete."
+    resetLastNetworkCheckTimestamp
+    return
+  fi
+  checkRes=\$(tryGetLock networkchecks performNetworkingChecks)
+  if ! [ -z "\$checkRes" ]; then
+    totLockAttempts=\$(getIncrementLockAttempts networkchecks)
+    strErr="performNetworkingChecks.sh - Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+    logHSHQEvent warning "\$strErr"
+    if [ \$((\$totLockAttempts % 60)) -eq 1 ]; then
+      echo "WARNING: \$strErr"
+    fi
+    exit 7
+  fi
+  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
+  source \$HSHQ_PLAINTEXT_USER_CONFIG
+  set +e
+  checkAllHSHQNetworking "\$@"
+  retVal=\$?
+  releaseLock networkchecks "performNetworkingChecks" false
+  return \$retVal
+}
+
+main "\$@"
+EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
+  sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  if sudo test -d "/etc/networkd-dispatcher/routable.d"; then
+    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+    sudo chmod 755 /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  fi
+  sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+  if sudo test -d "/etc/NetworkManager/dispatcher.d"; then
+    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+    sudo chmod 755 /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+  fi
 }
 
 function outputUpdateIPTablesBeforeNetworkBootscript()
@@ -22483,13 +22531,6 @@ function wgDockInternetUpAll()
 
 function outputWireGuardScripts()
 {
-  if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
-    echo "Installing networkd-dispatcher, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-    performAptInstall networkd-dispatcher > /dev/null 2>&1
-  fi
-  sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
-  sudo systemctl start networkd-dispatcher > /dev/null 2>&1
   outputWGDockInternetScript
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh >/dev/null <<EOFWG
 #!/bin/bash
@@ -22505,16 +22546,6 @@ if [ \$? -eq 0 ]; then
 fi
 EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
-  sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
-  if sudo test -d "/etc/networkd-dispatcher/routable.d"; then
-    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
-    sudo chmod 755 /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
-  fi
-  sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
-  if sudo test -d "/etc/NetworkManager/dispatcher.d"; then
-    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
-    sudo chmod 755 /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
-  fi
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
     echo "Installing sqlite3, please wait..."
     performAptInstall sqlite3 > /dev/null 2>&1
