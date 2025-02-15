@@ -81,7 +81,7 @@ Web-based management UI | :heavy_check_mark: | :heavy_check_mark: | :heavy_check
 Shiny and Pretty Web UI | :x: | :heavy_check_mark: | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark:
 Simple and streamlined backup/restore procedures | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :x: | :x:
 100% free and open source - no strings attached | :heavy_check_mark: | :x: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark:
-\# of Files in Source Code Repository (Auditing) | 5 | 13724 | 380 | 917 | 775 | 227
+\# of Files in Source Code Repository (Auditing) | 6 | 13724 | 380 | 917 | 775 | 227
 ------
 Probably the most central and useful aspect of an all-in-one approach is the idea of a one-click install. There are thousands of open-source projects that one can install, and clicking a single button to install it is very useful. You may even be enticed by the fancy web interfaces that some of these so called "all-in-one" projects employ - it seems professional and legitimate. However, in just about every case, you could have gotten that far by yourself with about the same amount of work. In general, you are being handed a much bigger workload, in that you have to configure and maintain it yourself. So these shiny and pretty web interfaces are nothing more than lipstick on a pig.
 
