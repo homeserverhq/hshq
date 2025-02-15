@@ -43,17 +43,21 @@ function main()
   '
   USERNAME=$(id -u -n)
   if [ -f $HOME/hshq/hshq.dev ]; then
+    HSHQ_WRAP_URL=https://homeserverhq.com/hshq-dev.sh
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion-dev
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-dev.sh
     HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-dev
   elif [ -f $HOME/hshq/hshq.test ]; then
+    HSHQ_WRAP_URL=https://homeserverhq.com/hshq-test.sh
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion-test
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-test.sh
     HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-test
   else
+    HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
     HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
   fi
-  HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
-  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
   HSHQ_GPG_FINGERPRINT=5B9C33067C71ABCFCE1ACF8A7F46128ABB7C1E42
