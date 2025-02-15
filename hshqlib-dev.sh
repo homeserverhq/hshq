@@ -12457,6 +12457,9 @@ function decryptConfigFile()
 
 function decryptConfigFileAndLoadEnvNoPrompts()
 {
+  if [ -z "$USER_CONFIG_PW" ]; then
+    USER_CONFIG_PW="$1"
+  fi
   checkRes=$(tryGetLock hshqopen User-ScriptServer)
   if ! [ -z "$checkRes" ]; then
     USER_CONFIG_PW=""
