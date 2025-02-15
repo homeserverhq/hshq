@@ -30,6 +30,7 @@ function init()
   cd ~
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
+  PRIOR_HSHQ_VERSION=0
   LAST_RELAYSERVER_VERSION_UPDATE=121
   IS_DESKTOP_ENV=false
   if [ -d $HOME/Desktop ]; then
@@ -192,6 +193,7 @@ function main()
 {
   init
   checkWrapperVersion
+  IS_CONSOLE_ENV=true
   IS_PERFORM_INSTALL=false
   IS_NEW_LIB=false
   CONNECTING_IP=""
@@ -287,6 +289,7 @@ function main()
     if [ "$isInstalled" = "true" ]; then
       is_hshq_installed=true
       IS_CONFIG_FILE_UNENCRYPTED=true
+      source $CONFIG_FILE
     else
       is_hshq_installed=false
     fi
@@ -659,7 +662,7 @@ EOF
   sudo docker container prune -f
   createDockerNetworks
   enableAllWGVPNInterfaces
-  sudo $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  createWGDockerNetworks
   outputEnvPortainer
   startPortainer
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
@@ -1585,6 +1588,7 @@ function checkLoadConfig()
     DEF_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
     if [ -f $DEF_CONFIG_FILE ]; then
       CONFIG_FILE=$DEF_CONFIG_FILE
+      ENC_CONFIG_FILE=""
     else
       CONFIG_FILE=""
     fi
@@ -1646,11 +1650,7 @@ function confirmUnlockCreds()
 
 function promptTestSudoPW()
 {
-  sudo -n true 2>/dev/null
-  if [ $? -eq 0 ]; then
-    sudo -v
-    return
-  fi
+  set +e
   if ! [ -z "$USER_SUDO_PW" ]; then
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -17409,14 +17409,25 @@ function promptTestRelayServerPassword()
   fi
   while [ -z "$USER_RELAY_SUDO_PW" ]
   do
-    USER_RELAY_SUDO_PW=$(promptPasswordMenu "Enter Relay Password" "Enter your RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: ")
-    retVal=$?
-    if [ $retVal -ne 0 ]; then
-      exit 3
-    fi
-    if [ "$(testRelayServerPassword)" = "false" ]; then
-      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
-      USER_RELAY_SUDO_PW=""
+    if [ "$IS_CONSOLE_ENV" = "true" ]; then
+      USER_RELAY_SUDO_PW=$(promptPasswordMenu "Enter Relay Password" "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: ")
+      retVal=$?
+      if [ $retVal -ne 0 ]; then
+        exit 3
+      fi
+      if [ "$(testRelayServerPassword)" = "false" ]; then
+        showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+        USER_RELAY_SUDO_PW=""
+      fi
+    else
+      clear
+      echo -e "\n\n"
+      read -s -p "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: " USER_RELAY_SUDO_PW
+      echo
+      if [ "$(testRelayServerPassword)" = "false" ]; then
+        echo "The password is incorrect, please re-enter it."
+        USER_RELAY_SUDO_PW=""
+      fi
     fi
   done
 }
@@ -18974,6 +18985,7 @@ function version78Update()
     nrsl_retVal=$?
     set -e
     if [ $nrsl_retVal -eq 0 ]; then
+      promptTestRelayServerPassword
       loadSSHKey
       ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"  <<< "$USER_RELAY_SUDO_PW"
       unloadSSHKey
@@ -19017,7 +19029,6 @@ function version85Update()
   echo "Updating authelia stack..."
   updateStackEnv authelia mfFixCACertPath
   updateSysctl true
-  outputCreateWGDockerNetworksScript
   set -e
 }
 
@@ -19136,6 +19147,7 @@ EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
       chmod 640 $HOME/authd.pass
+      promptTestRelayServerPassword
       loadSSHKey
       scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
       ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v;sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent" <<< "$USER_RELAY_SUDO_PW"
@@ -19684,6 +19696,7 @@ EOFRS
 
 function version126Update()
 {
+  set +e
   ema1=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $CONFIG_FILE)
   ema2=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $HSHQ_PLAINTEXT_ROOT_CONFIG root)
   if ! [ -z "$ema1" ] && [ -z "$ema2" ]; then
@@ -19696,6 +19709,12 @@ function version126Update()
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/*.sh
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
   sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+  set +e
+  sudo systemctl stop createWGDockerNetworks > /dev/null 2>&1
+  sudo systemctl disable createWGDockerNetworks > /dev/null 2>&1
+  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
+  sudo systemctl daemon-reload
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
   sudo sed -i "s/CHECKIP_REFRESH_RATE/NETWORK_UPDATE_INTERVAL/" $HSHQ_PLAINTEXT_ROOT_CONFIG >/dev/null
   NETWORK_UPDATE_INTERVAL=5
   updatePlaintextRootConfigVar NETWORK_UPDATE_INTERVAL $NETWORK_UPDATE_INTERVAL
@@ -19718,6 +19737,7 @@ function updateRelayServerWithScript()
     nrsl_retVal=$?
     set -e
     if [ $nrsl_retVal -eq 0 ]; then
+      promptTestRelayServerPassword
       loadSSHKey
       scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
       ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v;bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" <<< "$USER_RELAY_SUDO_PW"
@@ -20894,9 +20914,6 @@ function nukeHSHQ()
   sleep 5
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
   sudo $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
-  sudo systemctl stop createWGDockerNetworks
-  sudo systemctl disable createWGDockerNetworks
-  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
   sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
   sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
   sudo systemctl stop runOnBootRootBeforeNetwork
@@ -21679,7 +21696,9 @@ function main()
   source \$HSHQ_PLAINTEXT_USER_CONFIG
   set +e
   checkAllHSHQNetworking "\$@"
+  retVal=\$?
   releaseLock networkchecks "performNetworkingChecks" false
+  return \$retVal
 }
 
 main "\$@"
@@ -22247,6 +22266,7 @@ function checkAllHSHQNetworking()
   #
 
   set +e
+  funRetVal=0
   # This is for NetworkManager-dispatcher function calls.
   # See https://manpages.ubuntu.com/manpages/lunar/man8/NetworkManager-dispatcher.8.html
   # We'll only focus on 'up' actions.
@@ -22265,7 +22285,6 @@ function checkAllHSHQNetworking()
   if [ "$callerName" = "cron" ] && [ "$(isNetworkCheckIntervalExpired)" = "false" ]; then
     return
   fi
-  logHSHQEvent info "checkAllHSHQNetworking ($callerName) - BEGIN"
   isLockError=false
   isAnyChanged="$(checkHostInterfacesIsChanged)"
   if [ "$isAnyChanged" = "true" ]; then
@@ -22288,11 +22307,28 @@ function checkAllHSHQNetworking()
     startStopStack adguard start
   fi
   updateEndpointIPs
+  createWGDockerNetworks
   wgDockInternetUpAll
+  checkNonLockedUnencrytpedConfig "$callerName"
+  funRetVal=$(($funRetVal + $?))
   if [ "$isLockError" = "false" ]; then
     updateLastNetworkCheck
   fi
-  logHSHQEvent info "checkAllHSHQNetworking ($callerName) - END"
+  return $funRetVal
+}
+
+function checkNonLockedUnencrytpedConfig()
+{
+  callerName="$1"
+  if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
+    checkResCNLUC="$(checkIsLockEnabled hshqopen)"
+    if [ -z "$checkResCNLUC" ]; then
+      errMsg="checkNonLockedUnencrytpedConfig ($callerName) - Config file is unencrypted with no lock!"
+      logHSHQEvent error "$errMsg"
+      echo "ERROR: $errMsg"
+      return 1
+    fi
+  fi
 }
 
 function updateEndpointIPs()
@@ -22418,25 +22454,6 @@ EOFWG
   if sudo test -d "/etc/NetworkManager/dispatcher.d"; then
     sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
   fi
-  outputCreateWGDockerNetworksScript
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service >/dev/null <<EOFWG
-[Unit]
-Description=Check or create Docker networks for WireGuard interfaces and private IP ranges
-After=default.target
-
-[Service]
-Type=oneshot
-ExecStart=$HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
-
-[Install]
-WantedBy=default.target
-EOFWG
-  sudo chmod 644 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
-  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
-  sudo ln -s $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service /etc/systemd/system/createWGDockerNetworks.service
-  sudo systemctl daemon-reload
-  sudo systemctl enable createWGDockerNetworks
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
     echo "Installing sqlite3, please wait..."
     performAptInstall sqlite3 > /dev/null 2>&1
@@ -22670,39 +22687,21 @@ EOFWG
   sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh
 }
 
-function outputCreateWGDockerNetworksScript()
+function createWGDockerNetworks()
 {
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scriptsdir=$HSHQ_SCRIPTS_DIR
-
-function main()
-{
-  sudo ls \$wgdir/internet/*.conf > /dev/null 2>&1
-  if [ \$? -eq 0 ]; then
-    sudo ls \$wgdir/internet/*.conf | while read conf
+  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
     do
-      DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
-      DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
-      MTU=\$(getConfigVar \#MTU)
-      docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
-      if [ \$? -ne 0 ]; then
-        docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
+      docker_net="$(getConfigVarFromFile \#DOCKER_NETWORK_NAME $conf root)"
+      docker_subnet="$(getConfigVarFromFile \#DOCKER_NETWORK_SUBNET $conf root)"
+      MTU="$(getConfigVarFromFile \#MTU $conf root)"
+      docker network inspect $docker_net > /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        docker network create $docker_net --subnet $docker_subnet -o com.docker.network.driver.mtu=$MTU -o com.docker.network.bridge.name=$docker_net
       fi
     done
   fi
-}
-function getConfigVar()
-{
-  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
 }
 
 function enableAllWGVPNInterfaces()
