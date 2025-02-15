@@ -19738,6 +19738,7 @@ function version126Update()
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/*.sh
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
   sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
   set +e
   sudo systemctl stop createWGDockerNetworks > /dev/null 2>&1
   sudo systemctl disable createWGDockerNetworks > /dev/null 2>&1
@@ -22323,16 +22324,18 @@ function checkAllHSHQNetworking()
   elif [ -z "$@" ]; then
     callerName=networkd
   fi
-
   if [ "$callerName" = "cron" ] && [ "$(isNetworkCheckIntervalExpired)" = "false" ]; then
     return
+  fi
+  if ! [ "$callerName" = "cron" ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($callerName) BEGIN"
   fi
   isLockError=false
   isAnyChanged="$(checkHostInterfacesIsChanged)"
   if [ "$isAnyChanged" = "true" ]; then
     checkRes=$(tryGetLock hshqopen checkAllHSHQNetworking)
     if ! [ -z "$checkRes" ]; then
-      logHSHQEvent error "checkAllHSHQNetworking  ($callerName) - Unable to obtain lock ($checkRes)"
+      logHSHQEvent error "checkAllHSHQNetworking ($callerName) - Unable to obtain lock ($checkRes)"
       isLockError=true
     else
       logHSHQEvent info "checkAllHSHQNetworking ($callerName) - Host interface IP changed..."
@@ -22355,6 +22358,9 @@ function checkAllHSHQNetworking()
   funRetVal=$(($funRetVal + $?))
   if [ "$isLockError" = "false" ]; then
     updateLastNetworkCheck
+  fi
+  if ! [ "$callerName" = "cron" ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($callerName) END"
   fi
   return $funRetVal
 }
@@ -22491,10 +22497,12 @@ EOFWG
   sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
   if sudo test -d "/etc/networkd-dispatcher/routable.d"; then
     sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+    sudo chmod 755 /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
   fi
   sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
   if sudo test -d "/etc/NetworkManager/dispatcher.d"; then
     sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+    sudo chmod 755 /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
   fi
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
     echo "Installing sqlite3, please wait..."

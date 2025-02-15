@@ -296,8 +296,6 @@ EOF
     else
       echo "Error updating wrapper ($returnVal)"
     fi
-  else
-    echo "No updates"
   fi
   hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
   if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
