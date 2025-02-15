@@ -10829,7 +10829,7 @@ function getHSHQScriptOpenMsg()
   getLockOpenMsg hshqopen
 }
 
-function checkIsOpenHSHQScript()
+function checkHSHQScriptOpen()
 {
   checkIsLockEnabled hshqopen
 }
@@ -19164,25 +19164,36 @@ EOFWZ
     sudo sed -i "s/<use_password>no<\/use_password>/<use_password>yes<\/use_password>/" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
     docker container restart wazuh.manager > /dev/null 2>&1
   fi
-
+  set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     set +e
-    notifyRSLogin
-    nrsl_retVal=$?
+    promptTestRelayServerPassword
     set -e
-    if [ $nrsl_retVal -eq 0 ]; then
-      tee $HOME/authd.pass >/dev/null <<EOFWZ
+    tee $HOME/authd.pass >/dev/null <<EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
-      chmod 640 $HOME/authd.pass
-      promptTestRelayServerPassword
-      loadSSHKey
-      scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v;sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent" <<< "$USER_RELAY_SUDO_PW"
-      unloadSSHKey
-      rm -f $HOME/authd.pass
-    fi
+    chmod 640 $HOME/authd.pass
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    unloadSSHKey
+    rm -f $HOME/rsUpdateScript.sh
+    cat <<EOFLO > $HOME/rsUpdateScript.sh
+#!/bin/bash
+
+function main()
+{
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  sudo chown root:wazuh ~/authd.pass
+  sudo mv ~/authd.pass /var/ossec/etc/authd.pass
+  sudo systemctl restart wazuh-agent
+}
+main "\$@"
+EOFLO
+    updateRelayServerWithScript
+    rm -f $HOME/authd.pass
   fi
+  set -e
 }
 
 function version108Update()
@@ -19318,8 +19329,11 @@ function version120Update()
   cat <<EOFLO > $HOME/rsUpdateScript.sh
 #!/bin/bash
 
+set +e
 function main()
 {
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   if sudo test -f /etc/logrotate.d/rsyslog; then
     # Set max size of syslog to 2G
     grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
@@ -19356,6 +19370,8 @@ function version121Update()
   cat <<EOFRS > $HOME/rsUpdateScript.sh
 function main()
 {
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   RELAYSERVER_HSHQ_SCRIPTS_DIR=\$HOME/hshq/data/scripts
   exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
   sudo rm -f \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
@@ -19556,7 +19572,6 @@ EOFBS
   sudo ln -s \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRoot
-
 }
 
 function getDefaultIface()
@@ -19763,16 +19778,12 @@ function updateRelayServerWithScript()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     chmod 500 $HOME/rsUpdateScript.sh
     set +e
-    notifyRSLogin
-    nrsl_retVal=$?
+    promptTestRelayServerPassword
     set -e
-    if [ $nrsl_retVal -eq 0 ]; then
-      promptTestRelayServerPassword
-      loadSSHKey
-      scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v;bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" <<< "$USER_RELAY_SUDO_PW"
-      unloadSSHKey
-    fi
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" <<< "$USER_RELAY_SUDO_PW"
+    unloadSSHKey
   fi
   set +e
   rm -f $HOME/rsUpdateScript.sh
@@ -33549,7 +33560,7 @@ function updateWazuhAgents()
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
   sudo apt-mark hold wazuh-agent
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    notifyRSLogin
+    promptTestRelayServerPassword
     loadSSHKey
     ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo apt-mark unhold wazuh-agent; sudo DEBIAN_FRONTEND=noninteractive apt update; sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver; sudo apt-mark hold wazuh-agent"
     unloadSSHKey
