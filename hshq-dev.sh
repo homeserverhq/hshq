@@ -275,7 +275,10 @@ EOF
     checkPromptUserPW false
     getent group docker >/dev/null || sudo groupadd docker
     sudo usermod -aG docker $USERNAME
-    sudo -u $USERNAME bash $0 -s -p $ciparg <<< "$USER_SUDO_PW"
+    # This can cause infinite recursion given certain circumstances
+    #sudo -u $USERNAME bash $0 -s -p $ciparg <<< "$USER_SUDO_PW"
+    showMessageBox "Docker User" "The user ($USERNAME) has been added to the docker group. Please restart the installation utility. If you continue to see this message, you may have to reboot your system."
+    newgrp
     exit 0
   fi
   if ! [ -d $HSHQ_LIB_DIR ]; then

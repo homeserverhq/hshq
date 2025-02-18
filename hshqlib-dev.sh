@@ -1574,6 +1574,7 @@ EOFSM
   getent group mailsenders >/dev/null || sudo groupadd mailsenders 
   sudo usermod -aG mailsenders $USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
+  sudo update-alternatives --set mailx /usr/bin/mail.mailutils
 }
 
 function checkLoadConfig()
@@ -2231,6 +2232,8 @@ function initInstallation()
     loadSSHKey
     ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
+    unset USER_RELAY_SUDO_PW
+    USER_RELAY_SUDO_PW=""
   fi
   set -e
   sudo -v
@@ -13356,11 +13359,11 @@ function getSvcCredentialsVW()
 
 function getFmtCredentials()
 {
-  svc_name=$1
-  login_uri=$2
-  abbrev=$3
-  username=$4
-  password=$5
+  svc_name="$1"
+  login_uri="$2"
+  abbrev="$3"
+  username="$4"
+  password="$5"
   echo "$svc_name, $username, $password, $login_uri"
 }
 
@@ -26995,7 +26998,7 @@ function emailUserVaultwardenCredentials()
 {
   vw_username=$1
   vw_email=$2
-  strOutput="_________________________________________________________________________\n\n"
+  strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
@@ -27007,12 +27010,15 @@ function emailUserVaultwardenCredentials()
 
 function emailFormattedCredentials()
 {
-  strOutput="Be careful keeping this in your mailbox, it contains all of your Admin passwords in plain text! If you intend to install and use Vaultwarden, then you will receive an email once it is installed, and it will contain this information in a format that you can easily import into your vault. You can also resend yourself this email later from within Script-server, i.e. 01 Misc Utils -> 11 Email All Credentials\n\n\n\n"
+  strOutput=""
+  strOutput=$strOutput"                        All Services Login Info                         "
+  strOutput=$strOutput"========================================================================\n"
+  strOutput=$strOutput"Be careful keeping this in your mailbox, it contains all of your Admin passwords in plain text! If you intend to install and use Vaultwarden, then you will receive an email once it is installed, and it will contain this information in a format that you can easily import into your vault. You can also resend yourself this email later from within Script-server, i.e. 01 Misc Utils -> 11 Email All Credentials\n\n\n\n"
   strOutput=$strOutput"Service Name, Username, Password, URL(s)\n"
-  strOutput=$strOutput"_________________________________________________________________________\n\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=$strOutput"________________________________________________________________________\n\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
@@ -27041,7 +27047,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
@@ -56180,7 +56186,7 @@ EOFSC
 {
   "name": "03 Edit Host Interface",
   "script_path": "conf/scripts/editHomeServerHostInterface.sh",
-  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are numerous actions that can be performed on a particular interface, and some actions require parameters that are available below the selected action.<br/><br/>Setting an interface as primary will determine what IP address the DNS records piont to, as well as the ip-based links on the home page.<br/><br/>Enabling/Disabling Expose to Network allows the selected ports to be accessible/inaccessible for the corresponding network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.<br/><br/>Setting an interface (wired or wireless) to a static IP requires an IP address, CIDR length, and gateway. When setting up a new wireless interface, you must also provide an initial network SSID (and password, if applicable).",
+  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are numerous actions that can be performed on a particular interface, and some actions require parameters that are available below the selected action.<br/><br/>Setting an interface as primary will determine what IP address the DNS records point to, as well as the ip-based links on the home page.<br/><br/>Enabling/Disabling Expose to Network allows the selected ports to be accessible/inaccessible for the corresponding network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.<br/><br/>Setting an interface (wired or wireless) to a static IP requires an IP address, CIDR length, and gateway. When setting up a new wireless interface, you must also provide an initial network SSID (and password, if applicable).",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
