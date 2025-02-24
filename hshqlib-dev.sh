@@ -172,7 +172,7 @@ function init()
   SCRIPT_STATE_FILENAME=$HSHQ_CONFIG_DIR/scriptstate
   UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential"
   DESKTOP_APT_LIST=""
-  APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart"
+  APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
   hshqlogo=$(cat << EOFLG
 #===============================================================#
@@ -1542,9 +1542,22 @@ function installDependencies()
   set -e
 }
 
+function removeBSDMailx()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y bsd-mailx
+  sudo tee /etc/apt/preferences.d/bsd-mailx >/dev/null <<EOFSM
+Package: bsd-mailx
+Pin: release *
+Pin-Priority: -1
+EOFSM
+  sudo apt update > /dev/null 2>&1
+}
+
 function installMailUtils()
 {
   set +e
+  echo "Removing bsd-mailx, please wait..."
+  removeBSDMailx
   echo "Installing ssmtp, please wait..."
   performAptInstall ssmtp
   echo "Installing mailx, please wait..."
