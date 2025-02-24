@@ -1545,16 +1545,10 @@ function installDependencies()
 function installMailUtils()
 {
   set +e
-  if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
-    echo "Installing ssmtp, please wait..."
-    performAptInstall ssmtp
-  fi
-
-  if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
-    echo "Installing mailx, please wait..."
-    performAptInstall mailutils
-  fi
-
+  echo "Installing ssmtp, please wait..."
+  performAptInstall ssmtp
+  echo "Installing mailx, please wait..."
+  performAptInstall mailutils
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
 mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
@@ -2359,6 +2353,7 @@ function performBaseInstallation()
   set -e
   draw_progress_bar 88
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-autoipd > /dev/null 2>&1
   draw_progress_bar 90
   postInstallation
 }
@@ -2390,6 +2385,7 @@ function postInstallation()
   sanitizeHSHQLog
   echo "Installed"
   draw_progress_bar 95
+  sudo rm -f /etc/skel/hshq.sh
   IS_INSTALLED=true
   updateConfigVar IS_INSTALLED $IS_INSTALLED
   IS_INSTALLING=false
@@ -24537,16 +24533,6 @@ function pullBaseServicesDockerImages()
     return 4
   fi
   pullImagesUpdatePB 2
-  pullImage $IMG_DNSMASQ
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
-  pullImagesUpdatePB 1
-  pullImage $IMG_WIREGUARD
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
-  pullImagesUpdatePB 2
   pullImage $IMG_OPENLDAP_SERVER
   if [ $? -ne 0 ]; then
     return 4
@@ -24581,7 +24567,7 @@ function pullBaseServicesDockerImages()
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImagesUpdatePB 1
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_FRONT
   if [ $? -ne 0 ]; then
     return 4
@@ -24591,7 +24577,7 @@ function pullBaseServicesDockerImages()
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImagesUpdatePB 1
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_OLETOOLS
   if [ $? -ne 0 ]; then
     return 4
@@ -24601,7 +24587,7 @@ function pullBaseServicesDockerImages()
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImagesUpdatePB 1
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_UNBOUND
   if [ $? -ne 0 ]; then
     return 4
@@ -24611,7 +24597,7 @@ function pullBaseServicesDockerImages()
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImagesUpdatePB 1
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_WEBMAIL
   if [ $? -ne 0 ]; then
     return 4
@@ -24621,7 +24607,7 @@ function pullBaseServicesDockerImages()
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImagesUpdatePB 1
+  pullImagesUpdatePB 2
   pullImage $IMG_AUTHELIA
   if [ $? -ne 0 ]; then
     return 4
@@ -24631,7 +24617,7 @@ function pullBaseServicesDockerImages()
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImagesUpdatePB 1
+  pullImagesUpdatePB 2
   pullImage $IMG_SYNCTHING
   if [ $? -ne 0 ]; then
     return 4
@@ -24641,7 +24627,7 @@ function pullBaseServicesDockerImages()
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImagesUpdatePB 1
+  pullImagesUpdatePB 2
   pullImage $IMG_OFELIA
   if [ $? -ne 0 ]; then
     return 4
@@ -24653,16 +24639,6 @@ function pullBaseServicesDockerImages()
   fi
   pullImagesUpdatePB 2
   pullImage $IMG_UPTIMEKUMA
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
-  pullImagesUpdatePB 2
-  pullImage $IMG_POSTGRES
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
-  pullImagesUpdatePB 2
-  pullImage $IMG_MYSQL
   if [ $? -ne 0 ]; then
     return 4
   fi
