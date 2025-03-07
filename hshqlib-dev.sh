@@ -52,7 +52,7 @@ function init()
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
   RELAYSERVER_INSTALL_COMPLETE_FILE=installed
   HSHQ_LOG_FILE=/var/log/hshq.log
-  HSHQ_INSTALL_NOTES_FILENAME='HSHQ Install Notes.txt'
+  HSHQ_INSTALL_NOTES_FILENAME='HomeServer Install Notes.txt'
   SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
@@ -170,7 +170,7 @@ function init()
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
   SCRIPT_STATE_FILENAME=$HSHQ_CONFIG_DIR/scriptstate
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
@@ -1433,6 +1433,7 @@ function performSuggestedSecUpdates()
     sudo systemctl stop apport
     sudo systemctl --now disable apport
     sudo systemctl daemon-reload
+    #sudo systemctl mask apport
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
@@ -2207,7 +2208,11 @@ function initInstallation()
     if [ "$is_keep_config" = "y" ]; then
       final_prompt="After reading the above section, enter 'install' or 'exit': "
       rm -f "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
-      echo -e "\n***** You should permanently delete this file as soon as you are finished with it *****\n\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "\n\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@   You should permanently delete this file   @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@     as soon as you are finished with it     @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "${strInstallConfig}" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       chmod 0400 "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       break
@@ -2367,8 +2372,23 @@ function performBaseInstallation()
   draw_progress_bar 88
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-autoipd > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove --purge -y
   draw_progress_bar 90
   postInstallation
+}
+
+function trustDesktopIcon()
+{
+  set +e
+  dtIcon=$1
+  which gio > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    dbus-launch gio set $HOME/Desktop/$dtIcon metadata::trusted true > /dev/null 2>&1
+    gio set $HOME/Desktop/$dtIcon metadata::trusted true > /dev/null 2>&1
+    dbus-launch gio set -t string $HOME/Desktop/$dtIcon metadata::xfce-exe-checksum "$(sha256sum $HOME/Desktop/$dtIcon | awk '{print $1}')" > /dev/null 2>&1
+    gio set -t string $HOME/Desktop/$dtIcon metadata::xfce-exe-checksum "$(sha256sum $HOME/Desktop/$dtIcon | awk '{print $1}')" > /dev/null 2>&1
+    nautilus -q > /dev/null 2>&1
+  fi
 }
 
 function postInstallation()
@@ -2407,8 +2427,9 @@ function postInstallation()
     echo "Configuring Desktop environment..."
     set +e
     rm -f ~/Desktop/InstallHSHQ.desktop
+    sudo rm -f /usr/share/applications/InstallHSHQ.desktop
     if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
-      sudo cp /usr/share/icons/HSHQ/Homepage_HSHQ.png /usr/share/icons/HSHQ/Homepage.png
+      sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
     fi
     rm -f ~/Desktop/HomePage.desktop
     cat <<EOFHP > ~/Desktop/HomePage.desktop
@@ -2419,19 +2440,33 @@ Comment=Opens your HomeServer home page
 Terminal=false
 Icon=/usr/share/icons/HSHQ/Homepage.png
 Type=Application
+Categories=HomeServerHQ
 EOFHP
     chmod 755 ~/Desktop/HomePage.desktop
     rm -f ~/Desktop/HSHQConsole.desktop
     cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
 [Desktop Entry]
-Name=HSHQ Console
+Name=HSHQ Console Util
 Exec=bash -ic "~/hshq.sh"
-Comment=Runs the HSHQ console-based utility
+Comment=Runs the HSHQ console-based management utility
 Terminal=true
-Icon=/usr/share/icons/HSHQ/Settings_HSHQ.png
+Icon=/usr/share/icons/HSHQ/ConsoleHSHQ.png
 Type=Application
+Categories=HomeServerHQ
 EOFHP
     chmod 755 ~/Desktop/HSHQConsole.desktop
+    rm -f ~/Desktop/HSHQScriptServer.desktop
+    cat <<EOFHP > ~/Desktop/HSHQScriptServer.desktop
+[Desktop Entry]
+Name=HSHQ Web Util
+Exec=firefox https://127.0.0.1:$SCRIPTSERVER_LOCALHOST_PORT
+Comment=Runs the HSHQ web-based management utility
+Terminal=false
+Icon=/usr/share/icons/HSHQ/ScriptServerHSHQ.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    chmod 755 ~/Desktop/HSHQScriptServer.desktop
     rm -f ~/Desktop/HSHQHelp.desktop
     cat <<EOFHP > ~/Desktop/HSHQHelp.desktop
 [Desktop Entry]
@@ -2439,22 +2474,27 @@ Name=Help!
 Exec=firefox forum.homeserverhq.com
 Comment=Ask for help on the HomeServerHQ Forum
 Terminal=false
-Icon=/usr/share/icons/HSHQ/Help_HSHQ.png
+Icon=/usr/share/icons/HSHQ/HelpHSHQ.png
 Type=Application
+Categories=HomeServerHQ
 EOFHP
     chmod 755 ~/Desktop/HSHQHelp.desktop
-    if [ -f /etc/profile.d/desktop-truster.sh ]; then
-      # This is dumb and pointless...
-      bash /etc/profile.d/desktop-truster.sh
-    fi
+    trustDesktopIcon "HomePage.desktop"
+    trustDesktopIcon "HSHQConsole.desktop"
+    trustDesktopIcon "HSHQScriptServer.desktop"
+    trustDesktopIcon "HSHQHelp.desktop"
+    sudo mkdir -p /usr/share/applications
+    sudo cp -f ~/Desktop/HomePage.desktop /usr/share/applications/
+    sudo cp -f ~/Desktop/HSHQConsole.desktop /usr/share/applications/
+    sudo cp -f ~/Desktop/HSHQScriptServer.desktop /usr/share/applications/
+    sudo cp -f ~/Desktop/HSHQHelp.desktop /usr/share/applications/
     which gsettings > /dev/null 2>&1
     if [ $? -eq 0 ]; then
-      # This is also dumb, spell check doesn't
-      # belong in a basic text editor, especially
-      # if it's insanely intrusive.
-      gsettings set org.gnome.TextEditor spellcheck false
+      # Spell check doesn't belong in a basic text editor,
+      # especially if it's insanely intrusive.
+      gsettings set org.gnome.TextEditor spellcheck false > /dev/null 2>&1
       # Just because
-      gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark'
+      gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' > /dev/null 2>&1
     fi
     draw_progress_bar 96
     addRootCertificateToApps
@@ -15684,7 +15724,8 @@ user_pref("extensions.formautofill.creditCards.available", false);
 user_pref("extensions.formautofill.creditCards.enabled", false);
 user_pref("browser.urlbar.suggest.topsites", false);
 user_pref("identity.fxaccounts.enabled", false);
-user_pref("browser.startup.couldRestoreSession.count", -1);
+user_pref("browser.startup.couldRestoreSession.count", 1);
+user_pref("browser.startup.page", 3);
 
 // Always dark mode:)
 user_pref("layout.css.prefers-color-scheme.content-override", 0);
@@ -21065,20 +21106,21 @@ function nukeHSHQ()
     rm -f "/home/$USERNAME/Desktop/$HSHQ_INSTALL_NOTES_FILENAME"
     rm -f ~/Desktop/HomePage.desktop
     rm -f ~/Desktop/HSHQConsole.desktop
+    rm -f ~/Desktop/HSHQScriptServer.desktop
+    sudo rm -f /usr/share/applications/HomePage.desktop
+    sudo rm -f /usr/share/applications/HSHQConsole.desktop
+    sudo rm -f /usr/share/applications/HSHQScriptServer.desktop
     cat <<EOFHP > ~/Desktop/InstallHSHQ.desktop
 [Desktop Entry]
 Name=Install HSHQ
 Exec=bash -ic "~/hshq.sh"
 Comment=Starts the HSHQ installation script
 Terminal=true
-Icon=/usr/share/icons/HSHQ/Install_HSHQ.png
+Icon=/usr/share/icons/HSHQ/InstallHSHQ.png
 Type=Application
 EOFHP
     chmod 755 ~/Desktop/InstallHSHQ.desktop
-    if [ -f /etc/profile.d/desktop-truster.sh ]; then
-      # This is dumb and pointless...
-      bash /etc/profile.d/desktop-truster.sh
-    fi
+    trustDesktopIcon "InstallHSHQ.desktop"
     tryDeleteRootCAFirefox
   fi
   rm -f "/home/$USERNAME/$HSHQ_INSTALL_NOTES_FILENAME"
@@ -21687,9 +21729,7 @@ function restartStacksOnBoot()
   # in a circular reference problem. Even manually starting the VPN interfaces before docker.service with 
   # wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
   # at boot, will wait until the interfaces are up, then start/restart the Caddy containers.
-
   # This script also restarts some other stacks that have issues after a reboot.
-
   sleep 10
   docker ps > /dev/null 2>&1
   sleep 10
@@ -21706,21 +21746,20 @@ function restartStacksOnBoot()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
-  echo "Restarting stack..."
-  if [ $retVal -ne 0 ]; then
-    echo "Error restarting HomeAssistant stack, exiting..."
-    exit 1
+  if [ $retVal -eq 0 ]; then
+    echo "Restarting HomeAssistant stack (if running)..."
+    restartStackIfRunning homeassistant 15 $portainerToken > /dev/null
+    if [ $retVal -ne 0 ]; then
+      echo "Error restarting HomeAssistant stack, exiting..."
+    fi
+  else
+    echo "Error obtaining Portainer token..."
   fi
-  restartStackIfRunning homeassistant 15 $portainerToken > /dev/null
-
-
   ips_arr=($(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
-
   ns_sleep=5
   ping_timeout=5
   max_tries=15
   is_error=false
-
   for cur_ip in "${ips_arr[@]}"
   do
     is_up=false
@@ -21736,7 +21775,6 @@ function restartStacksOnBoot()
       fi
     done
   done
-
   echo "Restarting caddy stacks..."
   caddy_arr=($(docker ps -a --filter name=caddy-vpn --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
@@ -21747,14 +21785,12 @@ function restartStacksOnBoot()
     sleep 1
     startStopStack $curcaddy start
   done
-
   isCoturn=$(docker ps -a --filter name=coturn --format "{{.Names}}")
   if ! [ -z "$isCoturn" ]; then
     startStopStack coturn stop > /dev/null 2>&1
     sleep 1
     startStopStack coturn start > /dev/null 2>&1
   fi
-
   echo "End restartStacksOnBoot.sh"
 }
 
@@ -22346,8 +22382,12 @@ function uploadHomeServerLogo()
   if [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
     sudo rm -f /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-*
     sudo cp -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png
-    if [ -f ~/Desktop/HomePage.desktop ]; then
+    if [ -f $HOME/Desktop/HomePage.desktop ]; then
       updateConfigVarInFile Icon /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png ~/Desktop/HomePage.desktop root
+      trustDesktopIcon "HomePage.desktop"
+    fi
+    if sudo test -f /usr/share/applications/HomePage.desktop; then
+      updateConfigVarInFile Icon /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png /usr/share/applications/HomePage.desktop root
     fi
   fi
   echo "HomeServer logo updated succesfully!"
