@@ -1,6 +1,6 @@
 #!/bin/bash
 HSHQ_LIB_SCRIPT_VERSION=126
-
+LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -1113,7 +1113,7 @@ EOF
       return 1 ;;
     4)
       checkLoadConfig
-      checkHostAllInterfaceIPChanges true User-Console
+      checkHostAllInterfaceIPChanges true false User-Console
       set +e
       return 1 ;;
     5)
@@ -2054,7 +2054,7 @@ function initConfig()
     set +e
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
-      tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your HomeServer user ($LDAP_PRIMARY_USER_USERNAME) account: ")
+      tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password for your HomeServer user ($LDAP_PRIMARY_USER_USERNAME) account: ")
       if [ $? -ne 0 ]; then exit; fi
       if [ -z "$tmp_pw1" ]; then
         showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -2208,7 +2208,7 @@ function initInstallation()
     if [ "$is_keep_config" = "y" ]; then
       final_prompt="After reading the above section, enter 'install' or 'exit': "
       rm -f "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
-      echo -e "\n\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "@@@@@   You should permanently delete this file   @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "@@@@@     as soon as you are finished with it     @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
@@ -2641,7 +2641,7 @@ EOF
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a quantum super-computer) and you will NOT be able to recover your data: ")
+    tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a quantum super-computer) and you will NOT be able to recover your data: ")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -15232,7 +15232,7 @@ function setupPortForwardingDB()
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     return
   fi
-  isPFTable=$(sqlite3 $HSHQ_DB "SELECT name FROM sqlite_master WHERE type='table' AND name='portforwarding';")
+  isPFTable=$(sqlite3 $HSHQ_DB "select name from sqlite_master where type='table' and name='portforwarding';")
   if [ -z "$isPFTable" ]; then
     curdt=$(getCurrentDate)
     sudo sqlite3 $HSHQ_DB "create table portforwarding(ID integer not null primary key autoincrement, PFType text, Name text, ExtStart integer, ExtEnd integer, IntStart integer, IntEnd integer, Protocol text, InternalHost text, IPAddress text, LastUpdated datetime);"
@@ -17031,7 +17031,6 @@ function createInitialEnv()
   mkdir -p $HSHQ_SSL_DIR
   mkdir -p $HSHQ_STACKS_DIR
   mkdir -p $HSHQ_WIREGUARD_DIR
-
   mkdir -p $HSHQ_WIREGUARD_DIR/internet
   mkdir -p $HSHQ_WIREGUARD_DIR/vpn
   mkdir -p $HSHQ_WIREGUARD_DIR/scripts
@@ -17064,7 +17063,7 @@ function createInitialEnv()
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of it (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
+    tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of it (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
     if [ $? -ne 0 ]; then exit; fi
     if [ -z "$tmp_pw1" ]; then
       showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -22427,37 +22426,37 @@ function checkAllHSHQNetworking()
   if ! [ -z "$2" ] && ! [ "$2" = "up" ]; then
     return
   fi
-  callerName=unknown
+  cahn_callerName=unknown
   if [ "$1" = "cron" ]; then
-    callerName=cron
+    cahn_callerName=cron
   elif [ "$2" = "up" ]; then
-    callerName=NetworkManager
+    cahn_callerName=NetworkManager
   elif [ -z "$@" ]; then
-    callerName=networkd
+    cahn_callerName=networkd
   fi
-  if [ "$callerName" = "cron" ] && [ "$(isNetworkCheckIntervalExpired)" = "false" ]; then
+  if [ "$cahn_callerName" = "cron" ] && [ "$(isNetworkCheckIntervalExpired)" = "false" ]; then
     return
   fi
-  if ! [ "$callerName" = "cron" ]; then
-    logHSHQEvent info "checkAllHSHQNetworking ($callerName) BEGIN"
+  if ! [ "$cahn_callerName" = "cron" ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) BEGIN"
   fi
   isLockError=false
   isAnyChanged="$(checkHostInterfacesIsChanged)"
   if [ "$isAnyChanged" = "true" ]; then
     checkRes=$(tryGetLock hshqopen checkAllHSHQNetworking)
     if ! [ -z "$checkRes" ]; then
-      logHSHQEvent error "checkAllHSHQNetworking ($callerName) - Unable to obtain lock ($checkRes)"
+      logHSHQEvent error "checkAllHSHQNetworking ($cahn_callerName) - Unable to obtain lock ($checkRes)"
       isLockError=true
     else
-      logHSHQEvent info "checkAllHSHQNetworking ($callerName) - Host interface IP changed..."
-      checkHostAllInterfaceIPChanges true checkAllHSHQNetworking
+      logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) - Host interface IP changed..."
+      checkHostAllInterfaceIPChanges true false checkAllHSHQNetworking
     fi
   fi
   # Perform curl https://api.ipify.org. If an error,
   # assume Adguard is not working and restart stack.
   curIP=$(curl --silent --max-time 5 https://api.ipify.org)
   if [ $? -ne 0 ]; then
-    logHSHQEvent info "checkAllHSHQNetworking ($callerName) - Restarting adguard..."
+    logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) - Restarting adguard..."
     startStopStack adguard stop
     sleep 1
     startStopStack adguard start
@@ -22465,13 +22464,13 @@ function checkAllHSHQNetworking()
   updateEndpointIPs
   createWGDockerNetworks
   wgDockInternetUpAll
-  checkNonLockedUnencrytpedConfig "$callerName"
+  checkNonLockedUnencrytpedConfig "$cahn_callerName"
   funRetVal=$(($funRetVal + $?))
   if [ "$isLockError" = "false" ]; then
     updateLastNetworkCheck
   fi
-  if ! [ "$callerName" = "cron" ]; then
-    logHSHQEvent info "checkAllHSHQNetworking ($callerName) END"
+  if ! [ "$cahn_callerName" = "cron" ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) END"
   fi
   return $funRetVal
 }
@@ -22492,6 +22491,7 @@ function checkNonLockedUnencrytpedConfig()
 
 function updateEndpointIPs()
 {
+  set +e
   ping_timeout=5
   conn_list=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
 
@@ -22521,6 +22521,7 @@ function updateEndpointIPs()
       fi
     fi
   done
+  set +e
   # Check/fix ClientDNS
   cdns_id=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
   for cur_cdns in "${cdns_id[@]}"
@@ -22537,6 +22538,7 @@ function updateEndpointIPs()
       restartStackIfRunning "${cname}" 1
     fi
   done
+  set +e
   # Check/fix tunnelled WireGuard internet connections
   ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
   if [ $? -eq 0 ]; then
@@ -23095,7 +23097,8 @@ function checkInterfaceIPChanged()
   iface_name="$1"
   db_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName = '$iface_name';")
   current_ip=$(getIPAddressOfInterface $iface_name)
-  if [ "$(checkValidIPAddress $current_ip)" = "false" ] || [ -z "$db_ip" ] || [ -z "$current_ip" ] || [ "$db_ip" = "$current_ip" ] || [ "$current_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ] || [ "$db_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+  # || [ "$db_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]
+  if [ "$(checkValidIPAddress $current_ip)" = "false" ] || [ -z "$db_ip" ] || [ -z "$current_ip" ] || [ "$db_ip" = "$current_ip" ] || [ "$current_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
     echo "false"
     return
   fi
@@ -23131,7 +23134,7 @@ function updateHSInterface()
     return 1
   fi
   if [ "$db_ip" = "$current_ip" ]; then
-    strMsg="The IP address is unchanged. No updated needed."
+    strMsg="The IP address for $iface_name is unchanged ($current_ip). No updated needed."
     echo "$strMsg"
     return 2
   fi
@@ -23158,11 +23161,14 @@ function updateHSInterface()
   fi
   # Everything is good, the IP addresses are different, so proceed with update.
   curdt=$(getCurrentDate)
-  sqlite3 $HSHQ_DB "update connections set IPAddress = '$current_ip', Network_Subnet = '$interface_subnet', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
+  sudo sqlite3 $HSHQ_DB "update connections set IPAddress = '$current_ip', Network_Subnet = '$interface_subnet', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
   if [ "$iface_name" = "$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME" ]; then
     HOMESERVER_HOST_PRIMARY_INTERFACE_IP="$current_ip"
     updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   fi
+  strMsg="The IP address for $iface_name was changed from $db_ip to $current_ip."
+  echo "$strMsg"
+  logHSHQEvent info "$strMsg"
 }
 
 function checkUpdateHostInterface()
@@ -23336,6 +23342,7 @@ function checkUpdateHostInterface()
     add|update)
       if ! [ "$is_close_hshq" = "false" ]; then
         performExitFunctions false
+        set +e
       fi
       sleep 2
       sudo systemctl restart runScriptServer
@@ -23390,7 +23397,8 @@ function checkHostInterfacesIsChanged()
 function checkHostAllInterfaceIPChanges()
 {
   isBypassHSHQStatus=$1
-  callerName="$2"
+  isCloseHSHQ="$2"
+  callerName="$3"
   set +e
   timeout 5 docker ps > /dev/null 2>&1
   if [ $? -ne 0 ]; then
@@ -23417,7 +23425,7 @@ function checkHostAllInterfaceIPChanges()
   isUpdateIPT=false
   for curInterface in "${interfaceListArr[@]}"
   do
-    checkUpdateHostInterface update "$curInterface" "$isBypassHSHQStatus" na na
+    checkUpdateHostInterface update "$curInterface" "$isCloseHSHQ" na na
     if [ $? -eq 0 ]; then
       isUpdateIPT=true
     fi
@@ -23440,7 +23448,22 @@ function logHSHQEvent()
 {
   msgType="$1"
   msgContent="$2"
-  echo "$(date '+%Y-%m-%d %H:%M:%S.%3N') [$msgType] $msgContent" >> $HSHQ_LOG_FILE
+  isLogit=false
+  # We'll have to clean up this logic later for all message types,
+  # i.e. debug, info, warn, error...,but for now this is good enough
+  case "$LOG_LEVEL" in
+    info)
+      if ! [ "$msgType" = "debug" ]; then
+        isLogit=true
+      fi
+    ;;
+    debug)
+      isLogit=true
+    ;;
+  esac
+  if [ "$isLogit" = "true" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S.%3N') [$msgType] $msgContent" >> $HSHQ_LOG_FILE
+  fi
 }
 
 function updateExposedPortsLists()

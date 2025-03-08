@@ -351,7 +351,6 @@ EOF
           releaseAllLocks false
           exit 3
         fi
-        USER_SUDO_PW=""
         promptTestDecryptConfigFile
         if [ $? -ne 0 ]; then
           releaseAllLocks false
