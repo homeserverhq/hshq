@@ -1392,7 +1392,10 @@ if [ -f $HSHQ_LIB_SCRIPT ]; then
   echo "HSHQ Version:  \$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d'=' -f2)"
 fi
 printf "Memory Usage:  %.1f%% of \$(free -h | awk  '/Mem:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
-printf "  Swap Usage:  %.1f%% of \$(free -h | awk  '/Swap:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+totSwap=\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)
+if [ \$totSwap -gt 0 ]; then
+  printf "  Swap Usage:  %.1f%% of \$(free -h | awk  '/Swap:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \$totSwap))))e-2
+fi
 
 echo
 echo "Disks: "
@@ -4135,7 +4138,10 @@ echo
 
 echo "    Linux OS:  \\\$(lsb_release -d | cut -d":" -f2 | cut -d"(" -f1 | xargs)"
 printf "Memory Usage:  %.1f%% of \\\$(free -h | awk  '/Mem:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
-printf "  Swap Usage:  %.1f%% of \\\$(free -h | awk  '/Swap:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+totSwap=\\\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)
+if [ \\\$totSwap -gt 0 ]; then
+  printf "  Swap Usage:  %.1f%% of \\\$(free -h | awk  '/Swap:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \\\$totSwap))))e-2
+fi
 
 echo
 echo "Disks: "
@@ -8228,6 +8234,19 @@ function connectVPN()
     echo "ERROR: No database ID provided."
     return
   fi
+  client_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
+  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+  hs_name=$(sqlite3 $HSHQ_DB "select HomeServerName from hsvpn_connections where ID=$db_id;")
+  ext_prefix=$(sqlite3 $HSHQ_DB "select ExternalPrefix from hsvpn_connections where ID=$db_id;")
+  int_prefix=$(sqlite3 $HSHQ_DB "select InternalPrefix from hsvpn_connections where ID=$db_id;")
+  ca_abbrev=$(sqlite3 $HSHQ_DB "select CA_Abbrev from hsvpn_connections where ID=$db_id;")
+  domain_name=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections where ID=$db_id;")
+  ca_ip=$(sqlite3 $HSHQ_DB "select CA_IP from hsvpn_connections where ID=$db_id;")
+  ca_subdomain=$(sqlite3 $HSHQ_DB "select CA_Subdomain from hsvpn_connections where ID=$db_id;")
+  ca_url=$(sqlite3 $HSHQ_DB "select CA_URL from hsvpn_connections where ID=$db_id;")
+  vpn_subnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$db_id;")
+  rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
+  is_primary=$(sqlite3 $HSHQ_DB "select IsPrimary from hsvpn_connections where ID=$db_id;")
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     loadSSHKey
     set +e
@@ -8272,22 +8291,9 @@ function connectVPN()
         break
       fi
     done
+    unloadSSHKey
   fi
-  client_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
-  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
-  hs_name=$(sqlite3 $HSHQ_DB "select HomeServerName from hsvpn_connections where ID=$db_id;")
-  ext_prefix=$(sqlite3 $HSHQ_DB "select ExternalPrefix from hsvpn_connections where ID=$db_id;")
-  int_prefix=$(sqlite3 $HSHQ_DB "select InternalPrefix from hsvpn_connections where ID=$db_id;")
-  ca_abbrev=$(sqlite3 $HSHQ_DB "select CA_Abbrev from hsvpn_connections where ID=$db_id;")
-  domain_name=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections where ID=$db_id;")
-  ca_ip=$(sqlite3 $HSHQ_DB "select CA_IP from hsvpn_connections where ID=$db_id;")
-  ca_subdomain=$(sqlite3 $HSHQ_DB "select CA_Subdomain from hsvpn_connections where ID=$db_id;")
-  ca_url=$(sqlite3 $HSHQ_DB "select CA_URL from hsvpn_connections where ID=$db_id;")
-  vpn_subnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$db_id;")
-  rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
-  is_primary=$(sqlite3 $HSHQ_DB "select IsPrimary from hsvpn_connections where ID=$db_id;")
   enableWGInterfaceQuick $ifaceName
-
   # If not hosting or non-primary VPN, then add CA domain.
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || ! [ $is_primary = 1 ]; then
     addDomainAndWildcardAdguardNoReplaceHS "$domain_name" "$ca_ip"
