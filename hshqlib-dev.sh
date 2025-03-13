@@ -125,6 +125,7 @@ function init()
   MAILX_TIMEOUT=15
   NETPLAN_ORIGIN_HINT=88-hshq
   NETPLAN_APPLY_WAIT=5
+  MIN_NETWORKCHECK_INTERVAL=5
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
   IS_HSHQ_DEV_FILENAME=hshq.dev
@@ -170,6 +171,7 @@ function init()
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
   SCRIPT_STATE_FILENAME=$HSHQ_CONFIG_DIR/scriptstate
+  INSTALLING_FILENAME=installing
   UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
@@ -559,6 +561,7 @@ function performFullRestore()
   USER_SUDO_PW=""
   createHSHQLog
   checkLoadConfig
+  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   releaseLock networkchecks performFullRestore true
   tryGetLock networkchecks performFullRestore
   IS_INSTALLED=false
@@ -681,6 +684,7 @@ EOF
   removeSudoTimeoutInstall
   wgDockInternetUpAll
   initCronJobs
+  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   performExitFunctions
   releaseLock networkchecks performFullRestore false
   clear
@@ -2302,6 +2306,7 @@ function performBaseInstallation()
     exit 1
   fi
   IS_INSTALLING=true
+  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update
@@ -2532,7 +2537,8 @@ EOFHP
   releaseLock hshqopen "postInstallation" false
   removeSudoTimeoutInstall
   rm -f ~/dead.letter
-  rm -f ~/hshq/cip.txt
+  rm -f $HSHQ_BASE_DIR/cip.txt
+  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   sudo reboot
 }
 
@@ -3012,6 +3018,7 @@ EOF
 function installStacksFromList()
 {
   set +e
+  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   sortedStackList=$(sortCSVList $HSHQ_OPTIONAL_STACKS)
   stackListArr=($(echo $sortedStackList | tr "," "\n"))
   menu_items=""
@@ -3055,11 +3062,13 @@ EOF
   done
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
 }
 
 function installListOfServices()
 {
   echo "Installing list of services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
+  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   stackListArr=($(echo "$1" | tr "," "\n"))
   setSudoTimeoutInstall
   getUpdateAssets
@@ -3071,6 +3080,7 @@ function installListOfServices()
   docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   echo "Installing list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
@@ -3109,6 +3119,7 @@ function installAllAvailableStacks()
   fi
   set -e
   echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
+  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
@@ -3119,6 +3130,7 @@ function installAllAvailableStacks()
   docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   echo "Installing all services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
@@ -21109,6 +21121,7 @@ function nukeHSHQ()
   sudo rm -fr $HSHQ_BASE_DIR/data
   sudo rm -fr $HSHQ_BASE_DIR/nonbackup
   sudo rm -fr $HSHQ_BASE_DIR/*.log
+  sudo rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   sudo rm -fr $HSHQ_INSTALL_CFG
   sudo rm -fr $HOME/.ssh/*
   sudo rm -f /etc/update-motd.d/88-hshq
@@ -22067,10 +22080,15 @@ LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
 
 function main()
 {
+  if [ -f "\$HSHQ_BASE_DIR/$INSTALLING_FILENAME ]; then
+    return
+  fi
   source \$HSHQ_LIB_SCRIPT lib
   if [ "\$(checkIsBootComplete)" = "false" ]; then
-    logHSHQEvent warning "performNetworkingChecks.sh - Boot process is not yet complete."
     resetLastNetworkCheckTimestamp
+    return
+  fi
+  if [ "\$(isNetworkCheckIntervalTooSoon)" = "true" ]; then
     return
   fi
   checkRes=\$(tryGetLock networkchecks performNetworkingChecks)
@@ -22200,6 +22218,7 @@ function performPostDockerBootActions()
   fi
 
   # Replaces 50-wgDockInternetUpAll.sh
+  createWGDockerNetworks
   wgDockInternetUpAll
 
   # Replaces 90-restartSelectedStacks.sh
@@ -22225,6 +22244,19 @@ function isNetworkCheckIntervalExpired()
   s_diff=$(($cur_dt - $last_check + 15))
   s_inter=$(($NETWORK_UPDATE_INTERVAL * 60))
   if [ $s_diff -gt $s_inter ]; then
+    echo "true"
+  else
+    echo "false"
+  fi 
+}
+
+function isNetworkCheckIntervalTooSoon()
+{
+  checkInitScriptState
+  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SCRIPT_STATE_FILENAME)
+  cur_dt=$(date +%s)
+  s_diff=$(($cur_dt - $last_check))
+  if [ $s_diff -lt $MIN_NETWORKCHECK_INTERVAL ]; then
     echo "true"
   else
     echo "false"
@@ -22482,8 +22514,6 @@ function checkAllHSHQNetworking()
     startStopStack adguard start
   fi
   updateEndpointIPs
-  createWGDockerNetworks
-  wgDockInternetUpAll
   checkNonLockedUnencrytpedConfig "$cahn_callerName"
   funRetVal=$(($funRetVal + $?))
   if [ "$isLockError" = "false" ]; then
@@ -22784,7 +22814,7 @@ function status()
   while_check "\$CMD" "\$CHECK"
   isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
   if [ -z "\$isCurl" ]; then
-    docker run -d --name=\${NETWORK_NAME}-curl --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 tail -f /dev/null > /dev/null 2>&1
+    docker run -d --name=\${NETWORK_NAME}-curl --restart unless-stopped --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 tail -f /dev/null > /dev/null 2>&1
   fi
   VPNIP=\$(docker exec \${NETWORK_NAME}-curl curl -fsSL --max-time 5 https://api.ipify.org)
   IP=\$(curl --silent https://api.ipify.org)
@@ -51346,7 +51376,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq/issues). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
   "group": "$group_id_services",
   "parameters": [
     {
