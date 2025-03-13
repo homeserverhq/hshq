@@ -261,11 +261,20 @@ EOF
         getent group docker >/dev/null || sudo groupadd docker
         set -e
         usermod -aG docker $LINUX_USERNAME
-        showMessageBox "New User Created" "New user ($LINUX_USERNAME) has been created. This script has been moved into this user's home directory, i.e. /home/$LINUX_USERNAME."
+        showMessageBox "New User Created" "New user ($LINUX_USERNAME) has been created. This script will be moved into this user's home directory, i.e. /home/$LINUX_USERNAME. You will now be switched to this new user. Please restart this utility by entering 'bash hshq.sh'."
+      else
+        showMessageBox "User Selected" "This script will be moved into this user's home directory, i.e. /home/$LINUX_USERNAME. You will now be switched to this new user. Please restart this utility by entering 'bash hshq.sh'."
+      fi
+      if ! [ -z $CONNECTING_IP ]; then
+        mkdir -p /home/$LINUX_USERNAME/hshq
+        chown $LINUX_USERNAME:$LINUX_USERNAME /home/$LINUX_USERNAME/hshq
+        echo "$CONNECTING_IP" > /home/$LINUX_USERNAME/hshq/cip.txt
+        chown $LINUX_USERNAME:$LINUX_USERNAME /home/$LINUX_USERNAME/hshq/cip.txt
       fi
       chown ${LINUX_USERNAME}:${LINUX_USERNAME} $0
       mv $0 /home/$LINUX_USERNAME/
-      sudo -u $LINUX_USERNAME bash /home/$LINUX_USERNAME/$(basename $0) -s -p $ciparg <<< "$USER_SUDO_PW"
+      su - $LINUX_USERNAME
+      exit
     fi
     exit 1
   fi

@@ -228,6 +228,9 @@ function main()
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
   fi
+  if [ -z "$CONNECTING_IP" ] && [ -f ~/hshq/cip.txt ]; then
+    CONNECTING_IP=$(cat ~/hshq/cip.txt)
+  fi
   if [ "$IS_PERFORM_UPDATE" = "true" ]; then
     checkUpdateVersion
     return
@@ -2526,6 +2529,7 @@ EOFHP
   releaseLock hshqopen "postInstallation" false
   removeSudoTimeoutInstall
   rm -f ~/dead.letter
+  rm -f ~/hshq/cip.txt
   sudo reboot
 }
 
