@@ -1398,13 +1398,11 @@ echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
 echo "-----------------------------------------------------------------"
 df -h | grep "^/dev"
 echo
-echo
 
 # Let's only show zombie count if greater than 10
 zombie_count=\$(ps aux | grep "defunct" | wc -l)
 if [ \$zombie_count -gt 10 ]; then
   echo "=> There are \$zombie_count zombie processes."
-  echo
   echo
 fi
 
@@ -2444,7 +2442,20 @@ Categories=HomeServerHQ
 EOFHP
     chmod 755 ~/Desktop/HomePage.desktop
     rm -f ~/Desktop/HSHQConsole.desktop
-    cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
+    which terminator > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      # Specify terminator as console if possible
+      cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
+[Desktop Entry]
+Name=HSHQ Console Util
+Exec=/usr/bin/terminator -x bash -ic "~/hshq.sh"
+Comment=Runs the HSHQ console-based management utility
+Icon=/usr/share/icons/HSHQ/ConsoleHSHQ.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    else
+      cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
 [Desktop Entry]
 Name=HSHQ Console Util
 Exec=bash -ic "~/hshq.sh"
@@ -2454,6 +2465,7 @@ Icon=/usr/share/icons/HSHQ/ConsoleHSHQ.png
 Type=Application
 Categories=HomeServerHQ
 EOFHP
+    fi
     chmod 755 ~/Desktop/HSHQConsole.desktop
     rm -f ~/Desktop/HSHQScriptServer.desktop
     cat <<EOFHP > ~/Desktop/HSHQScriptServer.desktop
@@ -4128,13 +4140,11 @@ echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
 echo "-----------------------------------------------------------------"
 df -h | grep "^/dev"
 echo
-echo
 
 # Let's only show zombie count if greater than 10
 zombie_count=\\\$(ps aux | grep "defunct" | wc -l)
 if [ \\\$zombie_count -gt 10 ]; then
   echo "=> There are \\\$zombie_count zombie processes."
-  echo
   echo
 fi
 
