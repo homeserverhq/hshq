@@ -163,6 +163,12 @@ function init()
   loadPinnedDockerImages
   loadDirectoryStructure
   loadVersionVars
+  SS_INIT=init
+  SS_INSTALLING=installing
+  SS_RESTORING=restoring
+  SS_BOOTING=booting
+  SS_RUNNING=running
+  SS_TRANSFERRING=transferring
   CONFIG_FILE_DEFAULT_LOCATION=$HSHQ_CONFIG_DIR
   HSHQ_DB=$HSHQ_CONFIG_DIR/hshq.db
   HSHQ_INSTALL_CFG=$HSHQ_BASE_DIR/installConfig.txt
@@ -170,8 +176,7 @@ function init()
   HSHQ_CUSTOM_POST_IPTABLES_SCRIPT=$HSHQ_SCRIPTS_DIR/root/userCustomPostIPTables.sh
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
-  SCRIPT_STATE_FILENAME=$HSHQ_CONFIG_DIR/scriptstate
-  INSTALLING_FILENAME=installing
+  SYSTEM_STATE_FILENAME=$HSHQ_CONFIG_DIR/scriptstate
   UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
@@ -561,9 +566,9 @@ function performFullRestore()
   USER_SUDO_PW=""
   createHSHQLog
   checkLoadConfig
-  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   releaseLock networkchecks performFullRestore true
   tryGetLock networkchecks performFullRestore
+  setSystemState $SS_RESTORING
   IS_INSTALLED=false
   IS_INSTALLING=true
   set +e
@@ -684,7 +689,7 @@ EOF
   removeSudoTimeoutInstall
   wgDockInternetUpAll
   initCronJobs
-  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_RUNNING
   performExitFunctions
   releaseLock networkchecks performFullRestore false
   clear
@@ -2291,7 +2296,7 @@ function performBaseInstallation()
     exit 1
   fi
   IS_INSTALLING=true
-  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_INSTALLING
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update
@@ -2523,7 +2528,7 @@ EOFHP
   removeSudoTimeoutInstall
   rm -f ~/dead.letter
   rm -f $HSHQ_BASE_DIR/cip.txt
-  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_RUNNING
   sudo reboot
 }
 
@@ -3003,7 +3008,7 @@ EOF
 function installStacksFromList()
 {
   set +e
-  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_INSTALLING
   sortedStackList=$(sortCSVList $HSHQ_OPTIONAL_STACKS)
   stackListArr=($(echo $sortedStackList | tr "," "\n"))
   menu_items=""
@@ -3047,13 +3052,13 @@ EOF
   done
   removeSudoTimeoutInstall
   outputStackListsScriptServer
-  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_RUNNING
 }
 
 function installListOfServices()
 {
   echo "Installing list of services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
-  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_INSTALLING
   stackListArr=($(echo "$1" | tr "," "\n"))
   setSudoTimeoutInstall
   getUpdateAssets
@@ -3065,7 +3070,7 @@ function installListOfServices()
   docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
-  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_RUNNING
   echo "Installing list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
@@ -3104,7 +3109,7 @@ function installAllAvailableStacks()
   fi
   set -e
   echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
-  touch $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_INSTALLING
   setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
@@ -3115,7 +3120,7 @@ function installAllAvailableStacks()
   docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
-  rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
+  setSystemState $SS_RUNNING
   echo "Installing all services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
@@ -3914,6 +3919,7 @@ function transferHostedVPN()
   unset temp_pw=""
   temp_pw=""
   setSudoTimeoutInstall
+  setSystemState $SS_TRANSFERRING
   # Pause syncthing RelayServer
   jsonbody="{\"paused\": true}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
@@ -3994,6 +4000,8 @@ function transferHostedVPN()
   unloadSSHKey
   notifyMyNetworkTransferRelayServer "$RELAYSERVER_SERVER_IP"
   removeSudoTimeoutInstall
+  setSystemState $SS_RUNNING
+  releaseLock networkchecks transferHostedVPN false
 }
 
 function outputRelayServerInstallSetupScript()
@@ -21106,7 +21114,6 @@ function nukeHSHQ()
   sudo rm -fr $HSHQ_BASE_DIR/data
   sudo rm -fr $HSHQ_BASE_DIR/nonbackup
   sudo rm -fr $HSHQ_BASE_DIR/*.log
-  sudo rm -f $HSHQ_BASE_DIR/$INSTALLING_FILENAME
   sudo rm -fr $HSHQ_INSTALL_CFG
   sudo rm -fr $HOME/.ssh/*
   sudo rm -f /etc/update-motd.d/88-hshq
@@ -21793,7 +21800,7 @@ function restartStacksOnBoot()
     done
   done
   echo "Restarting caddy stacks..."
-  caddy_arr=($(docker ps -a --filter name=caddy-vpn --format "{{.Names}}"))
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
   do
     startStopStack $curcaddy stop
@@ -22058,24 +22065,28 @@ function outputPerformNetworkingChecks()
   sudo tee $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh >/dev/null <<EOFBS
 #!/bin/bash
 
+IS_DEBUG=true
+HSHQ_LOG_FILE=$HSHQ_LOG_FILE
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
 HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
 LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
+SYSTEM_STATE_FILENAME=$SYSTEM_STATE_FILENAME
+MIN_NETWORKCHECK_INTERVAL=$MIN_NETWORKCHECK_INTERVAL
+SS_RUNNING=$SS_RUNNING
 
 function main()
 {
-  if [ -f "\$HSHQ_BASE_DIR/$INSTALLING_FILENAME ]; then
+  curState=\$(grep "^SYS_STATE=" \$SYSTEM_STATE_FILENAME | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+  lastCheck=\$(grep "^LAST_NETWORK_CHECK=" \$SYSTEM_STATE_FILENAME | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+  isTooSoon=\$(isCheckTooSoon \$lastCheck)
+  if ! [ \$curState = "\$SS_RUNNING" ] || [ "\$isTooSoon" = "true" ]; then
+    if [ "\$IS_DEBUG" = "true" ]; then
+      echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] performNetworkingChecks.sh - Not performed, CurState: \$curState, LastCheck: \$(date -d @\$lastCheck +"%d-%m-%Y %T"), IsTooSoon: \$isTooSoon" >> \$HSHQ_LOG_FILE
+    fi
     return
   fi
   source \$HSHQ_LIB_SCRIPT lib
-  if [ "\$(checkIsBootComplete)" = "false" ]; then
-    resetLastNetworkCheckTimestamp
-    return
-  fi
-  if [ "\$(isNetworkCheckIntervalTooSoon)" = "true" ]; then
-    return
-  fi
   checkRes=\$(tryGetLock networkchecks performNetworkingChecks)
   if ! [ -z "\$checkRes" ]; then
     totLockAttempts=\$(getIncrementLockAttempts networkchecks)
@@ -22093,6 +22104,18 @@ function main()
   retVal=\$?
   releaseLock networkchecks "performNetworkingChecks" false
   return \$retVal
+}
+
+function isCheckTooSoon()
+{
+  last_check="\$1"
+  cur_dt=\$(date +%s)
+  s_diff=\$((\$cur_dt - \$last_check))
+  if [ \$s_diff -lt \$MIN_NETWORKCHECK_INTERVAL ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
 }
 
 main "\$@"
@@ -22172,6 +22195,7 @@ function main()
   fi
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
   source \$HSHQ_PLAINTEXT_USER_CONFIG
+  set +e
   performPostDockerBootActions
   notifyBootComplete
   releaseLock networkchecks performPostDockerBootActions false
@@ -22195,12 +22219,14 @@ function performPostDockerBootActions()
   timeout 30 ping -c 10 $cur_gate > /dev/null
 
   # Replaces 20-restartWG.sh
-  if [ -f /etc/wireguard/${RELAYSERVER_WG_VPN_NETNAME}.conf ]; then
-    systemctl restart wg-quick@${RELAYSERVER_WG_VPN_NETNAME}
-  fi
-  if [ -f $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf ]; then
-    $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf restart
-  fi
+  for curConf in "/etc/wireguard/*"
+  do
+    curSVC=${curConf%.*}
+    systemctl is-enabled wg-quick@${curSVC} > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      systemctl restart wg-quick@${curSVC} > /dev/null 2>&1
+    fi
+  done
 
   # Replaces 50-wgDockInternetUpAll.sh
   createWGDockerNetworks
@@ -22208,23 +22234,29 @@ function performPostDockerBootActions()
 
   # Replaces 90-restartSelectedStacks.sh
   restartStacksOnBoot
-
 }
 
 function checkInitScriptState()
 {
-  if ! [ -f "$SCRIPT_STATE_FILENAME" ]; then
-    tee $SCRIPT_STATE_FILENAME >/dev/null <<EOFSS
-BOOT_STATE=complete
+  if ! [ -f "$SYSTEM_STATE_FILENAME" ]; then
+    tee $SYSTEM_STATE_FILENAME >/dev/null <<EOFSS
+SYS_STATE=$SS_RUNNING
 LAST_NETWORK_CHECK=0
 EOFSS
+    chmod 644 $SYSTEM_STATE_FILENAME
   fi
+}
+
+function setSystemState()
+{
+  checkInitScriptState
+  updateConfigVarInFile "SYS_STATE" "$1" $SYSTEM_STATE_FILENAME
 }
 
 function isNetworkCheckIntervalExpired()
 {
   checkInitScriptState
-  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SCRIPT_STATE_FILENAME)
+  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SYSTEM_STATE_FILENAME)
   cur_dt=$(date +%s)
   s_diff=$(($cur_dt - $last_check + 15))
   s_inter=$(($NETWORK_UPDATE_INTERVAL * 60))
@@ -22238,7 +22270,7 @@ function isNetworkCheckIntervalExpired()
 function isNetworkCheckIntervalTooSoon()
 {
   checkInitScriptState
-  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SCRIPT_STATE_FILENAME)
+  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SYSTEM_STATE_FILENAME)
   cur_dt=$(date +%s)
   s_diff=$(($cur_dt - $last_check))
   if [ $s_diff -lt $MIN_NETWORKCHECK_INTERVAL ]; then
@@ -22251,35 +22283,25 @@ function isNetworkCheckIntervalTooSoon()
 function resetLastNetworkCheckTimestamp()
 {
   checkInitScriptState
-  updateConfigVarInFile "LAST_NETWORK_CHECK" "0" $SCRIPT_STATE_FILENAME
+  updateConfigVarInFile "LAST_NETWORK_CHECK" "0" $SYSTEM_STATE_FILENAME
 }
 
 function updateLastNetworkCheck()
 {
   checkInitScriptState
-  updateConfigVarInFile "LAST_NETWORK_CHECK" "$(date +%s)" $SCRIPT_STATE_FILENAME
+  updateConfigVarInFile "LAST_NETWORK_CHECK" "$(date +%s)" $SYSTEM_STATE_FILENAME
 }
 
 function notifyBootInit()
 {
   checkInitScriptState
-  updateConfigVarInFile "BOOT_STATE" "init" $SCRIPT_STATE_FILENAME
-}
-
-function checkIsBootComplete()
-{
-  checkInitScriptState
-  if [ "$(getConfigVarFromFile BOOT_STATE $SCRIPT_STATE_FILENAME)" = "complete" ]; then
-    echo "true"
-  else
-    echo "false"
-  fi
+  setSystemState "$SS_BOOTING"
 }
 
 function notifyBootComplete()
 {
   checkInitScriptState
-  updateConfigVarInFile "BOOT_STATE" "complete" $SCRIPT_STATE_FILENAME
+  setSystemState "$SS_RUNNING"
 }
 
 function initCronJobs()
