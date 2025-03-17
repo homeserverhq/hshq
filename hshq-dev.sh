@@ -213,7 +213,7 @@ EOF
       while [ -z "$LINUX_USERNAME" ]
       do
         LINUX_USERNAME=$(promptUserInputMenu "" "Enter Username" "Enter your desired username: ")
-        if [ $(checkValidString "$LINUX_USERNAME") = "false" ]; then
+        if [ $(checkValidUsername "$LINUX_USERNAME") = "false" ]; then
           showMessageBox "Invalid Character(s)" "The username contains invalid character(s). It must consist of a-z (lowercase) and/or 0-9"
           LINUX_USERNAME=""
         fi
@@ -722,6 +722,16 @@ function checkValidString()
   check_string=$1
   addchars=$2
   if [[ $check_string =~ ^[0-9a-z$addchars]+$ ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function checkValidUsername()
+{
+  chkName="$1"
+  if echo "$chkName" | grep -Eq '^[a-z0-9]+$' && echo "$chkName" | cut -c1 | grep -Eq '[a-z]' && [ ${#chkName} -le 32 ] && [ ${#chkName} -ge 4 ]; then
     echo "true"
   else
     echo "false"
