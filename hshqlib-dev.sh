@@ -3460,10 +3460,6 @@ function webSetupHostedVPN()
   # rs_new_ssh_port
   # rs_primary_vpn_subnet
 
-  # vt100, linux
-  #SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -t -p $rs_cur_ssh_port $rs_cur_username@$rs_external_ip "export TERM=vt100; screen -r hshqInstall"
-
-  #return
   case "$PRIMARY_VPN_SETUP_TYPE" in
     "host")
       echo "ERROR: You are already hosting a VPN, please remove the existing one first, returning..."
@@ -3531,7 +3527,7 @@ function webSetupHostedVPN()
   RELAYSERVER_REMOTE_USERNAME="$rs_new_username"
   RELAYSERVER_SERVER_IP="$rs_external_ip"
   RELAYSERVER_CURRENT_SSH_PORT="$rs_cur_ssh_port"
-
+  RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
   if [ "$(checkValidIPAddress $rs_primary_vpn_subnet)" = "false" ]; then
     echo "ERROR: Invalid RelayServer IP address, returning..."
     return
@@ -3695,6 +3691,7 @@ EOFRS
   updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
   updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
   updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
+  updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
   updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
   # SSH (do both protocols, even though only need TCP)
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
@@ -3764,6 +3761,20 @@ EOFRS
   set +e
   connectPrimaryVPN
   set +e
+  updateEndpointIPs
+  set +e
+  rs_wg_user_conf=$(sudo cat $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf)
+  wgconfig=""
+  wgconfig="$wgconfig""============= User WireGuard Configuration ============\n"
+  wgconfig="$wgconfig""""""$rs_wg_user_conf""""\n"
+  wgconfig="$wgconfig""=======================================================\n"
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    wgconfigfile="$HOME/Desktop/User1_WireGuard.conf"
+  else
+    wgconfigfile="$HOME/User1_WireGuard.conf"
+  fi
+  echo -e "$wgconfig" > $wgconfigfile
+  sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
 }
 
 function initRelayServerCredentials()
@@ -3893,7 +3904,6 @@ function initRelayServerCredentials()
   updateConfigVar SMTP_RELAY_USERNAME $SMTP_RELAY_USERNAME
   SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   updateConfigVar SMTP_RELAY_PASSWORD $SMTP_RELAY_PASSWORD
-  
 }
 
 function outputHostedVPNConfigs()
@@ -5605,7 +5615,7 @@ function install()
   outputScripts
   installLogNotify "Installing Stacks"
   installPortainer
-  installAdGuard
+  #installAdGuard
   installMailRelay
   installWireGuard
   installFileBrowser
@@ -5614,6 +5624,7 @@ function install()
   installSyncthing
   installLogNotify "Starting Wazuh Agent"
   startWazuhAgent
+  installAdGuard
   sudo rm -f \$HOME/$RS_INSTALL_FRESH_SCRIPT_NAME
   sudo rm -f \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   docker image prune -af
@@ -6652,9 +6663,9 @@ function installAdGuard()
 nameserver 127.0.0.1
 EOFR
   if sudo test -d /etc/netplan; then
-    np_path="/etc/netplan/*"
-    for cur_np in "\$np_path"
+    for cur_np in /etc/netplan/*
     do
+      if ! test -f "\$cur_np"; then continue; fi
       sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
       sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
     done
@@ -8607,7 +8618,7 @@ function connectVPN()
     set +e
     while true;
     do
-      max_attempts=40
+      max_attempts=20
       total_attempts=1
       isBreak=false
       while [ $total_attempts -le $max_attempts ]
@@ -8617,8 +8628,8 @@ function connectVPN()
           isBreak=true
           break
         fi
-        echo "RelayServer installation has not completed, retrying in 15 seconds..."
-        sleep 15
+        echo "RelayServer installation has not completed, retrying in 30 seconds..."
+        sleep 30
         total_attempts=$((total_attempts + 1))
       done
       if ! [ "$isBreak" = "true" ]; then
@@ -11157,6 +11168,8 @@ function outputLockUtilsScript()
   cat <<EOFUS > $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
 #!/bin/bash
 
+isDebug=false
+LOGF=$HSHQ_LOG_FILE
 LOCKHOLDER_FILENAME=$LOCKHOLDER_FILENAME
 ALL_LOCKS="$ALL_LOCKS"
 
@@ -11199,8 +11212,14 @@ function tryGetLock()
     chmod 755 /tmp/locktmp
     chmod 644 /tmp/locktmp
     mv /tmp/locktmp /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    if [ "\$isDebug" = "true" ]; then
+      echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] tryGetLock - \$lockName lock obtained by \$callerName" >> \$LOGF
+    fi
     echo "true"
   else
+    if [ "\$isDebug" = "true" ]; then
+      echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] tryGetLock - \$lockName lock denied from \$callerName" >> \$LOGF
+    fi
     echo "false"
   fi
   if ! [ -z "\$cohs_curE" ]; then
@@ -11219,6 +11238,9 @@ function forceGetLock()
   chmod 755 /tmp/locktmp
   chmod 644 /tmp/locktmp
   mv /tmp/locktmp /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+  if [ "\$isDebug" = "true" ]; then
+    echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] forceGetLock - \$lockName lock obtained by \$callerName" >> \$LOGF
+  fi
 }
 
 function getLockOpenMsg()
@@ -11275,8 +11297,10 @@ function releaseLock()
   else
     rm -fr /tmp/\$lockName
   fi
+  if [ "\$isDebug" = "true" ]; then
+    echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] releaseLock - \$lockName lock released by \$callerName" >> \$LOGF
+  fi
 }
-
 
 EOFUS
 }
@@ -12426,7 +12450,9 @@ function getNextWGRoutingTableID()
     exit 0
   fi
   arr=()
-  for conf in $HSHQ_WIREGUARD_DIR/internet/*; do
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+  do
+    if ! test -f "$conf"; then continue; fi
 	arr+=($(sudo grep ^\#ROUTING_TABLE_ID= $conf | sed 's/^[^=]*=//'))
   done
   while true;
@@ -19427,16 +19453,14 @@ function version72Update()
   outputPerformPostDockerBootActionsScript
   sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
   sudo systemctl start networkd-dispatcher > /dev/null 2>&1
-  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-    do
-      cur_ext_dom=$(sudo grep "^#EXT_DOMAIN=" $conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
-      if ! [[ $cur_ext_dom =~ ^$RELAYSERVER_SUB_WG.* ]]; then
-        sudo sed -i "s|^#EXT_DOMAIN=.*|#EXT_DOMAIN=${RELAYSERVER_SUB_WG}\.${cur_ext_dom}|g" $conf
-      fi
-    done
-  fi
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+  do
+    if ! test -f "$conf"; then continue; fi
+    cur_ext_dom=$(sudo grep "^#EXT_DOMAIN=" $conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+    if ! [[ $cur_ext_dom =~ ^$RELAYSERVER_SUB_WG.* ]]; then
+      sudo sed -i "s|^#EXT_DOMAIN=.*|#EXT_DOMAIN=${RELAYSERVER_SUB_WG}\.${cur_ext_dom}|g" $conf
+    fi
+  done
 }
 
 function version73Update()
@@ -19756,8 +19780,9 @@ EOFHS
     replaceSingleLineInFile "$repl_block" "$res_block" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
     repl_block="import sn-sub-${SUB_IMAGES}"
     res_block="${repl_block}\nimport sn-sub-${SUB_HSHQSTATUS}"
-    ls $HSHQ_STACKS_DIR/caddy-common/caddyfiles/* | while read cfile
+    for cfile in $HSHQ_STACKS_DIR/caddy-common/caddyfiles/*
     do
+      if ! test -f "$cfile"; then continue; fi
       replaceSingleLineInFile "$repl_block" "$res_block" $cfile
     done
     restartAllCaddyContainers
@@ -22476,13 +22501,11 @@ done
 
 ip route flush table 42
 
-sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
-if [ $? -eq 0 ]; then
-  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-  do
-    ip route flush table \$(grep ^\#ROUTING_TABLE_ID= \$conf | sed 's/^[^=]*=//')
-  done
-fi
+for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+do
+  if ! test -f "\$conf"; then continue; fi
+  ip route flush table \$(grep ^\#ROUTING_TABLE_ID= \$conf | sed 's/^[^=]*=//')
+done
 EOFWG
   sudo chmod 0500 $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo chown root:root $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
@@ -22529,6 +22552,9 @@ function main()
       echo "WARNING: \$strErr"
     fi
     exit 7
+  fi
+  if ! [ "\$IS_DEBUG" = "false" ]; then
+    echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] performNetworkingChecks.sh - Got lock, args: \$@" >> \$HSHQ_LOG_FILE
   fi
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
   source \$HSHQ_PLAINTEXT_USER_CONFIG
@@ -22660,6 +22686,7 @@ function performPostDockerBootActions()
   # Replaces 20-restartWG.sh
   for curConf in /etc/wireguard/*.conf
   do
+    if ! test -f "$curConf"; then continue; fi
     curSVC=$(echo ${curConf%.*} | rev | cut -d"/" -f1 | rev)
     logHSHQEvent info "performPostDockerBootActions - Checking WG Connection: $curSVC"
     systemctl is-enabled wg-quick@${curSVC} > /dev/null 2>&1
@@ -22757,7 +22784,7 @@ function initCronJobs()
   echo "MAILTO=$EMAIL_ADMIN_EMAIL_ADDRESS" | sudo tee $HOME/rootcron >/dev/null
   echo "*/$LECERTS_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "* * * * * bash $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh cron" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "* * * * * bash $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh cron >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   sudo crontab $HOME/rootcron
   sudo rm -f $HOME/rootcron
 }
@@ -23015,7 +23042,6 @@ function updateEndpointIPs()
     iname=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID='$cur_id';")
     cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_id;")
     if [ "$(checkIPByID $cur_id)" = "true" ]; then
-      echo "IP changed, restarting $cname..."
       logHSHQEvent info "updateEndpointIPs - IP changed, restarting $cname..."
       if [ $is_int = 0 ]; then
         systemctl restart wg-quick@$iname > /dev/null 2>&1
@@ -23047,25 +23073,22 @@ function updateEndpointIPs()
       continue
     fi
     if ! [ -z "$cur_cdns" ] && [ "$(checkIPByID $cur_cdns)" = "true" ]; then
-      echo "IP changed, restarting $cname..."
       logHSHQEvent info "updateEndpointIPs - IP changed, restarting(ClientDNS) $cname..."
       restartStackIfRunning "${cname}" 1
     fi
   done
   set +e
   # Check/fix tunnelled WireGuard internet connections
-  ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-    do
-      resOut=$($HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
-      retVal=$?
-      if [ $retVal -ne 0 ]; then
-        logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
-        $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
-      fi
-    done
-  fi
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+  do
+    if ! test -f "$conf"; then continue; fi
+    resOut=$($HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
+      $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
+    fi
+  done
 }
 
 function checkIPByID()
@@ -23089,8 +23112,9 @@ function wgDockInternetUpAll()
 {
   logHSHQEvent info "wgDockInternetUpAll - BEGIN"
   $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
-  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf 
   do
+    if ! test -f "$conf"; then continue; fi
     logHSHQEvent info "wgDockInternetUpAll - internet: $conf"
     $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf up
   done
@@ -23105,13 +23129,11 @@ function outputWireGuardScripts()
 set +e
 HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
 
-sudo ls \$HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
-if [ \$? -eq 0 ]; then
-  sudo ls \$HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-  do
-    \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf down
-  done
-fi
+for conf in \$HSHQ_WIREGUARD_DIR/internet/*.conf
+do
+  if ! test -f "\$conf"; then continue; fi
+  \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf down
+done
 EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
@@ -23279,8 +23301,9 @@ function status()
   isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
   if [ -z "\$isCurl" ]; then
     docker run -d --name=\${NETWORK_NAME}-curl --restart unless-stopped --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 tail -f /dev/null > /dev/null 2>&1
+    sleep 5
   fi
-  VPNIP=\$(docker exec \${NETWORK_NAME}-curl curl -fsSL --max-time 5 https://api.ipify.org)
+  VPNIP=\$(docker exec \${NETWORK_NAME}-curl curl -fsSL --max-time 5 https://api.ipify.org  2>/dev/null)
   IP=\$(curl --silent https://api.ipify.org)
   if [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
     rsip=\$EXT_DOMAIN
@@ -23349,19 +23372,17 @@ EOFWG
 
 function createWGDockerNetworks()
 {
-  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-    do
-      docker_net="$(getConfigVarFromFile \#DOCKER_NETWORK_NAME $conf root)"
-      docker_subnet="$(getConfigVarFromFile \#DOCKER_NETWORK_SUBNET $conf root)"
-      MTU="$(getConfigVarFromFile \#MTU $conf root)"
-      docker network inspect $docker_net > /dev/null 2>&1
-      if [ $? -ne 0 ]; then
-        docker network create $docker_net --subnet $docker_subnet -o com.docker.network.driver.mtu=$MTU -o com.docker.network.bridge.name=$docker_net
-      fi
-    done
-  fi
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+  do
+    if ! test -f "$conf"; then continue; fi
+    docker_net="$(getConfigVarFromFile \#DOCKER_NETWORK_NAME $conf root)"
+    docker_subnet="$(getConfigVarFromFile \#DOCKER_NETWORK_SUBNET $conf root)"
+    MTU="$(getConfigVarFromFile \#MTU $conf root)"
+    docker network inspect $docker_net > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      docker network create $docker_net --subnet $docker_subnet -o com.docker.network.driver.mtu=$MTU -o com.docker.network.bridge.name=$docker_net
+    fi
+  done
 }
 
 function enableAllWGVPNInterfaces()
@@ -26968,7 +26989,7 @@ function installBaseStacks()
   initCaddyCommon
   installPortainer
   draw_progress_bar 57
-  installStackByName adguard
+  #installStackByName adguard
   draw_progress_bar 59
   installStackByName openldap
   draw_progress_bar 61
@@ -26990,6 +27011,7 @@ function installBaseStacks()
   draw_progress_bar 77
   installStackByName script-server
   draw_progress_bar 79
+  installStackByName adguard
 }
 
 function initServiceVars()
@@ -51115,15 +51137,11 @@ EOFSC
 set +e
 
 echo "default"
-ls $HSHQ_WIREGUARD_DIR/internet/*.conf > /dev/null 2>&1
-if [ \$? -eq 0 ]; then
-  ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-  do
-    [ -e "\$conf" ] || continue
-    echo \$(basename \${conf%.*})
-  done
-fi
-
+for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+do
+  if ! test -f "\$conf"; then continue; fi
+  echo \$(basename \${conf%.*})
+done
 EOFSC
 
   # 01 Misc Utils
@@ -54661,7 +54679,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details.<br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete, so please be patient.<br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54847,20 +54865,19 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts
 
 disconnectReason="\$3"
-
 echo "Obtaining networkchecks lock..."
 tgLock="\$(tryGetLock networkchecks Script-server-removePrimaryVPNConnection)"
 if ! [ "\$tgLock" = "true" ]; then
   totLockAttempts=\$(getIncrementLockAttempts networkchecks)
   checkRes="\$(getLockOpenMsg networkchecks)"
   strErr="Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+  echo "\$strErr"
   exit
 fi
 setSystemState $SS_REMOVING
-
+decryptConfigFileAndLoadEnvNoPrompts
 set +e
 removeMyNetworkPrimaryVPN "\$disconnectReason"
 set -e
