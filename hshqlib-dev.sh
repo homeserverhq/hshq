@@ -2352,7 +2352,7 @@ function performBaseInstallation()
     fi
     draw_progress_bar 81
     logHSHQEvent info "performBaseInstallation - Connect Services To VPN"
-    connectPrimaryVPN
+    connectPrimaryVPN true
     draw_progress_bar 83
     echo "Waiting 30s for services to initialize..."
     sleep 30
@@ -3759,7 +3759,7 @@ EOFRS
   set +e
   connectPrimaryInternet
   set +e
-  connectPrimaryVPN
+  connectPrimaryVPN false
   set +e
   updateEndpointIPs
   set +e
@@ -8558,9 +8558,10 @@ function unloadSSHKey()
 
 function connectPrimaryVPN()
 {
+  is_prompt_user="$1"
   db_id=$(getPrimaryVPN_DBID)
   if ! [ -z $db_id ]; then
-    connectVPN $db_id
+    connectVPN $db_id "$is_prompt_user"
   fi
 }
 
@@ -8596,6 +8597,7 @@ function connectVPN()
   echo "Connecting to RelayServer via WireGuard..."
   # Configuration files of this type are expected to be located in /etc/wireguard
   db_id=$1
+  is_prompt_user="$2"
   if [ -z $db_id ]; then
     echo "ERROR: No database ID provided."
     return
@@ -8618,7 +8620,7 @@ function connectVPN()
     set +e
     while true;
     do
-      max_attempts=20
+      max_attempts=40
       total_attempts=1
       isBreak=false
       while [ $total_attempts -le $max_attempts ]
@@ -8628,30 +8630,33 @@ function connectVPN()
           isBreak=true
           break
         fi
-        echo "RelayServer installation has not completed, retrying in 30 seconds..."
+        echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
         sleep 30
         total_attempts=$((total_attempts + 1))
       done
       if ! [ "$isBreak" = "true" ]; then
-        echo "Could not log in to RelayServer to setup Syncthing."
-        echo "If this step is skipped, you will have to manually"
-        echo "set up the RelayServer backup in Syncthing. "
-        while true;
-        do
-          read -p "Enter 'retry' or 'cancel': " isRetryConnect
-          case "$isRetryConnect" in
-            "retry")
-              break
-            ;;
-            "cancel")
-              isBreak=true
-              break
-            ;;
-            *)
-              echo "Unknown response..."
-            ;;
-          esac
-        done
+        if [ "$is_prompt_user" = "true" ]; then
+          echo "ERROR: Could not log in to RelayServer to setup Syncthing. If this step is skipped, you will have to manually set up the RelayServer backup in Syncthing."
+          while true;
+          do
+            read -p "Enter 'retry' or 'cancel': " isRetryConnect
+            case "$isRetryConnect" in
+              "retry")
+                break
+              ;;
+              "cancel")
+                isBreak=true
+                break
+              ;;
+              *)
+                echo "Unknown response..."
+              ;;
+            esac
+          done
+        else
+          echo "ERROR: Could not log in to RelayServer to setup Syncthing. Something likely went wrong with the RelayServer installation. You might have to entirely remove the Primary VPN and start over (In Script-server: 06 My Network -> 15 Remove Primary VPN)."
+          isBreak=true
+        fi
       fi
       if [ "$isBreak" = "true" ]; then
         break
@@ -8796,7 +8801,7 @@ EOF
           fi
         done
         connectPrimaryInternet
-        connectPrimaryVPN
+        connectPrimaryVPN true
         ;;
       2)
         confirmJoin=$(promptUserInputMenu "" "Confirmation" "This function will prepare you server to join another hosted VPN as your primary. Enter the word 'confirm' below:")
@@ -8813,7 +8818,7 @@ EOF
         fi
         RELAYSERVER_IS_INIT=true
         updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
-        connectPrimaryVPN
+        connectPrimaryVPN true
         email_msg="Your joined RelayServer has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\n"
         # Set env vars in mailu stack
         set +e
@@ -10688,7 +10693,7 @@ function performNetworkJoin()
       fi
       set -e
       if [ "$is_connect" = "true" ]; then
-        connectVPN $db_id
+        connectVPN $db_id true
       fi
     ;;
     "HomeServer Internet")
@@ -20264,6 +20269,7 @@ function version126Update()
   outputWireGuardScripts
   initCronJobs
   updateMOTD
+  outputScriptServerTheme
 }
 
 function updateRelayServerWithScript()
@@ -22548,8 +22554,10 @@ function main()
     totLockAttempts=\$(getIncrementLockAttempts networkchecks)
     strErr="performNetworkingChecks.sh - Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
     logHSHQEvent warning "\$strErr"
-    if [ \$((\$totLockAttempts % 60)) -eq 1 ]; then
-      echo "WARNING: \$strErr"
+    if [ \$((\$totLockAttempts % 60)) -eq 5 ]; then
+      source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
+      source \$HSHQ_PLAINTEXT_USER_CONFIG
+      sendEmail -s "HSHQ Networking Error" -b "There is an issue with your HomeServer networking that needs to be addressed. For more details, you can view the log by running the command 'cat /var/log/hshq.log'. The easiest way to (possibly) fix this problem would be to simply reboot your server. However, if you continue to recieve this message then there might be a real problem that needs to fixed. You can either ask on the forum (https://forum.homeserverhq.com) or you can submit a Github issue (https://github.com/homeserverhq/hshq/issues)."
     fi
     exit 7
   fi
@@ -26989,7 +26997,7 @@ function installBaseStacks()
   initCaddyCommon
   installPortainer
   draw_progress_bar 57
-  #installStackByName adguard
+  installStackByName adguard
   draw_progress_bar 59
   installStackByName openldap
   draw_progress_bar 61
@@ -27011,7 +27019,6 @@ function installBaseStacks()
   draw_progress_bar 77
   installStackByName script-server
   draw_progress_bar 79
-  installStackByName adguard
 }
 
 function initServiceVars()
@@ -50753,7 +50760,6 @@ User=$USERNAME
 [Install]
 WantedBy=multi-user.target
 EOFHS
-
   cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/conf.json
 {
   "port": $SCRIPTSERVER_LOCALHOST_PORT,
@@ -50786,50 +50792,49 @@ EOFHS
   }
 }
 EOFHS
+  outputScriptServerTheme
+  outputAllScriptServerScripts true true
+  outputStackListsScriptServer
+}
 
+function outputScriptServerTheme()
+{
+  rm -f $HSHQ_STACKS_DIR/script-server/conf/theme/theme.css
   cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/theme/theme.css
 html:root {
+
+    --primary-color-dark-color: #22262A;
+    --surface-color: #22262A;
+    --background-color: #22262A;
+
     --hover-color: rgba(255, 255, 255, 0.04);
     --focus-color: rgba(255, 255, 255, 0.12);
     --focus-color-solid: #424242;
-
-    --font-color-main: rgba(255, 255, 255, 0.87);
-    --font-color-medium: rgba(255, 255, 255, 0.60);
-    --font-color-disabled: rgba(255, 255, 255, 0.38);
-
+    --font-color-main: rgba(255, 255, 255, 1);
+    --font-color-medium: rgba(255, 255, 172, 1);
+    --font-color-disabled: rgba(255, 255, 255, 0.5);
     --primary-color: #FFFFAC;
     --primary-color-raised-hover-solid: #FFFFAC;
     --primary-color-raised-focus-solid: #FFFFAC;
     --primary-color-when-focused: rgba(0, 0, 0, 0.12);
     --primary-color-when-hovered: rgba(0, 0, 0, 0.04);
-    --font-on-primary-color-main: rgba(0, 0, 0, 0.87);
-    --font-on-primary-color-medium: rgba(0, 0, 0, 0.60);
-
-    --primary-color-dark-color: #3F647F;
+    --font-on-primary-color-main: rgba(0, 0, 0, 1);
+    --font-on-primary-color-medium: rgba(0, 0, 0, 1);
     --primary-color-dark-when-focused: rgba(0, 0, 0, 0.12);
     --primary-color-dark-when-hovered: rgba(0, 0, 0, 0.04);
-    --font-on-primary-color-dark-main: rgba(0, 0, 0, 0.87);
-    --font-on-primary-color-dark-medium: rgba(0, 0, 0, 0.60);
-
+    --font-on-primary-color-dark-main: rgba(255, 255, 255, 1);
+    --font-on-primary-color-dark-medium: rgba(255, 255, 172, 1);
     --primary-color-light-color: #FFFFAC;
-
-    --surface-color: #000000;
-
-    --background-color: #21292C;
     --background-color-slight-emphasis: rgba(255, 255, 255, 0.05);
     --background-color-high-emphasis: rgba(255, 255, 255, 0.09);
     --background-color-level-4dp: rgba(255, 255, 255, 0.09);
     --background-color-level-8dp: rgba(255, 255, 255, 0.12);
     --background-color-level-16dp: rgba(255, 255, 255, 0.15);
     --background-color-disabled: rgba(255, 255, 255, 0.12);
-
     --script-header-background: url('../theme/script-server_header.jpg') center / cover no-repeat;
     --login-header-background: url('../theme/script-server_login.jpg') center / cover no-repeat;
-
     --separator-color: #424242;
-
     --outline-color: rgba(255, 255, 255, 0.18);
-
 }
 
 .script-parameters-panel .parameter textarea {
@@ -50844,14 +50849,24 @@ html:root {
 }
 
 .log-panel {
-  min-height: 20em !important;
-  overflow: auto !important;
+    min-height: 20em !important;
+    overflow: auto !important;
+    background: #000000 !important;
+}
+
+#login-panel {
+    background-color: #000000 !important;
+}
+
+#login-body {
+    background: #000000 !important;
+}
+
+.content-panel a {
+    color: #00A8FF !important;
 }
 
 EOFHS
-
-  outputAllScriptServerScripts true true
-  outputStackListsScriptServer
 }
 
 function performUpdateScriptServer()
@@ -51177,7 +51192,7 @@ EOFSC
 {
   "name": "02 Restart Caddy Container",
   "script_path": "conf/scripts/restartCaddyContainer.sh",
-  "description": "Restarts a specific Caddy container. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Restarts a specific Caddy container. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51219,7 +51234,7 @@ EOFSC
 {
   "name": "03 Restart All Caddy Containers",
   "script_path": "conf/scripts/restartAllCaddyContainers.sh",
-  "description": "Restarts all Caddy containers. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Restarts all Caddy containers. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51288,7 +51303,7 @@ EOFSC
 {
   "name": "05 Generate Signed Certificate",
   "script_path": "conf/scripts/generateSignedCertificate.sh",
-  "description": "Generates a certificate signed by the Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/>\n- The resulting key/certificate pair will be stored in $HSHQ_SSL_DIR.\n- Multiple domain names and/or IP addresses should be a comma-separated list (no spaces).\n- Dates should be formatted as '2023-01-01 00:00:00 GMT'.\n- Leave start date empty to default to current date/time.\n- If end date is empty, then the certificate will expire $CERTS_INTERNAL_CA_DAYS days after the start date.",
+  "description": "Generates a certificate signed by the Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/>\n- The resulting key/certificate pair will be stored in $HSHQ_SSL_DIR.\n- Multiple domain names and/or IP addresses should be a comma-separated list (no spaces).\n- Dates should be formatted as '2023-01-01 00:00:00 GMT'.\n- Leave start date empty to default to current date/time.\n- If end date is empty, then the certificate will expire $CERTS_INTERNAL_CA_DAYS days after the start date.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51310,10 +51325,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51327,10 +51339,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     },
@@ -51342,10 +51351,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     },
@@ -51357,10 +51363,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     },
@@ -51372,10 +51375,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     },
@@ -51387,10 +51387,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     }
@@ -51422,7 +51419,7 @@ EOFSC
 {
   "name": "06 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyData.sh",
-  "description": "Clears out all data for the selected Caddy instance and restarts the stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
+  "description": "Clears out all data for the selected Caddy instance and restarts the stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51444,10 +51441,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51460,10 +51454,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "docker ps -a --filter name=caddy- --format \"{{.Names}}\"",
@@ -51497,7 +51488,7 @@ EOFSC
 {
   "name": "07 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. The most prevalent case is when you run an update on the host system and docker is updated to a new version. The docker daemon is restarted as a result, but sometimes not everything comes back up correctly. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient (unless you are accessing this utility via IP on your home network, which is preferred). If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. The most prevalent case is when you run an update on the host system and docker is updated to a new version. The docker daemon is restarted as a result, but sometimes not everything comes back up correctly. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient (unless you are accessing this utility via IP on your home network, which is preferred). If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51519,10 +51510,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51554,7 +51542,7 @@ EOFSC
 {
   "name": "08 Email Vaultwarden Credentials",
   "script_path": "conf/scripts/emailCredentialsVaultwarden.sh",
-  "description": "Emails Vaultwarden credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a format that can easily be imported into Vaultwarden, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails Vaultwarden credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a format that can easily be imported into Vaultwarden, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51576,10 +51564,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51611,7 +51596,7 @@ EOFSC
 {
   "name": "09 Email Root CA",
   "script_path": "conf/scripts/emailRootCA.sh",
-  "description": "Emails Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the Root Certificate Authority (CA) certificate to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the Root Certificate Authority (CA) certificate to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51633,10 +51618,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51671,7 +51653,7 @@ EOFSC
 {
   "name": "10 Email User VW Template",
   "script_path": "conf/scripts/emailUserVaultwardenTemplate.sh",
-  "description": "Emails Vaultwarden template to user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function emails a Vaultwarden import template to the provided user at the provided email address. The template keeps all of the LDAP-based services together as a single entry within the Vaultwarden password manager. The default password is simply 'abcdefg', but the user only needs to change this one entry to their correct password. If they change their LDAP password in the future, then they need only change this one entry within Vaultwarden. The is simply a suggested convenience method for your users.",
+  "description": "Emails Vaultwarden template to user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function emails a Vaultwarden import template to the provided user at the provided email address. The template keeps all of the LDAP-based services together as a single entry within the Vaultwarden password manager. The default password is simply 'abcdefg', but the user only needs to change this one entry to their correct password. If they change their LDAP password in the future, then they need only change this one entry within Vaultwarden. The is simply a suggested convenience method for your users.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51693,10 +51675,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51709,10 +51688,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -51724,10 +51700,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -51758,7 +51731,7 @@ EOFSC
 {
   "name": "11 Email All Credentials",
   "script_path": "conf/scripts/emailCredentialsFormatted.sh",
-  "description": "Emails all login credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a human-readable format, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails all login credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a human-readable format, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -51780,10 +51753,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51817,7 +51787,7 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -51839,10 +51809,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51855,10 +51822,7 @@ EOFSC
       "same_arg_param": true,
       "type": "multiselect",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "while read filename; do if ! [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/optionalStackList.txt",
@@ -51893,7 +51857,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq/issues). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq/issues). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -51915,10 +51879,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51951,7 +51912,7 @@ EOFSC
 {
   "name": "03 Update Service(s)",
   "script_path": "conf/scripts/updateServicesFromList.sh",
-  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that you plan to update. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.",
+  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that you plan to update. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -51973,10 +51934,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -51989,10 +51947,7 @@ EOFSC
       "same_arg_param": true,
       "type": "multiselect",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "cat conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME",
@@ -52025,7 +51980,7 @@ EOFSC
 {
   "name": "04 Update All Available Services",
   "script_path": "conf/scripts/updateAllAvailableServices.sh",
-  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that will be updated. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.",
+  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that will be updated. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -52047,10 +52002,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52084,7 +52036,7 @@ EOFSC
 {
   "name": "05 Remove Service(s)",
   "script_path": "conf/scripts/removeServicesFromList.sh",
-  "description": "Select the service(s) that you wish to remove. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>**!!! CAUTION !!!**  This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data for the selected service(s).",
+  "description": "Select the service(s) that you wish to remove. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>**!!! CAUTION !!!**  This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data for the selected service(s).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -52106,10 +52058,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52122,10 +52071,7 @@ EOFSC
       "same_arg_param": true,
       "type": "multiselect",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "while read filename; do if [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/optionalStackList.txt",
@@ -52161,7 +52107,7 @@ EOFSC
 {
   "name": "06 Refresh Services Lists",
   "script_path": "conf/scripts/refreshServicesLists.sh",
-  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within this user interface, i.e. Install/Update/Remove. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.",
+  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within this user interface, i.e. Install/Update/Remove. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -52183,10 +52129,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52222,7 +52165,7 @@ EOFSC
 {
   "name": "07 Clear Service Temp Data",
   "script_path": "conf/scripts/clearTempRedisData.sh",
-  "description": "Clear Temp Data For Selected Service. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will stop the selected stack, delete all data from its respective Redis database, then restart the service. The use case for this function is in the event of a sudden power outage or some other unforseen circumstance, the Redis database could become corrupted and render the entire service unusable. The Redis database for each of these services functions as a caching mechanism, and can be safely cleared out if necessary.",
+  "description": "Clear Temp Data For Selected Service. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will stop the selected stack, delete all data from its respective Redis database, then restart the service. The use case for this function is in the event of a sudden power outage or some other unforseen circumstance, the Redis database could become corrupted and render the entire service unusable. The Redis database for each of these services functions as a caching mechanism, and can be safely cleared out if necessary.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -52244,10 +52187,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52260,10 +52200,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "cat conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME",
@@ -52293,7 +52230,7 @@ EOFSC
 {
   "name": "01 Clear History",
   "script_path": "conf/scripts/clearScriptServerProcessLogs.sh",
-  "description": "Clears out all of the process logs (history) in this app. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Clears out all of the process logs (history) in this app. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
@@ -52346,7 +52283,7 @@ EOFSC
 {
   "name": "02 Restore Scripts",
   "script_path": "conf/scripts/restoreScriptServerScripts.sh",
-  "description": "Restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Does not clear/remove any scripts, but will overwrite those with the same name.",
+  "description": "Restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Does not clear/remove any scripts, but will overwrite those with the same name.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
@@ -52368,10 +52305,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52414,7 +52348,7 @@ EOFSC
 {
   "name": "03 Clear and Restore Scripts",
   "script_path": "conf/scripts/clearRestoreScriptServerScripts.sh",
-  "description": "Clears and restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you have added/modified any scripts, they will be deleted.",
+  "description": "Clears and restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you have added/modified any scripts, they will be deleted.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
@@ -52436,10 +52370,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52481,7 +52412,7 @@ EOFSC
 {
   "name": "04 Full Script-server Reset",
   "script_path": "conf/scripts/fullResetScriptServerScripts.sh",
-  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the Script-server app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
+  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the Script-server app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
@@ -52503,10 +52434,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52767,7 +52695,7 @@ EOFSC
 {
   "name": "02 Perform Update HSHQ",
   "script_path": "conf/scripts/performUpdateHSHQ.sh",
-  "description": "Performs HSHQ Updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.<br/><br/>The RelayServer password will only apply if you are hosting a VPN and the server requires an update. The field requires an entry, so just leave the default value if not applicable.",
+  "description": "Performs HSHQ Updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.<br/><br/>The RelayServer password will only apply if you are hosting a VPN and the server requires an update. The field requires an entry, so just leave the default value if not applicable.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -52789,10 +52717,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52804,10 +52729,7 @@ EOFSC
       "type": "text",
       "default": "pass",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52840,7 +52762,7 @@ EOFSC
 {
   "name": "03 Update Linux OS and Reboot",
   "script_path": "conf/scripts/updateHostAndReboot.sh",
-  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web app during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
+  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web app during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -52877,7 +52799,7 @@ EOFSC
 {
   "name": "04 Power off HomeServer",
   "script_path": "conf/scripts/poweroffHomeServer.sh",
-  "description": "Shuts down the HomeServer. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Shuts down the HomeServer. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -52915,7 +52837,7 @@ EOFSC
 {
   "name": "05 Download All Docker Images",
   "script_path": "conf/scripts/downloadAllDockerImages.sh",
-  "description": "Downloads all docker images. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Downloads all docker images. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -52951,7 +52873,7 @@ EOFSC
 {
   "name": "06 Reset HSHQ Open Status",
   "script_path": "conf/scripts/resetHSHQOpenStatus.sh",
-  "description": "Resets the HSHQ open status. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles.",
+  "description": "Resets the HSHQ open status. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -53007,7 +52929,7 @@ EOFSC
 {
   "name": "07 Change Connection Email",
   "script_path": "conf/scripts/changeConnectionEmail.sh",
-  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
+  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -53029,10 +52951,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53045,10 +52964,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,': ',EmailAddress from connections order by ID asc;\" | sed 's/|//g'",
@@ -53064,10 +52980,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53115,7 +53028,7 @@ EOFSC
 {
   "name": "09 Upload HomeServer Logo",
   "script_path": "conf/scripts/uploadHomeServerLogo.sh",
-  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 04 System Utils -> 10 Update HomeServer Logos function). Finally, it will replace the image /usr/share/icons/HSHQ/Homepage.png, which is the default source for the Homepage icon on the desktop (if applicable). The image must be a .png and it can be no larger than 1 MB.",
+  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 04 System Utils -> 10 Update HomeServer Logos function). Finally, it will replace the image /usr/share/icons/HSHQ/Homepage.png, which is the default source for the Homepage icon on the desktop (if applicable). The image must be a .png and it can be no larger than 1 MB.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -53137,10 +53050,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53153,10 +53063,7 @@ EOFSC
       "same_arg_param": true,
       "type": "file_upload",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     }
@@ -53199,7 +53106,7 @@ EOFSC
 {
   "name": "01 Sudo Password Test",
   "script_path": "conf/scripts/sudoPasswordTest.sh",
-  "description": "Checks if sudo (super user do...something) password is correct. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Checks if sudo (super user do...something) password is correct. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -53236,7 +53143,7 @@ EOFSC
 {
   "name": "02 Decrypt Config Password Test",
   "script_path": "conf/scripts/decryptConfigPasswordTest.sh",
-  "description": "Checks if config decrypt password is correct. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Checks if config decrypt password is correct. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -53312,7 +53219,7 @@ EOFSC
 {
   "name": "04 Check for Network Collision",
   "script_path": "conf/scripts/checkIPAddress.sh",
-  "description": "Tests an IP address or subnet for network collisions. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided IP address or subnet intersects with any of the networks that this HomeServer is on. It does not assert any consequential actions, just performs the tests.<br/><br/>Regarding Check all possible connections - with it set to No, it will only check the network connections directly on this HomeServer. With it set to Yes, it will check any and all connections that this HomeServer manages, i.e. if hosting a VPN, then it will check all User and/or HS Internet connections, which may be on behalf of another device in the network. If the explanation for this distinction is confusing, then ask on the [Forum](https://forum.homeserverhq.com/).<br/><br/>If you want to test a subnet range, then input its CIDR length. For a single IP address, leave it at the default of 32.",
+  "description": "Tests an IP address or subnet for network collisions. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided IP address or subnet intersects with any of the networks that this HomeServer is on. It does not assert any consequential actions, just performs the tests.<br/><br/>Regarding Check all possible connections - with it set to No, it will only check the network connections directly on this HomeServer. With it set to Yes, it will check any and all connections that this HomeServer manages, i.e. if hosting a VPN, then it will check all User and/or HS Internet connections, which may be on behalf of another device in the network. If the explanation for this distinction is confusing, then ask on the [Forum](https://forum.homeserverhq.com/).<br/><br/>If you want to test a subnet range, then input its CIDR length. For a single IP address, leave it at the default of 32.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -53334,10 +53241,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53355,10 +53259,7 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53370,10 +53271,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/generateRandomIP.sh"
@@ -53388,7 +53286,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": "32",
       "min": "0",
@@ -53425,7 +53323,7 @@ EOFSC
 {
   "name": "05 Check WireGuard Key",
   "script_path": "conf/scripts/checkWireGuardKey.sh",
-  "description": "Tests a WireGuard key for validity. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided key (public/private/preshared) is a valid WireGuard key.",
+  "description": "Tests a WireGuard key for validity. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided key (public/private/preshared) is a valid WireGuard key.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -53482,7 +53380,7 @@ EOFSC
 {
   "name": "06 Test Portainer Connection",
   "script_path": "conf/scripts/testPortainer.sh",
-  "description": "Tests Portainer Connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function tests the connectivity with the Portainer API. It acquires an auth token, then runs a simple query. If you change the admin password (in both Portainer and the config file), then use this function to test it before running any other utilities.",
+  "description": "Tests Portainer Connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function tests the connectivity with the Portainer API. It acquires an auth token, then runs a simple query. If you change the admin password (in both Portainer and the config file), then use this function to test it before running any other utilities.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -53504,10 +53402,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53547,7 +53442,7 @@ EOFSC
 {
   "name": "01 Invite to Network",
   "script_path": "conf/scripts/myNetworkInviteConnection.sh",
-  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or user device to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User device applications, for your your own internal nomenclature (use the Description that the applicant provided in the email as reference). Names for other connection types will be automatically generated.",
+  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or user device to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User device applications, for your your own internal nomenclature (use the Description that the applicant provided in the email as reference). Names for other connection types will be automatically generated.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -53569,10 +53464,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53585,10 +53477,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53598,10 +53487,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53647,7 +53533,7 @@ EOFSC
 {
   "name": "02 Invite Device to Network",
   "script_path": "conf/scripts/myNetworkInviteDeviceConnection.sh",
-  "description": "Performs a device invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 06 My Network -> 01 Invite to Network function. But if someone emailed you their client device's public key (and interface IP address), or you are adding one of your own devices (cellphone/laptop/tablet) to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated. Finally, if you allow public internet IP masquerade, then this device can masquerade its internet traffic via your RelayServer.",
+  "description": "Performs a device invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 06 My Network -> 01 Invite to Network function. But if someone emailed you their client device's public key (and interface IP address), or you are adding one of your own devices (cellphone/laptop/tablet) to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated. Finally, if you allow public internet IP masquerade, then this device can masquerade its internet traffic via your RelayServer.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -53669,10 +53555,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53685,10 +53568,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53700,10 +53580,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53720,10 +53597,7 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53735,10 +53609,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53750,10 +53621,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53765,10 +53633,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53800,7 +53665,7 @@ EOFSC
 {
   "name": "03 Change Primary HS Int IP",
   "script_path": "conf/scripts/changeHSPrimaryInternetIP.sh",
-  "description": "Changes the interface IP address of the primary HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).",
+  "description": "Changes the interface IP address of the primary HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -53822,10 +53687,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53838,10 +53700,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/generateRandomIP.sh"
@@ -53878,7 +53737,7 @@ EOFSC
 {
   "name": "04 Change Device IP",
   "script_path": "conf/scripts/changeDeviceIP.sh",
-  "description": "Changes the interface IP address of a device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address for their device due to a collision. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection. If <ins>you</ins> are the one initiating the change, i.e. the user did not request the change, then ensure to confer with them beforehand, since changing it has potential cascading effects on their device's interface peers.",
+  "description": "Changes the interface IP address of a device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address for their device due to a collision. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection. If <ins>you</ins> are the one initiating the change, i.e. the user did not request the change, then ensure to confer with them beforehand, since changing it has potential cascading effects on their device's interface peers.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -53900,10 +53759,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -53916,10 +53772,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,' - ',IPAddress from connections where ConnectionType='user' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -53935,10 +53788,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/generateRandomIP.sh"
@@ -53975,7 +53825,7 @@ EOFSC
 {
   "name": "05 Remove HS VPN Connection",
   "script_path": "conf/scripts/removeHSVPNConnection.sh",
-  "description": "Removes a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.",
+  "description": "Removes a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -53997,10 +53847,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54013,10 +53860,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -54030,10 +53874,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -54067,7 +53908,7 @@ EOFSC
 {
   "name": "06 Remove HS Int Connection",
   "script_path": "conf/scripts/removeHSInternetConnection.sh",
-  "description": "Removes a HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.",
+  "description": "Removes a HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54089,10 +53930,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54105,10 +53943,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -54122,10 +53957,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -54159,7 +53991,7 @@ EOFSC
 {
   "name": "07 Remove Device Connection",
   "script_path": "conf/scripts/removeDeviceConnection.sh",
-  "description": "Removes a client device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the user of the device being removed.",
+  "description": "Removes a client device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the user of the device being removed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54181,10 +54013,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54197,10 +54026,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='user' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -54214,10 +54040,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -54248,7 +54071,7 @@ EOFSC
 {
   "name": "08 Email HomeServers DNS List",
   "script_path": "conf/scripts/emailHomeServersDNSList.sh",
-  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54270,10 +54093,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54305,7 +54125,7 @@ EOFSC
 {
   "name": "09 Email Client Device DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
-  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this ecosystem).",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this ecosystem).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54327,10 +54147,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54362,7 +54179,7 @@ EOFSC
 {
   "name": "10 Email Client Device Details",
   "script_path": "conf/scripts/emailMyNetworkClientDeviceDetails.sh",
-  "description": "Emails client device details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all client device connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the devices to the new network with the same information.",
+  "description": "Emails client device details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all client device connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the devices to the new network with the same information.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54384,10 +54201,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54421,7 +54235,7 @@ EOFSC
 {
   "name": "11 Email All Broadcast",
   "script_path": "conf/scripts/emailMyNetworkBroadcast.sh",
-  "description": "Emails a broadcast message. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will send a broadcast message to all users and connected devices on your network.",
+  "description": "Emails a broadcast message. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will send a broadcast message to all users and connected devices on your network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54443,10 +54257,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54457,10 +54268,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -54492,7 +54300,7 @@ EOFSC
 {
   "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
-  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer's AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer's AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54514,10 +54322,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54530,10 +54335,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -54566,7 +54368,7 @@ EOFSC
 {
   "name": "13 Remove ClientDNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
-  "description": "Removes a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Removes a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54588,10 +54390,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54604,10 +54403,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='clientdns' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -54679,7 +54475,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete, so please be patient.<br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete, so please be patient.<br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54714,10 +54510,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "$HOMESERVER_NAME RelayServer",
       "secure": false,
@@ -54743,10 +54536,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "root",
       "secure": false,
@@ -54759,38 +54549,11 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
       "stdin_expected_text": "$rs_cur_password_prompt"
-    },
-    {
-      "name": "RelayServer IP address",
-      "required": true,
-      "param": "-rs_external_ip=",
-      "same_arg_param": true,
-      "type": "ip4",
-      "ui": {
-        "width_weight": 1
-      },
-      "secure": false,
-      "pass_as": "argument"
-    },
-    {
-      "name": "CURRENT SSH port",
-      "required": true,
-      "param": "-rs_cur_ssh_port=",
-      "same_arg_param": true,
-      "type": "int",
-      "ui": {
-        "width_weight": 1
-      },
-      "default": "22",
-      "min": "1",
-      "max": "65535",
-      "secure": false,
-      "pass_as": "argument"
     },
     {
       "name": "NEW Linux username",
@@ -54799,10 +54562,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "$USERNAME",
       "secure": false,
@@ -54815,26 +54575,25 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": "",
       "secure": true,
       "pass_as": "stdin",
       "stdin_expected_text": "$rs_new_password_prompt"
     },
-
     {
-      "name": "VPN subnet",
+      "name": "CURRENT SSH port",
       "required": true,
-      "param": "-rs_primary_vpn_subnet=",
+      "param": "-rs_cur_ssh_port=",
       "same_arg_param": true,
-      "type": "ip4",
+      "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
-      "default": { 
-        "script": "conf/scripts/generateRandomSubnet.sh"
-      },
+      "default": "22",
+      "min": "1",
+      "max": "65535",
       "secure": false,
       "pass_as": "argument"
     },
@@ -54845,11 +54604,38 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": "$SSH_PORT",
       "min": "1",
       "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "RelayServer IP address",
+      "required": true,
+      "param": "-rs_external_ip=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "VPN subnet",
+      "required": true,
+      "param": "-rs_primary_vpn_subnet=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": { 
+        "script": "conf/scripts/generateRandomSubnet.sh"
+      },
       "secure": false,
       "pass_as": "argument"
     }
@@ -54890,7 +54676,7 @@ EOFSC
 {
   "name": "15 Remove Primary VPN",
   "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
-  "description": "Complete removal of primary VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
+  "description": "Complete removal of primary VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -54912,10 +54698,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -54926,10 +54709,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -54962,7 +54742,7 @@ EOFSC
 {
   "name": "01 HS VPN Application",
   "script_path": "conf/scripts/applyHSVPNConnection.sh",
-  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -54984,10 +54764,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55000,10 +54777,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55035,7 +54809,7 @@ EOFSC
 {
   "name": "02 HS Internet Application",
   "script_path": "conf/scripts/applyHSInternetConnection.sh",
-  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55057,10 +54831,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55073,10 +54844,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55117,7 +54885,7 @@ EOFSC
 {
   "name": "03 User Device Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
+  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55139,10 +54907,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55155,10 +54920,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55170,10 +54932,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55185,10 +54944,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55205,10 +54961,7 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55220,10 +54973,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55235,10 +54985,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55270,7 +55017,7 @@ EOFSC
 {
   "name": "04 Primary VPN Application",
   "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
-  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This function is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network function with the invitation to finalize the connection.",
+  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This function is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network function with the invitation to finalize the connection.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55292,10 +55039,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55309,10 +55053,7 @@ EOFSC
       "type": "text",
       "default": "$(getLetsEncryptCertsDefault)",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55345,7 +55086,7 @@ EOFSC
 {
   "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
-  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This function can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
+  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This function can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55367,10 +55108,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55381,10 +55119,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55418,7 +55153,7 @@ EOFSC
 {
   "name": "06 Disconnect VPN Connection",
   "script_path": "conf/scripts/disconnectVPNConnection.sh",
-  "description": "Disconnect a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
+  "description": "Disconnect a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55440,10 +55175,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55456,10 +55188,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='other' order by ID asc;\" | sed 's/|//g'",
@@ -55473,10 +55202,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55510,7 +55236,7 @@ EOFSC
 {
   "name": "07 Disconnect Int Connection",
   "script_path": "conf/scripts/disconnectInternetConnection.sh",
-  "description": "Disconnect a HomeServer internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
+  "description": "Disconnect a HomeServer internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55532,10 +55258,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55548,10 +55271,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='other' order by ID asc;\" | sed 's/|//g'",
@@ -55565,10 +55285,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55603,7 +55320,7 @@ EOFSC
 {
   "name": "08 Update HomeServer DNS",
   "script_path": "conf/scripts/updateHomeServerDNS.sh",
-  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
+  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55625,10 +55342,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55639,10 +55353,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55673,7 +55384,7 @@ EOFSC
 {
   "name": "09 Sync Adguard DNS Server",
   "script_path": "conf/scripts/syncAdguardDNS.sh",
-  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
+  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -55695,10 +55406,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55736,7 +55444,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -55758,10 +55466,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55774,10 +55479,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -55789,10 +55491,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',MailHost from mailhosts order by ID asc;\" | sed 's/|//g'",
@@ -55831,7 +55530,7 @@ EOFSC
 {
   "name": "02 Remove Secondary Domain",
   "script_path": "conf/scripts/removeDomainFromRelayServer.sh",
-  "description": "Removes a secondary domain from the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This will also remove any LetsEncrypt paths and exposed (sub)domains on this domain as well.",
+  "description": "Removes a secondary domain from the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This will also remove any LetsEncrypt paths and exposed (sub)domains on this domain as well.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -55853,10 +55552,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55869,10 +55565,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain,' (',MailHost,')' from mailhostmap join mailhosts on mailhostmap.MailHostID = mailhosts.ID where IsFirstDomain=false order by mailhostmap.MailHostID;\" | sed 's/|//g'",
@@ -55927,7 +55620,7 @@ EOFSC
 {
   "name": "03 Add LE Subdomain",
   "script_path": "conf/scripts/addLEDomainToRelayServer.sh",
-  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This function will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
+  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This function will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -55949,10 +55642,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -55965,10 +55655,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from mailhostmap order by MailHostID asc, IsFirstDomain desc;\"",
@@ -55984,10 +55671,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -56020,7 +55704,7 @@ EOFSC
 {
   "name": "04 Remove LE Subdomain",
   "script_path": "conf/scripts/removeLEDomainFromRelayServer.sh",
-  "description": "Removes path for LetsEncrypt from RelayServer. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Removes path for LetsEncrypt from RelayServer. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -56042,10 +55726,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -56058,10 +55739,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select BaseDomain from lecertdomains group by BaseDomain;\"",
@@ -56077,10 +55755,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from lecertdomains where BaseDomain='\${Select the base domain}';\"",
@@ -56134,7 +55809,7 @@ EOFSC
 {
   "name": "05 Add Exposed Subdomain",
   "script_path": "conf/scripts/addExposeDomainToRelayServer.sh",
-  "description": "Adds an exposed (sub)domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to expose a particular service on your HomeServer to the public internet. <ins>***Be very careful***</ins> with this capability as it will allow anyone on the internet to access the service that you expose. It will also automatically request (free)certificates for this (sub)domain from ZeroSSL on the RelayServer upon execution. Also note that for security reasons, some services are protected behind Authelia. So you can either expose Authelia to maintain that same security wall, or move the particular service into bypass mode in the Authelia configuration.<br/>\nSelect the base domain, then enter only the subdomain portion in the provided field below (all lowercase), i.e. www, filebrowser, etc. If the subdomain field is left blank, then the base domain will be added (you will need the base domain added if exposing Mastodon and/or Matrix (Synapse) for federation purposes).<br/>\nTo figure out what the subdomain is for a particular service, look in the address bar in your browser when accessing the service on your HomeServer. For example, if you wanted to expose Mealie, you should see https://mealie.$HOMESERVER_DOMAIN/ in the address bar, thus the subdomain is mealie.",
+  "description": "Adds an exposed (sub)domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to expose a particular service on your HomeServer to the public internet. <ins>***Be very careful***</ins> with this capability as it will allow anyone on the internet to access the service that you expose. It will also automatically request (free)certificates for this (sub)domain from ZeroSSL on the RelayServer upon execution. Also note that for security reasons, some services are protected behind Authelia. So you can either expose Authelia to maintain that same security wall, or move the particular service into bypass mode in the Authelia configuration.<br/>\nSelect the base domain, then enter only the subdomain portion in the provided field below (all lowercase), i.e. www, filebrowser, etc. If the subdomain field is left blank, then the base domain will be added (you will need the base domain added if exposing Mastodon and/or Matrix (Synapse) for federation purposes).<br/>\nTo figure out what the subdomain is for a particular service, look in the address bar in your browser when accessing the service on your HomeServer. For example, if you wanted to expose Mealie, you should see https://mealie.$HOMESERVER_DOMAIN/ in the address bar, thus the subdomain is mealie.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -56156,10 +55831,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -56172,10 +55844,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from mailhostmap order by MailHostID asc, IsFirstDomain desc;\"",
@@ -56191,10 +55860,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -56227,7 +55893,7 @@ EOFSC
 {
   "name": "06 Remove Exposed Subdomain",
   "script_path": "conf/scripts/removeExposeDomainFromRelayServer.sh",
-  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>",
+  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/> <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -56249,10 +55915,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -56265,10 +55928,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select BaseDomain from exposedomains group by BaseDomain;\"",
@@ -56284,10 +55944,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from exposedomains where BaseDomain='\${Select the base domain}';\"",
@@ -56322,7 +55979,7 @@ EOFSC
 {
   "name": "07 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyDNSRelayServer.sh",
-  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack. Note that this will delete all existing data and certificates in Caddy, which includes those obtained externally from ZeroSSL. Running this function too many times could result in a rate limit.",
+  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack. Note that this will delete all existing data and certificates in Caddy, which includes those obtained externally from ZeroSSL. Running this function too many times could result in a rate limit.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -56344,10 +56001,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -56392,7 +56046,7 @@ EOFSC
 {
   "name": "08 Add Port Forwarding Rule",
   "script_path": "conf/scripts/addPortForwardRule.sh",
-  "description": "Adds a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a port forwarding rule to the RelayServer. This will forward any packets arriving at the RelayServer to the selected internal host on the selected port or range of ports. If only a single port, then use the same value for Start and End. External is the value(s) which the RelayServer will listen on, and Internal is the mapped ports on the internal host. If a range of ports, then the SIZE of the range must be the same for both External and Internal (the start and end values between External and Internal CAN be diffferent). For the destination IP, you can either select from the internal domain list (as a convenience) or manually enter the IP address. If there is a non-zero value for the IP address, then the selected internal domain will be entirely ignored. If manually entering the IP address, it must be inside your VPN subnet range.",
+  "description": "Adds a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a port forwarding rule to the RelayServer. This will forward any packets arriving at the RelayServer to the selected internal host on the selected port or range of ports. If only a single port, then use the same value for Start and End. External is the value(s) which the RelayServer will listen on, and Internal is the mapped ports on the internal host. If a range of ports, then the SIZE of the range must be the same for both External and Internal (the start and end values between External and Internal CAN be diffferent). For the destination IP, you can either select from the internal domain list (as a convenience) or manually enter the IP address. If there is a non-zero value for the IP address, then the selected internal domain will be entirely ignored. If manually entering the IP address, it must be inside your VPN subnet range.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -56428,10 +56082,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -56461,10 +56112,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "",
       "min": "1",
@@ -56479,7 +56127,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": "",
       "min": "1",
@@ -56510,10 +56158,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "",
       "min": "1",
@@ -56528,7 +56173,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": "",
       "min": "1",
@@ -56584,7 +56229,7 @@ EOFSC
 {
   "name": "09 Remove Port Forwarding Rule",
   "script_path": "conf/scripts/removePortForwardRule.sh",
-  "description": "Removes a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected port forwarding rule from the RelayServer.",
+  "description": "Removes a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected port forwarding rule from the RelayServer.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -56606,10 +56251,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -56622,10 +56264,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select ID,'-',Name,' (',ExtStart,'-',ExtEnd,'/',Protocol,')' from portforwarding where PFType='User' order by ID asc;\" | sed 's/|//g'",
@@ -56720,7 +56359,7 @@ EOFSC
 {
   "name": "02 Add Host Interface",
   "script_path": "conf/scripts/addHomeServerHostInterface.sh",
-  "description": "Add network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a network interface on the host to be managed by the HSHQ firewall. It will also generate a (Caddy) reverse proxy instance (if selected) to serve its respective network specifically on this interface. The interface of the default route has already been added. This function is to add any additional adapters or connections.",
+  "description": "Add network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a network interface on the host to be managed by the HSHQ firewall. It will also generate a (Caddy) reverse proxy instance (if selected) to serve its respective network specifically on this interface. The interface of the default route has already been added. This function is to add any additional adapters or connections.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -56742,10 +56381,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -56758,10 +56394,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -56778,10 +56411,7 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -56887,7 +56517,7 @@ EOFSC
 {
   "name": "03 Edit Host Interface",
   "script_path": "conf/scripts/editHomeServerHostInterface.sh",
-  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are numerous actions that can be performed on a particular interface, and some actions require parameters that are available below the selected action.<br/><br/>Setting an interface as primary will determine what IP address the DNS records point to, as well as the ip-based links on the home page.<br/><br/>Enabling/Disabling Expose to Network allows the selected ports to be accessible/inaccessible for the corresponding network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.<br/><br/>Setting an interface (wired or wireless) to a static IP requires an IP address, CIDR length, and gateway. When setting up a new wireless interface, you must also provide an initial network SSID (and password, if applicable).",
+  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are numerous actions that can be performed on a particular interface, and some actions require parameters that are available below the selected action.<br/><br/>Setting an interface as primary will determine what IP address the DNS records point to, as well as the ip-based links on the home page.<br/><br/>Enabling/Disabling Expose to Network allows the selected ports to be accessible/inaccessible for the corresponding network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.<br/><br/>Setting an interface (wired or wireless) to a static IP requires an IP address, CIDR length, and gateway. When setting up a new wireless interface, you must also provide an initial network SSID (and password, if applicable).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -56909,10 +56539,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -56925,10 +56552,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select InterfaceName,' (',ConnectionType,')' from connections where NetworkType='home_network';\" | sed 's/|//g'",
@@ -56957,10 +56581,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/getInterfaceIP.sh \"\${Select the interface to edit}\""
@@ -56975,7 +56596,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/getInterfaceCIDRLength.sh \"\${Select the interface to edit}\""
@@ -56992,7 +56613,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/getInterfaceGateway.sh \"\${Select the interface to edit}\""
@@ -57007,7 +56628,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "values": [ "Edit Netplan Entry", "Replace Netplan Entry" ],
       "default": "Edit Netplan Entry",
@@ -57021,10 +56642,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -57073,7 +56691,7 @@ EOFSC
 {
   "name": "04 Remove Host Interface",
   "script_path": "conf/scripts/removeHomeServerHostInterface.sh",
-  "description": "Remove a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected interface from management by HSHQ processes. You cannot remove the primary interface.",
+  "description": "Remove a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected interface from management by HSHQ processes. You cannot remove the primary interface.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -57095,10 +56713,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -57111,10 +56726,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select InterfaceName,' (',ConnectionType,')' from connections where NetworkType='home_network';\" | sed 's/|//g'",
@@ -57154,7 +56766,7 @@ EOFSC
 {
   "name": "05 Add Custom Subnet",
   "script_path": "conf/scripts/addCustomFirewallSubnet.sh",
-  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to add a custom subnet, which can then be selected in the 07 Edit Exposed Ports function. The use case for this is if you have any other VPN and/or networking interfaces that are not managed by HSHQ, but provide an easy means in which ports/services can be exposed to that corresponding network.",
+  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to add a custom subnet, which can then be selected in the 07 Edit Exposed Ports function. The use case for this is if you have any other VPN and/or networking interfaces that are not managed by HSHQ, but provide an easy means in which ports/services can be exposed to that corresponding network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -57176,10 +56788,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -57192,10 +56801,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -57207,10 +56813,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "0.0.0.0",
       "secure": false,
@@ -57223,7 +56826,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": "32",
       "min": "0",
@@ -57265,7 +56868,7 @@ EOFSC
 {
   "name": "06 Remove Custom Subnet",
   "script_path": "conf/scripts/removeCustomFirewallSubnet.sh",
-  "description": "Removes a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Removes a selected custom firewall subnet that was added via 05 Add Custom Subnet.",
+  "description": "Removes a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Removes a selected custom firewall subnet that was added via 05 Add Custom Subnet.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -57287,10 +56890,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -57303,10 +56903,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select ID,' (Custom) ',Name,' [',Subnet,']' from customfwsubnet;\" | sed 's/|//g'",
@@ -57346,7 +56943,7 @@ EOFSC
 {
   "name": "07 Edit Exposed Ports",
   "script_path": "conf/scripts/editExposedPorts.sh",
-  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list.<br/><br/>All ports must be comma-separated with no spaces.",
+  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list.<br/><br/>All ports must be comma-separated with no spaces.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -57368,10 +56965,7 @@ EOFSC
       "required": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
       "pass_as": "stdin",
@@ -57384,10 +56978,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": [ "INPUT", "DOCKER-USER" ],
       "secure": false,
@@ -57400,10 +56991,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "conf/scripts/getExposedPortsVariablesLists.sh \${Select the firewall chain}",
@@ -57419,10 +57007,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": {
         "script": "conf/scripts/getExposedPortsByVariableName.sh \"\${Select the firewall chain}\" \"\${Select the list to edit}\"",
@@ -57467,7 +57052,7 @@ EOFSC
 {
   "name": "08 Reset Firewall",
   "script_path": "conf/scripts/resetFirewall.sh",
-  "description": "Clears and restores firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function flushes and restores certain parts of the firewall, i.e. iptables. It does not affect all of the chains/tables, only the raw table, and the INPUT and DOCKER-USER chains in the filter table.",
+  "description": "Clears and restores firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function flushes and restores certain parts of the firewall, i.e. iptables. It does not affect all of the chains/tables, only the raw table, and the INPUT and DOCKER-USER chains in the filter table.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -57512,7 +57097,7 @@ EOFSC
 {
   "name": "09 Set Internet Traffic Interface",
   "script_path": "conf/scripts/setHostInternetWGInterface.sh",
-  "description": "Sets the interface for internet-bound host traffic. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to route internet-bound traffic on the HomeServer host via any WireGuard interfaces. When you set up your own RelayServer, a connection is set up for you by default. Select the WireGuard interface from the list below, or select default to use the normal default route(s).",
+  "description": "Sets the interface for internet-bound host traffic. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to route internet-bound traffic on the HomeServer host via any WireGuard interfaces. When you set up your own RelayServer, a connection is set up for you by default. Select the WireGuard interface from the list below, or select default to use the normal default route(s).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
@@ -57536,10 +57121,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "conf/scripts/getWGInternetTrafficInterfaces.sh",
@@ -57577,6 +57159,7 @@ function outputStackListsScriptServer()
 
   redislist=($(find $HSHQ_NONBACKUP_DIR/ -maxdepth 2 -type d -name redis | sort))
   rm -f $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
+  touch $SCRIPTSERVER_REDIS_STACKLIST_FILENAME
   for curdir in "${redislist[@]}"
   do
     echo $(echo "$curdir" | rev | cut -d"/" -f2 | rev) >> $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
