@@ -3390,7 +3390,6 @@ EOF
     case $menures in
       1)
         PRIMARY_VPN_SETUP_TYPE=host
-        updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupHostedVPN
         if [ $? -ne 0 ]; then
           return 1
@@ -4232,6 +4231,7 @@ function setupHostedVPN()
   fi
   RELAYSERVER_IS_INIT=true
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
+  updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
 }
 
 function transferHostedVPN()
@@ -5615,7 +5615,6 @@ function install()
   outputScripts
   installLogNotify "Installing Stacks"
   installPortainer
-  #installAdGuard
   installMailRelay
   installWireGuard
   installFileBrowser
@@ -20240,6 +20239,7 @@ EOFRS
 function version126Update()
 {
   set +e
+  sudo crontab -r
   ema1=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $CONFIG_FILE)
   ema2=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $HSHQ_PLAINTEXT_ROOT_CONFIG root)
   if ! [ -z "$ema1" ] && [ -z "$ema2" ]; then
