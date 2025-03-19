@@ -57159,7 +57159,7 @@ function outputStackListsScriptServer()
 
   redislist=($(find $HSHQ_NONBACKUP_DIR/ -maxdepth 2 -type d -name redis | sort))
   rm -f $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
-  touch $SCRIPTSERVER_REDIS_STACKLIST_FILENAME
+  touch $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
   for curdir in "${redislist[@]}"
   do
     echo $(echo "$curdir" | rev | cut -d"/" -f2 | rev) >> $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
