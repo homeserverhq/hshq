@@ -1,6 +1,6 @@
 #!/bin/bash
-HSHQ_SCRIPT_VERSION=125
-
+HSHQ_LIB_SCRIPT_VERSION=126
+LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -30,18 +30,29 @@ function init()
   cd ~
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
-  HSHQ_SCRIPT_OPEN_DIR=/tmp/hshqopen
-  HSHQ_SCRIPT_OPEN_FILENAME=lastCaller
+  PRIOR_HSHQ_VERSION=0
+  LAST_RELAYSERVER_VERSION_UPDATE=121
+  IS_DESKTOP_ENV=false
+  if [ -d $HOME/Desktop ]; then
+    IS_DESKTOP_ENV=true
+  fi
+  IS_CONSOLE_ENV=false
+  LOCK_UTILS_FILENAME=lockUtils.sh
+  LOCKHOLDER_FILENAME=lastCaller
+  ALL_LOCKS="hshqopen networkchecks"
   CONFIG_FILE_DEFAULT_FILENAME=config.cnf
   ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME=config.enc
   ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME=config-enc.bak
+  IS_CONFIG_FILE_UNENCRYPTED=false
   RS_INSTALL_SETUP_SCRIPT_NAME=setup.sh
   RS_INSTALL_FRESH_SCRIPT_NAME=install.sh
   RS_INSTALL_TRANSFER_SCRIPT_NAME=transfer.sh
   NUKE_SCRIPT_NAME=nuke.sh
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
+  RELAYSERVER_INSTALL_COMPLETE_FILE=installed
   HSHQ_LOG_FILE=/var/log/hshq.log
+  HSHQ_INSTALL_NOTES_FILENAME='HomeServer_Install_Notes.txt'
   SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
@@ -103,8 +114,8 @@ function init()
   DEFAULT_UNFOUND_IP_ADDRESS=169.254.84.48
   DEFAULT_UNFOUND_IP_SUBNET=169.254.0.0/16
   MAX_DOCKER_PULL_TRIES=10
-  MENU_WIDTH=85
-  MENU_HEIGHT=25
+  MENU_WIDTH=69
+  MENU_HEIGHT=24
   MENU_INT_HEIGHT=10
   ENABLE_STACK_DELETE=false
   SUDO_NORMAL_TIMEOUT=15
@@ -114,6 +125,7 @@ function init()
   MAILX_TIMEOUT=15
   NETPLAN_ORIGIN_HINT=88-hshq
   NETPLAN_APPLY_WAIT=5
+  MIN_NETWORKCHECK_INTERVAL=5
   STACK_VERSION_PREFIX=#HSHQManaged
   HSHQ_ADMIN_NAME="HSHQ Admin"
   IS_HSHQ_DEV_FILENAME=hshq.dev
@@ -122,14 +134,18 @@ function init()
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ] || [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
     IS_HSHQ_DEV_TEST=true
   fi
+  HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
+  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
+  HSHQ_WRAP_DEV_URL=https://homeserverhq.com/hshq-dev.sh
+  HSHQ_WRAP_DEV_VER_URL=https://homeserverhq.com/getwrapversion-dev
+  HSHQ_WRAP_TEST_URL=https://homeserverhq.com/hshq-test.sh
+  HSHQ_WRAP_TEST_VER_URL=https://homeserverhq.com/getwrapversion-test
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
   HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
   HSHQ_LIB_DEV_URL=https://homeserverhq.com/hshqlib-dev.sh
   HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/getversion-dev
   HSHQ_LIB_TEST_URL=https://homeserverhq.com/hshqlib-test.sh
   HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/getversion-test
-  HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
-  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
   HSHQ_GPG_FINGERPRINT=5B9C33067C71ABCFCE1ACF8A7F46128ABB7C1E42
@@ -137,6 +153,7 @@ function init()
   HSHQ_LIB_TMP=$HOME/hshqlib.tmp
   HSHQ_WRAP_TMP=$HOME/hshqwrap.tmp
   HSHQ_LIB_FILENAME=hshqlib.sh
+  HSHQ_NEW_LIB_FILENAME=hshqlib.new
   HSHQ_WRAP_FILENAME=hshq.sh
   APPLICATION_FIRST_LINE="###################### Application Begin #######################"
   APPLICATION_LAST_LINE="####################### Application End ########################"
@@ -153,18 +170,35 @@ function init()
   HSHQ_CUSTOM_POST_IPTABLES_SCRIPT=$HSHQ_SCRIPTS_DIR/root/userCustomPostIPTables.sh
   HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
   HSHQ_PLAINTEXT_USER_CONFIG=$HSHQ_CONFIG_DIR/ptUserConfig.conf
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential"
-  APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart"
+  SYSTEM_STATE_FILENAME=$HSHQ_CONFIG_DIR/systemstate
+  SS_INIT=init
+  SS_INSTALLING=installing
+  SS_RESTORING=restoring
+  SS_BOOTING=booting
+  SS_TRANSFERRING=transferring
+  SS_UPDATING=updating
+  SS_REMOVING=removing
+  SS_RUNNING=running
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin"
+  DESKTOP_APT_LIST=""
+  APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
-  hshqlogo=$(cat << EOF
-
-        #===============================================================#
-        # ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
-        #  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
-        #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
-        #===============================================================#
-
-EOF
+  hshqlogo=$(cat << EOFLG
+#===============================================================#
+# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
+#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
+#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
+#===============================================================#\n
+EOFLG
+  )
+  hshqwarninglogo=$(cat << EOFLG
+#===============================================================#
+# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
+#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
+#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
+#===============================================================#
+        ***** WARNING - Config File is UNENCRYPTED! *****        
+EOFLG
   )
 }
 
@@ -172,11 +206,16 @@ function main()
 {
   init
   checkWrapperVersion
+  IS_CONSOLE_ENV=true
+  IS_PERFORM_INSTALL=false
+  IS_NEW_LIB=false
+  CONNECTING_IP=""
+  IS_PERFORM_RESTORE=false
+  IS_PERFORM_UPDATE=false
   case "$1" in
     "install")
-      CONNECTING_IP=$2
-      USER_SUDO_PW=$3
       IS_PERFORM_INSTALL=true
+      CONNECTING_IP=$2
       ;;
     "-a")
       CONNECTING_IP=$2
@@ -184,39 +223,53 @@ function main()
     "run")
       IS_NEW_LIB=$2
       CONNECTING_IP=$3
-      USER_SUDO_PW=$4
       ;;
     "restore")
       CONNECTING_IP=$2
-      USER_SUDO_PW=$3
       IS_PERFORM_RESTORE=true
+      ;;
+    "update")
+      IS_PERFORM_UPDATE=true
       ;;
     *)
       ;;
   esac
-  # Check and capture the user sudo password, only for the installation/restore processes.
-  # This change was implemented on version 10 of the wrapper (hshq.sh), and 
-  # version 68 of the lib (hshqlib.sh), in order to speed up the installation
-  # process and eliminate duplicate prompting.
-  if ! [ -z "$USER_SUDO_PW" ]; then
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      USER_SUDO_PW=""
-    fi
-  fi
   if [ -z "$CONNECTING_IP" ]; then
     CONNECTING_IP=$(getConnectingIPAddress)
   fi
-  
+  if [ -z "$CONNECTING_IP" ] && [ -f ~/hshq/cip.txt ]; then
+    CONNECTING_IP=$(cat ~/hshq/cip.txt)
+  fi
+  if [ "$IS_PERFORM_UPDATE" = "true" ]; then
+    setSystemState $SS_UPDATING
+    checkUpdateVersion
+    setSystemState $SS_RUNNING
+    return
+  fi
+  if ! [ -z "$USER_SUDO_PW" ]; then
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      unset USER_SUDO_PW
+      USER_SUDO_PW=""
+    fi
+  fi
   if [ "$IS_PERFORM_INSTALL" = "true" ]; then
+    read -s -p "" USER_SUDO_PW
+    clear
+    stty echo
     if [ "$USERNAME" = "root" ]; then
-      echo "Cannot install as root user, exiting..."
+      strErr="main - Cannot install as root user, exiting..."
+      logHSHQEvent error "$strErr"
+      echo "$strErr"
       exit 1
     fi
     performBaseInstallation
     exit 0
   fi
   if [ "$IS_PERFORM_RESTORE" = "true" ]; then
+    read -s -p "" USER_SUDO_PW
+    clear
+    stty echo
     if [ "$USERNAME" = "root" ]; then
       echo "Cannot install as root user, exiting..."
       exit 1
@@ -225,17 +278,20 @@ function main()
     exit 0
   fi
   set +e
-  checkRes=$(tryOpenHSHQScript User-Console)
-  if ! [ -z "$checkRes" ]; then
+  tgLock="$(tryGetLock hshqopen User-Console)"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg hshqopen)"
     showNoYesMessageBox "Script Running" "It appears that this script is already running in another session ($checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. Unknown and damaging consequences can occur if running two different instances at the same time. Are you certain that you wish to continue?"
     mbres=$?
     if [ $mbres -eq 0 ]; then
       exit
     fi
     sudo -k
-    sudo -v
-    closeHSHQScript "main"
-    checkRes=$(tryOpenHSHQScript User-Console)
+    promptTestSudoPW
+    if [ $? -ne 0 ]; then
+      exit 3
+    fi
+    forceGetLock hshqopen "User-Console"
   fi
   set -e
   checkConfigAvailable
@@ -244,6 +300,8 @@ function main()
     isInstalled=$(getConfigVarFromFile IS_INSTALLED $CONFIG_FILE)
     if [ "$isInstalled" = "true" ]; then
       is_hshq_installed=true
+      IS_CONFIG_FILE_UNENCRYPTED=true
+      source $CONFIG_FILE
     else
       is_hshq_installed=false
     fi
@@ -274,8 +332,9 @@ function showNotInstalledMenu()
   checkSupportedHostOS
   while [ -z "$USER_SUDO_PW" ]
   do
-    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME (This is only used for the installation process to eliminate duplicate prompting): ")
+    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
     if [ $? -ne 0 ]; then
+      releaseLock hshqopen "User-Console" false
       exit 3
     fi
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -293,8 +352,7 @@ function showNotInstalledMenu()
   fi
   notinstalledmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$notinstalledmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -329,7 +387,7 @@ EOF
       checkLoadConfig
       initConfig
       nano $CONFIG_FILE
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     3)
@@ -350,12 +408,20 @@ EOF
   esac
 }
 
+function getLogo()
+{
+  if [ "$IS_INSTALLED" = "true" ] && [ "$IS_CONFIG_FILE_UNENCRYPTED" = "true" ]; then
+    echo "$hshqwarninglogo"
+  else
+    echo "$hshqlogo"
+  fi
+}
+
 function showInstalledMenu()
 {
   installedmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$installedmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -415,8 +481,7 @@ function showRestoreMenu()
   fi
   restoremenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -442,8 +507,7 @@ function showRestoreEncryptedMenu()
 {
   restoremenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$restoremenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -489,15 +553,25 @@ function showRestoreUnencryptedMenu()
   else
     rm -f $HOME/$HSHQ_LIB_FILENAME
   fi
-  screen -L -Logfile $HSHQ_LOG_FILE -S hshqRestore bash $HSHQ_LIB_SCRIPT restore "$CONNECTING_IP" "$USER_SUDO_PW"
+  scName=hshqRestore
+  initScreen $scName "bash $HSHQ_LIB_SCRIPT restore $CONNECTING_IP"
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was a problem starting the restore process, exiting..."
+    exit 1
+  fi
+  screen -r $scName
   exit 0
 }
 
 function performFullRestore()
 {
   echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  unset USER_SUDO_PW
+  USER_SUDO_PW=""
   createHSHQLog
   checkLoadConfig
+  forceGetLock networkchecks performFullRestore
+  setSystemState $SS_RESTORING
   IS_INSTALLED=false
   IS_INSTALLING=true
   set +e
@@ -507,15 +581,16 @@ function performFullRestore()
   if ! [ "$USERNAME" = "$origUsername" ] || ! [ "$curUID" = "$USERID" ] || ! [ "$curGID" = "$GROUPID" ]; then
     msgmenu=$(cat << EOF
 
-$hshqlogo
-
- The current username (UID:GID) does not match the original username (UID:GID).
+$(getLogo)
+ The current username(UID:GID) does not match the original.
 
    Current: $USERNAME ($curUID:$curGID)
    Original: $origUsername ($USERID:$GROUPID)
 
  The restore cannot be performed.
- Please ensure to have the exact same username and UID:GID as the Original.
+ Please ensure to have the exact same username
+ and UID:GID as the Original.
+
 EOF
     )
     whiptail --title "ERROR" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -599,7 +674,7 @@ EOF
   sudo docker container prune -f
   createDockerNetworks
   enableAllWGVPNInterfaces
-  sudo $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  createWGDockerNetworks
   outputEnvPortainer
   startPortainer
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
@@ -615,9 +690,11 @@ EOF
     unloadSSHKey
   fi
   removeSudoTimeoutInstall
-  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+  wgDockInternetUpAll
   initCronJobs
+  setSystemState $SS_RUNNING
   performExitFunctions
+  releaseLock networkchecks performFullRestore false
   clear
   echo -e "\n\n\n\n##########################################\n"
   echo -e "HomeServer Restore Process Complete!\n"
@@ -667,8 +744,7 @@ function showRestoreMountDriveMenu()
   fi
   dbackmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -764,8 +840,7 @@ function showRestoreDuplicatiRestoreMenu()
   curListNum=0
   dbackupmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -941,14 +1016,13 @@ function showHSHQUtilsMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-  "1" "Edit Encrypted Configuration File" \
-  "2" "Edit Plaintext Root Configuration File" \
-  "3" "Edit Plaintext User Configuration File" \
+  "1" "Edit Encrypted Config File" \
+  "2" "Edit Plaintext Root Config File" \
+  "3" "Edit Plaintext User Config File" \
   "4" "Generate Signed Certificate" \
   "5" "Reset Caddy Data" \
   "6" "Restart All Stacks" \
@@ -966,19 +1040,19 @@ EOF
     1)
       checkLoadConfig
       nano $CONFIG_FILE
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     2)
       checkLoadConfig
       sudo nano $HSHQ_PLAINTEXT_ROOT_CONFIG
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     3)
       checkLoadConfig
       nano $HSHQ_PLAINTEXT_USER_CONFIG
-      loadConfigVars
+      loadConfigVars true
       set +e
       return 1 ;;
     4)
@@ -1018,18 +1092,18 @@ function showSysUtilsMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Update Linux OS and Reboot" \
   "2" "Download All Docker Images" \
-  "3" "Check For IP Address Changes" \
-  "4" "Refresh Firewall" \
-  "5" "Configure Simple Backup" \
-  "6" "Uninstall and Remove Everything" \
-  "7" "Exit" 3>&1 1>&2 2>&3)
+  "3" "Release All Locks" \
+  "4" "Check For IP Address Changes" \
+  "5" "Refresh Firewall" \
+  "6" "Configure Simple Backup" \
+  "7" "Uninstall and Remove Everything" \
+  "8" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -1047,23 +1121,29 @@ EOF
       set +e
       return 1 ;;
     3)
-      checkLoadConfig
-      checkHostAllInterfaceIPChanges true User-Console
+      sudo -k
       set +e
+      promptTestSudoPW
+      releaseAllLocks
       return 1 ;;
     4)
       checkLoadConfig
-      checkUpdateAllIPTables User-Console
+      checkHostAllInterfaceIPChanges true false User-Console
       set +e
       return 1 ;;
     5)
       checkLoadConfig
-      showSimpleBackupMenu
+      checkUpdateAllIPTables User-Console
       set +e
       return 1 ;;
     6)
-      nukeHSHQ ;;
+      checkLoadConfig
+      showSimpleBackupMenu
+      set +e
+      return 1 ;;
     7)
+      nukeHSHQ ;;
+    8)
 	  return 0 ;;
   esac
 }
@@ -1073,9 +1153,9 @@ function showResetCaddyMenu()
   set +e
   caddymenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the Caddy instances that you wish to reset:
+
 EOF
   )
   caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
@@ -1148,33 +1228,18 @@ function loadVersionVars()
 
 function checkSupportedHostOS()
 {
+  IS_DISTRO_EXP=false
   if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
     return
   fi
-  IS_DISTRO_EXP=false
   if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
-    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-      return
-    fi
-    IS_DISTRO_EXP=true
+    return
   fi
   if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
-    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-      return
-    fi
-    IS_DISTRO_EXP=true
+    return
   fi
   if [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
-    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-      return
-    fi
-    IS_DISTRO_EXP=true
-  fi
-  if false && [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^6. ]]; then
-    if [ "$IS_HSHQ_DEV_TEST" = "true" ]; then
-      return
-    fi
-    IS_DISTRO_EXP=true
+    return
   fi
   if [ "$IS_DISTRO_EXP" = "true" ]; then
     showYesNoMessageBox "Confirm Experimental" "This distribution of Linux is on the experimental list. It has not yet been thoroughly tested. Do you wish to continue?"
@@ -1190,13 +1255,13 @@ function checkSupportedHostOS()
     echo "@ This installation only supports the following Linux distribution(s): @"
     echo "@                                                                      @"
     echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
-    echo "@  - Ubuntu 24.04 (Noble Numbat)        [Experimental]                 @"
-    echo "@  - Debian 12 (Bookworm)               [Experimental]                 @"
-    echo "@  - Mint 22 (Wilma)                    [Experimental]                 @"
+    echo "@  - Ubuntu 24.04 (Noble Numbat)        [Stable]                       @"
+    echo "@  - Debian 12 (Bookworm)               [Stable]                       @"
+    echo "@  - Mint 22 (Wilma)                    [Stable]                       @"
     echo "@                                                                      @"
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   fi
-  closeHSHQScript "checkSupportedHostOS"
+  releaseLock hshqopen "checkSupportedHostOS" false
   exit 2
 }
 
@@ -1312,38 +1377,39 @@ function updateMOTD()
 #!/bin/bash
 
 echo
-echo "#===============================================================#"
-echo "# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #"
-echo "#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #"
-echo "#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #"
-echo "#===============================================================#"
+echo "  #===============================================================#"
+echo "  # ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #"
+echo "  #  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #"
+echo "  #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #"
+echo "  #===============================================================#"
 echo
 
-echo "    Linux OS:  \$(lsb_release -d | cut -d":" -f2 | xargs)"
+echo "      Linux OS:  \$(lsb_release -d | cut -d":" -f2 | cut -d"(" -f1 | xargs)"
 if [ -f $HSHQ_LIB_SCRIPT ]; then
-  echo "HSHQ Version:  \$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d'=' -f2)"
+  echo "  HSHQ Version:  \$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d'=' -f2)"
 fi
-printf "Memory Usage:  %.1f%% of \$(free -h | awk  '/Mem:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
-printf "  Swap Usage:  %.1f%% of \$(free -h | awk  '/Swap:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+printf "  Memory Usage:  %.1f%% of \$(free -h | awk  '/Mem:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+totSwap=\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)
+if [ \$totSwap -gt 0 ]; then
+  printf "    Swap Usage:  %.1f%% of \$(free -h | awk  '/Swap:/{print \$2}')\n" \$((10000 - \$((10**4 * \$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \$totSwap))))e-2
+fi
 
 echo
-echo "Disks: "
-echo "-----------------------------------------------------------------"
-echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
-echo "-----------------------------------------------------------------"
-df -h | grep "^/dev"
-echo
+echo "  Disks: "
+echo "  -----------------------------------------------------------------"
+echo "  Filesystem            Size    Used    Avail   Use%    Mounted on"
+echo "  -----------------------------------------------------------------"
+df -hP | grep "^/dev" | awk '{printf "  %-21s %-7s %-7s %-7s %-7s %-8s\n", \$1, \$2, \$3, \$4, \$5, \$6}'
 echo
 
 # Let's only show zombie count if greater than 10
 zombie_count=\$(ps aux | grep "defunct" | wc -l)
 if [ \$zombie_count -gt 10 ]; then
-  echo "=> There are \$zombie_count zombie processes."
-  echo
+  echo "  => There are \$zombie_count zombie processes."
   echo
 fi
 
-echo "Enter 'bash $HSHQ_WRAP_FILENAME' to run the HomeServerHQ script."
+echo "  Enter 'bash $HSHQ_WRAP_FILENAME' to run the HomeServerHQ script."
 echo
 EOFMD
   chmod 755 $HOME/88-hshq
@@ -1368,6 +1434,7 @@ function performSuggestedSecUpdates()
     sudo systemctl stop apport
     sudo systemctl --now disable apport
     sudo systemctl daemon-reload
+    #sudo systemctl mask apport
   fi
   echo "Authorized uses only." | sudo tee /etc/issue > /dev/null 2>&1
   echo "Authorized uses only." | sudo tee /etc/issue.net > /dev/null 2>&1
@@ -1450,7 +1517,6 @@ function installDependencies()
   sudo sed -i "s|^#*ClientAliveInterval .*$|ClientAliveInterval 15|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*ClientAliveCountMax .*$|ClientAliveCountMax 3|g" /etc/ssh/sshd_config
   sudo sed -i "s|^#*PermitEmptyPasswords .*$|PermitEmptyPasswords no|g" /etc/ssh/sshd_config
-  
   sudo sed -i "s/^#DefaultLimitNOFILE.*/DefaultLimitNOFILE=65536:524288/g" /etc/systemd/system.conf
   sudo sed -i "s/^#DefaultLimitNOFILE.*/DefaultLimitNOFILE=65536:524288/g" /etc/systemd/user.conf
   sudo sed -i "s/^DefaultLimitNOFILE.*/DefaultLimitNOFILE=65536:524288/g" /etc/systemd/system.conf
@@ -1461,29 +1527,16 @@ function installDependencies()
   fi
   sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target > /dev/null 2>&1
 
-  installDocker
-  if ! [ -z $DESKTOP_ENV ]; then
-    case $DESKTOP_ENV in
-      "kde")
-        performAptInstall kde-full
-	    ;;
-      "gnome")
-        performAptInstall ubuntu-gnome-desktop
-	    ;;
-    esac
-    if ! [ $DESKTOP_ENV = "na" ]; then
-      # Default browsers are so-so...
-      sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
-      echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg arch=amd64] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
-      sudo DEBIAN_FRONTEND=noninteractive apt update
-      performAptInstall brave-browser
-      if ! [ -z "$CERTS_ROOT_CA_NAME" ]; then
-        mkdir -p $HOME/.pki
-        mkdir -p $HOME/.pki/nssdb
-        certutil -d sql:$HOME/.pki/nssdb -A -t "CT,C,C" -n "$HOMESERVER_NAME Root CA" -i /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    for util in $DESKTOP_APT_LIST; do
+      if [[ "$(isProgramInstalled $util)" = "false" ]]; then
+        lib_name=$(echo $util | cut -d"|" -f2)
+        echo "Installing $lib_name, please wait..."
+        performAptInstall $lib_name
       fi
-    fi
+    done
   fi
+  installDocker
   for rem_util in $APT_REMOVE_LIST; do
     sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y $rem_util
   done
@@ -1491,19 +1544,26 @@ function installDependencies()
   set -e
 }
 
+function removeBSDMailx()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y bsd-mailx
+  sudo tee /etc/apt/preferences.d/bsd-mailx >/dev/null <<EOFSM
+Package: bsd-mailx
+Pin: release *
+Pin-Priority: -1
+EOFSM
+  sudo apt update > /dev/null 2>&1
+}
+
 function installMailUtils()
 {
   set +e
-  if [[ "$(isProgramInstalled ssmtp)" = "false" ]]; then
-    echo "Installing ssmtp, please wait..."
-    performAptInstall ssmtp
-  fi
-
-  if [[ "$(isProgramInstalled mailx)" = "false" ]]; then
-    echo "Installing mailx, please wait..."
-    performAptInstall mailutils
-  fi
-
+  echo "Removing bsd-mailx, please wait..."
+  removeBSDMailx
+  echo "Installing ssmtp, please wait..."
+  performAptInstall ssmtp
+  echo "Installing mailx, please wait..."
+  performAptInstall mailutils
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
 mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
@@ -1523,15 +1583,20 @@ EOFSM
   getent group mailsenders >/dev/null || sudo groupadd mailsenders 
   sudo usermod -aG mailsenders $USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
+  sudo update-alternatives --set mailx /usr/bin/mail.mailutils
 }
 
 function checkLoadConfig()
 {
   set -e
-  if [ -z "$CONFIG_FILE" ] || ! [ -f $CONFIG_FILE ]; then
+  if ! [ -z "$ENC_CONFIG_FILE" ] && ! [ -f "$ENC_CONFIG_FILE" ]; then
+    ENC_CONFIG_FILE=""
+  fi
+  if [ -z "$CONFIG_FILE" ] || ! [ -f "$CONFIG_FILE" ]; then
     DEF_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
     if [ -f $DEF_CONFIG_FILE ]; then
       CONFIG_FILE=$DEF_CONFIG_FILE
+      ENC_CONFIG_FILE=""
     else
       CONFIG_FILE=""
     fi
@@ -1541,30 +1606,91 @@ function checkLoadConfig()
       ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     fi
   fi
+  set +e
   if ! [ -z "$ENC_CONFIG_FILE" ]; then
-    set +e
     showYesNoMessageBox "Encrypted Config Found" "Encrypted configuration file found. Do you wish to decrypt it?"
     if [ $? -ne 0 ]; then
-      closeHSHQScript "checkLoadConfig"
+      releaseLock hshqopen "checkLoadConfig" false
       exit 1
     fi
-    set -e
+    # Prompt for config password, test it.
+    # Check if sudo, if not, get it and test it.
+    # If either fails, exit.
+    confirmUnlockCreds
+    if [ $? -ne 0 ]; then
+      releaseLock hshqopen "checkLoadConfig" false
+      exit 1
+    fi
     decryptConfigFile "$ENC_CONFIG_FILE"
     ENC_CONFIG_FILE=""
   fi
-  if ! [ -z "$CONFIG_FILE" ] && [ -f $CONFIG_FILE ]; then
-    loadConfigVars
+  confirmUnlockCreds
+  if [ $? -ne 0 ]; then
+    releaseLock hshqopen "checkLoadConfig" false
+    exit 1
   fi
+  set -e
+  if ! [ -z "$CONFIG_FILE" ] && [ -f $CONFIG_FILE ]; then
+    loadConfigVars true
+  fi
+}
+
+function confirmUnlockCreds()
+{
+  promptTestSudoPW
+  if [ $? -ne 0 ]; then
+    return 3
+  fi
+  if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
+    CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=true
+    return
+  fi
+  if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
+    # Assume this is pre-install, so just return
+    return
+  fi
+  promptTestDecryptConfigFile
+  if [ $? -ne 0 ]; then
+    return 3
+  fi
+}
+
+function promptTestSudoPW()
+{
+  set +e
+  if ! [ -z "$USER_SUDO_PW" ]; then
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_SUDO_PW=""
+    fi
+  fi
+  while [ -z "$USER_SUDO_PW" ]
+  do
+    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your sudo password for $USERNAME: ")
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      return 3
+    fi
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      USER_SUDO_PW=""
+      continue
+    fi
+  done
 }
 
 function checkConfigAvailable()
 {
   if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
     CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=true
     return
   fi
   if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
     ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=false
     return
   fi
 }
@@ -1611,11 +1737,9 @@ function initConfig()
   fi
   if [ -z "$CONFIG_FILE" ]; then
     # Create new directories and config file
-    showYesNoMessageBox "No Config Found" "No configuration file found, create initial environment (y/n)?"
-	createInitialEnv
-    loadConfigVars
+    createInitialEnv
+    loadConfigVars true
   fi
-
   set +e
   if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
     showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
@@ -1687,7 +1811,7 @@ function initConfig()
     DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT,$PORTAINER_LOCAL_HTTPS_PORT
     updatePlaintextUserConfigVar DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT $DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT
   done
-
+  
   is_add_error=false
   default_iface=$(getDefaultIface)
   add_interface=""
@@ -1701,6 +1825,7 @@ function initConfig()
         exit 5
       fi
     fi
+    set +e
     addHSInterface $add_interface true
     retVal=$?
     if [ $retVal -ne 0 ] && [ $retVal -ne 1 ]; then
@@ -1708,6 +1833,7 @@ function initConfig()
       add_interface=""
       is_add_error=true
     fi
+    set -e
   done
 
   if [ "$(checkIsIPPrivate $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "false" ]; then
@@ -1748,7 +1874,7 @@ function initConfig()
 
   while [ -z "$HOMESERVER_DOMAIN" ]
   do
-	HOMESERVER_DOMAIN=$(promptUserInputMenu "example.com" "Enter HomeServer Domain" "Enter your HomeServer domain name. You must own this domain to route external emails and/or post services on the public internet: ")
+	HOMESERVER_DOMAIN=$(promptUserInputMenu "" "Enter HomeServer Domain" "Enter your HomeServer domain name, i.e. example.com. You must own this domain to route external emails and/or post services on the public internet: ")
 	if [ -z "$HOMESERVER_DOMAIN" ]; then
 	  showMessageBox "Domain Empty" "The domain cannot be empty"
     elif [ $(checkValidString "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
@@ -1810,7 +1936,7 @@ function initConfig()
 
   while [ -z "$HOMESERVER_NAME" ]
   do
-	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc (No special characters except for commas, hyphens, or periods). This will appear in window titles, certificates, among other things: ")
+	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc. No special characters except for commas, hyphens, or periods. This will appear in window titles, certificates, among other things: ")
 	if [ -z "$HOMESERVER_NAME" ]; then
 	  showMessageBox "HomeServer Name Empty" "The name cannot be empty"
     elif [ $(checkValidStringUpperLowerNumbers "$HOMESERVER_NAME" "[:space:],.-") = "false" ]; then
@@ -1822,7 +1948,7 @@ function initConfig()
   done
   while [ -z "$HOMESERVER_ABBREV" ]
   do
-    HOMESERVER_ABBREV=$(promptUserInputMenu "abc" "Enter HomeServer Abbrev" "Enter an abbreviation for your HomeServer (3 to 10 lowercase alpha-numeric characters). This will be used as a default prefix for admin usernames as well as some other uses: ")
+    HOMESERVER_ABBREV=$(promptUserInputMenu "" "Enter HomeServer Abbrev" "Enter an abbreviation for your HomeServer, 3 to 10 lowercase alpha-numeric characters. This will be used as a default prefix for admin usernames as well as some other uses: ")
     if [ -z "$HOMESERVER_ABBREV" ]; then
       showMessageBox "HomeServer Abbrev Empty" "The abbreviation cannot be empty."
     elif [ $(checkValidString "$HOMESERVER_ABBREV") = "false" ]; then
@@ -1929,7 +2055,7 @@ function initConfig()
     set +e
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
-      tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your HomeServer user ($LDAP_PRIMARY_USER_USERNAME) account: ")
+      tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password for your HomeServer user ($LDAP_PRIMARY_USER_USERNAME) account: ")
       if [ $? -ne 0 ]; then exit; fi
       if [ -z "$tmp_pw1" ]; then
         showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -1988,47 +2114,6 @@ function initConfig()
     fi
     updateConfigVar EMAIL_ADMIN_USERNAME $EMAIL_ADMIN_USERNAME
   done
-  if [ -z "$DESKTOP_ENV" ] && [ "$DISTRO_ID" = "ubuntu" ]; then
-    set +e
-    guimenu=$(cat << EOF
-
-$hshqlogo
-
-Do you want to install a desktop GUI environment for this machine? This is generally not recommended, as this machine should be used as a dedicated server. However, it can be used this way if necessary. Ensure you have plenty of RAM (32GB) for this option. This can easily be added or removed later.
-EOF
-  )
-    whiptail --title "Install Desktop GUI" --yesno "$guimenu" $MENU_HEIGHT $MENU_WIDTH --yes-button "No" --no-button "Yes"
-    mbres=$?
-    if [ $mbres -eq 0 ]; then
-      DESKTOP_ENV="na"
-      updatePlaintextRootConfigVar DESKTOP_ENV $DESKTOP_ENV
-    else
-      desktopmenu=$(cat << EOF
-
-$hshqlogo
-
-EOF
-)
-     menures=$(whiptail --title "Select Desktop Environment" --menu "$desktopmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-      "1" "No Desktop Environment" \
-      "2" "Gnome" \
-      "3" "KDE" 3>&1 1>&2 2>&3)
-      if [ $? -ne 0 ]; then
-        menures=1
-      fi
-      set -e
-      case $menures in
-        1)
-          DESKTOP_ENV="na" ;;
-        2)
-          DESKTOP_ENV="gnome" ;;
-        3)
-          DESKTOP_ENV="kde" ;;
-      esac
-      updatePlaintextRootConfigVar DESKTOP_ENV $DESKTOP_ENV
-      set -e
-    fi
-  fi
   initServicesCredentials
 }
 
@@ -2083,7 +2168,7 @@ function initInstallation()
   strInstallConfig="${strInstallConfig}                      INSTRUCTIONS                     \n"
   strInstallConfig="${strInstallConfig}The system is prepped for installation. It will take around\n"
   strInstallConfig="${strInstallConfig}10-15 minutes to perform the base installation, depending on\n"
-  strInstallConfig="${strInstallConfig}hardward specs and download speeds. Copy all of this info\n"
+  strInstallConfig="${strInstallConfig}hardware specs and download speeds. Copy all of this info\n"
   strInstallConfig="${strInstallConfig}before proceeding. Ensure to scroll to the top and retain\n"
   strInstallConfig="${strInstallConfig}everything between the ##### borders. Simply select the\n"
   strInstallConfig="${strInstallConfig}information with your mouse, and it will automatically be\n"
@@ -2110,16 +2195,30 @@ function initInstallation()
   while true;
   do
     echo -e "________________________________________________________________________\n"
-    echo -e "Do you want to retain this information in a file in the home directory,"
-    echo -e "i.e. (/home/$USERNAME/install.txt)? Note that this information is very"
-    echo -e "sensitive and you should delete the file as soon as you are finished"
-    read -p "with it. Enter 'y' or 'n': " is_keep_config
+    if [ "$IS_DESKTOP_ENV" = "true" ]; then
+      hdir=/home/$USERNAME/Desktop
+      echo -e "Do you want to retain the above information in a file on your Desktop,"
+      echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
+    else
+      hdir=/home/$USERNAME
+      echo -e "Do you want to retain the above information in a file in the home directory,"
+      echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
+    fi
+    echo -e "information is very sensitive and you should delete the file as soon"
+    read -p "as you are finished with it. Enter 'y' or 'n': " is_keep_config
     if [ "$is_keep_config" = "y" ]; then
-      rm -f /home/$USERNAME/install.txt
-      echo -e "${strInstallConfig}" > /home/$USERNAME/install.txt
-      chmod 0400 /home/$USERNAME/install.txt
+      final_prompt="After reading the above section, enter 'install' or 'exit': "
+      rm -f "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@   You should permanently delete this file   @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@     as soon as you are finished with it     @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "${strInstallConfig}" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      chmod 0400 "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       break
     elif [ "$is_keep_config" = "n" ]; then
+      final_prompt="After reading/copying the above section, enter 'install' or 'exit': "
       break
     else
       echo "Unknown response, please try again."
@@ -2129,12 +2228,12 @@ function initInstallation()
   while true;
   do
     echo -e "\n\n________________________________________________________________________\n"
-    read -p "After reading/copying the above section, enter 'install' or 'exit': " is_install
+    read -p "$final_prompt" is_install
     if [ "$is_install" = "install" ]; then
       break
     elif [ "$is_install" = "exit" ]; then
       echo "Exiting..."
-      closeHSHQScript "initConfig"
+      releaseLock hshqopen "initConfig" false
       exit 1
     else
       echo "Unknown response, please try again."
@@ -2144,15 +2243,24 @@ function initInstallation()
     echo "Starting installation on RelayServer..."
     sleep 1
     loadSSHKey
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -p $USER_RELAY_SUDO_PW"
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -d" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
+    unset USER_RELAY_SUDO_PW
+    USER_RELAY_SUDO_PW=""
   fi
   set -e
   sudo -v
   echo "Starting installation on HomeServer..."
   sleep 1
-  closeHSHQScript "preInstallation"
-  screen -L -Logfile $HSHQ_LOG_FILE -S hshqInstall bash $0 install "$CONNECTING_IP" "$USER_SUDO_PW"
+  releaseLock hshqopen "preInstallation" false
+  truncate -s 0 $HSHQ_LOG_FILE
+  scName=hshqInstall
+  initScreen $scName "bash $HSHQ_LIB_SCRIPT install $CONNECTING_IP"
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There was a problem starting the installation, exiting..."
+    exit 1
+  fi
+  screen -r $scName
   exit 0
 }
 
@@ -2172,19 +2280,26 @@ function removeSudoTimeoutInstall()
 
 function performBaseInstallation()
 {
-  checkRes=$(tryOpenHSHQScript Installation)
+  checkRes="$(acquireAllLocks)"
   if ! [ -z "$checkRes" ]; then
-    echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). Please remove the directory: $HSHQ_SCRIPT_OPEN_DIR, then restart the installation."
+    strErr="performBaseInstallation - The HSHQ script is already open or running in a different instance ($checkRes). If you are certain that it is not, then please remove the directories: /tmp/hshqopen and /tmp/networkchecks, then restart the installation."
+    logHSHQEvent error "$strErr"
+    echo "$strErr"
     exit 7
   fi
-  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  setSudoTimeoutInstall
+  set +e
   checkLoadConfig
+  unset USER_SUDO_PW
+  USER_SUDO_PW=""
+  setSudoTimeoutInstall
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
-    echo "Already installed or existing installation is in progress, exiting..."
+    strErr="performBaseInstallation - Already installed or existing installation is in progress, exiting..."
+    logHSHQEvent error "$strErr"
+    echo "$strErr"
     exit 1
   fi
   IS_INSTALLING=true
+  setSystemState $SS_INSTALLING
   updateConfigVar IS_INSTALLING $IS_INSTALLING
   set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update
@@ -2195,23 +2310,36 @@ function performBaseInstallation()
   echo "Setting MOTD..."
   updateMOTD
   performSuggestedSecUpdates
-  logHSHQEvent info "Install Dependencies"
+  logHSHQEvent info "performBaseInstallation - Install Dependencies"
   installMailUtils
   installDependencies
+  clear
+  echo -e "\n\n##########################################"
+  echo -e "     Starting Base HSHQ Installation"
+  echo -e "##########################################\n\n"
+  enable_trapping
+  setup_scroll_area
+  is_draw_pb=true
+  draw_progress_bar 0
   set +e
   performClearIPTables true
   checkUpdateAllIPTables performBaseInstallation-Early
   set -e
+  draw_progress_bar 5
   pullBaseServicesDockerImages
-  logHSHQEvent info "Init DH Params"
+  draw_progress_bar 50
+  logHSHQEvent info "performBaseInstallation - Init DH Params"
   initDHParams
+  draw_progress_bar 53
   getUpdateAssets
-  logHSHQEvent info "Starting Stack Installs"
+  draw_progress_bar 55
+  logHSHQEvent info "performBaseInstallation - Starting Stack Installs"
   installBaseStacks
+  draw_progress_bar 80
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-      logHSHQEvent info "Configure Docker WireGuard Network"
+      logHSHQEvent info "performBaseInstallation - Configure Docker WireGuard Network"
       connectPrimaryInternet
     elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
       dns_file=$HOME/dns.tmp
@@ -2222,12 +2350,14 @@ function performBaseInstallation()
         docker container start heimdall >/dev/null
       fi
     fi
-    logHSHQEvent info "Connect Services To VPN"
-    connectPrimaryVPN
+    draw_progress_bar 81
+    logHSHQEvent info "performBaseInstallation - Connect Services To VPN"
+    connectPrimaryVPN true
+    draw_progress_bar 83
     echo "Waiting 30s for services to initialize..."
     sleep 30
   fi
-  initCronJobs
+  draw_progress_bar 85
   clearQueryLogAndStatsAdguardHS
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -2237,11 +2367,30 @@ function performBaseInstallation()
     fi
   fi
   set -e
-  logHSHQEvent info "Post Installation"
-  removeSudoTimeoutInstall
+  logHSHQEvent info "performBaseInstallation - Post Installation"
+  draw_progress_bar 86
   checkUpdateAllIPTables performBaseInstallation-Late
   set -e
+  draw_progress_bar 88
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-autoipd > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove --purge -y
+  draw_progress_bar 90
   postInstallation
+}
+
+function trustDesktopIcon()
+{
+  set +e
+  dtIcon=$1
+  which gio > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    gio set $HOME/Desktop/$dtIcon metadata::trusted true > /dev/null 2>&1
+    gio set -t string $HOME/Desktop/$dtIcon metadata::xfce-exe-checksum "$(sha256sum $HOME/Desktop/$dtIcon | awk '{print $1}')" > /dev/null 2>&1
+    dbus-launch --exit-with-session gio set $HOME/Desktop/$dtIcon metadata::trusted true > /dev/null 2>&1
+    dbus-launch --exit-with-session gio set -t string $HOME/Desktop/$dtIcon metadata::xfce-exe-checksum "$(sha256sum $HOME/Desktop/$dtIcon | awk '{print $1}')" > /dev/null 2>&1
+    nautilus -q > /dev/null 2>&1
+  fi
 }
 
 function postInstallation()
@@ -2255,35 +2404,140 @@ function postInstallation()
   #sendEmail -s "Configuration File" -b "$mail_msg" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
   sendRootCAEmail true
+  draw_progress_bar 91
   emailFormattedCredentials
+  draw_progress_bar 92
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     #echo "Emailing DNS Info..."
     #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
     echo ""
   fi
   sleep 5
+  draw_progress_bar 94
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
   echo "Sanitizing installation log..."
-  sanitizeFullLog
+  sanitizeHSHQLog
   echo "Installed"
+  draw_progress_bar 95
+  sudo rm -f /etc/skel/hshq.sh
   IS_INSTALLED=true
   updateConfigVar IS_INSTALLED $IS_INSTALLED
   IS_INSTALLING=false
   updateConfigVar IS_INSTALLING $IS_INSTALLING
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    echo "Configuring Desktop environment..."
+    set +e
+    rm -f ~/Desktop/InstallHSHQ.desktop
+    sudo rm -f /usr/share/applications/InstallHSHQ.desktop
+    if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+      sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
+    fi
+    rm -f ~/Desktop/HomePage.desktop
+    cat <<EOFHP > ~/Desktop/HomePage.desktop
+[Desktop Entry]
+Name=$HOMESERVER_NAME
+Exec=firefox $SUB_HSHQHOME.$HOMESERVER_DOMAIN
+Comment=Opens your HomeServer home page
+Terminal=false
+Icon=/usr/share/icons/HSHQ/Homepage.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    chmod 755 ~/Desktop/HomePage.desktop
+    rm -f ~/Desktop/HSHQConsole.desktop
+    which terminator > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      # Specify terminator as console if possible
+      cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
+[Desktop Entry]
+Name=HSHQ Console Util
+Exec=/usr/bin/terminator -x bash -ic "~/hshq.sh"
+Comment=Runs the HSHQ console-based management utility
+Icon=/usr/share/icons/HSHQ/ConsoleHSHQ.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    else
+      cat <<EOFHP > ~/Desktop/HSHQConsole.desktop
+[Desktop Entry]
+Name=HSHQ Console Util
+Exec=bash -ic "~/hshq.sh"
+Comment=Runs the HSHQ console-based management utility
+Terminal=true
+Icon=/usr/share/icons/HSHQ/ConsoleHSHQ.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    fi
+    chmod 755 ~/Desktop/HSHQConsole.desktop
+    rm -f ~/Desktop/HSHQScriptServer.desktop
+    cat <<EOFHP > ~/Desktop/HSHQScriptServer.desktop
+[Desktop Entry]
+Name=HSHQ Web Util
+Exec=firefox https://127.0.0.1:$SCRIPTSERVER_LOCALHOST_PORT
+Comment=Runs the HSHQ web-based management utility
+Terminal=false
+Icon=/usr/share/icons/HSHQ/ScriptServerHSHQ.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    chmod 755 ~/Desktop/HSHQScriptServer.desktop
+    rm -f ~/Desktop/HSHQHelp.desktop
+    cat <<EOFHP > ~/Desktop/HSHQHelp.desktop
+[Desktop Entry]
+Name=Help!
+Exec=firefox forum.homeserverhq.com
+Comment=Ask for help on the HomeServerHQ Forum
+Terminal=false
+Icon=/usr/share/icons/HSHQ/HelpHSHQ.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    chmod 755 ~/Desktop/HSHQHelp.desktop
+    trustDesktopIcon "HomePage.desktop"
+    trustDesktopIcon "HSHQConsole.desktop"
+    trustDesktopIcon "HSHQScriptServer.desktop"
+    trustDesktopIcon "HSHQHelp.desktop"
+    sudo mkdir -p /usr/share/applications
+    sudo cp -f ~/Desktop/HomePage.desktop /usr/share/applications/
+    sudo cp -f ~/Desktop/HSHQConsole.desktop /usr/share/applications/
+    sudo cp -f ~/Desktop/HSHQScriptServer.desktop /usr/share/applications/
+    sudo cp -f ~/Desktop/HSHQHelp.desktop /usr/share/applications/
+    which gsettings > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      # Spell check doesn't belong in a basic text editor,
+      # especially if it's insanely intrusive.
+      gsettings set org.gnome.TextEditor spellcheck false > /dev/null 2>&1
+      # Just because
+      gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' > /dev/null 2>&1
+    fi
+    draw_progress_bar 96
+    addRootCertificateToApps
+    configureFirefox
+    set -e
+  fi
+  draw_progress_bar 99
+  initCronJobs
   encryptConfigFile
+  destroy_scroll_area
   echo -e "\n\n\n\n########################################\n\n"
   echo "HomeServer Installation Complete!"
   echo "The system will automatically reboot in 60 seconds..."
   echo -e "\n\n########################################\n\n"
   sleep 60
-  logHSHQEvent info "Rebooting"
-  closeHSHQScript "postInstallation"
+  logHSHQEvent info "postInstallation - Rebooting"
+  releaseLock hshqopen "postInstallation" false
+  removeSudoTimeoutInstall
+  rm -f ~/dead.letter
+  rm -f $HSHQ_BASE_DIR/cip.txt
+  setSystemState $SS_RUNNING
   sudo reboot
 }
 
-function sanitizeFullLog()
+function sanitizeHSHQLog()
 {
+  sudo sed -i 's/\x1b//g' $HSHQ_LOG_FILE
   sudo sed -i "s|$USERNAME|hshquser|g" $HSHQ_LOG_FILE
   sudo sed -i "s|$LDAP_PRIMARY_USER_USERNAME|hshquser|g" $HSHQ_LOG_FILE
   sudo sed -i "s|$LDAP_ADMIN_USER_USERNAME|hshqadmin|g" $HSHQ_LOG_FILE
@@ -2295,8 +2549,7 @@ function showSimpleBackupMenu()
   set +e
   utilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -2348,8 +2601,7 @@ function showConfigureSimpleBackupMenu()
   fi
   dbackmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -2392,7 +2644,7 @@ EOF
   fi
   while true;
   do
-    backupHour=$(promptUserInputMenu "" "Daily Backup Time" "Enter the hour of the day(0-23) that you wish to perform the daily backup (this can be modified later in Duplicati):")
+    backupHour=$(promptUserInputMenu "" "Daily Backup Time" "Enter the hour of the day(0-23) that you wish to perform the daily backup. This can be modified later in Duplicati:")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -2407,7 +2659,7 @@ EOF
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a quantum super-computer) and you will NOT be able to recover your data: ")
+    tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password to encrypt/decrypt your backup files. ENSURE you remember this or you will be IRREVERSIBLY locked out of your backup files (unless you have a quantum super-computer) and you will NOT be able to recover your data: ")
     if [ $? -ne 0 ]; then
       return
     fi
@@ -2591,8 +2843,7 @@ function showMountBackupDriveMenu()
 
   dbackmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   OLDIFS=$IFS
@@ -2660,6 +2911,52 @@ EOF
   fi
 }
 
+function initScreen()
+{
+  # This function may appear to be overly complex and
+  # contrived, but the main purpose is to inject the
+  # super-user (sudo) password into the running screen
+  # with as minimal of a security footprint as possible.
+  # There's also some race conditions to overcome, hence
+  # the added complexity. This method avoids environment
+  # variables, writing anything to file, and/or anything
+  # (long-running) from showing up in the process list
+  # (ps auxwwe).
+  screenName="$1"
+  screenCmd="$2"
+  set +e
+  dirtest1=/tmp/sctest1
+  isScreenSuccess=false
+  curScreenAttempt=0
+  maxScreenAttempt=5
+  screen -XS $screenName quit > /dev/null 2>&1
+  while [ $curScreenAttempt -lt $maxScreenAttempt ]
+  do
+    ((curScreenAttempt++))
+    rm -fr $dirtest1
+    screen -L -Logfile $HSHQ_LOG_FILE -dmS $screenName
+    screen -S $screenName -X stuff "stty -echo;mkdir $dirtest1\n"
+    curCheckCount=0
+    while ! [ -d $dirtest1 ] && [ $curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d $dirtest1 ]; then
+      screen -XS $screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S $screenName -X stuff "$screenCmd\n"
+    screen -S $screenName -X stuff "$USER_SUDO_PW\n"
+    rm -fr $dirtest1
+    isScreenSuccess=true
+    break
+  done
+  if ! [ "$isScreenSuccess" = "true" ]; then
+    return 1
+  fi
+}
+
 # Stacks Functions
 function showStacksMenu()
 {
@@ -2670,8 +2967,7 @@ function showStacksMenu()
   fi
   svcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$svcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -2715,6 +3011,7 @@ EOF
 function installStacksFromList()
 {
   set +e
+  setSystemState $SS_INSTALLING
   sortedStackList=$(sortCSVList $HSHQ_OPTIONAL_STACKS)
   stackListArr=($(echo $sortedStackList | tr "," "\n"))
   menu_items=""
@@ -2730,9 +3027,9 @@ function installStacksFromList()
   fi
   selsvcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the services that you wish to install:
+
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
@@ -2758,11 +3055,13 @@ EOF
   done
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  setSystemState $SS_RUNNING
 }
 
 function installListOfServices()
 {
   echo "Installing list of services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
+  setSystemState $SS_INSTALLING
   stackListArr=($(echo "$1" | tr "," "\n"))
   setSudoTimeoutInstall
   getUpdateAssets
@@ -2774,6 +3073,7 @@ function installListOfServices()
   docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  setSystemState $SS_RUNNING
   echo "Installing list of services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
@@ -2812,6 +3112,7 @@ function installAllAvailableStacks()
   fi
   set -e
   echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
+  setSystemState $SS_INSTALLING
   setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
@@ -2822,6 +3123,7 @@ function installAllAvailableStacks()
   docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
   outputStackListsScriptServer
+  setSystemState $SS_RUNNING
   echo "Installing all services, End time: $(date '+%Y-%m-%d %H:%M:%S')"
 }
 
@@ -2888,9 +3190,9 @@ function performStackUpdatesFromList()
   fi
   selsvcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the services that you wish to update:
+
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
@@ -2950,6 +3252,7 @@ function updateListOfStacks()
   do
     if [ -z "$cur_svc" ]; then continue; fi
     unset is_upgrade_error
+    is_upgrade_error=""
     echo -e "\n\nUpdating ${cur_svc}..."
     if ! [ "$(isItemInCSVList $cur_svc $stacks_need_update_list)" = "true" ]; then
       continue
@@ -2993,9 +3296,9 @@ function deleteStacksFromList()
   fi
   selsvcsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the services that you wish to remove:
+
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
@@ -3077,8 +3380,7 @@ function setupVPNConnection()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "none" ]; then
     vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
     menures=$(whiptail --title "Select an option for your PRIMARY VPN connection" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -3088,19 +3390,18 @@ EOF
     case $menures in
       1)
         PRIMARY_VPN_SETUP_TYPE=host
-        updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         setupHostedVPN
         if [ $? -ne 0 ]; then
           return 1
         fi
         ;;
       2)
-        PRIMARY_VPN_SETUP_TYPE=manual
+        PRIMARY_VPN_SETUP_TYPE=none
         updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
         # Determine if this is a private IP, and if so, let the user know about networking.
-        showMsg="Since you will set up a RelayServer later, you will need to manually change your DNS server to the IP address of this HomeServer ($HOMESERVER_HOST_PRIMARY_INTERFACE_IP), in order to access your services internally. "
+        showMsg="Since you will set up a RelayServer later, you will need to manually change the DNS server on any client devices to the IP address of this HomeServer ($HOMESERVER_HOST_PRIMARY_INTERFACE_IP), in order to access your services. "
         if [ "$(checkIsIPPrivate $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "true" ]; then
-          showMsg=$showMsg"You will also need to ensure the device from which you are accessing the HomeServer is on the same local private network, and if you have any firewalls around your HomeServer, that the following ports are accessible: 443 (https),$SSH_PORT(ssh),$SCRIPTSERVER_LOCALHOST_PORT(Script-server),$PORTAINER_LOCAL_HTTPS_PORT(Portainer). Do not open these ports on your router, only ensure that you can reach them internally on the HomeServer."
+          showMsg=$showMsg"The client devices must be on the same local network (connected to the same router) as well."
         fi
         showMessageBox "DNS Server" "$showMsg"
         ;;
@@ -3118,8 +3419,7 @@ function setupJoinPrimaryVPN()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -3130,7 +3430,7 @@ EOF
   case $menures in
     1)
       applyHomeServerPrimaryVPNConfig
-      closeHSHQScript "setupJoinPrimaryVPN"
+      releaseLock hshqopen "setupJoinPrimaryVPN" false
       return 1 ;;
     2)
       createNetworkJoin false
@@ -3144,127 +3444,257 @@ EOF
   esac
 }
 
-function setupHostedVPN()
+function webSetupHostedVPN()
 {
-  if [[ "$(isProgramInstalled dig)" = "false" ]]; then
-    echo "Installing dig, please wait..."
-    performAptInstall dnsutils > /dev/null 2>&1
-  fi
-  if [[ "$(isProgramInstalled sshpass)" = "false" ]]; then
-    echo "Installing sshpass, please wait..."
-    performAptInstall sshpass > /dev/null 2>&1
-  fi
-  if [[ "$(isProgramInstalled sipcalc)" = "false" ]]; then
-    echo "Installing sipcalc, please wait..."
-    performAptInstall sipcalc > /dev/null 2>&1
-  fi
-  if [[ "$(isProgramInstalled jq)" = "false" ]]; then
-    echo "Installing jq, please wait..."
-    performAptInstall jq > /dev/null 2>&1
-  fi
+  set +e
+  # These variables should already be set by Script-server
+  # rs_name
+  # rs_cur_username
+  # rs_cur_password
+  # rs_cur_ssh_port
+  # rs_external_ip
+  # rs_ledomains
+  # rs_new_username
+  # rs_new_password
+  # rs_new_ssh_port
+  # rs_primary_vpn_subnet
 
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
-    echo "setupHostedVPN - RelayServer is initialized, PRIMARY_VPN_SETUP_TYPE=$PRIMARY_VPN_SETUP_TYPE, RELAYSERVER_IS_INIT=$RELAYSERVER_IS_INIT"
-    return 0
+  case "$PRIMARY_VPN_SETUP_TYPE" in
+    "host")
+      echo "ERROR: You are already hosting a VPN, please remove the existing one first, returning..."
+      return
+    ;;
+    "join")
+      echo "ERROR: You have already joined an existing primary VPN. You must remove this first, returning..."
+      return
+    ;;
+    "none"|"manual")
+      PRIMARY_VPN_SETUP_TYPE=none
+      updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE "$PRIMARY_VPN_SETUP_TYPE"
+    ;;
+    *)
+      echo "ERROR: Unknown VPN option, returning..."
+      return
+    ;;
+  esac
+  RELAYSERVER_WG_VPN_NETNAME="vpn-"${HOMESERVER_ABBREV:0:6}
+  curNum=1
+  while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
+  do
+    RELAYSERVER_WG_VPN_NETNAME="vpn-${HOMESERVER_ABBREV:0:5}${curNum}"
+    ((curNum++))
+  done
+  if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ]; then
+    echo "ERROR: You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!? Returning..."
+    return
   fi
-  sleep_interval_after_api_request=5
-  sleep_interval_after_create_stack=5
-  resetRelayServerData
-
-  if [ -z $RELAYSERVER_WG_VPN_NETNAME ]; then
-    RELAYSERVER_WG_VPN_NETNAME="vpn-"${HOMESERVER_ABBREV:0:6}
-    curNum=1
-    while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
-    do
-      RELAYSERVER_WG_VPN_NETNAME="vpn-${HOMESERVER_ABBREV:0:5}${curNum}"
-      ((curNum++))
-    done
-    if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ]; then
-      showMessageBox "Too Many Connections" "You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!?"
-      return 1
-    fi
-    updateConfigVar RELAYSERVER_WG_VPN_NETNAME "$RELAYSERVER_WG_VPN_NETNAME"
+  RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:6}"
+  curNum=1
+  while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
+  do
+    RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:5}${curNum}"
+    ((curNum++))
+  done
+  if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ]; then
+    echo "ERROR: You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!? Returning..."
+    return
   fi
-
-  if [ -z $RELAYSERVER_WG_INTERNET_NETNAME ]; then
-    RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:6}"
-    curNum=1
-    while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
-    do
-      RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:5}${curNum}"
-      ((curNum++))
-    done
-    if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ]; then
-      showMessageBox "Too Many Connections" "You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!?"
-      return 1
-    fi
-    updateConfigVar RELAYSERVER_WG_INTERNET_NETNAME "$RELAYSERVER_WG_INTERNET_NETNAME"
-  fi
-
-  if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
-    set +e
-    showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
-    mbres=$?
-    if [ $mbres -eq 0 ]; then
-      IS_ACCEPT_DEFAULTS=yes
-    else
-      IS_ACCEPT_DEFAULTS=no
-    fi
-    set -e
-  fi
-  set -e
-
   RELAYSERVER_EXT_EMAIL_HOSTNAME=$SUB_POSTFIX.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
+  if [ $(checkValidStringUpperLowerNumbers "$rs_name" "[:space:],.-") = "false" ]; then
+    echo "ERROR: The selected RelayServer name contains invalid characters, returning..."
+    return
+  fi
+  RELAYSERVER_NAME="$rs_name"
+  if [ $(checkValidString "$rs_ledomains" ",.-") = "false" ]; then
+    echo "ERROR: The selected LetsEncrypt subdomains list contains invalid characters, returning..."
+    return
+  fi
+  if [ "$rs_cur_username" = "root" ]; then
+    if [ "$(checkValidUsername $rs_new_username)" = "false" ]; then
+      echo "ERROR: The selected username is invalid. It must consists of a-z and/or 0-9. No special characters, the length must be between 4-32 characters, and it must begin with a letter, returning..."
+      return
+    fi
+    if [ "$(checkValidPassword $rs_new_password 16)" = "false" ]; then
+      echo "ERROR: The password is invalid or is too weak($rs_new_password). It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($), returning..."
+      return
+    fi
+    USER_RELAY_SUDO_PW="$rs_new_password"
+  else
+    USER_RELAY_SUDO_PW="$rs_cur_password"
+  fi
+  RELAYSERVER_LE_CERT_DOMAINS="$rs_ledomains"
+  RELAYSERVER_REMOTE_USERNAME="$rs_new_username"
+  RELAYSERVER_SERVER_IP="$rs_external_ip"
+  RELAYSERVER_CURRENT_SSH_PORT="$rs_cur_ssh_port"
+  RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
+  if [ "$(checkValidIPAddress $rs_primary_vpn_subnet)" = "false" ]; then
+    echo "ERROR: Invalid RelayServer IP address, returning..."
+    return
+  fi
+  if ! [ "$(echo "$rs_primary_vpn_subnet" | cut -d"." -f1)" = "10" ]; then
+    echo "ERROR: VPN subnet must be in the 10.0.0.0/8 range, returning..."
+    return
+  fi
+  is_intersect="$(isNetworkIntersectOurNetworks ${rs_primary_vpn_subnet}/24 false)"
+  if ! [ -z "$is_intersect" ]; then
+    echo "ERROR: VPN subnet collision - $is_intersect, returning..."
+    return
+  fi
+  PRIMARY_VPN_SUBNET="${rs_primary_vpn_subnet}/24"
+  PRIMARY_VPN_SETUP_TYPE=host
+  setupPortForwardingDB
+  chkSSHPort="$(checkPortForwardingIntersect tcp $rs_new_ssh_port $rs_new_ssh_port)"
+  if ! [ -z "$chkSSHPort" ]; then
+    sudo sqlite3 $HSHQ_DB "drop table portforwarding;"
+    echo "ERROR: $chkSSHPort, returning..."
+    return
+  fi
+  RELAYSERVER_SSH_PORT="$rs_new_ssh_port"
+
+  # Clear out any old hosts
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+  ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+  if [ -z "$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME" ]; then
+    echo "Generating keys, please wait..."
+    RELAYSERVER_SSH_PRIVATE_KEY_FILENAME=$HOMESERVER_ABBREV".key"
+    updateConfigVar RELAYSERVER_SSH_PRIVATE_KEY_FILENAME $RELAYSERVER_SSH_PRIVATE_KEY_FILENAME
+    rm -f $HSHQ_CONFIG_DIR/$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME
+    rm -f $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub
+    RELAYSERVER_SSH_PRIVATE_KEY_PHRASE=$(pwgen -c -n 64 1)
+    updateConfigVar RELAYSERVER_SSH_PRIVATE_KEY_PHRASE $RELAYSERVER_SSH_PRIVATE_KEY_PHRASE
+    ssh-keygen -f $HSHQ_CONFIG_DIR/$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME -N $RELAYSERVER_SSH_PRIVATE_KEY_PHRASE
+    chmod 0400 $HSHQ_CONFIG_DIR/$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME
+    chmod 0400 $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub
+  fi
+  # Login, upload check script, log back in and run check script
+  # 1. Login
+  echo "Logging into RelayServer..."
+  SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo hello >/dev/null"
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was an problem logging in to the RelayServer, returning..."
+    return
+  fi
+  # 2. Upload check script
+  echo "Uploading validation script..."
+  tee /tmp/checkRS.sh >/dev/null <<EOFRS
+#!/bin/bash
+
+curUsername=$rs_cur_username
+newUsername=$rs_new_username
+pubkey="$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)"
+function main()
+{
+  if [ "\$curUsername" = "root" ]; then
+    read -s -p "" newUserPass
+    id "\$newUsername" > /dev/null 2>&1
+    if [ \$? -eq 0 ]; then
+      echo "User (\$newUsername) already exists, exiting..."
+      removeMyself
+      exit 1
+    fi
+    checkForHSHQ
+    checkForRunningDockerContainers
+    sudo useradd -m -G sudo -s /bin/bash "\$newUsername" > /dev/null 2>&1
+    echo "\$newUsername:\$newUserPass" | sudo chpasswd > /dev/null 2>&1
+    activeUsername=\$newUsername
+  else
+    read -s -p "" curUserSudo
+    echo "\$curUserSudo" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      echo "The sudo password for \$curUsername is incorrect, exiting..."
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForHSHQ); checkForHSHQ"
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForRunningDockerContainers); checkForRunningDockerContainers"
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    activeUsername=\$curUsername
+  fi
+  getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
+  sudo usermod -aG docker \$activeUsername > /dev/null 2>&1
+  mkdir -p /home/\$activeUsername/.ssh
+  chmod 775 /home/\$activeUsername/.ssh
+  chown -R \$activeUsername:\$activeUsername /home/\$activeUsername/.ssh
+  pubk=\$(echo "\$pubkey" | cut -d " " -f2)
+  grep "\$pubk" /home/\$activeUsername/.ssh/authorized_keys > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Adding pubkey to /home/\$activeUsername/.ssh/authorized_keys"
+    echo "\$pubkey" >> /home/\$activeUsername/.ssh/authorized_keys
+  else
+    echo "Pubkey already present."
+  fi
+  rm -f /home/\$activeUsername/$RS_INSTALL_SETUP_SCRIPT_NAME
+  rm -f /home/\$activeUsername/$RS_INSTALL_FRESH_SCRIPT_NAME
+  removeMyself
+}
+
+function checkForHSHQ()
+{
+  findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
+  if ! [ -z "\$findhshq" ]; then
+    echo "An hshq directory already exists: \$findhshq. You must log into the RelayServer and run the nuke.sh script (bash nuke.sh) to clear everythign out, exiting..."
+    exit 5
+  fi
+}
+
+function checkForRunningDockerContainers()
+{
+  is_containers=\$(docker ps -q 2>/dev/null | head -n 1)
+  if ! [ -z "\$is_containers" ]; then
+    echo "There are currently running docker containers, the server must be clear of all activity, exiting..."
+    exit 6
+  fi
+}
+
+function removeMyself()
+{
+  rm -f \$0
+}
+
+main
+EOFRS
+  sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT /tmp/checkRS.sh $rs_cur_username@$RELAYSERVER_SERVER_IP:~/
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was an problem uploading a file to the RelayServer, returning..."
+    rm -f /tmp/checkRS.sh
+    return
+  fi
+  rm -f /tmp/checkRS.sh
+  # 3. Log back in and run check script
+  echo "Performing validation..."
+  if ! [ "$rs_cur_username" = "root" ]; then
+    rs_new_password="$rs_cur_password"
+  fi
+  SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "bash ~/checkRS.sh" <<< "$rs_new_password"
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was a problem with the RelayServer, see above."
+    return
+  fi
+  echo "All is good, assigning values..."
+  # Everything is good, let's begin
+  resetRelayServerData
+  updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE "$PRIMARY_VPN_SETUP_TYPE"
+  updateConfigVar RELAYSERVER_WG_VPN_NETNAME "$RELAYSERVER_WG_VPN_NETNAME"
+  updateConfigVar RELAYSERVER_WG_INTERNET_NETNAME "$RELAYSERVER_WG_INTERNET_NETNAME"
   updateConfigVar RELAYSERVER_EXT_EMAIL_HOSTNAME $RELAYSERVER_EXT_EMAIL_HOSTNAME
-
-  RELAYSERVER_SSH_PORT=""
-  while [ -z "$RELAYSERVER_SSH_PORT" ]
-  do
-	RELAYSERVER_SSH_PORT=$(promptUserInputMenu "$SSH_PORT" "Enter NEW RelayServer SSH Port" "Enter your desired SSH Port for your RelayServer. It is highly advised to change your default SSH port (22). (Bots will constantly probe port 22)")
-	if [ -z "$RELAYSERVER_SSH_PORT" ]; then
-	  showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
-    elif [ "$(checkValidNumber $RELAYSERVER_SSH_PORT)" = "false" ]; then
-      showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must consist of 0-9"
-      RELAYSERVER_SSH_PORT=""
-	else
-	  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
-	fi
-    resetRSInit
-  done
-  RELAYSERVER_NAME=""
-  while [ -z "$RELAYSERVER_NAME" ]
-  do
-    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      RELAYSERVER_NAME="$HOMESERVER_NAME RelayServer"
-    else
-      RELAYSERVER_NAME=$(promptUserInputMenu "$HOMESERVER_NAME RelayServer" "Enter RelayServer Name" "Enter the RelayServer Name:")
-    fi
-	if [ -z "$RELAYSERVER_NAME" ]; then
-	  showMessageBox "RelayServer Name Empty" "The RelayServer Name cannot be empty"
-	else
-	  updateConfigVar RELAYSERVER_NAME "$RELAYSERVER_NAME"
-	fi
-    resetRSInit
-  done
-
-  RELAYSERVER_LE_CERT_DOMAINS=unset
-  while [ "$RELAYSERVER_LE_CERT_DOMAINS" = "unset" ]
-  do
-    lecert_def=$(getLetsEncryptCertsDefault)
-    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      RELAYSERVER_LE_CERT_DOMAINS="$lecert_def"
-    else
-      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$lecert_def" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
-	  if [ $(checkValidString "$RELAYSERVER_LE_CERT_DOMAINS" ",.-") = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The domain list contains invalid character(s). It must consist of a-z (lowercase), 0-9, -, and/or ."
-        RELAYSERVER_LE_CERT_DOMAINS=unset
-	  fi
-    fi
-    resetRSInit
-  done
+  updateConfigVar RELAYSERVER_NAME "$RELAYSERVER_NAME"
+  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
   updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
+  updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
+  updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
+  updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
+  updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
+  updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
+  # SSH (do both protocols, even though only need TCP)
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
   leCertsArr=($(echo $RELAYSERVER_LE_CERT_DOMAINS | tr "," "\n"))
-  isReload=false
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
   for leCert in "${leCertsArr[@]}"
   do
@@ -3285,45 +3715,69 @@ function setupHostedVPN()
           printf -v new_value '%s,' "${var_valueArr[@]}"
           new_value=""$(echo "${new_value%,}")"\""
           updateConfigVar $var_name $new_value
-          isReload=true
         fi
       done
     fi
   done
-  if [ "$isReload" = "true" ]; then
-    loadSvcVars
-  fi
-  resetRSInit
-  num_tries=1
-  max_tries=100
-  PRIMARY_VPN_SUBNET=""
-  while [ -z "$PRIMARY_VPN_SUBNET" ] && [ $num_tries -lt $max_tries ]
-  do
-    ((num_tries++))
-    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      PRIMARY_VPN_SUBNET=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
-    else
-      PRIMARY_VPN_SUBNET=$(promptUserInputMenu "10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24" "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
-    fi
-	if [ -z "$PRIMARY_VPN_SUBNET" ] || [ "$(checkValidIPAddress $PRIMARY_VPN_SUBNET)" = "false" ]; then
-	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
-      continue
-	fi
-    is_intersect="$(isNetworkIntersectOurNetworks $PRIMARY_VPN_SUBNET false)"
-    if ! [ -z "$is_intersect" ]; then
-      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
-	  showMessageBox "Network Collision" "Network Collision: $is_intersect"
-      continue
-    fi
-	updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
-    resetRSInit
-  done
-  if [ -z "$PRIMARY_VPN_SUBNET" ]; then
-    # We tried...
-    echo "ERROR: Could not allocate VPN network subnet."
-    return 1
-  fi
+  initRelayServerCredentials
+  outputHostedVPNConfigs
+  insertSQLHostedVPN
 
+  echo "Generating RelayServer install scripts..."
+  outputRelayServerInstallSetupScript
+  outputRelayServerInstallFreshScript
+  outputRelayServerInstallTransferScript
+  loadSSHKey
+  scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+  scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
+  unloadSSHKey
+  set +e
+  prepSvcsHostedVPN
+  RELAYSERVER_IS_INIT=true
+  updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
+  set +e
+  startStopStack mailu stop
+  sleep 2
+  echo "Generating mailu certs..."
+  generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
+  echo "Setting mailu relay creds..."
+  updateMailuStackRelayHost
+  # Start Install
+  set +e
+  echo "Starting installation on RelayServer..."
+  loadSSHKey
+  set +e
+  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -d" <<< "$USER_RELAY_SUDO_PW"
+  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "export TERM=linux; screen -r hshqInstall"
+  unloadSSHKey
+  echo "RelayServer is rebooting..."
+  echo "Sleeping 30 seconds, then will attempt to connect..."
+  sleep 30
+  set +e
+  connectPrimaryInternet
+  set +e
+  connectPrimaryVPN false
+  set +e
+  updateEndpointIPs
+  set +e
+  rs_wg_user_conf=$(sudo cat $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf)
+  wgconfig=""
+  wgconfig="$wgconfig""============= User WireGuard Configuration ============\n"
+  wgconfig="$wgconfig""""""$rs_wg_user_conf""""\n"
+  wgconfig="$wgconfig""=======================================================\n"
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    wgconfigfile="$HOME/Desktop/User1_WireGuard.conf"
+  else
+    wgconfigfile="$HOME/User1_WireGuard.conf"
+  fi
+  echo -e "$wgconfig" > $wgconfigfile
+  sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
+}
+
+function initRelayServerCredentials()
+{
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
     updateConfigVar RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_USERNAME
@@ -3449,8 +3903,10 @@ function setupHostedVPN()
   updateConfigVar SMTP_RELAY_USERNAME $SMTP_RELAY_USERNAME
   SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   updateConfigVar SMTP_RELAY_PASSWORD $SMTP_RELAY_PASSWORD
-  setupPortForwardingDB
+}
 
+function outputHostedVPNConfigs()
+{
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf >/dev/null <<EOFCF
 [Interface]
@@ -3467,7 +3923,6 @@ PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
   sudo cp $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf /etc/wireguard/${RELAYSERVER_WG_VPN_NETNAME}.conf
-
   sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
   tableid=$(getNextWGRoutingTableID)
   dockerNetworkName="dwg-${RELAYSERVER_WG_INTERNET_NETNAME}"
@@ -3492,16 +3947,6 @@ Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVE
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
-
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-restartWG.sh >/dev/null <<EOFPO
-#!/bin/bash
-
-systemctl restart wg-quick@${RELAYSERVER_WG_VPN_NETNAME}
-$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf restart
-
-EOFPO
-  sudo chmod 0500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-restartWG.sh
-
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf >/dev/null <<EOFCF
 [Interface]
@@ -3522,7 +3967,6 @@ Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVE
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
-
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf >/dev/null <<EOFCF
 [Interface]
@@ -3538,41 +3982,10 @@ Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVE
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
-  outputRelayServerInstallSetupScript
-  outputRelayServerInstallFreshScript
-  outputRelayServerInstallTransferScript
-  uploadVPNInstallScripts false
-  if [ $? -ne 0 ]; then
-    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
-    return 1
-  fi
+}
 
-  if [ "$IS_INSTALLED" = "true" ]; then
-    startStopStack mailu stop
-    sleep 5
-    generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
-    startStopStack mailu start
-    docker container stop heimdall > /dev/null 2>&1
-    docker container stop uptimekuma > /dev/null 2>&1
-    insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false
-    insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false
-    checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0
-    insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false
-    insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
-    insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
-    insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
-    insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
-    checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
-    docker container start heimdall > /dev/null 2>&1
-    docker container start uptimekuma > /dev/null 2>&1
-    emailVaultwardenCredentials true
-  fi
-
+function insertSQLHostedVPN()
+{
   curdt=$(getCurrentDate)
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_PRESHAREDKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
@@ -3583,13 +3996,242 @@ EOFCF
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+}
 
+function prepSvcsHostedVPN()
+{
+  docker container stop heimdall > /dev/null 2>&1
+  docker container stop uptimekuma > /dev/null 2>&1
+  insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false
+  insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false
+  checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0
+  insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false
+  insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
+  insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
+  insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
+  insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
+  checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
+  docker container start heimdall > /dev/null 2>&1
+  docker container start uptimekuma > /dev/null 2>&1
+  set +e
+  echo "Emailing credentials..."
+  emailVaultwardenCredentials true
+  set +e
+  echo "Updating Portainer and Jitsi..."
+  updatePortainerJitsiIPChanges
+  set +e
+  echo "Updating IP tables..."
+  checkUpdateAllIPTables prepSvcsHostedVPN
+}
+
+function setupHostedVPN()
+{
+  echo "Checking for required utils, please wait..."
+  if [[ "$(isProgramInstalled dig)" = "false" ]]; then
+    echo "Installing dig, please wait..."
+    performAptInstall dnsutils > /dev/null 2>&1
+  fi
+  if [[ "$(isProgramInstalled sshpass)" = "false" ]]; then
+    echo "Installing sshpass, please wait..."
+    performAptInstall sshpass > /dev/null 2>&1
+  fi
+  if [[ "$(isProgramInstalled sipcalc)" = "false" ]]; then
+    echo "Installing sipcalc, please wait..."
+    performAptInstall sipcalc > /dev/null 2>&1
+  fi
+  if [[ "$(isProgramInstalled jq)" = "false" ]]; then
+    echo "Installing jq, please wait..."
+    performAptInstall jq > /dev/null 2>&1
+  fi
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
+    echo "setupHostedVPN - RelayServer is initialized, PRIMARY_VPN_SETUP_TYPE=$PRIMARY_VPN_SETUP_TYPE, RELAYSERVER_IS_INIT=$RELAYSERVER_IS_INIT"
+    return 0
+  fi
+  resetRelayServerData
+  if [ -z $RELAYSERVER_WG_VPN_NETNAME ]; then
+    RELAYSERVER_WG_VPN_NETNAME="vpn-"${HOMESERVER_ABBREV:0:6}
+    curNum=1
+    while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
+    do
+      RELAYSERVER_WG_VPN_NETNAME="vpn-${HOMESERVER_ABBREV:0:5}${curNum}"
+      ((curNum++))
+    done
+    if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ]; then
+      showMessageBox "Too Many Connections" "You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!?"
+      return 1
+    fi
+    updateConfigVar RELAYSERVER_WG_VPN_NETNAME "$RELAYSERVER_WG_VPN_NETNAME"
+  fi
+
+  if [ -z $RELAYSERVER_WG_INTERNET_NETNAME ]; then
+    RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:6}"
+    curNum=1
+    while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
+    do
+      RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:5}${curNum}"
+      ((curNum++))
+    done
+    if [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ]; then
+      showMessageBox "Too Many Connections" "You have 99 other connections that start with ${HOMESERVER_ABBREV:0:5}?!?"
+      return 1
+    fi
+    updateConfigVar RELAYSERVER_WG_INTERNET_NETNAME "$RELAYSERVER_WG_INTERNET_NETNAME"
+  fi
+
+  if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
+    set +e
+    showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
+    mbres=$?
+    if [ $mbres -eq 0 ]; then
+      IS_ACCEPT_DEFAULTS=yes
+    else
+      IS_ACCEPT_DEFAULTS=no
+    fi
+    set -e
+  fi
+  set -e
+
+  RELAYSERVER_EXT_EMAIL_HOSTNAME=$SUB_POSTFIX.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
+  updateConfigVar RELAYSERVER_EXT_EMAIL_HOSTNAME $RELAYSERVER_EXT_EMAIL_HOSTNAME
+
+  RELAYSERVER_SSH_PORT=""
+  while [ -z "$RELAYSERVER_SSH_PORT" ]
+  do
+	RELAYSERVER_SSH_PORT=$(promptUserInputMenu "$SSH_PORT" "Enter NEW RelayServer SSH Port" "Enter your desired SSH Port for your RelayServer. It is highly advised to change your default SSH port (22). Bots will constantly probe port 22:")
+	if [ -z "$RELAYSERVER_SSH_PORT" ]; then
+	  showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
+    elif [ "$(checkValidNumber $RELAYSERVER_SSH_PORT)" = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must consist of 0-9"
+      RELAYSERVER_SSH_PORT=""
+	else
+	  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
+	fi
+    resetRSInit
+  done
+  while [ -z "$RELAYSERVER_NAME" ]
+  do
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      RELAYSERVER_NAME="$HOMESERVER_NAME RelayServer"
+    else
+      RELAYSERVER_NAME=$(promptUserInputMenu "$HOMESERVER_NAME RelayServer" "Enter RelayServer Name" "Enter the RelayServer Name:")
+    fi
+	if [ -z "$RELAYSERVER_NAME" ]; then
+	  showMessageBox "RelayServer Name Empty" "The RelayServer Name cannot be empty"
+	else
+	  updateConfigVar RELAYSERVER_NAME "$RELAYSERVER_NAME"
+	fi
+    resetRSInit
+  done
+
+  while [ "$RELAYSERVER_LE_CERT_DOMAINS" = "unset" ]
+  do
+    lecert_def=$(getLetsEncryptCertsDefault)
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      RELAYSERVER_LE_CERT_DOMAINS="$lecert_def"
+    else
+      RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$lecert_def" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
+	  if [ $(checkValidString "$RELAYSERVER_LE_CERT_DOMAINS" ",.-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The domain list contains invalid character(s). It must consist of a-z (lowercase), 0-9, -, and/or ."
+        RELAYSERVER_LE_CERT_DOMAINS=unset
+	  fi
+    fi
+    resetRSInit
+  done
+  updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
+  leCertsArr=($(echo $RELAYSERVER_LE_CERT_DOMAINS | tr "," "\n"))
+  isReload=false
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
+  for leCert in "${leCertsArr[@]}"
+  do
+    sudo sqlite3 $HSHQ_DB "insert or ignore into lecertdomains(Domain,BaseDomain) values('$leCert','$HOMESERVER_DOMAIN');"
+    curBaseDomain=$(getBaseDomain $leCert)
+    curSubDomain=$(getSubDomain $leCert)
+    if [ "$curBaseDomain" = "$HOMESERVER_DOMAIN" ]; then
+      for curSVC in "${SVCS_ARR[@]}"
+      do
+        var_base=$(echo $curSVC | cut -d"=" -f1 | cut -d"_" -f 2-)
+        subdom=$(echo $curSVC | cut -d"=" -f2 | cut -d"," -f6)
+        subdom="${subdom//\"}"
+        if [ "$subdom" = "$curSubDomain" ]; then
+          var_name="SVCD_"$var_base
+          var_value=$(getConfigVar $var_name)
+          var_valueArr=($(echo $var_value | tr "," "\n"))
+          var_valueArr[6]=le
+          printf -v new_value '%s,' "${var_valueArr[@]}"
+          new_value=""$(echo "${new_value%,}")"\""
+          updateConfigVar $var_name $new_value
+          isReload=true
+        fi
+      done
+    fi
+  done
+  if [ "$isReload" = "true" ]; then
+    loadSvcVars
+  fi
+  resetRSInit
+  echo "Initializing RelayServer service credentials..."
+  num_tries=1
+  max_tries=100
+  PRIMARY_VPN_SUBNET=""
+  while [ -z "$PRIMARY_VPN_SUBNET" ] && [ $num_tries -lt $max_tries ]
+  do
+    ((num_tries++))
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      PRIMARY_VPN_SUBNET=10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24
+    else
+      PRIMARY_VPN_SUBNET=$(promptUserInputMenu "10.$(( $RANDOM % 256 )).$(( $RANDOM % 256 )).0/24" "Enter Subnet" "Enter the VPN Hosting Subnet (in CIDR): ")
+    fi
+	if [ -z "$PRIMARY_VPN_SUBNET" ] || [ "$(checkValidIPAddress $PRIMARY_VPN_SUBNET)" = "false" ]; then
+	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
+      continue
+	fi
+    is_intersect="$(isNetworkIntersectOurNetworks $PRIMARY_VPN_SUBNET false)"
+    if ! [ -z "$is_intersect" ]; then
+      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
+	  showMessageBox "Network Collision" "Network Collision: $is_intersect"
+      continue
+    fi
+	updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
+    resetRSInit
+  done
+  if [ -z "$PRIMARY_VPN_SUBNET" ]; then
+    # We tried...
+    echo "ERROR: Could not allocate VPN network subnet."
+    return 1
+  fi
+
+  initRelayServerCredentials
+  setupPortForwardingDB
+  outputHostedVPNConfigs
+  insertSQLHostedVPN
+
+  echo "Generating RelayServer install scripts..."
+  outputRelayServerInstallSetupScript
+  outputRelayServerInstallFreshScript
+  outputRelayServerInstallTransferScript
+  set +e
+  uploadVPNInstallScripts false
+  if [ $? -ne 0 ]; then
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
+    return 1
+  fi
   if [ "$IS_INSTALLED" = "true" ]; then
-    updatePortainerJitsiIPChanges
-    checkUpdateAllIPTables setupHostedVPN
+    echo "Preparing mailu, please wait..."
+    startStopStack mailu stop
+    sleep 5
+    echo "Generating mailu certs..."
+    generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
+    startStopStack mailu start
+    prepSvcsHostedVPN
   fi
   RELAYSERVER_IS_INIT=true
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
+  updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
 }
 
 function transferHostedVPN()
@@ -3599,6 +4241,14 @@ function transferHostedVPN()
     return
   fi
   set +e
+  tgLock="$(tryGetLock networkchecks transferHostedVPN)"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg networkchecks)"
+    strErr="transferHostedVPN - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
+    logHSHQEvent warning "$strErr"
+    showMessageBox "WARNING" "WARNING: $strErr"
+    return
+  fi
   is_transfer=$(promptUserInputMenu "" "Transfer RelayServer" "If you wish to transfer your RelayServer, enter the word 'transfer' below:")
   if ! [ $is_transfer = "transfer" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
@@ -3618,8 +4268,10 @@ function transferHostedVPN()
       continue
     fi
   done
+  unset temp_pw=""
   temp_pw=""
   setSudoTimeoutInstall
+  setSystemState $SS_TRANSFERRING
   # Pause syncthing RelayServer
   jsonbody="{\"paused\": true}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
@@ -3670,7 +4322,7 @@ function transferHostedVPN()
   fi
   removeRelayServerAgentFromWazuhManager
   echo "Updating endpoint IP addresses..."
-  sudo $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
+  updateEndpointIPs
   numTries=1
   isMatch=false
   timeout_length=5
@@ -3700,6 +4352,8 @@ function transferHostedVPN()
   unloadSSHKey
   notifyMyNetworkTransferRelayServer "$RELAYSERVER_SERVER_IP"
   removeSudoTimeoutInstall
+  setSystemState $SS_RUNNING
+  releaseLock networkchecks transferHostedVPN false
 }
 
 function outputRelayServerInstallSetupScript()
@@ -3832,31 +4486,32 @@ function updateMOTD()
 #!/bin/bash
 
 echo
-echo "#===============================================================#"
-echo "# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #"
-echo "#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #"
-echo "#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #"
-echo "#===============================================================#"
+echo "  #===============================================================#"
+echo "  # ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #"
+echo "  #  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #"
+echo "  #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #"
+echo "  #===============================================================#"
 echo
 
-echo "    Linux OS:  \\\$(lsb_release -d | cut -d":" -f2 | xargs)"
-printf "Memory Usage:  %.1f%% of \\\$(free -h | awk  '/Mem:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
-printf "  Swap Usage:  %.1f%% of \\\$(free -h | awk  '/Swap:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+echo "      Linux OS:  \\\$(lsb_release -d | cut -d":" -f2 | cut -d"(" -f1 | xargs)"
+printf "  Memory Usage:  %.1f%% of \\\$(free -h | awk  '/Mem:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "MemAvailable" /proc/meminfo | xargs | cut -d" " -f2) / \\\$(grep "MemTotal" /proc/meminfo | xargs | cut -d" " -f2)))))e-2
+totSwap=\\\$(grep "SwapTotal" /proc/meminfo | xargs | cut -d" " -f2)
+if [ \\\$totSwap -gt 0 ]; then
+  printf "    Swap Usage:  %.1f%% of \\\$(free -h | awk  '/Swap:/{print \\\$2}')\n" \\\$((10000 - \\\$((10**4 * \\\$(grep "SwapFree" /proc/meminfo | xargs | cut -d" " -f2) / \\\$totSwap))))e-2
+fi
 
 echo
-echo "Disks: "
-echo "-----------------------------------------------------------------"
-echo "Filesystem   Size   Used   Avail   Use%   Mounted on"
-echo "-----------------------------------------------------------------"
-df -h | grep "^/dev"
-echo
+echo "  Disks: "
+echo "  -----------------------------------------------------------------"
+echo "  Filesystem            Size    Used    Avail   Use%    Mounted on"
+echo "  -----------------------------------------------------------------"
+df -hP | grep "^/dev" | awk '{printf "  %-21s %-7s %-7s %-7s %-7s %-8s\n", \\\$1, \\\$2, \\\$3, \\\$4, \\\$5, \\\$6}'
 echo
 
 # Let's only show zombie count if greater than 10
 zombie_count=\\\$(ps aux | grep "defunct" | wc -l)
 if [ \\\$zombie_count -gt 10 ]; then
-  echo "=> There are \\\$zombie_count zombie processes."
-  echo
+  echo "  => There are \\\$zombie_count zombie processes."
   echo
 fi
 
@@ -4239,7 +4894,7 @@ EOFRE
   sudo rm -fr \\\$HSHQ_BASE_DIR
   sudo rm -f \$HOME/$NUKE_SCRIPT_NAME
   sudo rm -fr \$HOME/.ssh/*
-  sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  sudo rm -fr /tmp/hshqopen
   sudo rm -f /etc/update-motd.d/88-hshq
   if [ -f /etc/motd.old ]; then
     sudo mv /etc/motd.old /etc/motd
@@ -4658,23 +5313,51 @@ RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
 
 function main()
 {
-  while getopts ':p:i' opt; do
+  IS_PERFORM_INSTALL=false
+  IS_GET_SUPER=false
+  IS_DETACH_RS_SCREEN=false
+  while getopts ':ipd' opt; do
     case "\$opt" in
       i)
         IS_PERFORM_INSTALL=true ;;
       p)
-        USER_RELAY_SUDO_PW="\$OPTARG" ;;
+        IS_GET_SUPER=true ;;
+      d)
+        IS_DETACH_RS_SCREEN=true ;;
       ?|h)
         echo "Usage: \$(basename \$0)"
         exit 1 ;;
     esac
   done
   shift "\$((\$OPTIND -1))"
+  set +e
+  if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
+    read -s -t 10 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
+    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      echo "Sorry, try again."
+      USER_RELAY_SUDO_PW=""
+    fi
+    while [ -z "\$USER_RELAY_SUDO_PW" ]
+    do
+      read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
+      echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+      if [ \$? -ne 0 ]; then
+        echo "Sorry, try again."
+        USER_RELAY_SUDO_PW=""
+        continue
+      fi
+    done
+    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ "\$IS_GET_SUPER" = "true" ]; then
+      exit
+    fi
+  fi
   loadVersionVars
   set -e
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
   installLogNotify "Begin Main"
-  if [ -d $HSHQ_SCRIPT_OPEN_DIR ]; then
+  if [ -d /tmp/hshqopen ]; then
     echo "Installation already in progess, exiting..."
     exit 2
   fi
@@ -4682,36 +5365,91 @@ function main()
     echo "This script should be run as a non-root user. Exiting..."
     exit 3
   fi
-  set +e
-  is_detach=true
-  while [ -z "\$USER_RELAY_SUDO_PW" ]
-  do
-    is_detach=false
-    read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
-    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      echo "Sorry, try again."
-      USER_RELAY_SUDO_PW=""
-      continue
-    fi
-  done
-  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  set -e
+  echo "Update apt..."
   sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo dpkg --configure -a
-  echo -e "\n\nInstalling a few utilities..."
-  performAptInstall curl > /dev/null 2>&1
-  performAptInstall dnsutils > /dev/null 2>&1
-  performAptInstall screen > /dev/null 2>&1
+  sudo dpkg --configure -a > /dev/null 2>&1
+  echo "Checking for required utils..."
+  set +e
+  which curl > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Installing curl..."
+    performAptInstall curl > /dev/null 2>&1
+  fi
+  which dig > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Installing dnsutils..."
+    performAptInstall dnsutils > /dev/null 2>&1
+  fi
+  which screen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Installing screen..."
+    performAptInstall screen > /dev/null 2>&1
+  fi
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
-    mkdir $HSHQ_SCRIPT_OPEN_DIR
+    mkdir /tmp/hshqopen
     install
   else
-    if [ "\$is_detach" = "true" ]; then
-      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall -d -m bash \$0 -i -p \$USER_RELAY_SUDO_PW
+    scName=hshqInstall
+    initScreen "\$scName"
+    if [ "\$IS_DETACH_RS_SCREEN" = "true" ]; then
+      screen -S "\$scName" -X stuff "bash \$0 -i\n"
     else
-      screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -S hshqInstall bash \$0 -i -p \$USER_RELAY_SUDO_PW
+      screen -S "\$scName" -X stuff "bash \$0 -i\n"
+      screen -r "\$scName"
     fi
+  fi
+  unset USER_RELAY_SUDO_PW
+  USER_RELAY_SUDO_PW=""
+}
+
+function initScreen()
+{
+  screenName="\$1"
+  set +e
+  dirtest1=/tmp/sctest1
+  dirtest2=/tmp/sctest2
+  isScreenSuccess=false
+  curScreenAttempt=0
+  maxScreenAttempt=5
+  screen -XS \$screenName quit > /dev/null 2>&1
+  while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
+  do
+    ((curScreenAttempt++))
+    rm -fr \$dirtest1
+    rm -fr \$dirtest2
+    screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -dmS \$screenName
+    screen -S \$screenName -X stuff "stty -echo;mkdir \$dirtest1\n"
+    curCheckCount=0
+    while ! [ -d \$dirtest1 ] && [ \$curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d \$dirtest1 ]; then
+      screen -XS \$screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S \$screenName -X stuff "bash \$0 -p\n"
+    screen -S \$screenName -X stuff "\$USER_RELAY_SUDO_PW\n"
+    screen -S \$screenName -X stuff "mkdir \$dirtest2\n"
+    curCheckCount=0
+    while ! [ -d \$dirtest2 ] && [ \$curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d \$dirtest2 ]; then
+      screen -XS \$screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S \$screenName -X stuff "stty echo\n"
+    rm -fr \$dirtest1
+    rm -fr \$dirtest2
+    isScreenSuccess=true
+    break
+  done
+  if ! [ "\$isScreenSuccess" = "true" ]; then
+    return 1
   fi
 }
 
@@ -4838,12 +5576,12 @@ function checkSupportedHostOS()
   echo "@ This installation only supports the following Linux distribution(s): @"
   echo "@                                                                      @"
   echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
-  echo "@  - Ubuntu 24.04 (Noble Numbat)        [Experimental]                 @"
-  echo "@  - Debian 12 (Bookworm)               [Experimental]                 @"
-  echo "@  - Mint 22 (Wilma)                    [Experimental]                 @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat)        [Stable]                       @"
+  echo "@  - Debian 12 (Bookworm)               [Stable]                       @"
+  echo "@  - Mint 22 (Wilma)                    [Stable]                       @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  rm -fr /tmp/hshqopen
   exit 2
 }
 
@@ -4877,7 +5615,6 @@ function install()
   outputScripts
   installLogNotify "Installing Stacks"
   installPortainer
-  installAdGuard
   installMailRelay
   installWireGuard
   installFileBrowser
@@ -4886,19 +5623,19 @@ function install()
   installSyncthing
   installLogNotify "Starting Wazuh Agent"
   startWazuhAgent
+  installAdGuard
   sudo rm -f \$HOME/$RS_INSTALL_FRESH_SCRIPT_NAME
   sudo rm -f \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   docker image prune -af
   installLogNotify "Rebooting"
   echo -e "\n\n\n\n########################################\n\n"
   echo "RelayServer Installation Complete!"
-  echo "The system will reboot in 5 seconds..."
   echo -e "\n\n########################################\n\n"
-  rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  rm -fr /tmp/hshqopen
   # Successfull installation, clean up the logs
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME
-  sleep 5
+  touch \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_INSTALL_COMPLETE_FILE
   sudo reboot
 }
 
@@ -5765,7 +6502,7 @@ function installStack()
     echo "\$stack_name did not start up correctly..."
     exit 1
   fi
-  sleep $sleep_interval_after_create_stack
+  sleep 5
   echo
   rm -f \$HOME/\$stack_name-json.tmp
   rm -f \$HOME/\$stack_name-compose.yml
@@ -5925,9 +6662,9 @@ function installAdGuard()
 nameserver 127.0.0.1
 EOFR
   if sudo test -d /etc/netplan; then
-    np_path="/etc/netplan/*"
-    for cur_np in "\$np_path"
+    for cur_np in /etc/netplan/*
     do
+      if ! test -f "\$cur_np"; then continue; fi
       sudo sed -i "s|8.8.8.8|9.9.9.9|g" \$cur_np
       sudo sed -i "s|8.8.4.4|149.112.112.112|g" \$cur_np
     done
@@ -7562,6 +8299,7 @@ function uploadVPNInstallScripts()
 {
   isTransfer=$1
   if [ -z "$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME" ]; then
+    echo "Generating keys, please wait..."
     RELAYSERVER_SSH_PRIVATE_KEY_FILENAME=$HOMESERVER_ABBREV".key"
     updateConfigVar RELAYSERVER_SSH_PRIVATE_KEY_FILENAME $RELAYSERVER_SSH_PRIVATE_KEY_FILENAME
     rm -f $HSHQ_CONFIG_DIR/$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME
@@ -7584,7 +8322,7 @@ function uploadVPNInstallScripts()
   do
     nonroot_username=""
     trUsername=$RELAYSERVER_REMOTE_USERNAME
-    RELAYSERVER_REMOTE_USERNAME=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host (a fresh installation will typically default to root): ")
+    RELAYSERVER_REMOTE_USERNAME=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host. A fresh installation will typically default to root: ")
     if [ $? -ne 0 ]; then
       return 1
     fi
@@ -7606,7 +8344,6 @@ function uploadVPNInstallScripts()
       showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the RelayServer."
       continue
     fi
-
     tmp_pw1=""
     tmp_pw2=""
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
@@ -7635,7 +8372,6 @@ function uploadVPNInstallScripts()
     remote_pw=$tmp_pw1
     tmp_pw1=""
     tmp_pw2=""
-
     domain_ip_guess=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
     if [ -z $domain_ip_guess ] || [ "$isTransfer" = "true" ]; then
       domain_ip_guess="0.0.0.0"
@@ -7657,15 +8393,13 @@ function uploadVPNInstallScripts()
     done
     updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
     addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
-
     if [ "$IS_INSTALLED" = "true" ]; then
       addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
     fi
-
     RELAYSERVER_CURRENT_SSH_PORT=""
     while [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]
     do
-      RELAYSERVER_CURRENT_SSH_PORT=$(promptUserInputMenu "22" "Enter CURRENT SSH Port" "Enter the CURRENT SSH port for the RelayServer host (a fresh installation defaults to port 22): ")
+      RELAYSERVER_CURRENT_SSH_PORT=$(promptUserInputMenu "22" "Enter CURRENT SSH Port" "Enter the CURRENT SSH port for the RelayServer host, (a fresh installation defaults to port 22): ")
       if [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]; then
         showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
       fi
@@ -7676,7 +8410,7 @@ function uploadVPNInstallScripts()
       pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
       pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
-      sshpass -p $remote_pw ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
+      SSHPASS="$remote_pw" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
         showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
@@ -7689,18 +8423,39 @@ function uploadVPNInstallScripts()
       if [ $? -ne 0 ]; then
         # Key not present
         echo "Adding key to RelayServer..."
-        sshpass -p $USER_RELAY_SUDO_PW ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
+        SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
       fi
+      unloadSSHKey
       is_err=$?
       if [ $is_err -eq 0 ]; then
         echo "Logging into RelayServer..."
-        ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo $USER_RELAY_SUDO_PW | sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1 && sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1 && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME && rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME"
+        loadSSHKey
+        ssh -q -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new' -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN exit
+        unloadSSHKey
+        cat <<EOFRS > $HOME/rsUpdateScript.sh
+#!/bin/bash
+
+set +e
+function main()
+{
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
+  sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1
+  rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME
+  rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME
+  echo "Done"
+}
+main
+EOFRS
+        updateRelayServerWithScript
         is_err=$?
       fi
     fi
     if [ $is_err -eq 0 ]; then
       echo "Checking for existing installation..."
       set +e
+      loadSSHKey
       # Ensure there is not already an existing installation on the RelayServer
       isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d /home/$RELAYSERVER_REMOTE_USERNAME/hshq ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
       is_err=$?
@@ -7717,9 +8472,10 @@ function uploadVPNInstallScripts()
       set +e
       if [ "$isHSHQDir" = "true" ]; then
         errmenu=$(cat << EOF
-$hshqlogo
 
+$(getLogo)
 It appears that there is already an existing installation on the RelayServer. Please remove this installation by logging in and running 'bash nuke.sh' and follow the provided instructions to clear everything out before continuing. Press Retry or Cancel to proceed.
+
 EOF
   )
         if ! (whiptail --title "Install Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
@@ -7734,9 +8490,10 @@ EOF
       break
     else
       errmenu=$(cat << EOF
-$hshqlogo
 
+$(getLogo)
 There is a problem logging into the RelayServer host. Press Retry or Cancel.
+
 EOF
   )
       if ! (whiptail --title "Login Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
@@ -7800,9 +8557,10 @@ function unloadSSHKey()
 
 function connectPrimaryVPN()
 {
+  is_prompt_user="$1"
   db_id=$(getPrimaryVPN_DBID)
   if ! [ -z $db_id ]; then
-    connectVPN $db_id
+    connectVPN $db_id "$is_prompt_user"
   fi
 }
 
@@ -7838,6 +8596,7 @@ function connectVPN()
   echo "Connecting to RelayServer via WireGuard..."
   # Configuration files of this type are expected to be located in /etc/wireguard
   db_id=$1
+  is_prompt_user="$2"
   if [ -z $db_id ]; then
     echo "ERROR: No database ID provided."
     return
@@ -7855,9 +8614,56 @@ function connectVPN()
   vpn_subnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$db_id;")
   rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
   is_primary=$(sqlite3 $HSHQ_DB "select IsPrimary from hsvpn_connections where ID=$db_id;")
-  
+  if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    loadSSHKey
+    set +e
+    while true;
+    do
+      max_attempts=40
+      total_attempts=1
+      isBreak=false
+      while [ $total_attempts -le $max_attempts ]
+      do
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logged in to RelayServer...\"; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1"
+        if [ $? -eq 0 ]; then
+          isBreak=true
+          break
+        fi
+        echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
+        sleep 30
+        total_attempts=$((total_attempts + 1))
+      done
+      if ! [ "$isBreak" = "true" ]; then
+        if [ "$is_prompt_user" = "true" ]; then
+          echo "ERROR: Could not log in to RelayServer to setup Syncthing. If this step is skipped, you will have to manually set up the RelayServer backup in Syncthing."
+          while true;
+          do
+            read -p "Enter 'retry' or 'cancel': " isRetryConnect
+            case "$isRetryConnect" in
+              "retry")
+                break
+              ;;
+              "cancel")
+                isBreak=true
+                break
+              ;;
+              *)
+                echo "Unknown response..."
+              ;;
+            esac
+          done
+        else
+          echo "ERROR: Could not log in to RelayServer to setup Syncthing. Something likely went wrong with the RelayServer installation. You might have to entirely remove the Primary VPN and start over (In Script-server: 06 My Network -> 15 Remove Primary VPN)."
+          isBreak=true
+        fi
+      fi
+      if [ "$isBreak" = "true" ]; then
+        break
+      fi
+    done
+    unloadSSHKey
+  fi
   enableWGInterfaceQuick $ifaceName
-
   # If not hosting or non-primary VPN, then add CA domain.
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || ! [ $is_primary = 1 ]; then
     addDomainAndWildcardAdguardNoReplaceHS "$domain_name" "$ca_ip"
@@ -7877,58 +8683,17 @@ function connectVPN()
   updatePortainerJitsiIPChanges
 
   # Add new Caddy container.
-  installCaddy $ifaceName $primary_string $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
+  installCaddy $ifaceName $primary_string $ifaceName $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     updateMailuStackRelayHost
   fi
   # If hosting VPN, add ClientDNS stack and setup Syncthing
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    set +e
     echo "Installing ClientDNS..."
     installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP $ADMIN_USERNAME_BASE"_clientdns" $(pwgen -c -n 32 1)
-    loadSSHKey
-    set +e
-    while true;
-    do
-      total_attempts=1
-      max_attempts=5
-      isBreak=false
-      while [ $total_attempts -le $max_attempts ]
-      do
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logging in to RelayServer...\"; docker ps > /dev/null 2>&1"
-        if [ $? -eq 0 ]; then
-          isBreak=true
-          break
-        fi
-        echo "Problem connecting to RelayServer, retrying in 5 seconds..."
-        sleep 5
-        total_attempts=$((total_attempts + 1))
-      done
-      if ! [ "$isBreak" = "true" ]; then
-        echo "Could not log in to RelayServer to setup Syncthing."
-        echo "If this step is skipped, you will have to manually"
-        echo "set up the RelayServer backup in Syncthing. "
-        while true;
-        do
-          read -p "Enter 'retry' or 'cancel': " isRetryConnect
-          case "$isRetryConnect" in
-            "retry")
-              break
-            ;;
-            "cancel")
-              isBreak=true
-              break
-            ;;
-            *)
-              echo "Unknown response..."
-            ;;
-          esac
-        done
-      fi
-      if [ "$isBreak" = "true" ]; then
-        break
-      fi
-    done
     sleep 10
+    loadSSHKey
     # Setup syncthing link
     echo "Setting up Syncthing..."
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
@@ -7948,7 +8713,8 @@ function connectVPN()
     ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
     set -e
     unloadSSHKey
-    sleep 10
+    curdt=$(getCurrentDate)
+    sudo sqlite3 $HSHQ_DB "update connections set LastUpdated='$curdt' where ID=$db_id;"
   fi
 }
 
@@ -7980,8 +8746,7 @@ function createOrJoinPrimaryVPN()
 
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option for your PRIMARY VPN connection" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8035,7 +8800,7 @@ EOF
           fi
         done
         connectPrimaryInternet
-        connectPrimaryVPN
+        connectPrimaryVPN true
         ;;
       2)
         confirmJoin=$(promptUserInputMenu "" "Confirmation" "This function will prepare you server to join another hosted VPN as your primary. Enter the word 'confirm' below:")
@@ -8052,7 +8817,7 @@ EOF
         fi
         RELAYSERVER_IS_INIT=true
         updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
-        connectPrimaryVPN
+        connectPrimaryVPN true
         email_msg="Your joined RelayServer has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\n"
         # Set env vars in mailu stack
         set +e
@@ -8085,8 +8850,7 @@ function showNetworkMenu()
 {
   networkmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$networkmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8118,8 +8882,7 @@ function showMyNetworkMenu()
 {
   networkmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$networkmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8146,8 +8909,7 @@ function showOtherNetworksMenu()
 {
   networkmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$networkmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8177,8 +8939,7 @@ function showRelayServerUtilsMenu()
 {
   netutilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$netutilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8200,7 +8961,9 @@ EOF
     3)
       addLECertPathsToRelayServerMsgbox ;;
     4)
-      createOrJoinPrimaryVPN ;;
+      #createOrJoinPrimaryVPN
+      showMessageBox "Deprecated" "This function is now only accessible via Script-server (https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN)."
+    ;;
     5)
       transferHostedVPN ;;
     6)
@@ -8214,8 +8977,7 @@ function showMyNetworkRemoveMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8242,8 +9004,7 @@ function showMyNetworkUtilsMenu()
 {
   netutilmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$netutilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8273,8 +9034,7 @@ function showOtherNetworkApplyMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8301,8 +9061,7 @@ function showOtherNetworkJoinMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8334,8 +9093,7 @@ function showOtherNetworkDisconnectMenu()
 {
   vpnmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$vpnmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8359,8 +9117,7 @@ function showOtherNetworkUtilsMenu()
 {
   utilsmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$utilsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
@@ -8384,9 +9141,9 @@ function showMyNetworkRemoveVPNMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork';"))
@@ -8417,9 +9174,9 @@ function showMyNetworkRemoveInternetMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_internet' and NetworkType='mynetwork';"))
@@ -8468,9 +9225,9 @@ function showMyNetworkRemoveUserMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='user' and NetworkType='mynetwork';"))
@@ -8518,7 +9275,7 @@ function notifyUserNetworkRemoval()
 
 function showMyNetworkCreateClientDNSMenu()
 {
-  clientdns_stack_name=$(promptUserInputMenu "" "ClientDNS Stack Name" "Enter a unique name for this stack (3-10 alpha-numeric lowercase characters): ")
+  clientdns_stack_name=$(promptUserInputMenu "" "ClientDNS Stack Name" "Enter a unique name for this stack, 3-10 alpha-numeric lowercase characters: ")
   if [ -z "$clientdns_stack_name" ]; then
     showMessageBox "Stack Name Empty" "The name cannot be empty."
   fi
@@ -8604,9 +9361,9 @@ function showMyNetworkRemoveClientDNSMenu()
 {
   vpnremovemenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to remove:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType='mynetwork';"))
@@ -8658,9 +9415,9 @@ function showOtherNetworkDisconnectVPNMenu()
 {
   vpndisconnectmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to disconnect:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_vpn' and NetworkType='other';"))
@@ -8692,9 +9449,9 @@ function showOtherNetworkDisconnectInternetMenu()
 {
   vpndisconnectmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the network connections that you wish to disconnect:
+
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_internet' and NetworkType='other';"))
@@ -9937,7 +10694,7 @@ function performNetworkJoin()
       fi
       set -e
       if [ "$is_connect" = "true" ]; then
-        connectVPN $db_id
+        connectVPN $db_id true
       fi
     ;;
     "HomeServer Internet")
@@ -9999,42 +10756,43 @@ function removeMyNetworkPrimaryVPN()
 {
   disconnect_reason="$1"
   db_id=$(getPrimaryVPN_DBID)
-  if [ -z $db_id ]; then
-    echo "Could not find primary VPN ID, returning..."
-    return
+  if ! [ -z $db_id ]; then
+    client_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
+    ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
+    ca_abbrev=$(sqlite3 $HSHQ_DB "select CA_Abbrev from hsvpn_connections where ID=$db_id;")
+    domain_name=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections where ID=$db_id;")
+    ext_prefix=$(sqlite3 $HSHQ_DB "select ExternalPrefix from hsvpn_connections where ID=$db_id;")
+    int_prefix=$(sqlite3 $HSHQ_DB "select InternalPrefix from hsvpn_connections where ID=$db_id;")
+    ca_ip=$(sqlite3 $HSHQ_DB "select CA_IP from hsvpn_connections where ID=$db_id;")
+    ca_subdomain=$(sqlite3 $HSHQ_DB "select CA_Subdomain from hsvpn_connections where ID=$db_id;")
+    ca_url=$(sqlite3 $HSHQ_DB "select CA_URL from hsvpn_connections where ID=$db_id;")
+    vpn_subnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$db_id;")
+    rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
+    # Do notifications first, since this will tear down our network.
+    if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+      # Notify everyone that they have been removed
+      notifyMyNetworkFullRemoval
+      echo "Waiting 30 seconds to proceed so that Disconnect Notice email(s) can get sent..."
+      sleep 30
+    elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
+      host_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
+      # Notify host that you have disconnected.
+      email_subj="HomeServer Disconnect Notice from $HOMESERVER_NAME"
+      email_body=""
+      email_body=${email_body}"HomeServer Disconnect Notice from $HOMESERVER_NAME\n"
+      email_body=${email_body}"================================================================\n\n"
+      email_body=${email_body}"Domain: $HOMESERVER_DOMAIN\n"
+      email_body=${email_body}"Reason Provided: $disconnect_reason\n\n"
+      sendEmail -s "$email_subj" -b "$email_body" -t "$host_email" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      echo "Waiting 30 seconds to proceed so that Disconnect Notice email(s) can get sent..."
+      sleep 30
+    fi
   fi
   sudo -v
-  client_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
-  ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
-  ca_abbrev=$(sqlite3 $HSHQ_DB "select CA_Abbrev from hsvpn_connections where ID=$db_id;")
-  domain_name=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections where ID=$db_id;")
-  ext_prefix=$(sqlite3 $HSHQ_DB "select ExternalPrefix from hsvpn_connections where ID=$db_id;")
-  int_prefix=$(sqlite3 $HSHQ_DB "select InternalPrefix from hsvpn_connections where ID=$db_id;")
-  ca_ip=$(sqlite3 $HSHQ_DB "select CA_IP from hsvpn_connections where ID=$db_id;")
-  ca_subdomain=$(sqlite3 $HSHQ_DB "select CA_Subdomain from hsvpn_connections where ID=$db_id;")
-  ca_url=$(sqlite3 $HSHQ_DB "select CA_URL from hsvpn_connections where ID=$db_id;")
-  vpn_subnet=$(sqlite3 $HSHQ_DB "select Network_Subnet from connections where ID=$db_id;")
-  rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
-
-  # Do notifications first, since this will tear down our network.
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    # Notify everyone that they have been removed
-    notifyMyNetworkFullRemoval
-  elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    host_email=$(sqlite3 $HSHQ_DB "select EmailAddress from connections where ID=$db_id;")
-    # Notify host that you have disconnected.
-    email_subj="HomeServer Disconnect Notice from $HOMESERVER_NAME"
-    email_body=""
-    email_body=${email_body}"HomeServer Disconnect Notice from $HOMESERVER_NAME\n"
-    email_body=${email_body}"================================================================\n\n"
-    email_body=${email_body}"Domain: $HOMESERVER_DOMAIN\n"
-    email_body=${email_body}"Reason Provided: $disconnect_reason\n\n"
-    sendEmail -s "$email_subj" -b "$email_body" -t "$host_email" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+  if sudo test -f /etc/wireguard/${ifaceName}.conf; then
+    echo "Removing WireGuard interface: $ifaceName"
+    removeWGInterfaceQuick $ifaceName
   fi
-  echo "Waiting 30 seconds to proceed so that Disconnect Notice email(s) can get sent..."
-  sleep 30
-
-  removeWGInterfaceQuick $ifaceName
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${ifaceName}.conf
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
   checkDeleteStackAndDirectory caddy-$ifaceName "Caddy" true true
@@ -10042,10 +10800,12 @@ function removeMyNetworkPrimaryVPN()
   docker container stop uptimekuma >/dev/null
   docker container stop heimdall >/dev/null
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "Removing Wazuh agent..."
     sudo sqlite3 $HSHQ_DB "drop table portforwarding;"
     removeRelayServerAgentFromWazuhManager
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+    echo "Removing Syncthing backup..."
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID > /dev/null 2>&1
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID > /dev/null 2>&1
     echo "Removing ClientDNS instances..."
     cdns_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
     for cur_cdns in "${cdns_arr[@]}"
@@ -10102,7 +10862,7 @@ function removeMyNetworkPrimaryVPN()
   fi
   docker container start uptimekuma >/dev/null
   docker container start heimdall >/dev/null
-  PRIMARY_VPN_SETUP_TYPE=manual
+  PRIMARY_VPN_SETUP_TYPE=none
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
   RELAYSERVER_IS_INIT=false
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
@@ -10408,79 +11168,189 @@ function changeDeviceIPAddress()
   sendEmail -s "$email_subj" -b "$email_body" -t "$email_address" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>"
 }
 
-# Util Functions
-function tryOpenHSHQScript()
+function outputLockUtilsScript()
 {
-  cohs_curE=${-//[^e]/}
+  rm -f $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+  cat <<EOFUS > $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+#!/bin/bash
+
+isDebug=false
+LOGF=$HSHQ_LOG_FILE
+LOCKHOLDER_FILENAME=$LOCKHOLDER_FILENAME
+ALL_LOCKS="$ALL_LOCKS"
+
+function tryGetLock()
+{
+  lockName="\$1"
+  callerName="\$2"
+  cohs_curE=\${-//[^e]/}
   set +e
-  callerName="$1"
-  if [ -z "$callerName" ]; then
-    callerName=User
+  if [ -z "\$callerName" ]; then
+    callerName=UnknownCaller
   fi
-  if [ "$callerName" = "boot" ]; then
-    closeHSHQScript
+  isLockFound=false
+  for curLock in \$ALL_LOCKS
+  do
+    if [ "\$lockName" = "\$curLock" ]; then
+      isLockFound=true
+      break
+    fi
+  done
+  if [ "\$isLockFound" = "false" ]; then
+    if ! [ -z "\$cohs_curE" ]; then
+      set -e
+    fi
+    # Unknown lock name
+    echo "Unknown lock name (\$lockName)"
+    return
   fi
-  # This ensures only one instance of the script is open at a time.
-  if mkdir -- "$HSHQ_SCRIPT_OPEN_DIR" > /dev/null 2>&1; then
-    echo $callerName > $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo $(date '+%s') >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo 1 >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    chmod 755 $HSHQ_SCRIPT_OPEN_DIR
-    chmod 644 $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
+  # BeforeNetwork is always the first one called during boot,
+  # so this will clean up any mess prior to the last reboot.
+  if [ "\$callerName" = "BeforeNetwork" ]; then
+    releaseLock "\$lockName" "BeforeNetwork" false
+  fi
+  # mkdir is an atomic operation, so its the best mechanism
+  # for performing locking operations
+  if mkdir -- "/tmp/\$lockName" > /dev/null 2>&1; then
+    echo \$callerName > /tmp/locktmp
+    echo \$(date '+%s') >> /tmp/locktmp
+    echo 0 >> /tmp/locktmp
+    chmod 755 /tmp/locktmp
+    chmod 644 /tmp/locktmp
+    mv /tmp/locktmp /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    if [ "\$isDebug" = "true" ]; then
+      echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] tryGetLock - \$lockName lock obtained by \$callerName" >> \$LOGF
+    fi
+    echo "true"
   else
-    echo "$(getHSHQScriptOpenMsg)"
+    if [ "\$isDebug" = "true" ]; then
+      echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] tryGetLock - \$lockName lock denied from \$callerName" >> \$LOGF
+    fi
+    echo "false"
   fi
-  if ! [ -z "$cohs_curE" ]; then
+  if ! [ -z "\$cohs_curE" ]; then
     set -e
   fi
 }
 
-function getHSHQScriptOpenMsg()
+function forceGetLock()
 {
-  if test -f $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME; then
-    lastCaller=$(sed -n 1p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    lastExecute=$(sed -n 2p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    lastAttempts=$(sed -n 3p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    lastExecuteDate=$(date -d @${lastExecute} '+%Y-%m-%d %H:%M:%S')
-    dtNow=$(date '+%s')
-    secondsDiff=$(($dtNow - $lastExecute))
+  lockName="\$1"
+  callerName="\$2"
+  sudo rm -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+  echo \$callerName > /tmp/locktmp
+  echo \$(date '+%s') >> /tmp/locktmp
+  echo 0 >> /tmp/locktmp
+  chmod 755 /tmp/locktmp
+  chmod 644 /tmp/locktmp
+  mv /tmp/locktmp /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+  if [ "\$isDebug" = "true" ]; then
+    echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] forceGetLock - \$lockName lock obtained by \$callerName" >> \$LOGF
+  fi
+}
+
+function getLockOpenMsg()
+{
+  lockName="\$1"
+  if test -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME; then
+    lastCaller=\$(sed -n 1p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    lastExecute=\$(sed -n 2p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    lastExecuteDate=\$(date -d @\${lastExecute} '+%Y-%m-%d %H:%M:%S')
+    dtNow=\$(date '+%s')
+    secondsDiff=\$((\$dtNow - \$lastExecute))
     strMessage=""
-    if [ $secondsDiff -lt 60 ]; then
-      strMessage="$secondsDiff seconds ago by"
+    if [ \$secondsDiff -lt 60 ]; then
+      strMessage="Lock obtained \$secondsDiff second(s) ago by"
     else
-      totMinutes=$(($secondsDiff / 60))
-      strMessage="$totMinutes minutes ago by"
+      totMinutes=\$((\$secondsDiff / 60))
+      strMessage="Lock obtained \$totMinutes minute(s) ago by"
     fi
-    strMessage="$strMessage $lastCaller @ $lastExecuteDate"
+    strMessage="\$strMessage \$lastCaller @ \$lastExecuteDate"
   else
     strMessage="Unknown-User"
   fi
-  echo "$strMessage"
+  echo "\$strMessage"
 }
 
-function checkIsOpenHSHQScript()
+function getIncrementLockAttempts()
 {
-  if [ -d "$HSHQ_SCRIPT_OPEN_DIR" ]; then
-    echo "$(getHSHQScriptOpenMsg)"
+  lockName="\$1"
+  if test -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME; then
+    lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
+    totAttempts=\$((\$lastAttempts + 1))
+    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    echo "\$totAttempts"
   fi
+}
+
+function checkIsLockEnabled()
+{
+  lockName="\$1"
+  if [ -d "/tmp/\$lockName" ]; then
+    echo "\$(getLockOpenMsg \$lockName)"
+  fi
+}
+
+function releaseLock()
+{
+  lockName="\$1"
+  callerName="\$2"
+  isForceRelease="\$3"
+  if [ "\$isForceRelease" = "true" ]; then
+    sudo rm -fr /tmp/\$lockName
+  else
+    rm -fr /tmp/\$lockName
+  fi
+  if [ "\$isDebug" = "true" ]; then
+    echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] releaseLock - \$lockName lock released by \$callerName" >> \$LOGF
+  fi
+}
+
+EOFUS
+}
+
+function getHSHQScriptOpenMsg()
+{
+  getLockOpenMsg hshqopen
+}
+
+function checkHSHQScriptOpen()
+{
+  checkIsLockEnabled hshqopen
 }
 
 function closeHSHQScript()
 {
-  sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
+  releaseLock hshqopen "$1" false
 }
 
-function incrementHSHQScriptOpenCount()
+function acquireAllLocks()
 {
-  if [ -f $HSHQ_SCRIPT_OPEN ]; then
-    lastAttempts=$(sed -n 3p $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME)
-    totAttempts=$(($lastAttempts + 1))
-    sed -i '$d' $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo "$totAttempts" >> $HSHQ_SCRIPT_OPEN_DIR/$HSHQ_SCRIPT_OPEN_FILENAME
-    echo "$totAttempts"
+  tgLock="$(tryGetLock networkchecks acquireAllLocks)"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg networkchecks)"
+    echo "networkchecks: $checkRes"
+    return 23
+  fi
+  tgLock="$(tryGetLock hshqopen acquireAllLocks)"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg hshqopen)"
+    releaseLock networkchecks acquireAllLocks false
+    echo "hshqopen: $checkRes"
+    return 24
   fi
 }
 
+function releaseAllLocks()
+{
+  isForce="$1"
+  releaseLock hshqopen "releaseAllLocks" "$isForce"
+  releaseLock networkchecks "releaseAllLocks" "$isForce"
+}
+
+# Util Functions
 function isConfigVar()
 {
   isVar=$(grep ^$1= $CONFIG_FILE)
@@ -10815,7 +11685,12 @@ function getSubnetOfInterface()
   while [ -z "$this_subnet" ] && [ $num_tries -lt $max_tries ]
   do
     if [ "$is_priv" = "true" ]; then
-      this_subnet=$(ip route | grep $net_interface | grep / | awk '{print $1}' | head -1)
+      rpt="$(sipcalc $(ip -o -f inet addr show $net_interface | awk '/scope global/ {print $4}'))"
+      netaddr=$(echo "$rpt" | grep -o "Network address.*" | cut -d"-" -f2 | xargs | cut -d" " -f1)
+      netsize=$(echo "$rpt" | grep -o "Network mask (bits).*" | cut -d"-" -f2 | xargs | cut -d" " -f1)
+      if ! [ -z "$netaddr" ] && ! [ -z "$netsize" ]; then
+        this_subnet="${netaddr}/${netsize}"
+      fi
     else
       this_subnet="${net_ip}/32"
     fi
@@ -10947,6 +11822,7 @@ function setAsWiredDHCP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=null" > /dev/null 2>&1
   fi
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=true"
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.optional=true"
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
   checkUpdateSingleHostInterface "$interfaceName"
@@ -10985,6 +11861,7 @@ function setAsWiredStaticIP()
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.addresses=[${ipAddress}/${cidrLength}]"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
   sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.dhcp4=false"
+  sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}.optional=true"
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
   checkUpdateSingleHostInterface "$interfaceName"
@@ -11013,15 +11890,16 @@ function setAsWirelessDHCP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
     if [ -z "$wifiPass" ]; then
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, access-points: {$wifiSSID: {}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, optional: true, access-points: {$wifiSSID: {}}}"
     else
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: true, optional: true, access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
     fi
   else
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.nameservers=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.routes=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=true"
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.optional=true"
   fi
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
@@ -11064,9 +11942,9 @@ function setAsWirelessStaticIP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.ethernets.${interfaceName}=null" > /dev/null 2>&1
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}=null" > /dev/null 2>&1
     if [ -z "$wifiPass" ]; then
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, optional: true, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {}}}"
     else
-      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
+      sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}={dhcp4: false, optional: true, addresses: [${ipAddress}/${cidrLength}], routes: [{to: default, via: $interfaceGateway}], access-points: {$wifiSSID: {auth: {key-management: psk, password: $wifiPass}}}}"
     fi
   else
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=null" > /dev/null 2>&1
@@ -11075,6 +11953,7 @@ function setAsWirelessStaticIP()
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.addresses=[${ipAddress}/${cidrLength}]"
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.routes=[{to: default, via: $interfaceGateway}]"
     sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.dhcp4=false"
+    sudo netplan set --origin-hint $NETPLAN_ORIGIN_HINT "network.wifis.${interfaceName}.optional=false"
   fi
   sudo netplan apply
   sleep $NETPLAN_APPLY_WAIT
@@ -11111,7 +11990,8 @@ function displayWifiNetworks()
   fi
   numItems=$((${#resArr[@]} - 1))
   unset fmtArr
-  sudo rm -f $HSHQ_SCRIPT_OPEN_DIR/wifi.txt
+  fmtArr=""
+  sudo rm -f /tmp/wifi.txt
   curIndex=0
   fmtArr=()
   for curID in $(seq 0 $numItems);
@@ -11141,11 +12021,11 @@ function displayWifiNetworks()
     fi
     curESSID="$(echo $curESSID | cut -d":" -f2- | tr -d '"' | xargs -0)"
     fmtArr+=( "$curESSID|$curQualityNum|$curSignal|$curFrequency|$curEncryption" )
-    echo "$curQualityNum $curSignalNum $curIndex" >> $HSHQ_SCRIPT_OPEN_DIR/wifi.txt
+    echo "$curQualityNum $curSignalNum $curIndex" >> /tmp/wifi.txt
     ((curIndex+=1))
   done
-  sort -k1 -k2 -rn <$HSHQ_SCRIPT_OPEN_DIR/wifi.txt > $HSHQ_SCRIPT_OPEN_DIR/wifi-sorted.txt
-  readarray -t sortedArr < $HSHQ_SCRIPT_OPEN_DIR/wifi-sorted.txt
+  sort -k1 -k2 -rn </tmp/wifi.txt > /tmp/wifi-sorted.txt
+  readarray -t sortedArr < /tmp/wifi-sorted.txt
   echo "----------------------------------------------------------------"
   echo "       SSID          Quality     Signal     Frequency    Open   "
   echo "----------------------------------------------------------------"
@@ -11164,6 +12044,8 @@ function displayWifiNetworks()
   done
   echo "----------------------------------------------------------------"
   IFS=$OLDIFS
+  rm -f /tmp/wifi.txt
+  rm -f /tmp/wifi-sorted.txt
 }
 
 function addUpdateWifiAccessPoint()
@@ -11344,14 +12226,14 @@ function setHostInternetTrafficWGInterface()
     if ! sudo test -f $HSHQ_WIREGUARD_DIR/internet/${selWG}.conf; then
       strMsg="Could not find WireGuard interface ($selWG)"
       echo "$strMsg"
-      logHSHQEvent error "(setHostInternetTrafficWGInterface) $strMsg"
+      logHSHQEvent error "setHostInternetTrafficWGInterface - $strMsg"
       return 1
     fi
     rTable=$(getConfigVarFromFile \#ROUTING_TABLE_ID $HSHQ_WIREGUARD_DIR/internet/${selWG}.conf root)
     if [ -z "$rTable" ]; then
       strMsg="Could not determine routing table ($selWG)"
       echo "$strMsg"
-      logHSHQEvent error "(setHostInternetTrafficWGInterface) $strMsg"
+      logHSHQEvent error "setHostInternetTrafficWGInterface - $strMsg"
       return 2
     fi
   fi
@@ -11574,7 +12456,9 @@ function getNextWGRoutingTableID()
     exit 0
   fi
   arr=()
-  for conf in $HSHQ_WIREGUARD_DIR/internet/*; do
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+  do
+    if ! test -f "$conf"; then continue; fi
 	arr+=($(sudo grep ^\#ROUTING_TABLE_ID= $conf | sed 's/^[^=]*=//'))
   done
   while true;
@@ -11977,14 +12861,13 @@ function getPasswordWithSymbol()
 function performExitFunctions()
 {
   is_show_msgbox="$1"
-  removeSudoTimeoutInstall
-  closeHSHQScript "performExitFunctions"
+  releaseLock hshqopen "performExitFunctions" false
   #unloadSSHKey
   # This is more aggressive, but cleans up any pre-existing sessions (in case the script terminated abnormally)
   set +e
   killall ssh-agent > /dev/null 2>&1
   set -e
-  if [ -z "$IS_CONFIG_INIT" ] || ! [ "$IS_INSTALLED" = "true" ]; then
+  if ([ -z "$IS_CONFIG_INIT" ] || ! [ "$IS_INSTALLED" = "true" ]) && ! [ "$IS_CONFIG_FILE_UNENCRYPTED" = "true" ]; then
     return
   fi
   encryptConfigFile
@@ -11999,13 +12882,16 @@ function performExitFunctions()
 
 function encryptConfigFile()
 {
-  if ! [ -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME ]; then
+  if ! [ -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME ] && ! [ -f $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME]; then
     echo "ERROR: Plain text config file does not exist"
   elif ! [ -z "$CONFIG_ENCRYPTION_PASSPHRASE" ]; then
     rm -f $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     openssl enc -e -aes256 -pbkdf2 -pass pass:$CONFIG_ENCRYPTION_PASSPHRASE -in $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME -out $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
-    chmod 0400 $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
-    rm -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
+    if [ -f $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
+      chmod 0400 $HSHQ_CONFIG_DIR/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
+      rm -f $HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
+      IS_CONFIG_FILE_UNENCRYPTED=false
+    fi
   fi
 }
 
@@ -12013,15 +12899,14 @@ function decryptFile()
 {
   encFile=$1
   resFile=$2
-  encPass=$3
   rm -f $resFile
   touch $resFile
   # Set the file permissions BEFORE decrypting...
   chmod 600 $resFile
-  if [ -z "$encPass" ]; then
+  if [ -z "$USER_CONFIG_PW" ]; then
     openssl enc -d -aes256 -pbkdf2 -in $encFile >> $resFile 2>/dev/null
   else
-    openssl enc -d -aes256 -pbkdf2 -pass pass:$encPass -in $encFile >> $resFile 2>/dev/null
+    openssl enc -d -aes256 -pbkdf2 -in $encFile -pass file:<( echo -n "$USER_CONFIG_PW" ) >> $resFile 2>/dev/null
   fi
   retVal=$?
   if [ $retVal -ne 0 ]; then
@@ -12034,14 +12919,11 @@ function decryptConfigFile()
 {
   encConfig=$1
   if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
-    set +e
-    showYesNoMessageBox "Replace Existing File?" "Do you wish to use replace the existing configuration file?"
-    mbres=$?
-    if [ $mbres -ne 0 ]; then
-      return
-    fi
+    CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+    IS_CONFIG_FILE_UNENCRYPTED=true
+    set -e
+    return
   fi
-  rm -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
   set +e
   decrypt_res=1
   while [ $decrypt_res -ne 0 ]
@@ -12053,57 +12935,102 @@ function decryptConfigFile()
       rm -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
       showYesNoMessageBox "Password Error" "You did not enter the correct password, try again?"
       if [ $? -ne 0 ]; then
-        closeHSHQScript "decryptConfigFile"
+        releaseLock hshqopen "decryptConfigFile" false
         exit 1
       fi
     fi
   done
-  rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
-  mv $encConfig $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
+  mv -f $encConfig $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
+  IS_CONFIG_FILE_UNENCRYPTED=true
   set -e
 }
 
 function decryptConfigFileAndLoadEnvNoPrompts()
 {
-  checkRes=$(tryOpenHSHQScript User-ScriptServer)
-  if ! [ -z "$checkRes" ]; then
-    echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset HSHQ Open Status function to reset it."
+  if [ -z "$USER_CONFIG_PW" ]; then
+    USER_CONFIG_PW="$1"
+  fi
+  tgLock="$(tryGetLock hshqopen User-ScriptServer)"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg hshqopen)"
+    USER_CONFIG_PW=""
+    echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset Mutex Lock function to reset it."
     exit 9
   fi
   set -e
-  decrypt_pass="$1"
+  decryptAndLoad true
+}
+
+function decryptAndLoad()
+{
   ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
   if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
-    decryptFile "$ENC_CONFIG_FILE" "$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME" "$decrypt_pass"
-    rm -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
-    mv $ENC_CONFIG_FILE $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
+    decryptFile "$ENC_CONFIG_FILE" "$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME"
+    mv -f $ENC_CONFIG_FILE $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME
   fi
+  USER_CONFIG_PW=""
   CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME
-  loadConfigVars
+  if ! [ -f $CONFIG_FILE ]; then
+    echo "There was a critical error with the configuration file, exiting..."
+    exit 9
+  fi
+  IS_CONFIG_FILE_UNENCRYPTED=true
+  loadConfigVars "$1"
 }
 
 function checkDecryptConfigFile()
 {
+  if [ -z "$USER_CONFIG_PW" ]; then
+    USER_CONFIG_PW="$1"
+  fi
   set +e
   if ! [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
     if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME ]; then
       DEF_ENC_CONFIG_FILE=$CONFIG_FILE_DEFAULT_LOCATION/$ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME
     else
       echo "ERROR: Could not find encrypted configuration file."
-      exit 2
+      return 2
     fi
     if ! [ -z "$DEF_ENC_CONFIG_FILE" ]; then
-      openssl enc -d -aes256 -pbkdf2 -pass pass:$1 -in "$DEF_ENC_CONFIG_FILE" > /dev/null 2>&1
+      openssl enc -d -aes256 -pbkdf2 -in "$DEF_ENC_CONFIG_FILE" -pass file:<( echo -n "$USER_CONFIG_PW" ) > /dev/null 2>&1
       if [ $? -ne 0 ]; then
+        echo "bad"
         echo "ERROR: Incorrect password for encrypted configuration file."
-        exit 3
+        return 3
+      else
+        echo "good"
       fi
     else
       echo "ERROR: Unknown error decrypting configuration file."
       exit 4
     fi
   fi
+}
+
+function promptTestDecryptConfigFile()
+{
+  if ! [ -z "$USER_CONFIG_PW" ]; then
+    checkDecryptConfigFile > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      USER_CONFIG_PW=""
+    fi
+  fi
+  while [ -z "$USER_CONFIG_PW" ]
+  do
+    USER_CONFIG_PW=$(promptPasswordMenu "Enter Decrypt Password" "Enter your config decrypt password: ")
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      return 3
+    fi
+    checkDecryptConfigFile > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+      USER_CONFIG_PW=""
+    fi
+  done
+  decryptAndLoad false
+  USER_CONFIG_PW=""
 }
 
 function checkFileShellExpansion()
@@ -12153,7 +13080,7 @@ function installStack()
   if [ -z $max_interval ]; then
     max_interval=300
   fi
-  logHSHQEvent info "Installing Stack ($stack_name)"
+  logHSHQEvent info "installStack - Installing Stack ($stack_name)"
   # Refresh the sudo timestamp
   sudo -v
   if [ -z "$PORTAINER_TOKEN" ]; then
@@ -12181,7 +13108,7 @@ function installStack()
     ((ins_numTries++))
   done
   if [ $ins_retVal -ne 0 ]; then
-    logHSHQEvent error "Error installing stack ($stack_name)"
+    logHSHQEvent error "installStack - Error installing stack ($stack_name)"
     echo "ERROR: Could not install stack ($stack_name) in Portainer..." 1>&2
     return $ins_retVal
   fi
@@ -12393,10 +13320,10 @@ function waitForStack()
 function showMessageBox()
 {
   msgmenu=$(cat << EOF
-
-$hshqlogo
+$(getLogo)
 
 $2
+
 EOF
   )
   whiptail --title "$1" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -12405,10 +13332,10 @@ EOF
 function showYesNoMessageBox()
 {
   msgmenu=$(cat << EOF
-
-$hshqlogo
+$(getLogo)
 
 $2
+
 EOF
   )
   whiptail --title "$1" --yesno "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -12417,10 +13344,10 @@ EOF
 function showNoYesMessageBox()
 {
   msgmenu=$(cat << EOF
-
-$hshqlogo
+$(getLogo)
 
 $2
+
 EOF
   )
   whiptail --title "$1" --yesno "$msgmenu" $MENU_HEIGHT $MENU_WIDTH --yes-button "No" --no-button "Yes"
@@ -12429,10 +13356,10 @@ EOF
 function promptUserInputMenu()
 {
   usermenu=$(cat << EOF
-
-$hshqlogo
+$(getLogo)
 
 $3
+
 EOF
   )
   menures=$(whiptail --title "$2" --inputbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH "$1" 3>&1 1>&2 2>&3)
@@ -12445,10 +13372,10 @@ EOF
 function promptPasswordMenu()
 {
   usermenu=$(cat << EOF
-
-$hshqlogo
+$(getLogo)
 
 $2
+
 EOF
   )
   menures=$(whiptail --title "$1" --passwordbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH 3>&1 1>&2 2>&3)
@@ -12761,6 +13688,16 @@ function checkValidPassword()
   fi
 }
 
+function checkValidUsername()
+{
+  chkName="$1"
+  if echo "$chkName" | grep -Eq '^[a-z0-9]+$' && echo "$chkName" | cut -c1 | grep -Eq '[a-z]' && [ ${#chkName} -le 32 ] && [ ${#chkName} -ge 4 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
 function checkValidPortsList()
 {
   check_string="$1"
@@ -12773,6 +13710,7 @@ function checkValidPortsList()
     do
       port_no=$(echo "$curPort" | cut -d"/" -f1 | xargs)
       unset port_prot
+      port_prot=""
       if [[ $curPort =~ "/" ]]; then
         port_prot=$(echo "$curPort" | cut -d"/" -f2- | xargs)
       fi
@@ -12905,11 +13843,11 @@ function getSvcCredentialsVW()
 
 function getFmtCredentials()
 {
-  svc_name=$1
-  login_uri=$2
-  abbrev=$3
-  username=$4
-  password=$5
+  svc_name="$1"
+  login_uri="$2"
+  abbrev="$3"
+  username="$4"
+  password="$5"
   echo "$svc_name, $username, $password, $login_uri"
 }
 
@@ -13063,6 +14001,7 @@ function loadSvcVars()
 
 function loadConfigVars()
 {
+  is_chk_update="$1"
   initServiceVars
   if sudo test -f $HSHQ_PLAINTEXT_ROOT_CONFIG; then
     source <(sudo cat $HSHQ_PLAINTEXT_ROOT_CONFIG)
@@ -13072,7 +14011,9 @@ function loadConfigVars()
   fi
   source $CONFIG_FILE
   loadSvcVars
-  checkUpdateVersion
+  if ! [ "$is_chk_update" = "false" ]; then
+    checkUpdateVersion
+  fi
 }
 
 function checkAddSvc()
@@ -13104,14 +14045,35 @@ function loadDirectoryStructure()
   HSHQ_STACKS_DIR=$HSHQ_DATA_DIR/stacks
   HSHQ_WIREGUARD_DIR=$HSHQ_DATA_DIR/wireguard
   HSHQ_RESTORE_DIR=$HOME/hshqrestore
-
   HSHQ_WRAP_SCRIPT=$HOME/$HSHQ_WRAP_FILENAME
   HSHQ_LIB_SCRIPT=$HSHQ_LIB_DIR/$HSHQ_LIB_FILENAME
+  HSHQ_NEW_LIB_SCRIPT=$HSHQ_LIB_DIR/$HSHQ_NEW_LIB_FILENAME
+  if ! [ -f $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME ]; then
+    outputLockUtilsScript
+  fi
+  source $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
 }
 
 function getLatestVersionWrapper()
 {
-  echo $(curl --silent $HSHQ_WRAP_VER_URL)
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo $(curl --silent $HSHQ_WRAP_DEV_VER_URL)
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo $(curl --silent $HSHQ_WRAP_TEST_VER_URL)
+  else
+    echo $(curl --silent $HSHQ_WRAP_VER_URL)
+  fi
+}
+
+function getLatestWrapperURL()
+{
+  if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
+    echo "$HSHQ_WRAP_DEV_URL"
+  elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
+    echo "$HSHQ_WRAP_TEST_URL"
+  else
+    echo "$HSHQ_WRAP_URL"
+  fi
 }
 
 function getThisVersionWrapper()
@@ -13152,6 +14114,13 @@ function getThisVersionLib()
   echo $(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
 }
 
+function getPendingVersionLib()
+{
+  if [ -f $HSHQ_NEW_LIB_SCRIPT ]; then
+    echo $(sed -n 2p $HSHQ_NEW_LIB_SCRIPT | cut -d"=" -f2)
+  fi
+}
+
 function verifyFile()
 {
   # Perform 3 checks:
@@ -13187,6 +14156,258 @@ function getRandomRequestID()
   # Could use a GUID/UUID, but date is more informative.
   echo "$(date '+%Y%m%d%H%M%S')$((1000 + RANDOM % 9999))$((1000 + RANDOM % 9999))$((10 + RANDOM % 99))"
 }
+
+# BEGIN bash_progress_bar
+#
+# The following section of code was obtained
+# from the project:
+# https://github.com/pollev/bash_progress_bar
+# It consists of a total of 12 functions,
+# and the code is enclosed between the comments:
+# BEGIN bash_progress_bar and END bash_progress_bar
+#
+# SPDX-License-Identifier: MIT
+#
+# Copyright (c) 2018--2020 Polle Vanhoof
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Usage:
+# Source this script
+# enable_trapping <- optional to clean up properly if user presses ctrl-c
+# setup_scroll_area <- create empty progress bar
+# draw_progress_bar 10 <- advance progress bar
+# draw_progress_bar 40 <- advance progress bar
+# block_progress_bar 45 <- turns the progress bar yellow to indicate some action is requested from the user
+# draw_progress_bar 90 <- advance progress bar
+# destroy_scroll_area <- remove progress bar
+
+function pb_init_constants()
+{
+  # Constants
+  CODE_SAVE_CURSOR="\033[s"
+  CODE_RESTORE_CURSOR="\033[u"
+  CODE_CURSOR_IN_SCROLL_AREA="\033[1A"
+  COLOR_FG="\e[30m"
+  COLOR_BG="\e[42m"
+  COLOR_BG_BLOCKED="\e[43m"
+  RESTORE_FG="\e[39m"
+  RESTORE_BG="\e[49m"
+  # Variables
+  PROGRESS_BLOCKED="false"
+  TRAPPING_ENABLED="false"
+  ETA_ENABLED="false"
+  TRAP_SET="false"
+  CURRENT_NR_LINES=0
+  PROGRESS_TITLE=""
+  PROGRESS_TOTAL=100
+  PROGRESS_START=0
+  BLOCKED_START=0
+}
+
+function setup_scroll_area()
+{
+  pb_init_constants
+  # If trapping is enabled, we will want to activate it whenever we setup the scroll area and remove it when we break the scroll area
+  if [ "$TRAPPING_ENABLED" = "true" ]; then
+    trap_on_interrupt
+  fi
+  # Handle first parameter: alternative progress bar title
+  [ -n "$1" ] && PROGRESS_TITLE="$1" || PROGRESS_TITLE="Progress"
+  # Handle second parameter : alternative total count
+  [ -n "$2" ] && PROGRESS_TOTAL=$2 || PROGRESS_TOTAL=100
+  lines=$(tput lines)
+  CURRENT_NR_LINES=$lines
+  lines=$((lines-1))
+  # Scroll down a bit to avoid visual glitch when the screen area shrinks by one row
+  echo -en "\n"
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Set scroll region (this will place the cursor in the top left)
+  echo -en "\033[0;${lines}r"
+  # Restore cursor but ensure its inside the scrolling area
+  echo -en "$CODE_RESTORE_CURSOR"
+  echo -en "$CODE_CURSOR_IN_SCROLL_AREA"
+  # Store start timestamp to compute ETA
+  if [ "$ETA_ENABLED" = "true" ]; then
+    PROGRESS_START=$( date +%s )
+  fi
+  # Start empty progress bar
+  draw_progress_bar 0
+}
+
+function destroy_scroll_area()
+{
+  lines=$(tput lines)
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Set scroll region (this will place the cursor in the top left)
+  echo -en "\033[0;${lines}r"
+  # Restore cursor but ensure its inside the scrolling area
+  echo -en "$CODE_RESTORE_CURSOR"
+  echo -en "$CODE_CURSOR_IN_SCROLL_AREA"
+  # We are done so clear the scroll bar
+  clear_progress_bar
+  # Scroll down a bit to avoid visual glitch when the screen area grows by one row
+  echo -en "\n\n"
+  # Reset title for next usage
+  PROGRESS_TITLE=""
+  # Once the scroll area is cleared, we want to remove any trap previously set. Otherwise, ctrl+c will exit our shell
+  if [ "$TRAP_SET" = "true" ]; then
+    trap - EXIT
+  fi
+}
+
+function format_eta()
+{
+  local T=$1
+  local D=$((T/60/60/24))
+  local H=$((T/60/60%24))
+  local M=$((T/60%60))
+  local S=$((T%60))
+  [ $D -eq 0 -a $H -eq 0 -a $M -eq 0 -a $S -eq 0 ] && echo "--:--:--" && return
+  [ $D -gt 0 ] && printf '%d days, ' $D
+  printf 'ETA: %d:%02.f:%02.f' $H $M $S
+}
+
+function draw_progress_bar()
+{
+  if ! [ "$is_draw_pb" = "true" ]; then
+    return
+  fi
+  eta=""
+  if [ "$ETA_ENABLED" = "true" -a $1 -gt 0 ]; then
+    if [ "$PROGRESS_BLOCKED" = "true" ]; then
+      blocked_duration=$(($(date +%s)-$BLOCKED_START))
+      PROGRESS_START=$((PROGRESS_START+blocked_duration))
+    fi
+    running_time=$(($(date +%s)-PROGRESS_START))
+    total_time=$((PROGRESS_TOTAL*running_time/$1))
+    eta=$( format_eta $(($total_time-$running_time)) )
+  fi
+  percentage=$1
+  if [ $PROGRESS_TOTAL -ne 100 ]
+  then [ $PROGRESS_TOTAL -eq 0 ] && percentage=100 || percentage=$((percentage*100/$PROGRESS_TOTAL))
+  fi
+  extra=$2
+  lines=$(tput lines)
+  lines=$((lines))
+  # Check if the window has been resized. If so, reset the scroll area
+  if [ "$lines" -ne "$CURRENT_NR_LINES" ]; then
+    setup_scroll_area
+  fi
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Move cursor position to last row
+  echo -en "\033[${lines};0f"
+  # Clear progress bar
+  tput el
+  # Draw progress bar
+  PROGRESS_BLOCKED="false"
+  print_bar_text $percentage "$extra" "$eta"
+  # Restore cursor position
+  echo -en "$CODE_RESTORE_CURSOR"
+}
+
+function block_progress_bar()
+{
+  percentage=$1
+  lines=$(tput lines)
+  lines=$((lines))
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Move cursor position to last row
+  echo -en "\033[${lines};0f"
+  # Clear progress bar
+  tput el
+  # Draw progress bar
+  PROGRESS_BLOCKED="true"
+  BLOCKED_START=$( date +%s )
+  print_bar_text $percentage
+  # Restore cursor position
+  echo -en "$CODE_RESTORE_CURSOR"
+}
+
+function clear_progress_bar()
+{
+  lines=$(tput lines)
+  lines=$((lines))
+  # Save cursor
+  echo -en "$CODE_SAVE_CURSOR"
+  # Move cursor position to last row
+  echo -en "\033[${lines};0f"
+  # clear progress bar
+  tput el
+  # Restore cursor position
+  echo -en "$CODE_RESTORE_CURSOR"
+}
+
+function print_bar_text()
+{
+  local percentage=$1
+  local extra=$2
+  [ -n "$extra" ] && extra=" ($extra)"
+  local eta=$3
+  if [ -n "$eta" ]; then
+    [ -n "$extra" ] && extra="$extra "
+    extra="$extra$eta"
+  fi
+  local cols=$(tput cols)
+  bar_size=$((cols-9-${#PROGRESS_TITLE}-${#extra}))
+  local color="${COLOR_FG}${COLOR_BG}"
+  if [ "$PROGRESS_BLOCKED" = "true" ]; then
+    color="${COLOR_FG}${COLOR_BG_BLOCKED}"
+  fi
+  # Prepare progress bar
+  complete_size=$(((bar_size*percentage)/100))
+  remainder_size=$((bar_size-complete_size))
+  progress_bar=$(echo -ne "["; echo -en "${color}"; printf_new "#" $complete_size; echo -en "${RESTORE_FG}${RESTORE_BG}"; printf_new "." $remainder_size; echo -ne "]");
+  # Print progress bar
+  echo -ne " $PROGRESS_TITLE ${percentage}% ${progress_bar}${extra}"
+}
+
+function enable_trapping()
+{
+  TRAPPING_ENABLED="true"
+}
+
+function trap_on_interrupt()
+{
+  # If this function is called, we setup an interrupt handler to cleanup the progress bar
+  TRAP_SET="true"
+  trap cleanup_on_interrupt EXIT
+}
+
+function cleanup_on_interrupt()
+{
+  destroy_scroll_area
+  exit
+}
+
+function printf_new()
+{
+  str=$1
+  num=$2
+  v=$(printf "%-${num}s" "$str")
+  echo -ne "${v// /$str}"
+}
+# END bash_progress_bar
 
 # RelayServer Utils
 function resetCaddyDataRelayServer()
@@ -13250,9 +14471,9 @@ function addDomainsToRelayServer()
 
   deliveryhostmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the mail delivery host for this domain:
+
 EOF
   )
   dh_arr=($(sqlite3 $HSHQ_DB "select ID,MailHost from mailhosts;"))
@@ -13305,9 +14526,9 @@ function removeDomainsFromRelayServer()
   set +e
   rem_menu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the domains that you wish to remove:
+
 EOF
   )
   domains_to_rem_qry=($(sqlite3 $HSHQ_DB "select Domain,MailHost from mailhostmap join mailhosts on mailhostmap.MailHostID = mailhosts.ID where IsFirstDomain=false;"))
@@ -13321,7 +14542,7 @@ EOF
     menu_items=${menu_items}"$(echo $(echo $curdom | sed 's/|/(/1')")") | OFF "
   done
   sel_doms=($(whiptail --title "Select Domains" --checklist "$rem_menu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains ($domains_to_remove) from the RelayServer. To confirm, enter the word 'remove' below:")
+  is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains from the RelayServer. To confirm, enter the word 'remove' below:")
   if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
@@ -13445,9 +14666,9 @@ function addLECertPathsToRelayServerMsgbox()
   fi
   seldomainmenu=$(cat << EOF
 
-$hshqlogo
-
+$(getLogo)
 Select the base domain to associate with these subdomains:
+
 EOF
   )
   dom_arr=($(sqlite3 $HSHQ_DB "select Domain from mailhostmap order by MailHostID asc;"))
@@ -14446,7 +15667,7 @@ function setupPortForwardingDB()
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     return
   fi
-  isPFTable=$(sqlite3 $HSHQ_DB "SELECT name FROM sqlite_master WHERE type='table' AND name='portforwarding';")
+  isPFTable=$(sqlite3 $HSHQ_DB "select name from sqlite_master where type='table' and name='portforwarding';")
   if [ -z "$isPFTable" ]; then
     curdt=$(getCurrentDate)
     sudo sqlite3 $HSHQ_DB "create table portforwarding(ID integer not null primary key autoincrement, PFType text, Name text, ExtStart integer, ExtEnd integer, IntStart integer, IntEnd integer, Protocol text, InternalHost text, IPAddress text, LastUpdated datetime);"
@@ -14474,9 +15695,6 @@ function setupPortForwardingDB()
 
     # Portainer (do both protocols, even though only need TCP)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-Portainer', $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, 0, 0, 'both','','','$curdt');"
-
-    # SSH (do both protocols, even though only need TCP)
-    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
 
     # Syncthing Sync (need both)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingSync', $SYNCTHING_SYNC_PORT, $SYNCTHING_SYNC_PORT, 0, 0, 'both','','','$curdt');"
@@ -14811,6 +16029,1424 @@ function checkPortForwardingIntersect()
   IFS=$OIFS
 }
 
+# Desktop Functions
+function addRootCertificateToApps()
+{
+  set +e
+  which firefox > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    tryFind=$(findCertByKeyword firefox)
+    if [ -z "$tryFind" ] || ! [ "$tryFind" = "true" ]; then
+      initDesktopApp firefox true findCertByKeyword
+    fi
+  fi
+  which thunderbird > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    tryFind=$(findCertByKeyword thunderbird)
+    if [ -z "$tryFind" ] || ! [ "$tryFind" = "true" ]; then
+      initDesktopApp thunderbird true findCertByKeyword
+    fi
+  fi
+  # This is a little bit kludgy, but it covers the case when
+  # Firefox is installed via snap vs apt, i.e. the profile
+  # directory is not the same.
+  for certDB in $(find ~ -name "cert9.db" 2> /dev/null)
+  do
+    certDir=$(dirname $certDB)
+    echo "Adding certificate (${CERTS_ROOT_CA_NAME}.crt) to app..."
+    certutil -A -n "${HOMESERVER_NAME} Root CA" -t "CT,C,C" -i "/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt" -d sql:${certDir}
+  done
+  which brave-browser > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    tryFind=$(getBraveCertDB)
+    if [ -z "$tryFind" ] || ! [ -f "$tryFind" ]; then
+      initDesktopApp brave-browser true getBraveCertDB
+    fi
+  fi
+  if [ -d ~/.pki/nssdb ]; then
+    echo "Adding certificate (${CERTS_ROOT_CA_NAME}.crt) to Chromium-based browser(s) pki..."
+    certutil -A -n "${HOMESERVER_NAME} Root CA" -t "CT,C,C" -i "/usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt" -d sql:~/.pki/nssdb 2> /dev/null
+  fi
+}
+
+function tryDeleteRootCAFirefox()
+{
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  for certDB in $(find ~ -name "cert9.db" 2> /dev/null)
+  do
+    certDir=$(dirname $certDB)
+    certList=($(certutil -L -d sql:${certDir} | grep -o ".*Root CA"))
+    for curCert in "${certList[@]}"
+    do
+      certutil -D -n "$curCert" -d sql:${certDir}
+    done
+  done
+  IFS=$OLDIFS
+}
+
+function findCertByKeyword()
+{
+  keyw="$1"
+  findres=$(find ~ -name "cert9.db" 2> /dev/null)
+  echo "$findres" | grep "$keyw" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function getBraveCertDB()
+{
+  find ~/.pki -type d -name nssdb 2> /dev/null
+}
+
+function initDesktopApp()
+{
+  appName="$1"
+  isRunHeadless="$2"
+  checkFunction="$3"
+  # 1. Start app on desktop
+  # 2. Wait for checkFunction to return a result
+  # 3. Kill app
+  export DISPLAY=:0
+  if [ "$isRunHeadless" = "true" ]; then
+    nohup $appName --headless > /dev/null 2>&1 & > /dev/null 2>&1
+  else
+    nohup $appName > /dev/null 2>&1 & > /dev/null 2>&1
+  fi
+  sleep 5
+  curCount=0
+  maxCount=30
+  while [ $curCount -lt $maxCount ]
+  do
+    tryFind=$($checkFunction "$appName")
+    if ! [ -z "$tryFind" ] && [ "$tryFind" = "true" ]; then
+      break
+    fi
+    sleep 1
+    ((curCount++))
+  done
+  pkill $appName > /dev/null 2>&1
+}
+
+function configureFirefox()
+{
+  # The settings in the file below are taken directly from
+  # https://github.com/pyllyukko/user.js. It is an active,
+  # well-documented project that seeks to provide
+  # security-hardened settings for the Firefox browser.
+  # These settings are very aggressive and can detract
+  # from a normal user experience. However, keep in mind
+  # that this is a server, not a client device. It should
+  # not be used in a traditional everyday environment.
+  # If you want to remove these settings, then the
+  # easiest way is to close Firefox, remove the profile
+  # directory (likely ~/.mozilla/firefox, then restart
+  # Firefox. This will remove all related Firefox data,
+  # such as bookmarks, etc. So backup everything accordingly.
+  cat <<EOFUS > $HOME/user.js
+//
+// A few more added
+user_pref("extensions.formautofill.addresses.enabled", false);
+user_pref("extensions.formautofill.addresses.capture.enabled", false);
+user_pref("extensions.formautofill.addresses.ignoreAutocompleteOff", false);
+user_pref("extensions.formautofill.creditCards.available", false);
+user_pref("extensions.formautofill.creditCards.enabled", false);
+user_pref("browser.urlbar.suggest.topsites", false);
+user_pref("identity.fxaccounts.enabled", false);
+user_pref("browser.startup.couldRestoreSession.count", 1);
+user_pref("browser.startup.page", 3);
+
+// Always dark mode:)
+user_pref("layout.css.prefers-color-scheme.content-override", 0);
+user_pref("browser.in-content.dark-mode", true);
+user_pref("ui.systemUsesDarkTheme", 1);
+
+/******************************************************************************
+ * user.js                                                                    *
+ * https://github.com/pyllyukko/user.js                                       *
+ ******************************************************************************/
+
+/******************************************************************************
+ * SECTION: HTML5 / APIs / DOM                                                *
+ ******************************************************************************/
+
+// PREF: Disable Service Workers
+// https://developer.mozilla.org/en-US/docs/Web/API/Worker
+// https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorker_API
+// https://wiki.mozilla.org/Firefox/Push_Notifications#Service_Workers
+// NOTICE: Disabling ServiceWorkers breaks functionality on some sites (Google Street View...)
+// NOTICE: Disabling ServiceWorkers breaks Firefox Sync
+// Unknown security implications
+// CVE-2016-5259, CVE-2016-2812, CVE-2016-1949, CVE-2016-5287 (fixed)
+user_pref("dom.serviceWorkers.enabled",				false);
+
+// PREF: Disable web notifications
+// https://support.mozilla.org/en-US/questions/1140439
+user_pref("dom.webnotifications.enabled",			false);
+
+// PREF: Disable DOM timing API
+// https://wiki.mozilla.org/Security/Reviews/Firefox/NavigationTimingAPI
+// https://www.w3.org/TR/navigation-timing/#privacy
+// NOTICE: Disabling DOM timing API breaks item pages in AliExpress (https://github.com/pyllyukko/user.js/issues/561)
+user_pref("dom.enable_performance",				false);
+
+// PREF: Disable resource timing API
+// https://www.w3.org/TR/resource-timing/#privacy-security
+// NOTICE: Disabling resource timing API breaks some DDoS protection pages (Cloudflare)
+user_pref("dom.enable_resource_timing",				false);
+
+// PREF: Make sure the User Timing API does not provide a new high resolution timestamp
+// https://trac.torproject.org/projects/tor/ticket/16336
+// https://www.w3.org/TR/2013/REC-user-timing-20131212/#privacy-security
+user_pref("dom.enable_user_timing",				false);
+
+// PREF: Disable Web Audio API
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1288359
+// NOTICE: Web Audio API is required for Unity web player/games
+user_pref("dom.webaudio.enabled",				false);
+
+// PREF: Disable Location-Aware Browsing (geolocation)
+// https://www.mozilla.org/en-US/firefox/geolocation/
+user_pref("geo.enabled",					false);
+
+// PREF: When geolocation is enabled, use Mozilla geolocation service instead of Google
+// https://bugzilla.mozilla.org/show_bug.cgi?id=689252
+user_pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
+
+// PREF: When geolocation is enabled, don't log geolocation requests to the console
+user_pref("geo.wifi.logging.enabled", false);
+
+// PREF: Disable raw TCP socket support (mozTCPSocket)
+// https://trac.torproject.org/projects/tor/ticket/18863
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-97/
+// https://developer.mozilla.org/docs/Mozilla/B2G_OS/API/TCPSocket
+user_pref("dom.mozTCPSocket.enabled",				false);
+
+// PREF: Disable DOM storage (disabled)
+// http://kb.mozillazine.org/Dom.storage.enabled
+// https://html.spec.whatwg.org/multipage/webstorage.html
+// NOTICE-DISABLED: Disabling DOM storage is known to cause TypeError: localStorage is null  errors
+//user_pref("dom.storage.enabled",		false);
+
+// PREF: Disable leaking network/browser connection information via Javascript
+// Network Information API provides general information about the system's connection type (WiFi, cellular, etc.)
+// https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API
+// https://wicg.github.io/netinfo/#privacy-considerations
+// https://bugzilla.mozilla.org/show_bug.cgi?id=960426
+user_pref("dom.netinfo.enabled",				false);
+
+// PREF: Disable network API (Firefox < 32)
+// https://developer.mozilla.org/en-US/docs/Web/API/Connection/onchange
+// https://www.torproject.org/projects/torbrowser/design/#fingerprinting-defenses
+user_pref("dom.network.enabled",				false);
+
+// PREF: Disable WebRTC entirely to prevent leaking internal IP addresses (Firefox < 42)
+// NOTICE: Disabling WebRTC breaks peer-to-peer file sharing tools (reep.io ...)
+user_pref("media.peerconnection.enabled",			false);
+
+// PREF: Don't reveal your internal IP when WebRTC is enabled (Firefox >= 42)
+// https://wiki.mozilla.org/Media/WebRTC/Privacy
+// https://github.com/beefproject/beef/wiki/Module%3A-Get-Internal-IP-WebRTC
+user_pref("media.peerconnection.ice.default_address_only",	true); // Firefox 42-51
+user_pref("media.peerconnection.ice.no_host",			true); // Firefox >= 52
+
+// PREF: Disable WebRTC getUserMedia, screen sharing, audio capture, video capture
+// https://wiki.mozilla.org/Media/getUserMedia
+// https://blog.mozilla.org/futurereleases/2013/01/12/capture-local-camera-and-microphone-streams-with-getusermedia-now-enabled-in-firefox/
+// https://developer.mozilla.org/en-US/docs/Web/API/Navigator
+user_pref("media.navigator.enabled",				false);
+user_pref("media.navigator.video.enabled",			false);
+user_pref("media.getusermedia.screensharing.enabled",		false);
+user_pref("media.getusermedia.audiocapture.enabled",		false);
+
+// PREF: Disable battery API (Firefox < 52)
+// https://developer.mozilla.org/en-US/docs/Web/API/BatteryManager
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1313580
+user_pref("dom.battery.enabled",				false);
+
+// PREF: Disable telephony API
+// https://wiki.mozilla.org/WebAPI/Security/WebTelephony
+user_pref("dom.telephony.enabled",				false);
+
+// PREF: Disable "beacon" asynchronous HTTP transfers (used for analytics)
+// https://developer.mozilla.org/en-US/docs/Web/API/navigator.sendBeacon
+user_pref("beacon.enabled",					false);
+
+// PREF: Disable clipboard event detection (onCut/onCopy/onPaste) via Javascript
+// https://web.archive.org/web/20210416195937/https://developer.mozilla.org/en-US/docs/Mozilla/Preferences/Preference_reference/dom.event.clipboardevents.enabled
+// https://github.com/pyllyukko/user.js/issues/287
+// NOTICE: Disabling clipboard events breaks Ctrl+C/X/V copy/cut/paste functionaility in JS-based web applications (Google Docs...)
+user_pref("dom.event.clipboardevents.enabled",			false);
+
+// PREF: Disable "copy to clipboard" functionality via Javascript (Firefox >= 41)
+// https://hg.mozilla.org/mozilla-central/rev/2f9f8ea4b9c3
+// https://github.com/pyllyukko/user.js/issues/287
+// NOTICE: Disabling clipboard operations will break legitimate JS-based "copy to clipboard" functionality
+user_pref("dom.allow_cut_copy", false);
+
+// PREF: Disable speech recognition
+// https://dvcs.w3.org/hg/speech-api/raw-file/tip/speechapi.html
+// https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition
+// https://wiki.mozilla.org/HTML5_Speech_API
+user_pref("media.webspeech.recognition.enable",			false);
+
+// PREF: Disable speech synthesis
+// https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesis
+user_pref("media.webspeech.synth.enabled",			false);
+
+// PREF: Disable sensor API
+// https://wiki.mozilla.org/Sensor_API
+user_pref("device.sensors.enabled",				false);
+
+// PREF: Disable pinging URIs specified in HTML <a> ping= attributes
+// http://kb.mozillazine.org/Browser.send_pings
+user_pref("browser.send_pings",					false);
+
+// PREF: When browser pings are enabled, only allow pinging the same host as the origin page
+// http://kb.mozillazine.org/Browser.send_pings.require_same_host
+user_pref("browser.send_pings.require_same_host",		true);
+
+// PREF: Disable IndexedDB (disabled)
+// https://developer.mozilla.org/en-US/docs/IndexedDB
+// https://en.wikipedia.org/wiki/Indexed_Database_API
+// https://wiki.mozilla.org/Security/Reviews/Firefox4/IndexedDB_Security_Review
+// http://forums.mozillazine.org/viewtopic.php?p=13842047
+// https://github.com/pyllyukko/user.js/issues/8
+// NOTICE-DISABLED: IndexedDB could be used for tracking purposes, but is required for some add-ons to work (notably uBlock), so is left enabled
+//user_pref("dom.indexedDB.enabled",		false);
+
+// TODO: "Access Your Location" "Maintain Offline Storage" "Show Notifications"
+
+// PREF: Disable gamepad API to prevent USB device enumeration
+// https://www.w3.org/TR/gamepad/
+// https://trac.torproject.org/projects/tor/ticket/13023
+user_pref("dom.gamepad.enabled",				false);
+
+// PREF: Disable virtual reality devices APIs
+// https://developer.mozilla.org/en-US/Firefox/Releases/36#Interfaces.2FAPIs.2FDOM
+// https://developer.mozilla.org/en-US/docs/Web/API/WebVR_API
+user_pref("dom.vr.enabled",					false);
+
+// PREF: Disable vibrator API
+user_pref("dom.vibrator.enabled",           false);
+
+// PREF: Disable Archive API (Firefox < 54)
+// https://wiki.mozilla.org/WebAPI/ArchiveAPI
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1342361
+user_pref("dom.archivereader.enabled",				false);
+
+// PREF: Disable webGL
+// https://en.wikipedia.org/wiki/WebGL
+// https://www.contextis.com/resources/blog/webgl-new-dimension-browser-exploitation/
+// NOTICE: Disabling WebGL breaks WebGL-based websites/applications (windy, meteoblue...)
+user_pref("webgl.disabled",					true);
+// PREF: When webGL is enabled, use the minimum capability mode
+user_pref("webgl.min_capability_mode",				true);
+// PREF: When webGL is enabled, disable webGL extensions
+// https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API#WebGL_debugging_and_testing
+user_pref("webgl.disable-extensions",				true);
+// PREF: When webGL is enabled, force enabling it even when layer acceleration is not supported
+// https://trac.torproject.org/projects/tor/ticket/18603
+user_pref("webgl.disable-fail-if-major-performance-caveat",	true);
+// PREF: When webGL is enabled, do not expose information about the graphics driver
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1171228
+// https://developer.mozilla.org/en-US/docs/Web/API/WEBGL_debug_renderer_info
+user_pref("webgl.enable-debug-renderer-info",			false);
+// somewhat related...
+//user_pref("pdfjs.enableWebGL",					false);
+
+// PREF: Spoof dual-core CPU
+// https://trac.torproject.org/projects/tor/ticket/21675
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1360039
+user_pref("dom.maxHardwareConcurrency",				2);
+
+// PREF: Disable WebAssembly
+// https://webassembly.org/
+// https://en.wikipedia.org/wiki/WebAssembly
+// https://trac.torproject.org/projects/tor/ticket/21549
+// NOTICE: WebAssembly is required for Unity web player/games
+user_pref("javascript.options.wasm",				false);
+
+/******************************************************************************
+ * SECTION: Misc                                                              *
+ ******************************************************************************/
+
+// PREF: Disable face detection
+user_pref("camera.control.face_detection.enabled",		false);
+
+// PREF: Disable GeoIP lookup on your address to set default search engine region
+// https://trac.torproject.org/projects/tor/ticket/16254
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_geolocation-for-default-search-engine
+user_pref("browser.search.countryCode",				"US");
+user_pref("browser.search.region",				"US");
+user_pref("browser.search.geoip.url",				"");
+
+// PREF: Set Accept-Language HTTP header to en-US regardless of Firefox localization
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Language
+user_pref("intl.accept_languages",				"en-US, en");
+
+// PREF: Don't use OS values to determine locale, force using Firefox locale setting
+// http://kb.mozillazine.org/Intl.locale.matchOS
+user_pref("intl.locale.matchOS",				false);
+
+// Use LANG environment variable to choose locale (disabled)
+//pref("intl.locale.requested", "");
+
+// PREF: Don't use Mozilla-provided location-specific search engines
+user_pref("browser.search.geoSpecificDefaults",			false);
+
+// PREF: Do not automatically send selection to clipboard on some Linux platforms
+// http://kb.mozillazine.org/Clipboard.autocopy
+user_pref("clipboard.autocopy",					false);
+
+// PREF: Prevent leaking application locale/date format using JavaScript
+// https://bugzilla.mozilla.org/show_bug.cgi?id=867501
+// https://hg.mozilla.org/mozilla-central/rev/52d635f2b33d
+user_pref("javascript.use_us_english_locale",			true);
+
+// PREF: Do not submit invalid URIs entered in the address bar to the default search engine
+// http://kb.mozillazine.org/Keyword.enabled
+//user_pref("keyword.enabled",					false);
+
+// PREF: Don't trim HTTP off of URLs in the address bar.
+// https://bugzilla.mozilla.org/show_bug.cgi?id=665580
+user_pref("browser.urlbar.trimURLs",				false);
+
+// PREF: Disable preloading of autocomplete URLs.
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+user_pref("browser.urlbar.speculativeConnect.enabled", false);
+
+// PREF: Don't try to guess domain names when entering an invalid domain name in URL bar
+// http://www-archive.mozilla.org/docs/end-user/domain-guessing.html
+user_pref("browser.fixup.alternate.enabled",			false);
+
+// PREF: When browser.fixup.alternate.enabled is enabled, strip password from 'user:password@...' URLs
+// https://github.com/pyllyukko/user.js/issues/290#issuecomment-303560851
+user_pref("browser.fixup.hide_user_pass", true);
+
+// PREF: Send DNS request through SOCKS when SOCKS proxying is in use
+// https://trac.torproject.org/projects/tor/wiki/doc/TorifyHOWTO/WebBrowsers
+user_pref("network.proxy.socks_remote_dns",			true);
+
+// PREF: Don't monitor OS online/offline connection state
+// https://trac.torproject.org/projects/tor/ticket/18945
+user_pref("network.manage-offline-status",			false);
+
+// PREF: Enforce Mixed Active Content Blocking
+// https://support.mozilla.org/t5/Protect-your-privacy/Mixed-content-blocking-in-Firefox/ta-p/10990
+// https://developer.mozilla.org/en-US/docs/Site_Compatibility_for_Firefox_23#Non-SSL_contents_on_SSL_pages_are_blocked_by_default
+// https://blog.mozilla.org/tanvi/2013/04/10/mixed-content-blocking-enabled-in-firefox-23/
+user_pref("security.mixed_content.block_active_content",	true);
+
+// PREF: Enforce Mixed Passive Content blocking (a.k.a. Mixed Display Content)
+// NOTICE: Enabling Mixed Display Content blocking can prevent images/styles... from loading properly when connection to the website is only partially secured
+user_pref("security.mixed_content.block_display_content",	true);
+
+// PREF: Disable JAR from opening Unsafe File Types
+// http://kb.mozillazine.org/Network.jar.open-unsafe-types
+// CIS Mozilla Firefox 24 ESR v1.0.0 - 3.7 
+user_pref("network.jar.open-unsafe-types",			false);
+
+// CIS 2.7.4 Disable Scripting of Plugins by JavaScript
+// http://forums.mozillazine.org/viewtopic.php?f=7&t=153889
+user_pref("security.xpconnect.plugin.unrestricted",		false);
+
+// PREF: Set File URI Origin Policy
+// http://kb.mozillazine.org/Security.fileuri.strict_origin_policy
+// CIS Mozilla Firefox 24 ESR v1.0.0 - 3.8
+user_pref("security.fileuri.strict_origin_policy",		true);
+
+// PREF: Disable Displaying Javascript in History URLs
+// http://kb.mozillazine.org/Browser.urlbar.filter.javascript
+// CIS 2.3.6 
+user_pref("browser.urlbar.filter.javascript",			true);
+
+// PREF: Disable asm.js
+// http://asmjs.org/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-29/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-50/
+// https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2015-2712
+user_pref("javascript.options.asmjs",				false);
+
+// PREF: Disable SVG in OpenType fonts
+// https://wiki.mozilla.org/SVGOpenTypeFonts
+// https://github.com/iSECPartners/publications/tree/master/reports/Tor%20Browser%20Bundle
+user_pref("gfx.font_rendering.opentype_svg.enabled",		false);
+
+// PREF: Disable in-content SVG rendering (Firefox >= 53) (disabled)
+// NOTICE-DISABLED: Disabling SVG support breaks many UI elements on many sites
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1216893
+// https://github.com/iSECPartners/publications/raw/master/reports/Tor%20Browser%20Bundle/Tor%20Browser%20Bundle%20-%20iSEC%20Deliverable%201.3.pdf#16
+//user_pref("svg.disabled", true);
+
+// PREF: Disable video stats to reduce fingerprinting threat
+// https://bugzilla.mozilla.org/show_bug.cgi?id=654550
+// https://github.com/pyllyukko/user.js/issues/9#issuecomment-100468785
+// https://github.com/pyllyukko/user.js/issues/9#issuecomment-148922065
+user_pref("media.video_stats.enabled",				false);
+
+// PREF: Don't reveal build ID
+// Value taken from Tor Browser
+// https://bugzilla.mozilla.org/show_bug.cgi?id=583181
+user_pref("general.buildID.override",				"20100101");
+user_pref("browser.startup.homepage_override.buildID",		"20100101");
+
+// PREF: Don't use document specified fonts to prevent installed font enumeration (fingerprinting)
+// https://github.com/pyllyukko/user.js/issues/395
+// https://browserleaks.com/fonts
+// https://github.com/pyllyukko/user.js/issues/120
+user_pref("browser.display.use_document_fonts",			0);
+
+// PREF: Enable only whitelisted URL protocol handlers
+// http://kb.mozillazine.org/Network.protocol-handler.external-default
+// http://kb.mozillazine.org/Network.protocol-handler.warn-external-default
+// http://kb.mozillazine.org/Network.protocol-handler.expose.%28protocol%29
+// https://news.ycombinator.com/item?id=13047883
+// https://bugzilla.mozilla.org/show_bug.cgi?id=167475
+// https://github.com/pyllyukko/user.js/pull/285#issuecomment-298124005
+// NOTICE: Disabling nonessential protocols breaks all interaction with custom protocols such as mailto:, irc:, magnet: ... and breaks opening third-party mail/messaging/torrent/... clients when clicking on links with these protocols
+// TODO: Add externally-handled protocols from Windows 8.1 and Windows 10 (currently contains protocols only from Linux and Windows 7) that might pose a similar threat (see e.g. https://news.ycombinator.com/item?id=13044991)
+// TODO: Add externally-handled protocols from Mac OS X that might pose a similar threat (see e.g. https://news.ycombinator.com/item?id=13044991)
+// If you want to enable a protocol, set network.protocol-handler.expose.(protocol) to true and network.protocol-handler.external.(protocol) to:
+//   * true, if the protocol should be handled by an external application
+//   * false, if the protocol should be handled internally by Firefox
+user_pref("network.protocol-handler.warn-external-default",	true);
+user_pref("network.protocol-handler.external.http",		false);
+user_pref("network.protocol-handler.external.https",		false);
+user_pref("network.protocol-handler.external.javascript",	false);
+user_pref("network.protocol-handler.external.moz-extension",	false);
+user_pref("network.protocol-handler.external.ftp",		false);
+user_pref("network.protocol-handler.external.file",		false);
+user_pref("network.protocol-handler.external.about",		false);
+user_pref("network.protocol-handler.external.chrome",		false);
+user_pref("network.protocol-handler.external.blob",		false);
+user_pref("network.protocol-handler.external.data",		false);
+user_pref("network.protocol-handler.expose-all",		false);
+user_pref("network.protocol-handler.expose.http",		true);
+user_pref("network.protocol-handler.expose.https",		true);
+user_pref("network.protocol-handler.expose.javascript",		true);
+user_pref("network.protocol-handler.expose.moz-extension",	true);
+user_pref("network.protocol-handler.expose.ftp",		true);
+user_pref("network.protocol-handler.expose.file",		true);
+user_pref("network.protocol-handler.expose.about",		true);
+user_pref("network.protocol-handler.expose.chrome",		true);
+user_pref("network.protocol-handler.expose.blob",		true);
+user_pref("network.protocol-handler.expose.data",		true);
+
+/******************************************************************************
+ * SECTION: Extensions / plugins                                                       *
+ ******************************************************************************/
+
+// PREF: Ensure you have a security delay when installing add-ons (milliseconds)
+// http://kb.mozillazine.org/Disable_extension_install_delay_-_Firefox
+// http://www.squarefree.com/2004/07/01/race-conditions-in-security-dialogs/
+user_pref("security.dialog_enable_delay",			1000);
+
+// PREF: Require signatures
+// https://wiki.mozilla.org/Addons/Extension_Signing
+//user_pref("xpinstall.signatures.required",		true);
+
+// PREF: Opt-out of add-on metadata updates
+// https://blog.mozilla.org/addons/how-to-opt-out-of-add-on-metadata-updates/
+user_pref("extensions.getAddons.cache.enabled",			false);
+
+// PREF: Opt-out of themes (Persona) updates
+// https://support.mozilla.org/t5/Firefox/how-do-I-prevent-autoamtic-updates-in-a-50-user-environment/td-p/144287
+user_pref("lightweightThemes.update.enabled",			false);
+
+// PREF: Disable Flash Player NPAPI plugin
+// http://kb.mozillazine.org/Flash_plugin
+user_pref("plugin.state.flash",					0);
+
+// PREF: Disable Java NPAPI plugin
+user_pref("plugin.state.java",					0);
+
+// PREF: Disable sending Flash Player crash reports
+user_pref("dom.ipc.plugins.flash.subprocess.crashreporter.enabled",	false);
+
+// PREF: When Flash crash reports are enabled, don't send the visited URL in the crash report
+user_pref("dom.ipc.plugins.reportCrashURL",			false);
+
+// PREF: When Flash is enabled, download and use Mozilla SWF URIs blocklist
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1237198
+// https://github.com/mozilla-services/shavar-plugin-blocklist
+user_pref("browser.safebrowsing.blockedURIs.enabled", true);
+
+// PREF: Disable Gnome Shell Integration NPAPI plugin
+user_pref("plugin.state.libgnome-shell-browser-plugin",		0);
+
+// PREF: Disable the bundled OpenH264 video codec (disabled)
+// http://forums.mozillazine.org/viewtopic.php?p=13845077&sid=28af2622e8bd8497b9113851676846b1#p13845077
+//user_pref("media.gmp-provider.enabled",		false);
+
+// PREF: Enable plugins click-to-play
+// https://wiki.mozilla.org/Firefox/Click_To_Play
+// https://blog.mozilla.org/security/2012/10/11/click-to-play-plugins-blocklist-style/
+user_pref("plugins.click_to_play",				true);
+
+// PREF: Updates addons automatically
+// https://blog.mozilla.org/addons/how-to-turn-off-add-on-updates/
+user_pref("extensions.update.enabled",				true);
+
+// PREF: Enable add-on and certificate blocklists (OneCRL) from Mozilla
+// https://wiki.mozilla.org/Blocklisting
+// https://blocked.cdn.mozilla.net/
+// http://kb.mozillazine.org/Extensions.blocklist.enabled
+// http://kb.mozillazine.org/Extensions.blocklist.url
+// https://blog.mozilla.org/security/2015/03/03/revoking-intermediate-certificates-introducing-onecrl/
+// Updated at interval defined in extensions.blocklist.interval (default: 86400)
+user_pref("extensions.blocklist.enabled",			true);
+user_pref("services.blocklist.update_enabled",			true);
+
+// PREF: Decrease system information leakage to Mozilla blocklist update servers
+// https://trac.torproject.org/projects/tor/ticket/16931
+user_pref("extensions.blocklist.url",				"https://blocklist.addons.mozilla.org/blocklist/3/%APP_ID%/%APP_VERSION%/");
+
+// PREF: Disable system add-on updates (hidden & always-enabled add-ons from Mozilla)
+// https://firefox-source-docs.mozilla.org/toolkit/mozapps/extensions/addon-manager/SystemAddons.html
+// https://blog.mozilla.org/data/2018/08/20/effectively-measuring-search-in-firefox/
+// https://github.com/pyllyukko/user.js/issues/419
+// https://dxr.mozilla.org/mozilla-central/source/toolkit/mozapps/extensions/AddonManager.jsm#1248-1257
+// NOTICE: Disabling system add-on updates prevents Mozilla from "hotfixing" your browser to patch critical problems (one possible use case from the documentation)
+user_pref("extensions.systemAddon.update.enabled",		false);
+
+/******************************************************************************
+ * SECTION: Firefox (anti-)features / components                              *                            *
+ ******************************************************************************/
+
+// PREF: Disable Extension recommendations (Firefox >= 65)
+// https://support.mozilla.org/en-US/kb/extension-recommendations
+user_pref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr",	false);
+
+// PREF: Trusted Recursive Resolver (DNS-over-HTTPS) (disabled)
+// https://wiki.mozilla.org/Trusted_Recursive_Resolver
+//user_pref("network.trr.mode",					0);
+
+// PREF: Disable WebIDE
+// https://trac.torproject.org/projects/tor/ticket/16222
+// https://developer.mozilla.org/docs/Tools/WebIDE
+user_pref("devtools.webide.enabled",				false);
+user_pref("devtools.webide.autoinstallADBHelper",		false);
+user_pref("devtools.webide.autoinstallFxdtAdapters",		false);
+
+// PREF: Disable remote debugging
+// https://developer.mozilla.org/en-US/docs/Tools/Remote_Debugging/Debugging_Firefox_Desktop
+// https://developer.mozilla.org/en-US/docs/Tools/Tools_Toolbox#Advanced_settings
+user_pref("devtools.debugger.remote-enabled",			false);
+user_pref("devtools.chrome.enabled",				false);
+user_pref("devtools.debugger.force-local",			true);
+
+// PREF: Disable Mozilla telemetry/experiments
+// https://wiki.mozilla.org/Platform/Features/Telemetry
+// https://wiki.mozilla.org/Privacy/Reviews/Telemetry
+// https://wiki.mozilla.org/Telemetry
+// https://www.mozilla.org/en-US/legal/privacy/firefox.html#telemetry
+// https://support.mozilla.org/t5/Firefox-crashes/Mozilla-Crash-Reporter/ta-p/1715
+// https://wiki.mozilla.org/Security/Reviews/Firefox6/ReviewNotes/telemetry
+// https://gecko.readthedocs.io/en/latest/browser/experiments/experiments/manifest.html
+// https://wiki.mozilla.org/Telemetry/Experiments
+// https://support.mozilla.org/en-US/questions/1197144
+// https://firefox-source-docs.mozilla.org/toolkit/components/telemetry/telemetry/internals/preferences.html#id1
+user_pref("toolkit.telemetry.enabled",				false);
+user_pref("toolkit.telemetry.unified",				false);
+user_pref("toolkit.telemetry.archive.enabled",			false);
+user_pref("experiments.supported",				false);
+user_pref("experiments.enabled",				false);
+user_pref("experiments.manifest.uri",				"");
+
+// PREF: Disallow Necko to do A/B testing
+// https://trac.torproject.org/projects/tor/ticket/13170
+user_pref("network.allow-experiments",				false);
+
+// PREF: Disable sending Firefox crash reports to Mozilla servers
+// https://wiki.mozilla.org/Breakpad
+// http://kb.mozillazine.org/Breakpad
+// https://dxr.mozilla.org/mozilla-central/source/toolkit/crashreporter
+// https://bugzilla.mozilla.org/show_bug.cgi?id=411490
+// A list of submitted crash reports can be found at about:crashes
+user_pref("breakpad.reportURL",					"");
+
+// PREF: Disable sending reports of tab crashes to Mozilla (about:tabcrashed), don't nag user about unsent crash reports
+// https://hg.mozilla.org/mozilla-central/file/tip/browser/app/profile/firefox.js
+user_pref("browser.tabs.crashReporting.sendReport",		false);
+user_pref("browser.crashReports.unsubmittedCheck.enabled",	false);
+
+// PREF: Disable FlyWeb (discovery of LAN/proximity IoT devices that expose a Web interface)
+// https://wiki.mozilla.org/FlyWeb
+// https://wiki.mozilla.org/FlyWeb/Security_scenarios
+// https://docs.google.com/document/d/1eqLb6cGjDL9XooSYEEo7mE-zKQ-o-AuDTcEyNhfBMBM/edit
+// http://www.ghacks.net/2016/07/26/firefox-flyweb
+user_pref("dom.flyweb.enabled",					false);
+
+// PREF: Disable the UITour backend
+// https://trac.torproject.org/projects/tor/ticket/19047#comment:3
+user_pref("browser.uitour.enabled",				false);
+
+// PREF: Enable Firefox Tracking Protection
+// https://wiki.mozilla.org/Security/Tracking_protection
+// https://support.mozilla.org/en-US/kb/tracking-protection-firefox
+// https://support.mozilla.org/en-US/kb/tracking-protection-pbm
+// https://kontaxis.github.io/trackingprotectionfirefox/
+// https://feeding.cloud.geek.nz/posts/how-tracking-protection-works-in-firefox/
+user_pref("privacy.trackingprotection.enabled",			true);
+user_pref("privacy.trackingprotection.pbmode.enabled",		true);
+
+// PREF: Enable contextual identity Containers feature (Firefox >= 52)
+// NOTICE: Containers are not available in Private Browsing mode
+// https://wiki.mozilla.org/Security/Contextual_Identity_Project/Containers
+user_pref("privacy.userContext.enabled",			true);
+
+// PREF: Enable Firefox's anti-fingerprinting mode ("resist fingerprinting" or RFP) (Tor Uplift project)
+// https://wiki.mozilla.org/Security/Tor_Uplift/Tracking
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1333933
+// https://wiki.mozilla.org/Security/Fingerprinting
+// NOTICE: RFP breaks some keyboard shortcuts used in certain websites (see #443)
+// NOTICE: RFP changes your time zone
+// NOTICE: RFP breaks some DDoS protection pages (Cloudflare)
+user_pref("privacy.resistFingerprinting",			true);
+
+// PREF: disable mozAddonManager Web API [FF57+]
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1384330
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1406795
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1415644
+// https://bugzilla.mozilla.org/buglist.cgi?bug_id=1453988
+// https://trac.torproject.org/projects/tor/ticket/26114
+user_pref("privacy.resistFingerprinting.block_mozAddonManager", true);
+user_pref("extensions.webextensions.restrictedDomains", "");
+
+// PREF: enable RFP letterboxing / resizing of inner window [FF67+] (disabled)
+// https://bugzilla.mozilla.org/1407366
+//user_pref("privacy.resistFingerprinting.letterboxing", true);
+//user_pref("privacy.resistFingerprinting.letterboxing.dimensions", "800x600, 1000x1000, 1600x900");
+
+// PREF: disable showing about:blank/maximized window as soon as possible during startup [FF60+]
+// https://bugzilla.mozilla.org/1448423
+user_pref("browser.startup.blankWindow", false);
+
+// PREF: Disable the built-in PDF viewer
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2015-2743
+// https://blog.mozilla.org/security/2015/08/06/firefox-exploit-found-in-the-wild/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2015-69/
+user_pref("pdfjs.disabled",					true);
+
+// PREF: Disable collection/sending of the health report (healthreport.sqlite*)
+// https://support.mozilla.org/en-US/kb/firefox-health-report-understand-your-browser-perf
+// https://gecko.readthedocs.org/en/latest/toolkit/components/telemetry/telemetry/preferences.html
+user_pref("datareporting.healthreport.uploadEnabled",		false);
+user_pref("datareporting.healthreport.service.enabled",		false);
+user_pref("datareporting.policy.dataSubmissionEnabled",		false);
+// "Allow Firefox to make personalized extension recommendations"
+user_pref("browser.discovery.enabled",				false);
+
+// PREF: Disable Shield/Heartbeat/Normandy (Mozilla user rating telemetry)
+// https://wiki.mozilla.org/Advocacy/heartbeat
+// https://trac.torproject.org/projects/tor/ticket/19047
+// https://trac.torproject.org/projects/tor/ticket/18738
+// https://wiki.mozilla.org/Firefox/Shield
+// https://github.com/mozilla/normandy
+// https://support.mozilla.org/en-US/kb/shield
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1370801
+// https://wiki.mozilla.org/Firefox/Normandy/PreferenceRollout
+user_pref("app.normandy.enabled", false);
+user_pref("app.normandy.api_url", "");
+user_pref("extensions.shield-recipe-client.enabled",		false);
+user_pref("app.shield.optoutstudies.enabled",			false);
+
+
+// PREF: Disable Firefox Hello (disabled) (Firefox < 49)
+// https://wiki.mozilla.org/Loop
+// https://support.mozilla.org/t5/Chat-and-share/Support-for-Hello-discontinued-in-Firefox-49/ta-p/37946
+// NOTICE-DISABLED: Firefox Hello requires setting  media.peerconnection.enabled  and  media.getusermedia.screensharing.enabled  to true,  security.OCSP.require  to false to work.
+//user_pref("loop.enabled",		false);
+
+// PREF: Disable Firefox Hello metrics collection
+// https://groups.google.com/d/topic/mozilla.dev.platform/nyVkCx-_sFw/discussion
+user_pref("loop.logDomains",					false);
+
+// PREF: Enable Auto Update (disabled)
+// NOTICE: Fully automatic updates are disabled and left to package management systems on Linux. Windows users may want to change this setting.
+// CIS 2.1.1
+//user_pref("app.update.auto",					true);
+
+// PREF: Enforce checking for Firefox updates
+// http://kb.mozillazine.org/App.update.enabled
+// NOTICE: Update check page might incorrectly report Firefox ESR as out-of-date
+user_pref("app.update.enabled",                 true);
+
+// PREF: Enable blocking reported web forgeries
+// https://wiki.mozilla.org/Security/Safe_Browsing
+// http://kb.mozillazine.org/Safe_browsing
+// https://support.mozilla.org/en-US/kb/how-does-phishing-and-malware-protection-work
+// http://forums.mozillazine.org/viewtopic.php?f=39&t=2711237&p=12896849#p12896849
+// CIS 2.3.4
+user_pref("browser.safebrowsing.enabled",			true); // Firefox < 50
+user_pref("browser.safebrowsing.phishing.enabled",		true); // firefox >= 50
+
+// PREF: Enable blocking reported attack sites
+// http://kb.mozillazine.org/Browser.safebrowsing.malware.enabled
+// CIS 2.3.5
+user_pref("browser.safebrowsing.malware.enabled",		true);
+
+// PREF: Disable querying Google Application Reputation database for downloaded binary files
+// https://www.mozilla.org/en-US/firefox/39.0/releasenotes/
+// https://wiki.mozilla.org/Security/Application_Reputation
+user_pref("browser.safebrowsing.downloads.remote.enabled",	false);
+
+// PREF: Disable Pocket
+// https://support.mozilla.org/en-US/kb/save-web-pages-later-pocket-firefox
+// https://github.com/pyllyukko/user.js/issues/143
+user_pref("browser.pocket.enabled",				false);
+user_pref("extensions.pocket.enabled",				false);
+
+// PREF: Disable "Recommended by Pocket" in Firefox Quantum
+user_pref("browser.newtabpage.activity-stream.feeds.section.topstories",	false);
+
+// PREF: Enable Global Privacy Control (GPC) (Firefox >= 120)
+// https://support.mozilla.org/1/firefox/126.0/Linux/en-US/global-privacy-control
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Sec-GPC
+// https://globalprivacycontrol.org/
+user_pref("privacy.globalprivacycontrol.enabled",		true);
+
+/******************************************************************************
+ * SECTION: Automatic connections                                             *
+ ******************************************************************************/
+
+// PREF: Limit the connection keep-alive timeout to 15 seconds (disabled)
+// https://github.com/pyllyukko/user.js/issues/387
+// http://kb.mozillazine.org/Network.http.keep-alive.timeout
+// https://httpd.apache.org/docs/current/mod/core.html#keepalivetimeout
+//user_pref("network.http.keep-alive.timeout",			15);
+
+// PREF: Disable prefetching of <link rel="next"> URLs
+// http://kb.mozillazine.org/Network.prefetch-next
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Link_prefetching_FAQ#Is_there_a_preference_to_disable_link_prefetching.3F
+user_pref("network.prefetch-next",				false);
+
+// PREF: Disable DNS prefetching
+// http://kb.mozillazine.org/Network.dns.disablePrefetch
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Controlling_DNS_prefetching
+user_pref("network.dns.disablePrefetch",			true);
+user_pref("network.dns.disablePrefetchFromHTTPS",		true);
+
+// PREF: Disable the predictive service (Necko)
+// https://wiki.mozilla.org/Privacy/Reviews/Necko
+user_pref("network.predictor.enabled",				false);
+
+// PREF: Reject .onion hostnames before passing the to DNS
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1228457
+// RFC 7686
+user_pref("network.dns.blockDotOnion",				true);
+
+// PREF: Disable search suggestions in the search bar
+// http://kb.mozillazine.org/Browser.search.suggest.enabled
+user_pref("browser.search.suggest.enabled",			false);
+
+// PREF: Disable "Show search suggestions in location bar results"
+user_pref("browser.urlbar.suggest.searches",			false);
+// PREF: When using the location bar, don't suggest URLs from browsing history
+user_pref("browser.urlbar.suggest.history",			false);
+// PREF: Disable Firefox Suggest
+// https://www.ghacks.net/2021/09/09/how-to-disable-firefox-suggest/
+// https://support.mozilla.org/en-US/kb/navigate-web-faster-firefox-suggest
+user_pref("browser.urlbar.groupLabels.enabled", false); // Firefox >= 93
+
+// PREF: Disable SSDP
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1111967
+user_pref("browser.casting.enabled",				false);
+
+// PREF: Disable automatic downloading of OpenH264 codec
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_media-capabilities
+// https://andreasgal.com/2014/10/14/openh264-now-in-firefox/
+user_pref("media.gmp-gmpopenh264.enabled",			false);
+user_pref("media.gmp-manager.url",				"");
+
+// PREF: Disable speculative pre-connections
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_speculative-pre-connections
+// https://bugzilla.mozilla.org/show_bug.cgi?id=814169
+user_pref("network.http.speculative-parallel-limit",		0);
+
+// PREF: Disable downloading homepage snippets/messages from Mozilla
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_mozilla-content
+// https://wiki.mozilla.org/Firefox/Projects/Firefox_Start/Snippet_Service
+user_pref("browser.aboutHomeSnippets.updateUrl",		"");
+
+// PREF: Never check updates for search engines
+// https://support.mozilla.org/en-US/kb/how-stop-firefox-making-automatic-connections#w_auto-update-checking
+user_pref("browser.search.update",				false);
+
+// PREF: Disable automatic captive portal detection (Firefox >= 52.0)
+// https://support.mozilla.org/en-US/questions/1157121
+user_pref("network.captive-portal-service.enabled",		false);
+
+// PREF: Disable (parts of?) "TopSites"
+user_pref("browser.topsites.contile.enabled",				false);
+user_pref("browser.newtabpage.activity-stream.feeds.topsites",		false);
+user_pref("browser.newtabpage.activity-stream.showSponsoredTopSites",	false);
+
+/******************************************************************************
+ * SECTION: HTTP                                                              *
+ ******************************************************************************/
+
+// PREF: Disallow NTLMv1
+// https://bugzilla.mozilla.org/show_bug.cgi?id=828183
+user_pref("network.negotiate-auth.allow-insecure-ntlm-v1",	false);
+// it is still allowed through HTTPS. uncomment the following to disable it completely.
+//user_pref("network.negotiate-auth.allow-insecure-ntlm-v1-https",		false);
+
+// PREF: Enable CSP 1.1 script-nonce directive support
+// https://bugzilla.mozilla.org/show_bug.cgi?id=855326
+user_pref("security.csp.experimentalEnabled",			true);
+
+// PREF: Enable Content Security Policy (CSP)
+// https://developer.mozilla.org/en-US/docs/Web/Security/CSP/Introducing_Content_Security_Policy
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+user_pref("security.csp.enable",				true);
+
+// PREF: Enable Subresource Integrity
+// https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity
+// https://wiki.mozilla.org/Security/Subresource_Integrity
+user_pref("security.sri.enable",				true);
+
+// PREF: DNT HTTP header (disabled)
+// https://www.mozilla.org/en-US/firefox/dnt/
+// https://en.wikipedia.org/wiki/Do_not_track_header
+// https://dnt-dashboard.mozilla.org
+// https://github.com/pyllyukko/user.js/issues/11
+// NOTICE: Do No Track must be enabled manually
+//user_pref("privacy.donottrackheader.enabled",		true);
+
+// PREF: Send a referer header with the target URI as the source (disabled)
+// https://bugzilla.mozilla.org/show_bug.cgi?id=822869
+// https://github.com/pyllyukko/user.js/issues/227
+// NOTICE-DISABLED: Spoofing referers breaks functionality on websites relying on authentic referer headers
+// NOTICE-DISABLED: Spoofing referers breaks visualisation of 3rd-party sites on the Lightbeam addon
+// NOTICE-DISABLED: Spoofing referers disables CSRF protection on some login pages not implementing origin-header/cookie+token based CSRF protection
+// TODO: https://github.com/pyllyukko/user.js/issues/94, commented-out XOriginPolicy/XOriginTrimmingPolicy = 2 prefs
+//user_pref("network.http.referer.spoofSource",			true);
+
+// PREF: Don't send referer headers when following links across different domains
+// https://github.com/pyllyukko/user.js/issues/227
+// https://github.com/pyllyukko/user.js/issues/328
+// https://feeding.cloud.geek.nz/posts/tweaking-referrer-for-privacy-in-firefox/
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+// NOTICE: Blocking referers across same eTLD sites breaks some login flows relying on them, consider lowering this pref to 1
+user_pref("network.http.referer.XOriginPolicy",		2);
+
+// PREF: Trim HTTP referer headers to only send the scheme, host, and port
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+user_pref("network.http.referer.trimmingPolicy",	2);
+
+// PREF: When sending Referer across domains, only send scheme, host, and port in the Referer header
+// https://wiki.mozilla.org/Privacy/Privacy_Task_Force/firefox_about_config_privacy_tweeks
+user_pref("network.http.referer.XOriginTrimmingPolicy",	2);
+
+// PREF: Accept Only 1st Party Cookies
+// http://kb.mozillazine.org/Network.cookie.cookieBehavior#1
+// NOTICE: Blocking 3rd-party cookies breaks a number of payment gateways
+// CIS 2.5.1
+//user_pref("network.cookie.cookieBehavior",			1);
+
+// PREF: Enable first-party isolation
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1299996
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1260931
+// https://wiki.mozilla.org/Security/FirstPartyIsolation
+// NOTICE: First-party isolation breaks Microsoft Teams
+// NOTICE: First-party isolation causes HTTP basic auth to ask for credentials for every new tab (see #425)
+user_pref("privacy.firstparty.isolate",				true);
+
+// PREF: Make sure that third-party cookies (if enabled) never persist beyond the session.
+// https://feeding.cloud.geek.nz/posts/tweaking-cookies-for-privacy-in-firefox/
+// http://kb.mozillazine.org/Network.cookie.thirdparty.sessionOnly
+// https://developer.mozilla.org/en-US/docs/Cookies_Preferences_in_Mozilla#network.cookie.thirdparty.sessionOnly
+//user_pref("network.cookie.thirdparty.sessionOnly",		true);
+
+// PREF: Spoof User-agent (disabled)
+//user_pref("general.useragent.override",				"Mozilla/5.0 (Windows NT 6.1; rv:45.0) Gecko/20100101 Firefox/45.0");
+//user_pref("general.appname.override",				"Netscape");
+//user_pref("general.appversion.override",			"5.0 (Windows)");
+//user_pref("general.platform.override",				"Win32");
+//user_pref("general.oscpu.override",				"Windows NT 6.1");
+
+/*******************************************************************************
+ * SECTION: Caching                                                            *
+ ******************************************************************************/
+
+// PREF: Permanently enable private browsing mode
+// https://support.mozilla.org/en-US/kb/Private-Browsing
+// https://wiki.mozilla.org/PrivateBrowsing
+// NOTICE: You can not view or inspect cookies when in private browsing: https://bugzilla.mozilla.org/show_bug.cgi?id=823941
+// NOTICE: When Javascript is enabled, Websites can detect use of Private Browsing mode
+// NOTICE: Private browsing breaks Kerberos authentication
+// NOTICE: Disables "Containers" functionality (see below)
+// NOTICE: "Always use private browsing mode" (browser.privatebrowsing.autostart) disables the possibility to use password manager: https://support.mozilla.org/en-US/kb/usernames-and-passwords-are-not-saved#w_private-browsing
+//user_pref("browser.privatebrowsing.autostart",			true);
+
+// PREF: Do not download URLs for the offline cache
+// http://kb.mozillazine.org/Browser.cache.offline.enable
+user_pref("browser.cache.offline.enable",			false);
+
+// PREF: Clear history when Firefox closes
+// https://support.mozilla.org/en-US/kb/Clear%20Recent%20History#w_how-do-i-make-firefox-clear-my-history-automatically
+// NOTICE: Installing user.js will remove your browsing history, caches and local storage.
+// NOTICE: Installing user.js **will remove your saved passwords** (https://github.com/pyllyukko/user.js/issues/27)
+// NOTICE: Clearing open windows on Firefox exit causes 2 windows to open when Firefox starts https://bugzilla.mozilla.org/show_bug.cgi?id=1334945
+//user_pref("privacy.sanitize.sanitizeOnShutdown",		true);
+//user_pref("privacy.clearOnShutdown.cache",			true);
+//user_pref("privacy.clearOnShutdown.cookies",			true);
+user_pref("privacy.clearOnShutdown.downloads",			true);
+user_pref("privacy.clearOnShutdown.formdata",			true);
+//user_pref("privacy.clearOnShutdown.history",			true);
+user_pref("privacy.clearOnShutdown.offlineApps",		true);
+//user_pref("privacy.clearOnShutdown.sessions",			true);
+//user_pref("privacy.clearOnShutdown.openWindows",		true);
+
+// PREF: Set time range to "Everything" as default in "Clear Recent History"
+//user_pref("privacy.sanitize.timeSpan",				0);
+
+// PREF: Clear everything but "Site Preferences" in "Clear Recent History"
+user_pref("privacy.cpd.offlineApps",				true);
+//user_pref("privacy.cpd.cache",					true);
+//user_pref("privacy.cpd.cookies",				true);
+user_pref("privacy.cpd.downloads",				true);
+user_pref("privacy.cpd.formdata",				true);
+//user_pref("privacy.cpd.history",				true);
+//user_pref("privacy.cpd.sessions",				true);
+
+// PREF: Don't remember browsing history
+user_pref("places.history.enabled",				false);
+
+// PREF: Don't remember recently closed tabs
+//user_pref("browser.sessionstore.max_tabs_undo",		0);
+
+// PREF: Disable disk cache
+// http://kb.mozillazine.org/Browser.cache.disk.enable
+user_pref("browser.cache.disk.enable",				false);
+
+// PREF: Disable memory cache (disabled)
+// http://kb.mozillazine.org/Browser.cache.memory.enable
+//user_pref("browser.cache.memory.enable",		false);
+
+// PREF: Disable Caching of SSL Pages
+// CIS Version 1.2.0 October 21st, 2011 2.5.8
+// http://kb.mozillazine.org/Browser.cache.disk_cache_ssl
+user_pref("browser.cache.disk_cache_ssl",			false);
+
+// PREF: Disable download history
+// CIS Version 1.2.0 October 21st, 2011 2.5.5
+user_pref("browser.download.manager.retention",			0);
+
+// PREF: Disable password manager (use an external password manager!)
+// CIS Version 1.2.0 October 21st, 2011 2.5.2
+user_pref("signon.rememberSignons",				false);
+
+// PREF: Disable form autofill, don't save information entered in web page forms and the Search Bar
+user_pref("browser.formfill.enable",				false);
+
+// PREF: Cookies expires at the end of the session (when the browser closes)
+// http://kb.mozillazine.org/Network.cookie.lifetimePolicy#2
+//user_pref("network.cookie.lifetimePolicy",			2);
+
+// PREF: Require manual intervention to autofill known username/passwords sign-in forms
+// http://kb.mozillazine.org/Signon.autofillForms
+// https://www.torproject.org/projects/torbrowser/design/#identifier-linkability
+user_pref("signon.autofillForms",				false);
+
+// PREF: Disable formless login capture
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1166947
+user_pref("signon.formlessCapture.enabled",			false);
+
+// PREF: When username/password autofill is enabled, still disable it on non-HTTPS sites
+// https://hg.mozilla.org/integration/mozilla-inbound/rev/f0d146fe7317
+user_pref("signon.autofillForms.http",				false);
+
+// PREF: Show in-content login form warning UI for insecure login fields
+// https://hg.mozilla.org/integration/mozilla-inbound/rev/f0d146fe7317
+user_pref("security.insecure_field_warning.contextual.enabled", true);
+
+// PREF: Disable the password manager for pages with autocomplete=off (disabled)
+// https://bugzilla.mozilla.org/show_bug.cgi?id=956906
+// OWASP ASVS V9.1
+// Does not prevent any kind of auto-completion (see browser.formfill.enable, signon.autofillForms)
+//user_pref("signon.storeWhenAutocompleteOff",			false);
+
+// PREF: Delete Search and Form History
+// CIS Version 1.2.0 October 21st, 2011 2.5.6
+user_pref("browser.formfill.expire_days",			0);
+
+// PREF: Clear SSL Form Session Data
+// http://kb.mozillazine.org/Browser.sessionstore.privacy_level#2
+// Store extra session data for unencrypted (non-HTTPS) sites only.
+// CIS Version 1.2.0 October 21st, 2011 2.5.7
+// NOTE: CIS says 1, we use 2
+user_pref("browser.sessionstore.privacy_level",			2);
+
+// PREF: Delete temporary files on exit
+// https://bugzilla.mozilla.org/show_bug.cgi?id=238789
+user_pref("browser.helperApps.deleteTempFileOnExit",		true);
+
+// PREF: Do not create screenshots of visited pages (relates to the "new tab page" feature)
+// https://support.mozilla.org/en-US/questions/973320
+// https://developer.mozilla.org/en-US/docs/Mozilla/Preferences/Preference_reference/browser.pagethumbnails.capturing_disabled
+user_pref("browser.pagethumbnails.capturing_disabled",		true);
+
+// PREF: Don't fetch and permanently store favicons for Windows .URL shortcuts created by drag and drop
+// NOTICE: .URL shortcut files will be created with a generic icon
+// Favicons are stored as .ico files in \profile_dir\shortcutCache
+user_pref("browser.shell.shortcutFavicons",					false);
+
+// PREF: Disable bookmarks backups (default: 15)
+// http://kb.mozillazine.org/Browser.bookmarks.max_backups
+user_pref("browser.bookmarks.max_backups", 0);
+
+// PREF: Export bookmarks to HTML automatically when closing Firefox (disabled)
+// https://support.mozilla.org/en-US/questions/1176242
+//user_pref("browser.bookmarks.autoExportHTML", 				true);
+//user_pref("browser.bookmarks.file",	'/path/to/bookmarks-export.html');
+
+// PREF: Disable downloading of favicons in response to favicon fingerprinting techniques
+// https://github.com/jonasstrehle/supercookie
+// http://kb.mozillazine.org/Browser.chrome.site_icons
+// https://blog.mozilla.org/security/2021/01/26/supercookie-protections/
+user_pref("browser.chrome.site_icons",				false);
+
+/*******************************************************************************
+ * SECTION: UI related                                                         *
+ *******************************************************************************/
+
+// PREF: Enable insecure password warnings (login forms in non-HTTPS pages)
+// https://blog.mozilla.org/tanvi/2016/01/28/no-more-passwords-over-http-please/
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1319119
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1217156
+user_pref("security.insecure_password.ui.enabled",		true);
+
+// PREF: Disable right-click menu manipulation via JavaScript (disabled)
+//user_pref("dom.event.contextmenu.enabled",		false);
+
+// PREF: Disable "Are you sure you want to leave this page?" popups on page close
+// https://support.mozilla.org/en-US/questions/1043508
+// NOTICE: disabling "beforeunload" events may lead to losing data entered in web forms
+// Does not prevent JS leaks of the page close event.
+// https://developer.mozilla.org/en-US/docs/Web/Events/beforeunload
+//user_pref("dom.disable_beforeunload",    true);
+
+// PREF: Disable Downloading on Desktop
+// CIS 2.3.2
+user_pref("browser.download.folderList",			2);
+
+// PREF: Always ask the user where to download
+// https://developer.mozilla.org/en/Download_Manager_preferences (obsolete)
+user_pref("browser.download.useDownloadDir",			false);
+
+// PREF: Disable the "new tab page" feature and show a blank tab instead
+// https://wiki.mozilla.org/Privacy/Reviews/New_Tab
+// https://support.mozilla.org/en-US/kb/new-tab-page-show-hide-and-customize-top-sites#w_how-do-i-turn-the-new-tab-page-off
+user_pref("browser.newtabpage.enabled",				false);
+user_pref("browser.newtab.url",					"about:blank");
+
+// PREF: Disable Snippets
+// https://wiki.mozilla.org/Firefox/Projects/Firefox_Start/Snippet_Service
+// https://support.mozilla.org/en-US/kb/snippets-firefox-faq
+user_pref("browser.newtabpage.activity-stream.feeds.snippets",	false);
+
+// PREF: Disable Activity Stream
+// https://wiki.mozilla.org/Firefox/Activity_Stream
+user_pref("browser.newtabpage.activity-stream.enabled",		false);
+
+// PREF: Disable new tab tile ads & preload
+// http://www.thewindowsclub.com/disable-remove-ad-tiles-from-firefox
+// http://forums.mozillazine.org/viewtopic.php?p=13876331#p13876331
+// https://wiki.mozilla.org/Tiles/Technical_Documentation#Ping
+// https://gecko.readthedocs.org/en/latest/browser/browser/DirectoryLinksProvider.html#browser-newtabpage-directory-source
+// https://gecko.readthedocs.org/en/latest/browser/browser/DirectoryLinksProvider.html#browser-newtabpage-directory-ping
+// TODO: deprecated? not in DXR, some dead links
+user_pref("browser.newtabpage.enhanced",			false);
+user_pref("browser.newtab.preload",				false);
+user_pref("browser.newtabpage.directory.ping",			"");
+user_pref("browser.newtabpage.directory.source",		"data:text/plain,{}");
+
+// PREF: Disable Mozilla VPN ads on the about:protections page
+// https://support.mozilla.org/en-US/kb/what-mozilla-vpn-and-how-does-it-work
+// https://en.wikipedia.org/wiki/Mozilla_VPN
+// https://blog.mozilla.org/security/2021/08/31/mozilla-vpn-security-audit/
+// https://www.mozilla.org/en-US/security/advisories/mfsa2021-31/
+user_pref("browser.vpn_promo.enabled",			false);
+
+// PREF: Enable Auto Notification of Outdated Plugins (Firefox < 50)
+// https://wiki.mozilla.org/Firefox3.6/Plugin_Update_Awareness_Security_Review
+// CIS Version 1.2.0 October 21st, 2011 2.1.2
+// https://hg.mozilla.org/mozilla-central/rev/304560
+user_pref("plugins.update.notifyUser",				true);
+
+// PREF: Force Punycode for Internationalized Domain Names
+// http://kb.mozillazine.org/Network.IDN_show_punycode
+// https://www.xudongz.com/blog/2017/idn-phishing/
+// https://wiki.mozilla.org/IDN_Display_Algorithm
+// https://en.wikipedia.org/wiki/IDN_homograph_attack
+// https://www.mozilla.org/en-US/security/advisories/mfsa2017-02/
+// CIS Mozilla Firefox 24 ESR v1.0.0 - 3.6
+user_pref("network.IDN_show_punycode",				true);
+
+// PREF: Disable inline autocomplete in URL bar
+// http://kb.mozillazine.org/Inline_autocomplete
+user_pref("browser.urlbar.autoFill",				false);
+user_pref("browser.urlbar.autoFill.typed",			false);
+
+// PREF: Disable CSS :visited selectors
+// https://blog.mozilla.org/security/2010/03/31/plugging-the-css-history-leak/
+// https://dbaron.org/mozilla/visited-privacy
+user_pref("layout.css.visited_links_enabled",			false);
+
+// PREF: Disable URL bar autocomplete and history/bookmarks suggestions dropdown
+// http://kb.mozillazine.org/Disabling_autocomplete_-_Firefox#Firefox_3.5
+user_pref("browser.urlbar.autocomplete.enabled",		false);
+
+// PREF: Do not check if Firefox is the default browser
+user_pref("browser.shell.checkDefaultBrowser",			false);
+
+// PREF: When password manager is enabled, lock the password storage periodically
+// CIS Version 1.2.0 October 21st, 2011 2.5.3 Disable Prompting for Credential Storage
+user_pref("security.ask_for_password",				2);
+
+// PREF: Lock the password storage every 1 minutes (default: 30)
+user_pref("security.password_lifetime",				1);
+
+// PREF: Display a notification bar when websites offer data for offline use
+// http://kb.mozillazine.org/Browser.offline-apps.notify
+user_pref("browser.offline-apps.notify",			true);
+
+/******************************************************************************
+ * SECTION: Cryptography                                                      *
+ ******************************************************************************/
+
+// PREF: Enable HTTPS-Only Mode
+// https://blog.mozilla.org/security/2020/11/17/firefox-83-introduces-https-only-mode/
+// https://www.feistyduck.com/bulletproof-tls-newsletter/issue_71_firefox_introduces_https_only_mode
+user_pref("dom.security.https_only_mode",			true);
+
+// PREF: Enable HSTS preload list (pre-set HSTS sites list provided by Mozilla)
+// https://blog.mozilla.org/security/2012/11/01/preloading-hsts/
+// https://wiki.mozilla.org/Privacy/Features/HSTS_Preload_List
+// https://en.wikipedia.org/wiki/HTTP_Strict_Transport_Security
+user_pref("network.stricttransportsecurity.preloadlist",	true);
+
+// PREF: Enable Online Certificate Status Protocol
+// https://en.wikipedia.org/wiki/Online_Certificate_Status_Protocol
+// https://www.imperialviolet.org/2014/04/19/revchecking.html
+// https://www.maikel.pro/blog/current-state-certificate-revocation-crls-ocsp/
+// https://wiki.mozilla.org/CA:RevocationPlan
+// https://wiki.mozilla.org/CA:ImprovingRevocation
+// https://wiki.mozilla.org/CA:OCSP-HardFail
+// https://news.netcraft.com/archives/2014/04/24/certificate-revocation-why-browsers-remain-affected-by-heartbleed.html
+// https://news.netcraft.com/archives/2013/04/16/certificate-revocation-and-the-performance-of-ocsp.html
+// NOTICE: OCSP leaks your IP and domains you visit to the CA when OCSP Stapling is not available on visited host
+// NOTICE: OCSP is vulnerable to replay attacks when nonce is not configured on the OCSP responder
+// NOTICE: OCSP adds latency (performance)
+// NOTICE: Short-lived certificates are not checked for revocation (security.pki.cert_short_lifetime_in_days, default:10)
+// CIS Version 1.2.0 October 21st, 2011 2.2.4
+user_pref("security.OCSP.enabled",				1);
+
+// PREF: Enable OCSP Stapling support
+// https://en.wikipedia.org/wiki/OCSP_stapling
+// https://blog.mozilla.org/security/2013/07/29/ocsp-stapling-in-firefox/
+// https://www.digitalocean.com/community/tutorials/how-to-configure-ocsp-stapling-on-apache-and-nginx
+user_pref("security.ssl.enable_ocsp_stapling",			true);
+
+// PREF: Enable OCSP Must-Staple support (Firefox >= 45)
+// https://blog.mozilla.org/security/2015/11/23/improving-revocation-ocsp-must-staple-and-short-lived-certificates/
+// https://www.entrust.com/ocsp-must-staple/
+// https://github.com/schomery/privacy-settings/issues/40
+// NOTICE: Firefox falls back on plain OCSP when must-staple is not configured on the host certificate
+user_pref("security.ssl.enable_ocsp_must_staple",		true);
+
+// PREF: Require a valid OCSP response for OCSP enabled certificates (disabled)
+// https://groups.google.com/forum/#!topic/mozilla.dev.security/n1G-N2-HTVA
+// https://www.feistyduck.com/newsletter/issue_121_the_slow_death_of_ocsp
+// Disabling this will make OCSP bypassable by MitM attacks suppressing OCSP responses
+// NOTICE:  security.OCSP.require  will make the connection fail when the OCSP responder is unavailable
+// NOTICE:  security.OCSP.require  is known to break browsing on some [captive portals](https://en.wikipedia.org/wiki/Captive_portal)
+//user_pref("security.OCSP.require",				true);
+
+// PREF: Disable TLS Session Tickets
+// https://www.blackhat.com/us-13/briefings.html#NextGen
+// https://media.blackhat.com/us-13/US-13-Daigniere-TLS-Secrets-Slides.pdf
+// https://media.blackhat.com/us-13/US-13-Daigniere-TLS-Secrets-WP.pdf
+// https://bugzilla.mozilla.org/show_bug.cgi?id=917049
+// https://bugzilla.mozilla.org/show_bug.cgi?id=967977
+user_pref("security.ssl.disable_session_identifiers",		true);
+
+// PREF: Only allow TLS 1.[2-3]
+// http://kb.mozillazine.org/Security.tls.version.*
+// 1 = TLS 1.0 is the minimum required / maximum supported encryption protocol. (This is the current default for the maximum supported version.)
+// 2 = TLS 1.1 is the minimum required / maximum supported encryption protocol.
+// 3 = TLS 1.2 is the minimum required / maximum supported encryption protocol.
+// 4 = TLS 1.3 is the minimum required / maximum supported encryption protocol.
+user_pref("security.tls.version.min",				3);
+user_pref("security.tls.version.max",				4);
+
+// PREF: Disable insecure TLS version fallback
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1084025
+// https://github.com/pyllyukko/user.js/pull/206#issuecomment-280229645
+user_pref("security.tls.version.fallback-limit",		4);
+
+// PREF: Enforce Public Key Pinning
+// https://en.wikipedia.org/wiki/HTTP_Public_Key_Pinning
+// https://wiki.mozilla.org/SecurityEngineering/Public_Key_Pinning
+// "2. Strict. Pinning is always enforced."
+user_pref("security.cert_pinning.enforcement_level",		2);
+
+// PREF: Disallow SHA-1
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1302140
+// https://shattered.io/
+user_pref("security.pki.sha1_enforcement_level",		1);
+
+// PREF: Warn the user when server doesn't support RFC 5746 ("safe" renegotiation)
+// https://wiki.mozilla.org/Security:Renegotiation#security.ssl.treat_unsafe_negotiation_as_broken
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2009-3555
+user_pref("security.ssl.treat_unsafe_negotiation_as_broken",	true);
+
+// PREF: Disallow connection to servers not supporting safe renegotiation (disabled)
+// https://wiki.mozilla.org/Security:Renegotiation#security.ssl.require_safe_negotiation
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2009-3555
+// TODO:  security.ssl.require_safe_negotiation  is more secure but makes browsing next to impossible (2012-2014-... -  ssl_error_unsafe_negotiation  errors), so is left disabled
+//user_pref("security.ssl.require_safe_negotiation",		true);
+
+// PREF: Disable automatic reporting of TLS connection errors
+// https://support.mozilla.org/en-US/kb/certificate-pinning-reports
+// we could also disable security.ssl.errorReporting.enabled, but I think it's
+// good to leave the option to report potentially malicious sites if the user
+// chooses to do so.
+// you can test this at https://pinningtest.appspot.com/
+user_pref("security.ssl.errorReporting.automatic",		false);
+
+// PREF: Pre-populate the current URL but do not pre-fetch the certificate in the "Add Security Exception" dialog
+// http://kb.mozillazine.org/Browser.ssl_override_behavior
+// https://github.com/pyllyukko/user.js/issues/210
+user_pref("browser.ssl_override_behavior",			1);
+
+// PREF: Encrypted SNI (when TRR is enabled)
+// https://www.cloudflare.com/ssl/encrypted-sni/
+// https://wiki.mozilla.org/Trusted_Recursive_Resolver#ESNI
+// https://en.wikipedia.org/wiki/Server_Name_Indication#Security_implications_(ESNI)
+user_pref("network.security.esni.enabled",			true);
+
+// PREF: Disable the Enterprise Roots preference
+// https://support.mozilla.org/en-US/kb/how-disable-enterprise-roots-preference
+// https://github.com/pyllyukko/user.js/issues/560
+user_pref("security.certerrors.mitm.auto_enable_enterprise_roots",	false);
+user_pref("security.enterprise_roots.enabled",				false);
+
+/******************************************************************************
+ * SECTION: Cipher suites                                                     *
+ ******************************************************************************/
+
+// PREF: Disable null ciphers
+user_pref("security.ssl3.rsa_null_sha",				false);
+user_pref("security.ssl3.rsa_null_md5",				false);
+user_pref("security.ssl3.ecdhe_rsa_null_sha",			false);
+user_pref("security.ssl3.ecdhe_ecdsa_null_sha",			false);
+user_pref("security.ssl3.ecdh_rsa_null_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_null_sha",			false);
+
+// PREF: Disable SEED cipher
+// https://en.wikipedia.org/wiki/SEED
+user_pref("security.ssl3.rsa_seed_sha",				false);
+
+// PREF: Disable 40/56/128-bit ciphers
+// 40-bit ciphers
+user_pref("security.ssl3.rsa_rc4_40_md5",			false);
+user_pref("security.ssl3.rsa_rc2_40_md5",			false);
+// 56-bit ciphers
+user_pref("security.ssl3.rsa_1024_rc4_56_sha",			false);
+// 128-bit ciphers
+user_pref("security.ssl3.rsa_camellia_128_sha",			false);
+user_pref("security.ssl3.ecdhe_rsa_aes_128_sha",		false);
+user_pref("security.ssl3.ecdhe_ecdsa_aes_128_sha",		false);
+user_pref("security.ssl3.ecdh_rsa_aes_128_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_aes_128_sha",		false);
+user_pref("security.ssl3.dhe_rsa_camellia_128_sha",		false);
+user_pref("security.ssl3.dhe_rsa_aes_128_sha",			false);
+
+// PREF: Disable RC4
+// https://developer.mozilla.org/en-US/Firefox/Releases/38#Security
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1138882
+// https://rc4.io/
+// https://web.nvd.nist.gov/view/vuln/detail?vulnId=CVE-2013-2566
+user_pref("security.ssl3.ecdh_ecdsa_rc4_128_sha",		false);
+user_pref("security.ssl3.ecdh_rsa_rc4_128_sha",			false);
+user_pref("security.ssl3.ecdhe_ecdsa_rc4_128_sha",		false);
+user_pref("security.ssl3.ecdhe_rsa_rc4_128_sha",		false);
+user_pref("security.ssl3.rsa_rc4_128_md5",			false);
+user_pref("security.ssl3.rsa_rc4_128_sha",			false);
+user_pref("security.tls.unrestricted_rc4_fallback",		false);
+
+// PREF: Disable 3DES (effective key size is < 128)
+// https://en.wikipedia.org/wiki/3des#Security
+// http://en.citizendium.org/wiki/Meet-in-the-middle_attack
+// http://www-archive.mozilla.org/projects/security/pki/nss/ssl/fips-ssl-ciphersuites.html
+user_pref("security.ssl3.dhe_dss_des_ede3_sha",			false);
+user_pref("security.ssl3.dhe_rsa_des_ede3_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_des_ede3_sha",		false);
+user_pref("security.ssl3.ecdh_rsa_des_ede3_sha",		false);
+user_pref("security.ssl3.ecdhe_ecdsa_des_ede3_sha",		false);
+user_pref("security.ssl3.ecdhe_rsa_des_ede3_sha",		false);
+user_pref("security.ssl3.rsa_des_ede3_sha",			false);
+user_pref("security.ssl3.rsa_fips_des_ede3_sha",		false);
+
+// PREF: Disable ciphers with ECDH (non-ephemeral)
+user_pref("security.ssl3.ecdh_rsa_aes_256_sha",			false);
+user_pref("security.ssl3.ecdh_ecdsa_aes_256_sha",		false);
+
+// PREF: Disable 256 bits ciphers without PFS
+user_pref("security.ssl3.rsa_camellia_256_sha",			false);
+
+// PREF: Enable GCM ciphers (TLSv1.2 only)
+// https://en.wikipedia.org/wiki/Galois/Counter_Mode
+user_pref("security.ssl3.ecdhe_ecdsa_aes_128_gcm_sha256",	true); // 0xc02b
+user_pref("security.ssl3.ecdhe_rsa_aes_128_gcm_sha256",		true); // 0xc02f
+
+// PREF: Enable ChaCha20 and Poly1305 (Firefox >= 47)
+// https://www.mozilla.org/en-US/firefox/47.0/releasenotes/
+// https://tools.ietf.org/html/rfc7905
+// https://bugzilla.mozilla.org/show_bug.cgi?id=917571
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1247860
+// https://cr.yp.to/chacha.html
+user_pref("security.ssl3.ecdhe_ecdsa_chacha20_poly1305_sha256",	true);
+user_pref("security.ssl3.ecdhe_rsa_chacha20_poly1305_sha256",	true);
+
+// PREF: Disable ciphers susceptible to the logjam attack
+// https://weakdh.org/
+user_pref("security.ssl3.dhe_rsa_camellia_256_sha",		false);
+user_pref("security.ssl3.dhe_rsa_aes_256_sha",			false);
+
+// PREF: Disable ciphers with DSA (max 1024 bits)
+user_pref("security.ssl3.dhe_dss_aes_128_sha",			false);
+user_pref("security.ssl3.dhe_dss_aes_256_sha",			false);
+user_pref("security.ssl3.dhe_dss_camellia_128_sha",		false);
+user_pref("security.ssl3.dhe_dss_camellia_256_sha",		false);
+
+// PREF: Ciphers with CBC & SHA-1 (disabled)
+//user_pref("security.ssl3.rsa_aes_256_sha",			false); // 0x35
+//user_pref("security.ssl3.rsa_aes_128_sha",			false); // 0x2f
+//user_pref("security.ssl3.ecdhe_rsa_aes_256_sha",		false); // 0xc014
+//user_pref("security.ssl3.ecdhe_ecdsa_aes_256_sha",		false); // 0xc00a
+
+// PREF: Enable X25519Kyber768Draft00 (post-quantum key exchange) [FF Nightly 2024-01-18+]
+// https://datatracker.ietf.org/doc/draft-tls-westerbaan-xyber768d00/
+// https://twitter.com/bwesterb/status/1748017372764475519
+// https://pq.cloudflareresearch.com/
+user_pref("security.tls.enable_kyber",				true);
+EOFUS
+  for curFile in $(find ~ -name prefs.js 2> /dev/null | grep firefox)
+  do
+    curDir=$(dirname $curFile)
+    cp $HOME/user.js $curDir/
+  done
+  rm -f $HOME/user.js
+}
+
 # Initialization
 function createInitialEnv()
 {
@@ -14827,7 +17463,6 @@ function createInitialEnv()
   mkdir -p $HSHQ_SSL_DIR
   mkdir -p $HSHQ_STACKS_DIR
   mkdir -p $HSHQ_WIREGUARD_DIR
-
   mkdir -p $HSHQ_WIREGUARD_DIR/internet
   mkdir -p $HSHQ_WIREGUARD_DIR/vpn
   mkdir -p $HSHQ_WIREGUARD_DIR/scripts
@@ -14860,7 +17495,7 @@ function createInitialEnv()
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of your configuration file (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
+    tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of it (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
     if [ $? -ne 0 ]; then exit; fi
     if [ -z "$tmp_pw1" ]; then
       showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -14901,18 +17536,20 @@ function createHSHQLog()
   fi
 }
 
+# Version Updates
 function checkUpdateVersion()
 {
   if [ "$IS_INSTALLED" = "false" ] || [ "$IS_PERFORM_RESTORE" = "true" ]; then
     return
   fi
   is_update_performed=false
-  if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
+  if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     set +e
     checkAddAllNewSvcs
     set -e
     is_update_performed=true
     sudo -v
+    pauseCronService
   fi
   if [ $HSHQ_VERSION -lt 11 ]; then
     echo "Updating to Version 11..."
@@ -15160,12 +17797,6 @@ function checkUpdateVersion()
     HSHQ_VERSION=80
     updateConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 82 ]; then
-    echo "Updating to Version 82..."
-    version82Update
-    HSHQ_VERSION=82
-    updateConfigVar HSHQ_VERSION $HSHQ_VERSION
-  fi
   if [ $HSHQ_VERSION -lt 83 ]; then
     echo "Updating to Version 83..."
     version83Update
@@ -15268,20 +17899,78 @@ function checkUpdateVersion()
     HSHQ_VERSION=121
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt $HSHQ_SCRIPT_VERSION ]; then
-    echo "Updating to Version $HSHQ_SCRIPT_VERSION..."
-    HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
+  if [ $HSHQ_VERSION -lt 126 ]; then
+    echo "Updating to Version 126..."
+    version126Update
+    HSHQ_VERSION=126
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
+    echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
+    HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ "$is_update_performed" = "true" ]; then
     set +e
     outputStackListsScriptServer
-    outputAllScriptServerScripts
+    outputAllScriptServerScripts true false
+    resumeCronService
     set -e
   fi
+  unset USER_RELAY_SUDO_PW
+  USER_RELAY_SUDO_PW=""
 }
 
-# Version Updates
+function performPreUpdateCheck()
+{
+  # This function is more of a placeholder at the moment,
+  # reserved for future possible use. We already have sudo
+  # and decrypted config file, so just return.
+  return
+}
+
+function promptTestRelayServerPassword()
+{
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ $PRIOR_HSHQ_VERSION -ge $LAST_RELAYSERVER_VERSION_UPDATE ]; then
+    return
+  fi
+  while [ -z "$USER_RELAY_SUDO_PW" ]
+  do
+    if [ "$IS_CONSOLE_ENV" = "true" ]; then
+      USER_RELAY_SUDO_PW=$(promptPasswordMenu "Enter Relay Password" "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: ")
+      retVal=$?
+      if [ $retVal -ne 0 ]; then
+        exit 3
+      fi
+      if [ "$(testRelayServerPassword)" = "false" ]; then
+        showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+        USER_RELAY_SUDO_PW=""
+      fi
+    else
+      echo -e "\n\n"
+      read -s -p "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: " USER_RELAY_SUDO_PW
+      echo
+      if [ "$(testRelayServerPassword)" = "false" ]; then
+        echo "The password is incorrect, please re-enter it."
+        USER_RELAY_SUDO_PW=""
+      fi
+    fi
+  done
+}
+
+function testRelayServerPassword()
+{
+  set +e
+  loadSSHKey
+  ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v" <<< "$USER_RELAY_SUDO_PW" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+  unloadSSHKey
+}
+
 function version14Update()
 {
   v14_curE=${-//[^e]/}
@@ -15834,7 +18523,7 @@ EOFR
 
 function version26Update()
 {
-  outputRestartStacksBootscript
+  outputPerformPostDockerBootActionsScript
   deleteFromRootCron "restartHomeAssistantStack.sh"
   appendToRoonCron "@reboot bash $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh"
 }
@@ -16261,7 +18950,7 @@ function version46Update()
     sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set name='Script-server', url='https://script-server.$HOMESERVER_DOMAIN' where name='HSHQ Manager';"
     docker container restart authelia > /dev/null 2>&1
     installStackByName script-server
-    closeHSHQScript "version46Update"
+    releaseLock hshqopen "version46Update" false
     sudo systemctl disable runHSHQManager
     sudo systemctl stop runHSHQManager
     echo -e "\n\nPlease restart the hshq.sh script to complete the update.\n"
@@ -16518,7 +19207,7 @@ function version53Update()
 {
   set +e
   outputMaintenanceScripts
-  outputWGInternetUpBootscript
+  outputPerformPostDockerBootActionsScript
   deleteFromRootCron "restartHomeAssistantStack.sh"
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/restartHomeAssistantStack.sh
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
@@ -16533,14 +19222,10 @@ EOFBS
   if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then
     sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh
   fi
-  if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh ]; then
-    sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartWG.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/20-restartWG.sh
-  fi
   if [ -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/dockerWireGuardCaddyFix.sh ]; then
     sudo mv $HSHQ_SCRIPTS_DIR/boot/bootscripts/dockerWireGuardCaddyFix.sh $HSHQ_SCRIPTS_DIR/boot/bootscripts/50-dockerWireGuardCaddyFix.sh
   fi
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/restartHomeAssistantStack.sh
-  outputRestartStacksBootscript
   updateSysctl false
   if [ -f $HSHQ_STACKS_DIR/coturn/turnserver.conf ]; then
     grep $COTURN_COMMS_MIN_PORT $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
@@ -16587,7 +19272,7 @@ function version54Update()
   notifyRSLogin
   default_iface=$(getDefaultIface)
   sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
-  generateCert script-server "script-server,host.docker.internal" "127.0.0.1,$HOMESERVER_HOST_IP"
+  generateCert script-server "script-server,host.docker.internal,localhost" "127.0.0.1,$HOMESERVER_HOST_IP"
   insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true
   HSHQ_VERSION=54
   updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
@@ -16771,12 +19456,12 @@ function version72Update()
 {
   mkdir -p $HSHQ_WIREGUARD_DIR/logs
   outputWGDockInternetScript
-  outputUpdateEndpointIPsScript
-  outputWGInternetUpBootscript
+  outputPerformPostDockerBootActionsScript
   sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
   sudo systemctl start networkd-dispatcher > /dev/null 2>&1
-  sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
   do
+    if ! test -f "$conf"; then continue; fi
     cur_ext_dom=$(sudo grep "^#EXT_DOMAIN=" $conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
     if ! [[ $cur_ext_dom =~ ^$RELAYSERVER_SUB_WG.* ]]; then
       sudo sed -i "s|^#EXT_DOMAIN=.*|#EXT_DOMAIN=${RELAYSERVER_SUB_WG}\.${cur_ext_dom}|g" $conf
@@ -16808,7 +19493,6 @@ function version75Update()
 
 function version76Update()
 {
-  outputUpdateEndpointIPsScript
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     outputRelayServerInstallSetupScript
     outputRelayServerInstallTransferScript
@@ -16817,7 +19501,7 @@ function version76Update()
 
 function version78Update()
 {
-  outputPingGatewayBootscript
+  outputPerformPostDockerBootActionsScript
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\nUpdating the mail relay postfix image on the RelayServer."
     set +e
@@ -16825,8 +19509,9 @@ function version78Update()
     nrsl_retVal=$?
     set -e
     if [ $nrsl_retVal -eq 0 ]; then
+      promptTestRelayServerPassword
       loadSSHKey
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"
+      ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"  <<< "$USER_RELAY_SUDO_PW"
       unloadSSHKey
     fi
   fi
@@ -16836,13 +19521,6 @@ function version80Update()
 {
   set +e
   clearAllScriptServerScripts
-  set -e
-}
-
-function version82Update()
-{
-  set +e
-  outputUpdateEndpointIPsScript
   set -e
 }
 
@@ -16857,7 +19535,7 @@ function version84Update()
 {
   set +e
   outputWGDockInternetScript
-  outputWGInternetUpBootscript
+  outputPerformPostDockerBootActionsScript
   set -e
 }
 
@@ -16875,7 +19553,6 @@ function version85Update()
   echo "Updating authelia stack..."
   updateStackEnv authelia mfFixCACertPath
   updateSysctl true
-  outputCreateWGDockerNetworksScript
   set -e
 }
 
@@ -16899,7 +19576,7 @@ function version86Update()
   do
     sudo ip rule delete priority 20 > /dev/null 2>&1
   done
-  sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh > /dev/null 2>&1
+  wgDockInternetUpAll
   set -e
 }
 
@@ -16938,7 +19615,7 @@ function version98Update()
 {
   set +e
   initServicesCredentials
-  outputPingGatewayBootscript
+  outputPerformPostDockerBootActionsScript
   set -e
 }
 
@@ -16983,24 +19660,37 @@ EOFWZ
     sudo sed -i "s/<use_password>no<\/use_password>/<use_password>yes<\/use_password>/" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
     docker container restart wazuh.manager > /dev/null 2>&1
   fi
-
+  set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     set +e
-    notifyRSLogin
-    nrsl_retVal=$?
+    promptTestRelayServerPassword
     set -e
-    if [ $nrsl_retVal -eq 0 ]; then
-      tee $HOME/authd.pass >/dev/null <<EOFWZ
+    tee $HOME/authd.pass >/dev/null <<EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
-      chmod 640 $HOME/authd.pass
-      loadSSHKey
-      scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:wazuh ~/authd.pass;sudo mv ~/authd.pass /var/ossec/etc/authd.pass;sudo systemctl restart wazuh-agent"
-      unloadSSHKey
-      rm -f $HOME/authd.pass
-    fi
+    chmod 640 $HOME/authd.pass
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    unloadSSHKey
+    rm -f $HOME/rsUpdateScript.sh
+    cat <<EOFLO > $HOME/rsUpdateScript.sh
+#!/bin/bash
+
+function main()
+{
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  sudo chown root:wazuh ~/authd.pass
+  sudo mv ~/authd.pass /var/ossec/etc/authd.pass
+  sudo systemctl restart wazuh-agent
+  echo "Done"
+}
+main "\$@"
+EOFLO
+    updateRelayServerWithScript
+    rm -f $HOME/authd.pass
   fi
+  set -e
 }
 
 function version108Update()
@@ -17096,8 +19786,9 @@ EOFHS
     replaceSingleLineInFile "$repl_block" "$res_block" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
     repl_block="import sn-sub-${SUB_IMAGES}"
     res_block="${repl_block}\nimport sn-sub-${SUB_HSHQSTATUS}"
-    ls $HSHQ_STACKS_DIR/caddy-common/caddyfiles/* | while read cfile
+    for cfile in $HSHQ_STACKS_DIR/caddy-common/caddyfiles/*
     do
+      if ! test -f "$cfile"; then continue; fi
       replaceSingleLineInFile "$repl_block" "$res_block" $cfile
     done
     restartAllCaddyContainers
@@ -17110,7 +19801,7 @@ EOFHS
 function version119Update()
 {
   sudo rm -f $HSHQ_SCRIPTS_DIR/boot/bootscripts/90-restartHomeAssistantStack.sh
-  outputRestartStacksBootscript
+  outputPerformPostDockerBootActionsScript
 }
 
 function version120Update()
@@ -17131,12 +19822,16 @@ function version120Update()
   sudo sed -i '/includedir/d' /etc/sudoers >/dev/null
   echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
+  fixNetplanBackport
   rm -f $HOME/rsUpdateScript.sh
   cat <<EOFLO > $HOME/rsUpdateScript.sh
 #!/bin/bash
 
+set +e
 function main()
 {
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   if sudo test -f /etc/logrotate.d/rsyslog; then
     # Set max size of syslog to 2G
     grep maxsize /etc/logrotate.d/rsyslog > /dev/null 2>&1
@@ -17159,6 +19854,7 @@ function main()
 }
 EOFLR
   sudo systemctl restart logrotate
+  echo "Done"
 }
 main "\$@"
 EOFLO
@@ -17173,6 +19869,8 @@ function version121Update()
   cat <<EOFRS > $HOME/rsUpdateScript.sh
 function main()
 {
+  read -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   RELAYSERVER_HSHQ_SCRIPTS_DIR=\$HOME/hshq/data/scripts
   exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
   sudo rm -f \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
@@ -17373,7 +20071,7 @@ EOFBS
   sudo ln -s \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/runOnBootRoot.service /etc/systemd/system/runOnBootRoot.service
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRoot
-
+  echo "Done"
 }
 
 function getDefaultIface()
@@ -17511,7 +20209,6 @@ EOFRS
   echo "Updating Sysctl..."
   updateSysctl true
   outputMaintenanceScripts
-  outputUpdateEndpointIPsScript
   outputWGDockInternetScript
   PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   jitsiStackID=$(getStackID jitsi "$PORTAINER_TOKEN")
@@ -17524,7 +20221,7 @@ EOFRS
     # Reinsatll caddy-home stack
     deleteStack caddy-home "$PORTAINER_TOKEN"
     sudo mv $HSHQ_STACKS_DIR/caddy-home $HSHQ_STACKS_DIR/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
-    outputConfigCaddy home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME home $(getHSHostIPVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME) home na na na "$(getHSHostSubnetVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME)" "$(getNonPrivateConnectingIP)"
+    outputConfigCaddy home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME home $(getHSHostIPVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME) $HOMESERVER_HOST_PRIMARY_INTERFACE_IP home na na na "$(getHSHostSubnetVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME)" "$(getNonPrivateConnectingIP)"
     installStack caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME "serving initial configuration" $HOME/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME.env
   fi
   echo "Updating boot services..."
@@ -17537,12 +20234,44 @@ EOFRS
   fi
   outputBootScripts
   echo "Updating cronjobs..."
-  sudo crontab -l > $HOME/rootcron
-  echo "*/$CHECKIP_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$UPDATE_IPTABLES_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  sudo crontab $HOME/rootcron
-  sudo rm -f $HOME/rootcron
+  initCronJobs
   set -e
+}
+
+function version126Update()
+{
+  set +e
+  sudo crontab -r
+  ema1=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $CONFIG_FILE)
+  ema2=$(getConfigVarFromFile EMAIL_ADMIN_EMAIL_ADDRESS $HSHQ_PLAINTEXT_ROOT_CONFIG root)
+  if ! [ -z "$ema1" ] && [ -z "$ema2" ]; then
+    updatePlaintextRootConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
+    sed -i "/^EMAIL_ADMIN_EMAIL_ADDRESS=/d" $CONFIG_FILE >/dev/null
+  fi
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
+  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/*.sh
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
+  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
+  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
+  set +e
+  sudo systemctl stop createWGDockerNetworks > /dev/null 2>&1
+  sudo systemctl disable createWGDockerNetworks > /dev/null 2>&1
+  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
+  sudo systemctl daemon-reload
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
+  sudo sed -i "s/CHECKIP_REFRESH_RATE/NETWORK_UPDATE_INTERVAL/" $HSHQ_PLAINTEXT_ROOT_CONFIG >/dev/null
+  NETWORK_UPDATE_INTERVAL=5
+  updatePlaintextRootConfigVar NETWORK_UPDATE_INTERVAL $NETWORK_UPDATE_INTERVAL
+  addBindIPCaddy
+  outputUpdateIPTablesBeforeNetworkBootscript
+  outputPerformPostDockerBootActionsScript
+  outputPerformNetworkingChecks
+  outputWireGuardScripts
+  initCronJobs
+  updateMOTD
+  outputScriptServerTheme
 }
 
 function updateRelayServerWithScript()
@@ -17553,18 +20282,76 @@ function updateRelayServerWithScript()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     chmod 500 $HOME/rsUpdateScript.sh
     set +e
-    notifyRSLogin
-    nrsl_retVal=$?
+    promptTestRelayServerPassword
     set -e
-    if [ $nrsl_retVal -eq 0 ]; then
-      loadSSHKey
-      scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh; rm -f ~/rsUpdateScript.sh"
+    loadSSHKey
+    scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    rsRet=$?
+    if [ $rsRet -ne 0 ]; then
       unloadSSHKey
+      return $rsRet
     fi
+    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" <<< "$USER_RELAY_SUDO_PW"
+    rsRet=$?
+    if [ $rsRet -ne 0 ]; then
+      unloadSSHKey
+      return $rsRet
+    fi
+    unloadSSHKey
   fi
   set +e
   rm -f $HOME/rsUpdateScript.sh
+}
+
+function addBindIPCaddy()
+{
+  set +e
+  caddy_arr=($(docker ps -a --filter name=caddy-home --format "{{.Names}}"))
+  for curCH in "${caddy_arr[@]}"
+  do
+    ifaceName=$(echo $curCH | rev | cut -d"-" -f1 | rev)
+    fixBindIP=$(getIPAddressOfInterface $ifaceName)
+    if ! [ "$(checkValidIPAddress $fixBindIP)" = "true" ]; then
+      continue
+    fi
+    updateStackEnv $curCH modFunCaddyHomeBindIPFix
+  done
+  addBlock=$(cat << EOFAB
+
+# sn-sub-${SUB_BIND_IP} BEGIN
+(sn-sub-${SUB_BIND_IP}) {
+  http://{\$CADDY_HSHQ_BIND_IP} {
+    root * /files
+    file_server browse
+    header Content-Type "application/octet-stream"
+    header Content-Disposition "attachment"
+    redir /ca.crt /${CERTS_ROOT_CA_NAME}.crt
+    redir /ca.der /${CERTS_ROOT_CA_NAME}.der
+  }
+}
+# sn-sub-${SUB_BIND_IP} END
+
+EOFAB
+  )
+  grep "sn-sub-${SUB_BIND_IP}" $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "$addBlock" >> $HSHQ_STACKS_DIR/caddy-common/snippets/svcs.snip
+    echo "import sn-sub-${SUB_BIND_IP}" >> $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
+  fi
+  caddy_arr=($(docker ps -a --filter name=caddy-home --format "{{.Names}}"))
+  for curCH in "${caddy_arr[@]}"
+  do
+    docker container restart $curCH > /dev/null 2>&1
+  done
+}
+
+function modFunCaddyHomeBindIPFix()
+{
+  set +e
+  grep "CADDY_HSHQ_BIND_IP" $HOME/${updateStackName}.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "CADDY_HSHQ_BIND_IP=$fixBindIP" >> $HOME/${updateStackName}.env
+  fi
 }
 
 function modFunAutheliaConfigFilterVar()
@@ -17690,9 +20477,23 @@ function moveVarsToPlaintextFile()
   sudo sed -i "/^JITSI_ADVERTISE_IPS=/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^# Jitsi (Service Details) BEGIN/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^# Jitsi (Service Details) END/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Adguard (Service Details) BEGIN/d" $CONFIG_FILE >/dev/null
+  sudo sed -i "/^# Adguard (Service Details) END/d" $CONFIG_FILE >/dev/null
   sudo sed -i "/^HOMESERVER_HOST_IP=/d" $CONFIG_FILE >/dev/null
   cat -s $CONFIG_FILE > $HSHQ_CONFIG_DIR/tmpfile
   mv $HSHQ_CONFIG_DIR/tmpfile $CONFIG_FILE
+}
+
+function fixNetplanBackport()
+{
+  set +e
+  if sudo test -f /etc/netplan/00-installer-config.yaml; then
+    sudo grep "optional:" /etc/netplan/00-installer-config.yaml > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      sudo sed -i '/nameservers:/i\      optional: true' /etc/netplan/00-installer-config.yaml
+      sudo netplan apply > /dev/null 2>&1
+    fi
+  fi
 }
 
 function fixInterfaceNames()
@@ -17742,7 +20543,7 @@ function fixInterfaceNames()
       if [ $? -eq 0 ]; then
         deleteStack caddy-${old_vpn_name}
         sudo mv $HSHQ_STACKS_DIR/caddy-${old_vpn_name} $HSHQ_STACKS_DIR/caddy-${new_vpn_name}
-        outputConfigCaddy ${new_vpn_name} caddy-${new_vpn_name} $primary_string $curIP $curCA_abbrev $curCA_URL $curCA_Subdomain $curCA_IP
+        outputConfigCaddy ${new_vpn_name} caddy-${new_vpn_name} $primary_string ${new_vpn_name} $curIP $curCA_abbrev $curCA_URL $curCA_Subdomain $curCA_IP
         installStack caddy-${new_vpn_name} caddy-${new_vpn_name} "serving initial configuration" $HOME/caddy-${new_vpn_name}.env
       fi
       sudo sqlite3 $HSHQ_DB "update connections set InterfaceName = '${new_vpn_name}' where InterfaceName = '${old_vpn_name}';"
@@ -18731,10 +21532,8 @@ function nukeHSHQ()
   sleep 5
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
   sudo $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
-  sudo systemctl stop createWGDockerNetworks
-  sudo systemctl disable createWGDockerNetworks
-  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
-  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
+  sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
   sudo systemctl stop runOnBootRootBeforeNetwork
   sudo systemctl disable runOnBootRootBeforeNetwork
   sudo rm -f /etc/systemd/system/runOnBootRootBeforeNetwork.service
@@ -18784,9 +21583,32 @@ function nukeHSHQ()
   else
     sudo chmod +x /etc/update-motd.d/*
   fi
-  sudo rm -fr $HSHQ_SCRIPT_OPEN_DIR
-  rm -f /home/$USERNAME/install.txt
-  #sudo reboot
+  for curLock in $ALL_LOCKS
+  do
+    releaseLock $curLock "nukem" true
+  done
+  if [ "$IS_DESKTOP_ENV" = "true" ]; then
+    rm -f "/home/$USERNAME/Desktop/$HSHQ_INSTALL_NOTES_FILENAME"
+    rm -f ~/Desktop/HomePage.desktop
+    rm -f ~/Desktop/HSHQConsole.desktop
+    rm -f ~/Desktop/HSHQScriptServer.desktop
+    sudo rm -f /usr/share/applications/HomePage.desktop
+    sudo rm -f /usr/share/applications/HSHQConsole.desktop
+    sudo rm -f /usr/share/applications/HSHQScriptServer.desktop
+    cat <<EOFHP > ~/Desktop/InstallHSHQ.desktop
+[Desktop Entry]
+Name=Install HSHQ
+Exec=bash -ic "~/hshq.sh"
+Comment=Starts the HSHQ installation script
+Terminal=true
+Icon=/usr/share/icons/HSHQ/InstallHSHQ.png
+Type=Application
+EOFHP
+    chmod 755 ~/Desktop/InstallHSHQ.desktop
+    trustDesktopIcon "InstallHSHQ.desktop"
+    tryDeleteRootCAFirefox
+  fi
+  rm -f "/home/$USERNAME/$HSHQ_INSTALL_NOTES_FILENAME"
   exit 2
 }
 
@@ -18848,8 +21670,9 @@ EOFBS
   sudo tee $HSHQ_SCRIPTS_DIR/boot/runOnBootRootAfterDocker.service >/dev/null <<EOFBS
 [Unit]
 Description=HSHQ Startup Script (After Docker)
-After=docker.service
+After=docker.service runOnBootRootBeforeNetwork.service
 BindsTo=docker.service
+Requires=runOnBootRootBeforeNetwork.service
 
 [Service]
 Type=oneshot
@@ -18866,12 +21689,8 @@ EOFBS
   sudo systemctl daemon-reload
   sudo systemctl enable runOnBootRootAfterDocker
 
-  outputRestartStacksBootscript
-  outputWGInternetUpBootscript
-  outputPingGatewayBootscript
-  outputSysCtlBootscript
   outputUpdateIPTablesBeforeNetworkBootscript
-  outputUpdateIPTablesAfterDockerBootscript
+  outputPerformPostDockerBootActionsScript
 }
 
 function checkUpdateAllIPTables()
@@ -18887,7 +21706,7 @@ function checkUpdateAllIPTables()
     isLogInfo=false
   fi
   if [ "$isLogInfo" = "true" ]; then
-    logHSHQEvent info "IPTables ($netstate) - BEGIN"
+    logHSHQEvent info "checkUpdateAllIPTables ($netstate) - BEGIN"
   fi
   # If one wants to run any script(s) prior to this function,
   # then create the following bash script accordingly. There
@@ -18895,13 +21714,6 @@ function checkUpdateAllIPTables()
   if [ -f $HSHQ_CUSTOM_PRE_IPTABLES_SCRIPT ]; then
     bash $HSHQ_CUSTOM_PRE_IPTABLES_SCRIPT "$netstate"
   fi
-
-  echo "Test Write" | sudo tee $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt > /dev/null
-  if ! sudo test -f $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt; then
-    logHSHQEvent error "IPTables ($netstate) - Could not write to temp file, exiting..."
-    return
-  fi
-  sudo rm -f $HSHQ_SCRIPT_OPEN_DIR/testwrite.txt
 
   isInit=false
   sudo iptables -t raw -n -L chain-icmp > /dev/null 2>&1
@@ -18922,7 +21734,7 @@ function checkUpdateAllIPTables()
   fi
 
   if [ "$netstate" = "prenetwork" ] || [ "$isInit" = "true" ]; then
-    logHSHQEvent info "IPTables ($netstate) - Initializing chains..."
+    logHSHQEvent info "checkUpdateAllIPTables ($netstate) - Initializing chains..."
     sudo iptables -t raw -F PREROUTING > /dev/null 2>&1
     sudo iptables -t raw -F chain-icmp > /dev/null 2>&1
     sudo iptables -t raw -F chain-bad_tcp > /dev/null 2>&1
@@ -19101,6 +21913,9 @@ function checkUpdateAllIPTables()
     curNetworkType=$(sqlite3 $HSHQ_DB "select NetworkType from connections where ID=$curDBID;")
     curConnectionType=$(sqlite3 $HSHQ_DB "select ConnectionType from connections where ID=$curDBID;")
     curIsIPPrivate="$(checkIsIPPrivate $curIPAddress)"
+    if ! [ "$(checkValidIPAddress $curIPAddress)" = "true" ]; then
+      continue
+    fi
     if [ "$curIPAddress" = "$DEFAULT_UNFOUND_IP_ADDRESS" ] || [ "$curIPAddress" = "127.0.0.1" ]; then
       curIsIPPrivate=true
     else
@@ -19174,7 +21989,7 @@ function checkUpdateAllIPTables()
 #        fi
 #       ip a | grep $brName > /dev/null 2>&1
 #       if [ $? -ne 0 ]; then
-#          logHSHQEvent error "IPTables ($netstate) - Could not find bridge interface associated with docker network: $curNet"
+#          logHSHQEvent error "checkUpdateAllIPTables ($netstate) - Could not find bridge interface associated with docker network: $curNet"
 #          continue
 #        fi
 #        brSubnet=$(docker network inspect $curNet | jq -r '.[] | .IPAM.Config[0].Subnet')
@@ -19200,6 +22015,7 @@ function checkUpdateAllIPTables()
       fi
     done
     unset allIPTCommentsArr
+    allIPTCommentsArr=""
   done
   IFS=$OLDIFS
 
@@ -19221,7 +22037,7 @@ function checkUpdateAllIPTables()
   sudo rm -f /tmp/ipt.txt
   sudo rm -f /tmp/newRules.txt
   if [ "$isLogInfo" = "true" ]; then
-    logHSHQEvent info "IPTables ($netstate) - END"
+    logHSHQEvent info "checkUpdateAllIPTables ($netstate) - END"
   fi
 }
 
@@ -19234,10 +22050,10 @@ function checkAddRule()
   if [ $? -ne 0 ]; then
     eval " $ip_cmd"
     if [ $? -ne 0 ]; then
-      logHSHQEvent error "IPTables ($netstate) - Error adding rule: $ip_cmd"
+      logHSHQEvent error "checkAddRule ($netstate) - Error adding rule: $ip_cmd"
     fi
     echo "$comment" >> /tmp/ipt.txt
-    logHSHQEvent info "IPTables ($netstate) - Added rule: $comment"
+    logHSHQEvent info "checkAddRule ($netstate) - Added rule: $comment"
   fi
 }
 
@@ -19287,7 +22103,7 @@ function appendINPUTBySubnetAndPortsList()
   checkValidPortsList "$portList"
   if [ $? -ne 0 ]; then
     strMsg="There was an error with the ports list: portList"
-    logHSHQEvent error "IPTables ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
+    logHSHQEvent error "appendINPUTBySubnetAndPortsList ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
     echo "ERROR: $strMsg"
     return
   fi
@@ -19327,7 +22143,7 @@ function addDOCKERUSERBySubnetAndPortsList()
   checkValidPortsList "$portList"
   if [ $? -ne 0 ]; then
     strMsg="There was an error with the ports list: portList"
-    logHSHQEvent error "IPTables ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
+    logHSHQEvent error "addDOCKERUSERBySubnetAndPortsList ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
     echo "ERROR: $strMsg"
     return
   fi
@@ -19359,6 +22175,7 @@ function deleteIPTableEntryByChainAndComment()
   IFS=$(echo -en "\n\b")
   ipt_list=($(sudo iptables -t $ipt_table -n -L $ipt_chain --line-numbers | grep "$ipt_comment"))
   unset rule_list
+  rule_list=""
   for cur_ipt in "${ipt_list[@]}"
   do
     rule_list+=( $(echo $cur_ipt | cut -d" " -f1 | xargs) )
@@ -19369,10 +22186,10 @@ function deleteIPTableEntryByChainAndComment()
   do
     sudo iptables -t $ipt_table -D $ipt_chain $cur_rule
     isRuleFound=true
-    logHSHQEvent info "IPTables ($netstate) - Removed rule: $ipt_comment"
+    logHSHQEvent info "deleteIPTableEntryByChainAndComment ($netstate) - Removed rule: $ipt_comment"
   done
   if [ "$isRuleFound" = "false" ]; then
-    logHSHQEvent error "IPTables ($netstate) - Could not find rule to remove: $ipt_comment"
+    logHSHQEvent error "deleteIPTableEntryByChainAndComment ($netstate) - Could not find rule to remove: $ipt_comment"
   fi
   IFS=$OLDIFS
 }
@@ -19385,28 +22202,6 @@ function addIPTablesSpoofRule()
   checkAddRule "$comment" 'sudo iptables -t raw -A chain-ipspoof -s $ipt_source_subnet ! -i $ipt_interface_name -m comment --comment "$comment" -j DROP'
   comment="HSHQ_BEGIN chain-ipspoof ! -s $ipt_source_subnet -i $ipt_interface_name HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -t raw -A chain-ipspoof ! -s $ipt_source_subnet -i $ipt_interface_name -m comment --comment "$comment" -j DROP'
-}
-
-function outputRestartStacksBootscript()
-{
-  sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/afterdocker
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
-
-function main()
-{
-  source \$HSHQ_LIB_SCRIPT lib
-  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  restartStacksOnBoot
-}
-main
-EOFBS
-
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/90-restartSelectedStacks.sh
 }
 
 function restartStacksOnBoot()
@@ -19422,16 +22217,11 @@ function restartStacksOnBoot()
   # in a circular reference problem. Even manually starting the VPN interfaces before docker.service with 
   # wg rather than wg-quick fails due to wg setconf errors on an unknown endpoint. So this script, which runs
   # at boot, will wait until the interfaces are up, then start/restart the Caddy containers.
-
   # This script also restarts some other stacks that have issues after a reboot.
-
-  sleep 10
-  docker ps > /dev/null 2>&1
-  sleep 10
   set +e
   num_tries=1
   total_tries=20
-  echo "Getting Portainer token..."
+  logHSHQEvent info "restartStacksOnBoot - BEGIN"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   retVal=$?
   while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
@@ -19441,21 +22231,22 @@ function restartStacksOnBoot()
     portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
-  echo "Restarting stack..."
-  if [ $retVal -ne 0 ]; then
-    echo "Error restarting HomeAssistant stack, exiting..."
-    exit 1
+  logHSHQEvent info "restartStacksOnBoot - Got Portainer token..."
+  if [ $retVal -eq 0 ]; then
+    logHSHQEvent info "restartStacksOnBoot - Restarting HomeAssistant stack (if running)..."
+    restartStackIfRunning homeassistant 15 $portainerToken > /dev/null
+    if [ $retVal -ne 0 ]; then
+      logHSHQEvent error "restartStacksOnBoot - Problem restarting HomeAssistant stack..."
+    fi
+  else
+    logHSHQEvent error "restartStacksOnBoot - Error obtaining Portainer token..."
   fi
-  restartStackIfRunning homeassistant 15 $portainerToken > /dev/null
-
-
+  logHSHQEvent info "restartStacksOnBoot - Pinging WireGuard connections..."
   ips_arr=($(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
-
   ns_sleep=5
   ping_timeout=5
   max_tries=15
   is_error=false
-
   for cur_ip in "${ips_arr[@]}"
   do
     is_up=false
@@ -19471,9 +22262,8 @@ function restartStacksOnBoot()
       fi
     done
   done
-
-  echo "Restarting caddy stacks..."
-  caddy_arr=($(docker ps -a --filter name=caddy-vpn --format "{{.Names}}"))
+  logHSHQEvent info "restartStacksOnBoot - Restarting caddy stacks..."
+  caddy_arr=($(docker ps -a --filter name=caddy- --format "{{.Names}}"))
   for curcaddy in "${caddy_arr[@]}"
   do
     startStopStack $curcaddy stop
@@ -19482,79 +22272,14 @@ function restartStacksOnBoot()
     sleep 1
     startStopStack $curcaddy start
   done
-
   isCoturn=$(docker ps -a --filter name=coturn --format "{{.Names}}")
   if ! [ -z "$isCoturn" ]; then
+    logHSHQEvent info "restartStacksOnBoot - Restarting coturn stack..."
     startStopStack coturn stop > /dev/null 2>&1
     sleep 1
     startStopStack coturn start > /dev/null 2>&1
   fi
-
-  echo "End restartStacksOnBoot.sh"
-}
-
-function outputPerformNetworkingChecks()
-{
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
-
-function main()
-{
-  sleep 30
-  source \$HSHQ_LIB_SCRIPT lib
-  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  if [ "\$IS_AUTO_UPDATE_NETWORK" = "true" ]; then
-    checkHostAllInterfaceIPChanges false checkIP-cronjob > /dev/null 2>&1
-  fi
-}
-main
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh
-
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh >/dev/null <<EOFBS
-#!/bin/bash
-
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
-
-function main()
-{
-  sleep 5
-  source \$HSHQ_LIB_SCRIPT lib
-  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  if [ "\$IS_AUTO_UPDATE_NETWORK" = "true" ]; then
-    checkUpdateIPTablesCron > /dev/null 2>&1
-  fi
-}
-main
-EOFBS
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh
-}
-
-function outputWGInternetUpBootscript()
-{
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh >/dev/null <<EOFWC
-#!/bin/bash
-set +e
-# This script initializes all of the tunnelled WireGuard internet-bound connections that are bound to a docker network.
-
-HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
-
-function main()
-{
-  sudo \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
-}
-main "\$@"
-
-EOFWC
-
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/50-wgDockInternetUpAll.sh
+  logHSHQEvent info "restartStacksOnBoot - END"
 }
 
 function outputDBExportScripts()
@@ -19593,6 +22318,14 @@ EOFDB
 
 function outputMaintenanceScripts()
 {
+  if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
+    echo "Installing networkd-dispatcher, please wait..."
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+    performAptInstall networkd-dispatcher > /dev/null 2>&1
+  fi
+  sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
+  sudo systemctl start networkd-dispatcher > /dev/null 2>&1
+
   sudo rm -f $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh
   sudo tee $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null <<EOFCS
 #!/bin/bash
@@ -19626,7 +22359,7 @@ function main()
       fi
     done
     if [ "\$is_new_certs" = "true" ]; then
-      docker ps --filter name=caddy- -aq | xargs docker restart
+      docker ps --filter name=caddy- -aq | xargs docker restart > /dev/null 2>&1
     fi
   fi
 }
@@ -19775,11 +22508,12 @@ do
 done
 
 ip route flush table 42
-sudo ls $HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
+
+for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
 do
+  if ! test -f "\$conf"; then continue; fi
   ip route flush table \$(grep ^\#ROUTING_TABLE_ID= \$conf | sed 's/^[^=]*=//')
 done
-
 EOFWG
   sudo chmod 0500 $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo chown root:root $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
@@ -19787,100 +22521,280 @@ EOFWG
   outputPerformNetworkingChecks
 }
 
-function outputPingGatewayBootscript()
+function outputPerformNetworkingChecks()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/15-pingGateway.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/15-pingGateway.sh >/dev/null <<EOFPO
+  sudo rm -f $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh >/dev/null <<EOFBS
 #!/bin/bash
 
-# This script pings the gateway/router on boot.
-# It's purpose is to address issues on older routers
-# with hosts on the network that have static IP
-# addresses (as this server does).
+HSHQ_LOG_FILE=$HSHQ_LOG_FILE
+HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
+HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
+LOCK_UTILS_FILENAME=$LOCK_UTILS_FILENAME
+SYSTEM_STATE_FILENAME=$SYSTEM_STATE_FILENAME
+MIN_NETWORKCHECK_INTERVAL=$MIN_NETWORKCHECK_INTERVAL
+SS_RUNNING=$SS_RUNNING
 
-timeout_length=30
-ping_count=10
-
-cur_gate=\$(ip route | grep -e "^default" | head -n 1 | awk '{print \$3}')
-timeout \$timeout_length ping -c \$ping_count \$cur_gate > /dev/null
-
-EOFPO
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/15-pingGateway.sh
+function main()
+{
+  source \$SYSTEM_STATE_FILENAME
+  isTooSoon="\$(isCheckTooSoon \$LAST_NETWORK_CHECK)"
+  if ! [ "\$SYS_STATE" = "\$SS_RUNNING" ] || [ "\$isTooSoon" = "true" ]; then
+    if ! [ "\$IS_DEBUG" = "false" ]; then
+      echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] performNetworkingChecks.sh - Not performed, CurState: \$SYS_STATE, LastCheck: \$(date -d @\$LAST_NETWORK_CHECK +"%Y-%m-%d %T"), IsTooSoon: \$isTooSoon" >> \$HSHQ_LOG_FILE
+    fi
+    return
+  fi
+  if ! [ "\$IS_DEBUG" = "false" ]; then
+    echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] performNetworkingChecks.sh - BEGIN, CurState: \$SYS_STATE, LastCheck: \$(date -d @\$LAST_NETWORK_CHECK +"%Y-%m-%d %T"), IsTooSoon: \$isTooSoon" >> \$HSHQ_LOG_FILE
+  fi
+  source \$HSHQ_LIB_SCRIPT lib
+  tgLock="\$(tryGetLock networkchecks performNetworkingChecks)"
+  if ! [ "\$tgLock" = "true" ]; then
+    checkRes="\$(getLockOpenMsg networkchecks)"
+    totLockAttempts=\$(getIncrementLockAttempts networkchecks)
+    strErr="performNetworkingChecks.sh - Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+    logHSHQEvent warning "\$strErr"
+    if [ \$((\$totLockAttempts % 60)) -eq 5 ]; then
+      source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
+      source \$HSHQ_PLAINTEXT_USER_CONFIG
+      sendEmail -s "HSHQ Networking Error" -b "There is an issue with your HomeServer networking that needs to be addressed. For more details, you can view the log by running the command 'cat /var/log/hshq.log'. The easiest way to (possibly) fix this problem would be to simply reboot your server. However, if you continue to recieve this message then there might be a real problem that needs to fixed. You can either ask on the forum (https://forum.homeserverhq.com) or you can submit a Github issue (https://github.com/homeserverhq/hshq/issues)."
+    fi
+    exit 7
+  fi
+  if ! [ "\$IS_DEBUG" = "false" ]; then
+    echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [debug] performNetworkingChecks.sh - Got lock, args: \$@" >> \$HSHQ_LOG_FILE
+  fi
+  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
+  source \$HSHQ_PLAINTEXT_USER_CONFIG
+  set +e
+  checkAllHSHQNetworking "\$@"
+  retVal=\$?
+  releaseLock networkchecks "performNetworkingChecks" false
+  return \$retVal
 }
 
-function outputSysCtlBootscript()
+function isCheckTooSoon()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-updateSysctl.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-updateSysctl.sh >/dev/null <<EOFPO
-#!/bin/bash
+  last_check="\$1"
+  if [ -z "\$last_check" ]; then
+    last_check=0
+  fi
+  cur_dt=\$(date +%s)
+  s_diff=\$((\$cur_dt - \$last_check))
+  if [ \$s_diff -lt \$MIN_NETWORKCHECK_INTERVAL ]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
 
-sysctl --system > /dev/null 2>&1
-EOFPO
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/20-updateSysctl.sh
+main "\$@"
+EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
+  sudo rm -f /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  if sudo test -d "/etc/networkd-dispatcher/routable.d"; then
+    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+    sudo chmod 755 /etc/networkd-dispatcher/routable.d/performNetworkingChecks.sh
+  fi
+  sudo rm -f /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+  if sudo test -d "/etc/NetworkManager/dispatcher.d"; then
+    sudo ln -s $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+    sudo chmod 755 /etc/NetworkManager/dispatcher.d/performNetworkingChecks.sh
+  fi
 }
 
 function outputUpdateIPTablesBeforeNetworkBootscript()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh >/dev/null <<EOFBS
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/beforenetwork/10-updateIPTablesBeforeNetwork.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/beforenetwork/10-updateIPTablesBeforeNetwork.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
 
 function main()
 {
+  source \$HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+  forceGetLock hshqopen performPostDockerBootActions
+  forceGetLock networkchecks performPostDockerBootActions
+
   source \$HSHQ_LIB_SCRIPT lib
   source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  checkRes=\$(tryOpenHSHQScript boot)
-  if ! [ -z "\$checkRes" ]; then
-    echo "The HSHQ script is running in another instance (\$checkRes), returning..."
-    return
-  fi
+  notifyBootInit
   checkUpdateAllIPTables prenetwork
-  closeHSHQScript "updateIPTablesBeforeNetwork"
+  releaseLock networkchecks BeforeNetwork false
+  releaseLock hshqopen BeforeNetwork false
 }
 main
 EOFBS
-
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/beforenetwork/updateIPTablesBeforeNetwork.sh
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/beforenetwork/10-updateIPTablesBeforeNetwork.sh
 }
 
-function outputUpdateIPTablesAfterDockerBootscript()
+function outputPerformPostDockerBootActionsScript()
 {
-  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-updateIPTablesAfterDocker.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-updateIPTablesAfterDocker.sh >/dev/null <<EOFBS
+  sudo mkdir -p $HSHQ_SCRIPTS_DIR/boot/afterdocker
+  sudo rm -f $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh
+  sudo tee $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh >/dev/null <<EOFBS
 #!/bin/bash
 
 HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+HSHQ_LIB_DIR=$HSHQ_LIB_DIR
 HSHQ_LIB_SCRIPT=$HSHQ_LIB_SCRIPT
 
 function main()
 {
   source \$HSHQ_LIB_SCRIPT lib
-  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-  checkRes=\$(tryOpenHSHQScript AfterDocker)
-  if ! [ -z "\$checkRes" ]; then
-    echo "The HSHQ script is running in another instance (\$checkRes), returning..."
-    return
+  tgLock="\$(tryGetLock hshqopen performPostDockerBootActions)"
+  if ! [ "\$tgLock" = "true" ]; then
+    checkRes="\$(getLockOpenMsg hshqopen)"
+    # This should absolutely never happen due to boot order
+    strErr="performPostDockerBootActions - Cannot obtain hshqopen lock: \$checkRes, exiting..."
+    logHSHQEvent error "\$strErr"
+    echo "ERROR: \$strErr"
+    exit 2
   fi
-  checkUpdateAllIPTables postdocker
-  closeHSHQScript "updateIPTablesAfterDocker"
+  tgLock="\$(tryGetLock networkchecks performPostDockerBootActions)"
+  if ! [ "\$tgLock" = "true" ]; then
+    checkRes="\$(getLockOpenMsg networkchecks)"
+    # This should absolutely never happen due to boot order
+    strErr="performPostDockerBootActions - Cannot obtain networkchecks lock: \$checkRes, exiting..."
+    logHSHQEvent error "\$strErr"
+    echo "ERROR: \$strErr"
+    exit 3
+  fi
+  source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
+  source \$HSHQ_PLAINTEXT_USER_CONFIG
+  set +e
+  performPostDockerBootActions
+  notifyBootComplete
+  releaseLock networkchecks performPostDockerBootActions false
+  releaseLock hshqopen performPostDockerBootActions false
 }
 main
 EOFBS
+  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-performPostDockerBootActions.sh
+}
 
-  sudo chmod 500 $HSHQ_SCRIPTS_DIR/boot/afterdocker/10-updateIPTablesAfterDocker.sh
+function performPostDockerBootActions()
+{
+  logHSHQEvent info "performPostDockerBootActions - BEGIN"
+  docker ps > /dev/null 2>&1
+  logHSHQEvent info "performPostDockerBootActions - Docker is up, continuing..."
+  # Replaces 10-updateIPTablesAfterDocker.sh
+  checkUpdateAllIPTables performPostDockerBootActions
+  logHSHQEvent info "performPostDockerBootActions - updateSysctl"
+  # Replaces 10-updateSysctl.sh
+  sysctl --system > /dev/null 2>&1
+  logHSHQEvent info "performPostDockerBootActions - pingGateway"
+  # Replaces 15-pingGateway.sh
+  cur_gate=$(ip route | grep -e "^default" | head -n 1 | awk '{print $3}')
+  timeout 30 ping -c 4 $cur_gate > /dev/null
+  logHSHQEvent info "performPostDockerBootActions - restartWG"
+  # Replaces 20-restartWG.sh
+  for curConf in /etc/wireguard/*.conf
+  do
+    if ! test -f "$curConf"; then continue; fi
+    curSVC=$(echo ${curConf%.*} | rev | cut -d"/" -f1 | rev)
+    logHSHQEvent info "performPostDockerBootActions - Checking WG Connection: $curSVC"
+    systemctl is-enabled wg-quick@${curSVC} > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      logHSHQEvent info "performPostDockerBootActions - Restarting WG Connection: $curSVC"
+      systemctl restart wg-quick@${curSVC} > /dev/null 2>&1
+    fi
+  done
+  logHSHQEvent info "performPostDockerBootActions - createWGDockerNetworks"
+  # Replaces 50-wgDockInternetUpAll.sh
+  createWGDockerNetworks
+  logHSHQEvent info "performPostDockerBootActions - wgDockInternetUpAll"
+  wgDockInternetUpAll
+  logHSHQEvent info "performPostDockerBootActions - restartStacksOnBoot"
+  # Replaces 90-restartSelectedStacks.sh
+  restartStacksOnBoot
+  logHSHQEvent info "performPostDockerBootActions - END"
+}
+
+function checkInitScriptState()
+{
+  if ! [ -f "$SYSTEM_STATE_FILENAME" ]; then
+    is_dbg=false
+    if [ "$LOG_LEVEL" = "debug" ]; then
+      is_dbg=true
+    fi
+    tee $SYSTEM_STATE_FILENAME >/dev/null <<EOFSS
+SYS_STATE=$SS_RUNNING
+LAST_NETWORK_CHECK=0
+IS_DEBUG=$is_dbg
+EOFSS
+    chmod 644 $SYSTEM_STATE_FILENAME
+  fi
+}
+
+function setSystemState()
+{
+  checkInitScriptState
+  updateConfigVarInFile "SYS_STATE" "$1" $SYSTEM_STATE_FILENAME
+}
+
+function isNetworkCheckIntervalExpired()
+{
+  checkInitScriptState
+  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SYSTEM_STATE_FILENAME)
+  cur_dt=$(date +%s)
+  s_diff=$(($cur_dt - $last_check + 15))
+  s_inter=$(($NETWORK_UPDATE_INTERVAL * 60))
+  if [ $s_diff -gt $s_inter ]; then
+    echo "true"
+  else
+    echo "false"
+  fi 
+}
+
+function isNetworkCheckIntervalTooSoon()
+{
+  checkInitScriptState
+  last_check=$(getConfigVarFromFile LAST_NETWORK_CHECK $SYSTEM_STATE_FILENAME)
+  cur_dt=$(date +%s)
+  s_diff=$(($cur_dt - $last_check))
+  if [ $s_diff -lt $MIN_NETWORKCHECK_INTERVAL ]; then
+    echo "true"
+  else
+    echo "false"
+  fi 
+}
+
+function resetLastNetworkCheckTimestamp()
+{
+  checkInitScriptState
+  updateConfigVarInFile "LAST_NETWORK_CHECK" "0" $SYSTEM_STATE_FILENAME
+}
+
+function updateLastNetworkCheck()
+{
+  checkInitScriptState
+  updateConfigVarInFile "LAST_NETWORK_CHECK" "$(date +%s)" $SYSTEM_STATE_FILENAME
+}
+
+function notifyBootInit()
+{
+  checkInitScriptState
+  setSystemState "$SS_BOOTING"
+}
+
+function notifyBootComplete()
+{
+  checkInitScriptState
+  setSystemState "$SS_RUNNING"
 }
 
 function initCronJobs()
 {
   echo "MAILTO=$EMAIL_ADMIN_EMAIL_ADDRESS" | sudo tee $HOME/rootcron >/dev/null
   echo "*/$LECERTS_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/userasroot/updateLECerts.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$WIREGUARD_DNS_REFRESH_RATE * * * * bash $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   echo "0 */6 * * * bash $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$CHECKIP_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkHostIPChanges.sh" | sudo tee -a $HOME/rootcron >/dev/null
-  echo "*/$UPDATE_IPTABLES_REFRESH_RATE * * * * bash $HSHQ_SCRIPTS_DIR/root/checkUpdateIPTables.sh" | sudo tee -a $HOME/rootcron >/dev/null
+  echo "* * * * * bash $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh cron >/dev/null 2>&1" | sudo tee -a $HOME/rootcron >/dev/null
   sudo crontab $HOME/rootcron
   sudo rm -f $HOME/rootcron
 }
@@ -19911,6 +22825,16 @@ function deleteFromRootCron()
   fi
   sudo rm -f $HOME/rootcron
   set -e
+}
+
+function pauseCronService()
+{
+  sudo systemctl stop cron > /dev/null 2>&1
+}
+
+function resumeCronService()
+{
+  sudo systemctl restart cron > /dev/null 2>&1
 }
 
 function updateHomeServerLogoImages()
@@ -19997,76 +22921,231 @@ function uploadHomeServerLogo()
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set icon='icons/${HOMESERVER_DOMAIN}-${rand_string}.png' where url='https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN';"
   echo "Restarting Heimdall..."
   docker container restart heimdall > /dev/null 2>&1
+  # Update desktop icon (if exists)
+  if [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+    sudo rm -f /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-*
+    sudo cp -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png
+    if [ -f $HOME/Desktop/HomePage.desktop ]; then
+      updateConfigVarInFile Icon /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png ~/Desktop/HomePage.desktop root
+      trustDesktopIcon "HomePage.desktop"
+    fi
+    if sudo test -f /usr/share/applications/HomePage.desktop; then
+      updateConfigVarInFile Icon /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png /usr/share/applications/HomePage.desktop root
+    fi
+  fi
   echo "HomeServer logo updated succesfully!"
+}
+
+function checkAllHSHQNetworking()
+{
+  # Check/Update All Networking
+  # This function assumes that the networking lock
+  # has already been obtained. Here is a list of
+  # actions performed in this function:
+  #
+  #  1. Check all host interfaces for IP address change
+  #  2. Check if adguard is working
+  #  3. Check all VPN connections for Endpoint IP change
+  #  4. Cheak health of all VPN connections (ping relay)
+  #  5. Check masq IP of WG Internet connections (curl internet)
+  #  6. If no locking errors, update last timestamp
+  #
+  # Notes: 
+  #  - Ensure at least NETWORK_UPDATE_INTERVAL minutes
+  #    have passed since last update (check last timestamp)
+  #  - This function is tied into:
+  #     - routable.d (if systemd-network)
+  #     - dispatcher.d (if NetworkManager)
+  #     - cron job every minute, but only actually excutes
+  #       after every NETWORK_UPDATE_INTERVAL(def 5) minutes
+  #       unless the previous attempt at obtaining a lock
+  #       resulted in an error
+  #
+
+  set +e
+  funRetVal=0
+  # This is for NetworkManager-dispatcher function calls.
+  # See https://manpages.ubuntu.com/manpages/lunar/man8/NetworkManager-dispatcher.8.html
+  # We'll only focus on 'up' actions.
+  if ! [ -z "$2" ] && ! [ "$2" = "up" ]; then
+    return
+  fi
+  cahn_callerName=unknown
+  if [ "$1" = "cron" ]; then
+    cahn_callerName=cron
+  elif [ "$2" = "up" ]; then
+    cahn_callerName=NetworkManager
+  elif [ -z "$@" ]; then
+    cahn_callerName=networkd
+  fi
+  if [ "$cahn_callerName" = "cron" ] && [ "$(isNetworkCheckIntervalExpired)" = "false" ]; then
+    return
+  fi
+  if [ "$(isNetworkCheckIntervalTooSoon)" = "true" ]; then
+    return
+  fi
+  if ! [ "$cahn_callerName" = "cron" ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) BEGIN"
+  fi
+  isLockError=false
+  isAnyChanged="$(checkHostInterfacesIsChanged)"
+  if [ "$isAnyChanged" = "true" ]; then
+    tgLock="$(tryGetLock hshqopen checkAllHSHQNetworking)"
+    if ! [ "$tgLock" = "true" ]; then
+      checkRes="$(getLockOpenMsg hshqopen)"
+      logHSHQEvent error "checkAllHSHQNetworking ($cahn_callerName) - Unable to obtain lock ($checkRes)"
+      isLockError=true
+    else
+      setSystemState $SS_UPDATING
+      logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) - Host interface IP changed..."
+      checkHostAllInterfaceIPChanges true false checkAllHSHQNetworking
+      logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) - Releasing lock..."
+      setSystemState $SS_RUNNING
+      releaseLock hshqopen "checkAllHSHQNetworking" false
+    fi
+  fi
+  # Perform curl https://api.ipify.org. If an error,
+  # assume Adguard is not working and restart stack.
+  curIP=$(curl --silent --max-time 5 https://api.ipify.org)
+  if [ $? -ne 0 ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) - Restarting adguard..."
+    startStopStack adguard stop
+    sleep 1
+    startStopStack adguard start
+  fi
+  updateEndpointIPs
+  #cleanupScriptServerLogs
+  checkNonLockedUnencrytpedConfig "$cahn_callerName"
+  funRetVal=$(($funRetVal + $?))
+  if [ "$isLockError" = "false" ]; then
+    updateLastNetworkCheck
+  fi
+  if ! [ "$cahn_callerName" = "cron" ]; then
+    logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) END"
+  fi
+  return $funRetVal
+}
+
+function checkNonLockedUnencrytpedConfig()
+{
+  callerName="$1"
+  if [ -f $CONFIG_FILE_DEFAULT_LOCATION/$CONFIG_FILE_DEFAULT_FILENAME ]; then
+    checkResCNLUC="$(checkIsLockEnabled hshqopen)"
+    if [ -z "$checkResCNLUC" ]; then
+      errMsg="checkNonLockedUnencrytpedConfig ($callerName) - Config file is unencrypted with no lock!"
+      logHSHQEvent error "$errMsg"
+      echo "ERROR: $errMsg"
+      return 1
+    fi
+  fi
+}
+
+function updateEndpointIPs()
+{
+  set +e
+  ping_timeout=5
+  conn_list=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
+
+  for cur_id in "${conn_list[@]}"
+  do
+    is_int=$(sqlite3 $HSHQ_DB "select IsInternet from connections where ID='$cur_id';")
+    iname=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID='$cur_id';")
+    cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_id;")
+    if [ "$(checkIPByID $cur_id)" = "true" ]; then
+      logHSHQEvent info "updateEndpointIPs - IP changed, restarting $cname..."
+      if [ $is_int = 0 ]; then
+        systemctl restart wg-quick@$iname > /dev/null 2>&1
+      else
+        $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${iname}.conf restart > /dev/null 2>&1
+      fi
+    fi
+    if [ $is_int = 0 ]; then
+      # Also need to check health of connection and reset if issues
+      rs_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$cur_id;")
+      if ! [ -z "$rs_ip" ]; then
+        timeout $ping_timeout ping -c 1 $rs_ip > /dev/null 2>&1
+        if [ $? -ne 0 ]; then
+          logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname..."
+          systemctl restart wg-quick@$iname > /dev/null 2>&1
+        fi
+      fi
+    fi
+  done
+  set +e
+  # Check/fix ClientDNS
+  cdns_id=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
+  for cur_cdns in "${cdns_id[@]}"
+  do
+    cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_cdns;")
+    # First, check if container is actually running
+    docker ps | grep ${cname}-wireguard > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      continue
+    fi
+    if ! [ -z "$cur_cdns" ] && [ "$(checkIPByID $cur_cdns)" = "true" ]; then
+      logHSHQEvent info "updateEndpointIPs - IP changed, restarting(ClientDNS) $cname..."
+      restartStackIfRunning "${cname}" 1
+    fi
+  done
+  set +e
+  # Check/fix tunnelled WireGuard internet connections
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
+  do
+    if ! test -f "$conf"; then continue; fi
+    resOut=$($HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
+    retVal=$?
+    if [ $retVal -ne 0 ]; then
+      logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
+      $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
+    fi
+  done
+}
+
+function checkIPByID()
+{
+  dbID=$1
+  ehost=$(sqlite3 $HSHQ_DB "select EndpointHostname from connections where ID='$dbID';")
+  eip=$(sqlite3 $HSHQ_DB "select EndpointIP from connections where ID='$dbID';")
+  if ! [ -z "$ehost" ]; then
+    check_ip=$(getIPFromHostname $ehost)
+  fi
+  if ! [ -z "$check_ip" ] && ! [ "$check_ip" = "$eip" ]; then
+    curdt=$(date '+%Y-%m-%d %H:%M:%S')
+    sudo sqlite3 $HSHQ_DB "update connections set EndpointIP='$check_ip',LastUpdated='$curdt' where ID='$dbID';"
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function wgDockInternetUpAll()
+{
+  logHSHQEvent info "wgDockInternetUpAll - BEGIN"
+  $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf 
+  do
+    if ! test -f "$conf"; then continue; fi
+    logHSHQEvent info "wgDockInternetUpAll - internet: $conf"
+    $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf up
+  done
+  logHSHQEvent info "wgDockInternetUpAll - END"
 }
 
 function outputWireGuardScripts()
 {
-  if [[ "$(isProgramInstalled networkd-dispatcher)" = "false" ]]; then
-    echo "Installing networkd-dispatcher, please wait..."
-    sudo DEBIAN_FRONTEND=noninteractive apt update
-    performAptInstall networkd-dispatcher > /dev/null 2>&1
-  fi
-  sudo systemctl enable networkd-dispatcher > /dev/null 2>&1
-  sudo systemctl start networkd-dispatcher > /dev/null 2>&1
   outputWGDockInternetScript
-  sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-
-if [ -f /tmp/wgDockInternetUpAll-Updating ]; then
-  exit
-fi
-touch /tmp/wgDockInternetUpAll-Updating
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scripts_dir=$HSHQ_SCRIPTS_DIR
-
-\$scripts_dir/root/dockPrivateIP.sh
-
-ls \$wgdir/internet/*.conf > /dev/null 2>&1
-if [ \$? -eq 0 ]; then
-  ls \$wgdir/internet/*.conf | while read conf
-  do
-    \$wgdir/scripts/wgDockInternet.sh \$conf up
-  done
-fi
-
-rm -f /tmp/wgDockInternetUpAll-Updating
-EOFWG
-  sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh
   sudo tee $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh >/dev/null <<EOFWG
 #!/bin/bash
+set +e
+HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
 
-wgdir=$HSHQ_WIREGUARD_DIR
-sudo ls \$wgdir/internet/*.conf | while read conf
+for conf in \$HSHQ_WIREGUARD_DIR/internet/*.conf
 do
-  \$wgdir/scripts/wgDockInternet.sh \$conf down
+  if ! test -f "\$conf"; then continue; fi
+  \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf down
 done
 EOFWG
   sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetDownAll.sh
-  outputUpdateEndpointIPsScript
-  sudo rm -f /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
-  sudo ln -s $HSHQ_WIREGUARD_DIR/scripts/wgDockInternetUpAll.sh /etc/networkd-dispatcher/routable.d/wgDockInternetUpAll.sh
-  outputCreateWGDockerNetworksScript
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service >/dev/null <<EOFWG
-[Unit]
-Description=Check or create Docker networks for WireGuard interfaces and private IP ranges
-After=default.target
-
-[Service]
-Type=oneshot
-ExecStart=$HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
-
-[Install]
-WantedBy=default.target
-EOFWG
-  sudo chmod 644 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service
-  sudo rm -f /etc/systemd/system/createWGDockerNetworks.service
-  sudo ln -s $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.service /etc/systemd/system/createWGDockerNetworks.service
-  sudo systemctl daemon-reload
-  sudo systemctl enable createWGDockerNetworks
   if [[ "$(isProgramInstalled sqlite3)" = "false" ]]; then
     echo "Installing sqlite3, please wait..."
     performAptInstall sqlite3 > /dev/null 2>&1
@@ -20231,9 +23310,10 @@ function status()
   while_check "\$CMD" "\$CHECK"
   isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
   if [ -z "\$isCurl" ]; then
-    docker run -d --name=\${NETWORK_NAME}-curl --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 tail -f /dev/null > /dev/null 2>&1
+    docker run -d --name=\${NETWORK_NAME}-curl --restart unless-stopped --net=\$DOCKER_NETWORK_NAME curlimages/curl:7.84.0 tail -f /dev/null > /dev/null 2>&1
+    sleep 5
   fi
-  VPNIP=\$(docker exec \${NETWORK_NAME}-curl curl -fsSL --max-time 5 https://api.ipify.org)
+  VPNIP=\$(docker exec \${NETWORK_NAME}-curl curl -fsSL --max-time 5 https://api.ipify.org  2>/dev/null)
   IP=\$(curl --silent https://api.ipify.org)
   if [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
     rsip=\$EXT_DOMAIN
@@ -20300,154 +23380,19 @@ EOFWG
   sudo chmod 755 $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh
 }
 
-function outputCreateWGDockerNetworksScript()
+function createWGDockerNetworks()
 {
-  sudo tee $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh >/dev/null <<EOFWG
-#!/bin/bash
-set +e
-
-wgdir=$HSHQ_WIREGUARD_DIR
-scriptsdir=$HSHQ_SCRIPTS_DIR
-
-function main()
-{
-  sudo ls \$wgdir/internet/*.conf | while read conf
+  for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
   do
-    DOCKER_NETWORK_NAME=\$(getConfigVar \#DOCKER_NETWORK_NAME)
-    DOCKER_NETWORK_SUBNET=\$(getConfigVar \#DOCKER_NETWORK_SUBNET)
-    MTU=\$(getConfigVar \#MTU)
-    docker network inspect \$DOCKER_NETWORK_NAME > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      docker network create \$DOCKER_NETWORK_NAME --subnet \$DOCKER_NETWORK_SUBNET -o com.docker.network.driver.mtu=\$MTU -o com.docker.network.bridge.name=\$DOCKER_NETWORK_NAME
+    if ! test -f "$conf"; then continue; fi
+    docker_net="$(getConfigVarFromFile \#DOCKER_NETWORK_NAME $conf root)"
+    docker_subnet="$(getConfigVarFromFile \#DOCKER_NETWORK_SUBNET $conf root)"
+    MTU="$(getConfigVarFromFile \#MTU $conf root)"
+    docker network inspect $docker_net > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      docker network create $docker_net --subnet $docker_subnet -o com.docker.network.driver.mtu=$MTU -o com.docker.network.bridge.name=$docker_net
     fi
   done
-}
-function getConfigVar()
-{
-  echo \$(grep ^\$1= \$conf | sed 's/^[^=]*=//' | sed 's/ *\$//g')
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 755 $HSHQ_SCRIPTS_DIR/root/createWGDockerNetworks.sh
-}
-
-function outputUpdateEndpointIPsScript()
-{
-  sudo rm -f $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
-  sudo tee $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh >/dev/null <<EOFWG
-#!/bin/bash
-
-set +e
-HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
-db=$HSHQ_DB
-ping_timeout=5
-
-function main()
-{
-  conn_list=(\$(sqlite3 \$db "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
-
-  for cur_id in "\${conn_list[@]}"
-  do
-    is_int=\$(sqlite3 \$db "select IsInternet from connections where ID='\$cur_id';")
-    iname=\$(sqlite3 \$db "select InterfaceName from connections where ID='\$cur_id';")
-    cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_id;")
-    if [ "\$(checkByID \$cur_id)" = "true" ]; then
-      echo "IP changed, restarting \$cname..."
-      logHSHQEvent info "IP changed, restarting \$cname..."
-      if [ \$is_int = 0 ]; then
-        resetVPN \$iname
-      else
-        resetInternet \$iname
-      fi
-    fi
-    if [ \$is_int = 0 ]; then
-      # Also need to check health of connection and reset if issues
-      rs_ip=\$(sqlite3 \$db "select RS_VPN_IP from hsvpn_connections where ID=\$cur_id;")
-      if ! [ -z "\$rs_ip" ]; then
-        timeout \$ping_timeout ping -c 1 \$rs_ip > /dev/null 2>&1
-        if [ \$? -ne 0 ]; then
-          logHSHQEvent error "Connection Error, restarting(HSVPN) \$cname..."
-          resetVPN \$iname
-        fi
-      fi
-    fi
-  done
-
-  # Check/fix ClientDNS
-  cdns_id=(\$(sqlite3 \$db "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
-  for cur_cdns in "\${cdns_id[@]}"
-  do
-    cname=\$(sqlite3 \$db "select Name from connections where ID=\$cur_cdns;")
-    # First, check if container is actually running
-    docker ps | grep \${cname}-wireguard > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      continue
-    fi
-    if ! [ -z "\$cur_cdns" ] && [ "\$(checkByID \$cur_cdns)" = "true" ]; then
-      echo "IP changed, restarting \$cname..."
-      logHSHQEvent info "IP changed, restarting(ClientDNS) $cname..."
-      docker container restart \${cname}-wireguard
-      docker container restart \${cname}-dnsmasq
-    fi
-  done
-
-  # Check/fix tunnelled WireGuard internet connections
-  ls \$HSHQ_WIREGUARD_DIR/internet/*.conf | while read conf
-  do
-    resOut=\$(\$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf status)
-    retVal=\$?
-    if [ \$retVal -ne 0 ]; then
-      logHSHQEvent error "Connection Error, restarting(HSInternet)[\$retVal - \$resOut] \$conf..."
-      \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$conf restart > /dev/null 2>&1
-    fi
-  done
-}
-
-function checkByID()
-{
-  dbID=\$1
-  ehost=\$(sqlite3 \$db "select EndpointHostname from connections where ID='\$dbID';")
-  eip=\$(sqlite3 \$db "select EndpointIP from connections where ID='\$dbID';")
-  if ! [ -z "\$ehost" ]; then
-    check_ip=\$(getIPFromHostname \$ehost)
-  fi
-  if ! [ -z "\$check_ip" ] && ! [ "\$check_ip" = "\$eip" ]; then
-    curdt=\$(date '+%Y-%m-%d %H:%M:%S')
-    sudo sqlite3 \$db "update connections set EndpointIP='\$check_ip',LastUpdated='\$curdt' where ID='\$dbID';"
-    echo "true"
-  else
-    echo "false"
-  fi
-}
-
-function resetVPN()
-{
-  iname=\$1
-  systemctl restart wg-quick@\$iname > /dev/null 2>&1
-}
-
-function resetInternet()
-{
-  iname=\$1
-  \$HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh \$HSHQ_WIREGUARD_DIR/internet/\${iname}.conf restart > /dev/null 2>&1
-}
-
-function getIPFromHostname()
-{
-  echo \$(dig \$1 +short | grep '^[.0-9]*\$')
-}
-
-function logHSHQEvent()
-{
-  msgType="\$1"
-  msgContent="WireGuard - \$2"
-  echo "\$(date '+%Y-%m-%d %H:%M:%S.%3N') [\$msgType] \$msgContent" >> $HSHQ_LOG_FILE
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 744 $HSHQ_WIREGUARD_DIR/scripts/updateEndpointIPs.sh
 }
 
 function enableAllWGVPNInterfaces()
@@ -20538,7 +23483,7 @@ function addHSInterface()
   for curInterface in "${interfaceListArr[@]}"
   do
     if [ "$iface_name" = "$curInterface" ]; then
-      strMsg="Interface already added."
+      strMsg="addHSInterface - Interface already added."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 1
@@ -20548,7 +23493,7 @@ function addHSInterface()
   for curInterface in "${interfaceListArr[@]}"
   do
     if [ "$iface_name" = "$curInterface" ]; then
-      strMsg="Interface name already exists in database."
+      strMsg="addHSInterface - Interface name already exists in database."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 2
@@ -20564,13 +23509,13 @@ function addHSInterface()
     fi
   done
   if [ "$isFound" = "false" ]; then
-    strMsg="The selected interface is not available."
+    strMsg="addHSInterface - The selected interface is not available."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
   fi
   if [ "$(isInterfaceExists $iface_name)" = "false" ]; then
-    strMsg="The network interface was not found."
+    strMsg="addHSInterface - The network interface was not found."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
@@ -20578,7 +23523,7 @@ function addHSInterface()
   ip_addr=$(getIPAddressOfInterface $iface_name)
   if [ -z "$ip_addr" ] || [[ "$ip_addr" =~ ^169\.254\. ]]; then
     if [ "$iface_isPrimary" = "true" ]; then
-      strMsg="The IP address for this primary interface could not be determined."
+      strMsg="addHSInterface - The IP address for this primary interface could not be determined."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 3
@@ -20594,7 +23539,7 @@ function addHSInterface()
     fi
     chk_conflict=$(checkIPConflict "$ip_addr" "$interface_subnet" "$is_private")
     if ! [ -z "$chk_conflict" ]; then
-      strMsg="$chk_conflict"
+      strMsg="addHSInterface - $chk_conflict"
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 6
@@ -20643,20 +23588,20 @@ function setHSInterfaceAsPrimary()
     fi
   done
   if [ "$isFound" = "false" ]; then
-    strMsg="The selected network interface was not in the list."
+    strMsg="setHSInterfaceAsPrimary - The selected network interface was not in the list."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 1
   fi
   iface_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName = '$iface_name';")
   if [ -z "$iface_ip" ]; then
-    strMsg="The selected network interface was not found in the database."
+    strMsg="setHSInterfaceAsPrimary - The selected network interface was not found in the database."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 2
   fi
   if ! [ "$(checkValidIPAddress $iface_ip)" = "true" ]; then
-    strMsg="The IP address for this interface is invalid."
+    strMsg="setHSInterfaceAsPrimary - The IP address for this interface is invalid."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
@@ -20684,12 +23629,36 @@ function setHSInterfaceIsExpose()
     fi
   done
   if [ "$isFound" = "false" ]; then
-    strMsg="The selected network interface was not in the list."
+    strMsg="setHSInterfaceIsExpose - The selected network interface was not in the list."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 1
   fi
   sudo sqlite3 $HSHQ_DB "update connections set IsExposeToNetwork=$iface_isExpose where InterfaceName = '$iface_name';"
+}
+
+function checkInterfaceIPChanged()
+{
+  iface_name="$1"
+  db_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName = '$iface_name';")
+  current_ip=$(getIPAddressOfInterface $iface_name)
+  # || [ "$db_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]
+  if [ "$(checkValidIPAddress $current_ip)" = "false" ] || [ -z "$db_ip" ] || [ -z "$current_ip" ] || [ "$db_ip" = "$current_ip" ] || [ "$current_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+    echo "false"
+    return
+  fi
+  is_private=$(checkIsIPPrivate "$current_ip")
+  interface_subnet=$(getSubnetOfInterface "$iface_name" "$current_ip" "$is_private")
+  if [ -z "$interface_subnet" ]; then
+    echo "false"
+    return
+  fi
+  chk_conflict=$(checkIPConflict "$current_ip" "$interface_subnet" "$is_private")
+  if ! [ -z "$chk_conflict" ]; then
+    echo "false"
+    return
+  fi
+  echo "true"
 }
 
 function updateHSInterface()
@@ -20703,50 +23672,54 @@ function updateHSInterface()
       sudo sqlite3 $HSHQ_DB "update connections set IPAddress = '$DEFAULT_UNFOUND_IP_ADDRESS', Network_Subnet = '$DEFAULT_UNFOUND_IP_SUBNET', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
       return
     fi
-    strMsg="Invalid IP address"
+    strMsg="updateHSInterface - Invalid IP address"
     echo "$strMsg"
     # Could be a lot of log spam, lets not log it
     #logHSHQEvent error "$strMsg"
     return 1
   fi
   if [ "$db_ip" = "$current_ip" ]; then
-    strMsg="The IP address is unchanged. No updated needed."
+    strMsg="The IP address for $iface_name is unchanged ($current_ip). No updated needed."
     echo "$strMsg"
     return 2
   fi
   is_private=$(checkIsIPPrivate "$current_ip")
   interface_subnet=$(getSubnetOfInterface "$iface_name" "$current_ip" "$is_private")
   if [ -z "$interface_subnet" ]; then
-    strMsg="There was an error obtaining the subnet of this interface ($iface_name)."
+    strMsg="updateHSInterface - There was an error obtaining the subnet of this interface ($iface_name)."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 3
   fi
   chk_conflict=$(checkIPConflict "$current_ip" "$interface_subnet" "$is_private")
   if ! [ -z "$chk_conflict" ]; then
-    strMsg="$chk_conflict"
+    strMsg="updateHSInterface - $chk_conflict"
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 4
   fi
   if [ "$current_ip" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
-    strMsg="The IP address is invalid ($DEFAULT_UNFOUND_IP_ADDRESS)."
+    strMsg="updateHSInterface - The IP address is invalid ($DEFAULT_UNFOUND_IP_ADDRESS)."
     echo "$strMsg"
     logHSHQEvent error "$strMsg"
     return 4
   fi
   # Everything is good, the IP addresses are different, so proceed with update.
   curdt=$(getCurrentDate)
-  sqlite3 $HSHQ_DB "update connections set IPAddress = '$current_ip', Network_Subnet = '$interface_subnet', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
+  sudo sqlite3 $HSHQ_DB "update connections set IPAddress = '$current_ip', Network_Subnet = '$interface_subnet', LastUpdated = '$curdt' where InterfaceName = '$iface_name';" > /dev/null 2>&1
   if [ "$iface_name" = "$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME" ]; then
     HOMESERVER_HOST_PRIMARY_INTERFACE_IP="$current_ip"
     updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   fi
+  strMsg="The IP address for $iface_name was changed from $db_ip to $current_ip."
+  echo "$strMsg"
+  logHSHQEvent info "$strMsg"
 }
 
 function checkUpdateHostInterface()
 {
   set +e
+  logHSHQEvent debug "checkUpdateHostInterface BEGIN"
   iface_operation="$1"
   iface_name="$2"
   is_close_hshq="$3"
@@ -20757,7 +23730,7 @@ function checkUpdateHostInterface()
   case $iface_operation in
     add)
       if [ -z "$iface_name" ] || [ -z "$iface_isPrimary" ]; then
-        strMsg="You must specify the interface name and if its the primary interface (true|false)."
+        strMsg="checkUpdateHostInterface - You must specify the interface name and if its the primary interface (true|false)."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 1
@@ -20773,13 +23746,13 @@ function checkUpdateHostInterface()
       ;;
     remove)
       if [ -z "$iface_name" ]; then
-        strMsg="You must specify the interface name."
+        strMsg="checkUpdateHostInterface - You must specify the interface name."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 4
       fi
       if [ "$iface_name" = "$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME" ]; then
-        strMsg="You cannot remove the primary interface."
+        strMsg="checkUpdateHostInterface - You cannot remove the primary interface."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 5
@@ -20791,19 +23764,19 @@ function checkUpdateHostInterface()
       ;;
     setisprimary)
       if [ -z "$iface_name" ] || [ -z "$iface_isPrimary" ]; then
-        strMsg="You must specify the interface name and if its the primary interface (true|false)."
+        strMsg="checkUpdateHostInterface - You must specify the interface name and if its the primary interface (true|false)."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 7
       fi
       if ! [ "$iface_isPrimary" = "true" ]; then
-        strMsg="This operation is only for changing the primary interface."
+        strMsg="checkUpdateHostInterface - This operation is only for changing the primary interface."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 8
       fi
       if [ "$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME" = "$iface_name" ]; then
-        strMsg="The selected interface is already the primary interface."
+        strMsg="checkUpdateHostInterface - The selected interface is already the primary interface."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 9
@@ -20815,13 +23788,13 @@ function checkUpdateHostInterface()
       ;;
     setisexpose)
       if [ -z "$iface_name" ] || [ -z "$iface_isExpose" ]; then
-        strMsg="You must specify the interface name and if its expose setting. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
+        strMsg="checkUpdateHostInterface - You must specify the interface name and if its expose setting. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 11
       fi
       if ! [ "$iface_isExpose" = "true" ] && ! [ "$iface_isExpose" = "false" ]; then
-        strMsg="The expose setting must be either true or false. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
+        strMsg="checkUpdateHostInterface - The expose setting must be either true or false. (iface_name: $iface_name, iface_isExpose: $iface_isExpose)"
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 12
@@ -20832,29 +23805,32 @@ function checkUpdateHostInterface()
       fi
       ;;
     update)
+      logHSHQEvent debug "checkUpdateHostInterface Update 1"
       if [ -z "$iface_name" ]; then
-        strMsg="You must specify the interface name."
+        strMsg="checkUpdateHostInterface - You must specify the interface name."
         echo "$strMsg"
         logHSHQEvent error "$strMsg"
         return 14
       fi
       updateHSInterface "$iface_name"
+      logHSHQEvent debug "checkUpdateHostInterface Update 2"
       if [ $? -ne 0 ]; then
         return 15
       fi
       updateIP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName='$iface_name';")
       ;;
     *)
-      strMsg="Unknown operation."
+      strMsg="checkUpdateHostInterface - Unknown operation."
       echo "$strMsg"
       logHSHQEvent error "$strMsg"
       return 16
       ;;
   esac
-
   case $iface_operation in
     add|update)
+      logHSHQEvent debug "checkUpdateHostInterface Update 3"
       if ! [ "$newIP" = "127.0.0.1" ]; then
+        logHSHQEvent debug "checkUpdateHostInterface Update 4"
         # Regenerate Portainer and Script-server certs
         certIPList="127.0.0.1"
         ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
@@ -20865,35 +23841,38 @@ function checkUpdateHostInterface()
             certIPList="$certIPList","$curIF_IP"
           fi
         done
+        logHSHQEvent debug "checkUpdateHostInterface Update 5"
         generateCert portainer portainer "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
-        generateCert script-server "script-server,host.docker.internal" "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
+        generateCert script-server "script-server,host.docker.internal,localhost" "$certIPList" "$(date -u -d "86401 seconds ago" '+%Y-%m-%d %H:%M:%S') GMT"
       fi
       ;;
   esac
   case $iface_operation in
     add|remove|setisprimary|update)
+      logHSHQEvent debug "checkUpdateHostInterface Update 6"
       updatePortainerJitsiIPChanges
+      logHSHQEvent debug "checkUpdateHostInterface Update 7"
       ;;
   esac
   case $iface_operation in
     setisprimary|update)
       if [ "$(checkValidIPAddress $primary_ip_prior)" = "true" ] && [ "$(checkValidIPAddress $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "true" ] && ! [ "$primary_ip_prior" = "$HOMESERVER_HOST_PRIMARY_INTERFACE_IP" ]; then
+        logHSHQEvent debug "checkUpdateHostInterface Update 8"
         sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT' where url like '%$primary_ip_prior:$PORTAINER_LOCAL_HTTPS_PORT%';" > /dev/null 2>&1
         sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set url='https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT' where url like '%$primary_ip_prior:$SCRIPTSERVER_LOCALHOST_PORT%';" > /dev/null 2>&1
         docker container restart heimdall > /dev/null 2>&1
         addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_PRIMARY_INTERFACE_IP > /dev/null 2>&1
+        logHSHQEvent debug "checkUpdateHostInterface Update 9"
       fi
       ;;
   esac
-
   # Update IP tables
   checkUpdateAllIPTables checkUpdateHostInterface
-
   case $iface_operation in
     add)
       # Add Caddy instance
       if [ "$iface_isExpose" = "true" ]; then
-        installHostInterfaceCaddy "$iface_name"
+        installHostInterfaceCaddy "$iface_name" "$newIP"
         if [ "$newIP" = "127.0.0.1" ]; then
           startStopStack caddy-home-$iface_name stop > /dev/null 2>&1
           sudo sqlite3 $HSHQ_DB "update connections set IPAddress = '$DEFAULT_UNFOUND_IP_ADDRESS', Network_Subnet = '$DEFAULT_UNFOUND_IP_SUBNET' where ID=$curID;" > /dev/null 2>&1
@@ -20902,28 +23881,36 @@ function checkUpdateHostInterface()
       fi
       ;;
     update)
+      logHSHQEvent debug "checkUpdateHostInterface Update 10"
       # Restart caddy-home stacks
       if [ "$(checkValidIPAddress $updateIP)" = "true" ] && ! [ "$updateIP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+        logHSHQEvent debug "checkUpdateHostInterface Update 11"
         startStopStack caddy-home-$iface_name stop > /dev/null 2>&1
         docker container stop caddy-home-$iface_name > /dev/null 2>&1
         docker container rm caddy-home-$iface_name > /dev/null 2>&1
         sleep 1
         startStopStack caddy-home-$iface_name start > /dev/null 2>&1
+        logHSHQEvent debug "checkUpdateHostInterface Update 12"
       fi
       ;;
     *)
       ;;
   esac
-
   case $iface_operation in
     add|update)
+      logHSHQEvent debug "checkUpdateHostInterface Update 13"
       if ! [ "$is_close_hshq" = "false" ]; then
+        logHSHQEvent debug "checkUpdateHostInterface Update 14, is_close_hshq: $is_close_hshq"
         performExitFunctions false
+        logHSHQEvent debug "checkUpdateHostInterface Update 15"
+        set +e
       fi
       sleep 2
+      logHSHQEvent debug "checkUpdateHostInterface Update 16"
       sudo systemctl restart runScriptServer
       ;;
   esac
+  logHSHQEvent debug "checkUpdateHostInterface END"
 }
 
 function addFirewallSubnet()
@@ -20956,42 +23943,66 @@ function updatePortainerJitsiIPChanges()
   startStopStack jitsi start > /dev/null 2>&1
 }
 
+function checkHostInterfacesIsChanged()
+{
+  interfaceListArr=($(echo $HOMESERVER_HOST_NETWORK_INTERFACES | tr "," "\n"))
+  for curInterface in "${interfaceListArr[@]}"
+  do
+    checkIsChanged=$(checkInterfaceIPChanged "$curInterface")
+    if [ "$checkIsChanged" = "true" ]; then
+      echo "true"
+      return
+    fi
+  done
+  echo "false"
+}
+
 function checkHostAllInterfaceIPChanges()
 {
   isBypassHSHQStatus=$1
-  callerName="$2"
+  isCloseHSHQ="$2"
+  callerName="$3"
+  logHSHQEvent debug "checkHostAllInterfaceIPChanges BEGIN"
   set +e
   timeout 5 docker ps > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "Docker is not yet up and running, returning..."
     return 1
   fi
+  if [ "$(checkHostInterfacesIsChanged)" = "false" ]; then
+    # Nothing has changed, no need to continue
+    return
+  fi
+  logHSHQEvent debug "checkHostAllInterfaceIPChanges Check 1"
   if [ -z "$$callerName" ]; then
     callerName=checkHostAllInterfaceIPChanges
   fi
-  checkRes=""
+  tgLock=""
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
-    checkRes=$(tryOpenHSHQScript $callerName)
+    tgLock="$(tryGetLock hshqopen $callerName)"
   fi
-  if ! [ -z "$checkRes" ]; then
+  logHSHQEvent debug "checkHostAllInterfaceIPChanges Check 2"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg hshqopen)"
     echo "The HSHQ script is running in another instance ($checkRes), returning..."
-    logHSHQEvent error "ERROR: (checkHostAllInterfaceIPChanges) The HSHQ script is already open or running in a different instance ($checkRes)"
+    logHSHQEvent error "checkHostAllInterfaceIPChanges - The HSHQ script is already open or running in a different instance ($checkRes)"
     return
   fi
-  #logHSHQEvent info "Check IP ($callerName) - BEGIN"
+  logHSHQEvent debug "checkHostAllInterfaceIPChanges Check 3"
   interfaceListArr=($(echo $HOMESERVER_HOST_NETWORK_INTERFACES | tr "," "\n"))
   isUpdateIPT=false
   for curInterface in "${interfaceListArr[@]}"
   do
-    checkUpdateHostInterface update "$curInterface" "$isBypassHSHQStatus" na na
+    checkUpdateHostInterface update "$curInterface" "$isCloseHSHQ" na na
     if [ $? -eq 0 ]; then
       isUpdateIPT=true
     fi
   done
+  logHSHQEvent debug "checkHostAllInterfaceIPChanges Check 4"
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
-    closeHSHQScript "$callerName"
+    releaseLock hshqopen "$callerName" false
   fi
-  #logHSHQEvent info "Check IP ($callerName) - END"
+  logHSHQEvent debug "checkHostAllInterfaceIPChanges Check 5"
 }
 
 function checkUpdateSingleHostInterface()
@@ -21003,22 +24014,26 @@ function checkUpdateSingleHostInterface()
   fi
 }
 
-function checkUpdateIPTablesCron()
-{
-  checkRes=$(tryOpenHSHQScript checkFirewall-cronjob)
-  if ! [ -z "$checkRes" ]; then
-    logHSHQEvent error "ERROR: (checkUpdateIPTablesCron) The HSHQ script is already open or running in a different instance ($checkRes)"
-    return
-  fi
-  checkUpdateAllIPTables checkFirewall-cronjob > /dev/null 2>&1
-  closeHSHQScript "checkFirewall-cronjob"
-}
-
 function logHSHQEvent()
 {
   msgType="$1"
   msgContent="$2"
-  echo "$(date '+%Y-%m-%d %H:%M:%S.%3N') [$msgType] $msgContent" >> $HSHQ_LOG_FILE
+  isLogit=false
+  # We'll have to clean up this logic later for all message types,
+  # i.e. debug, info, warn, error...,but for now this is good enough
+  case "$LOG_LEVEL" in
+    info)
+      if ! [ "$msgType" = "debug" ]; then
+        isLogit=true
+      fi
+    ;;
+    debug)
+      isLogit=true
+    ;;
+  esac
+  if [ "$isLogit" = "true" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S.%3N') [$msgType] $msgContent" >> $HSHQ_LOG_FILE
+  fi
 }
 
 function updateExposedPortsLists()
@@ -21317,7 +24332,7 @@ function initCertificateAuthority()
   fi
 
   if [ -f $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt ]; then
-    showYesNoMessageBox "Root CA Exists" "Root CA certificate($HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt) exists. Do you wish to bypass this step and continue installing?"
+    showYesNoMessageBox "Root CA Exists" "Root CA certificate($HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt) exists.\nDo you wish to bypass this step and continue installing?"
 	mbres=$?
 	if [ $mbres -eq 0 ]; then
       return
@@ -21523,7 +24538,7 @@ function generateCertDialog()
   ft_string=""
   while [ -z "$ft_string" ]
   do
-    ft_string=$(promptUserInputMenu "$(date '+%Y-%m-%d %H:%M:%S %Z')" "Enter Start Date" "Enter the Start Date for the Certificate (must be formatted as follows - 2023-01-01 00:00:00 GMT):")
+    ft_string=$(promptUserInputMenu "$(date '+%Y-%m-%d %H:%M:%S %Z')" "Enter Start Date" "Enter the Start Date for the Certificate. It must be formatted as follows - 2023-01-01 00:00:00 GMT:")
     mbres=$?
     if [ $mbres -ne 0 ]; then
       return 1
@@ -21538,10 +24553,10 @@ function generateCertDialog()
 
 function getUpdateAssets()
 {
-  if [ -d $HSHQ_DATA_DIR/assets/.git ]; then
-    git -C $HSHQ_DATA_DIR/assets pull > /dev/null
+  if [ -d $HSHQ_ASSETS_DIR/.git ]; then
+    git -C $HSHQ_ASSETS_DIR pull > /dev/null
   else
-    git clone https://github.com/homeserverhq/assets.git $HSHQ_DATA_DIR/assets
+    git clone https://github.com/homeserverhq/assets.git $HSHQ_ASSETS_DIR
   fi
 }
 
@@ -21655,6 +24670,7 @@ function prepPerformUpdate()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   unset image_update_map
+  image_update_map=""
   oldVer=v"$perform_stack_ver"
 }
 
@@ -21716,6 +24732,7 @@ function upgradeStack()
   $stackModFunction
   if [ "$isStartStackFromStopped" = "true" ] && [ "$isReinstallStack" = "false" ]; then
     unset isStartStackFromStopped
+    isStartStackFromStopped=""
     startStopStack $comp_stack_name start "$portainerToken"
   else
     if [ "$isReinstallStack" = "true" ]; then
@@ -22140,120 +25157,138 @@ function pullDockerImages()
   pullImage $IMG_HOMARR_APP
 }
 
+function pullImagesUpdatePB()
+{
+  pb_add="$1"
+  pb_cur=$(($pb_cur+$pb_add))
+  pb_res=$(($pb_base+$pb_cur))
+  draw_progress_bar $pb_res
+}
+
 function pullBaseServicesDockerImages()
 {
+  pb_base=5
+  pb_cur=0
   pullImage $IMG_PORTAINER
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_ADGUARD
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImage $IMG_DNSMASQ
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
-  pullImage $IMG_WIREGUARD
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
+  pullImagesUpdatePB 2
   pullImage $IMG_OPENLDAP_SERVER
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_OPENLDAP_PHP
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_OPENLDAP_MANAGER
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_ADMIN
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_ANTISPAM
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 1
   pullImage $IMG_MAILU_ANTIVIRUS
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_FETCHMAIL
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_FRONT
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_IMAP
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_OLETOOLS
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_SMTP
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_UNBOUND
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_WEBDAV
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_MAILU_WEBMAIL
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_DUPLICATI
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_AUTHELIA
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_REDIS
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_SYNCTHING
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_HEIMDALL
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_OFELIA
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_CADDY
   if [ $? -ne 0 ]; then
     return 4
   fi
+  pullImagesUpdatePB 2
   pullImage $IMG_UPTIMEKUMA
   if [ $? -ne 0 ]; then
     return 4
   fi
-  pullImage $IMG_POSTGRES
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
-  pullImage $IMG_MYSQL
-  if [ $? -ne 0 ]; then
-    return 4
-  fi
+  pullImagesUpdatePB 2
   rm -f $HOME/script-server.zip
   wget -q -O $HOME/script-server.zip https://github.com/bugy/script-server/releases/download/1.18.0/script-server.zip
   retVal=$?
@@ -22408,7 +25443,6 @@ LDAP_ACCOUNT_REQUESTS_EMAIL=
 # Mailu (Service Details) BEGIN
 EMAIL_ADMIN_USERNAME=
 EMAIL_ADMIN_PASSWORD=
-EMAIL_ADMIN_EMAIL_ADDRESS=
 EMAIL_SMTP_USERNAME=
 EMAIL_SMTP_PASSWORD=
 EMAIL_SMTP_EMAIL_ADDRESS=
@@ -22865,7 +25899,7 @@ function outputPlainTextRootConfig()
 $hshqlogo
 
 # General Info BEGIN
-HSHQ_VERSION=$HSHQ_SCRIPT_VERSION
+HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
 HOMESERVER_DOMAIN=
 HOMESERVER_NAME=
 HOMESERVER_ABBREV=
@@ -22893,8 +25927,7 @@ DOCKER_NETWORK_RESERVED_RANGE=172.16.0.0/15
 DOCKER_NETWORK_SIZE=24
 DOCKER_METRICS_PORT=8323
 IS_AUTO_UPDATE_NETWORK=true
-CHECKIP_REFRESH_RATE=1
-UPDATE_IPTABLES_REFRESH_RATE=5
+NETWORK_UPDATE_INTERVAL=5
 HOST_INTERNET_TRAFFIC_INTERFACE=default
 # General Info END
 
@@ -22975,7 +26008,7 @@ function initServicesCredentials()
   fi
   if [ -z "$EMAIL_ADMIN_EMAIL_ADDRESS" ]; then
     EMAIL_ADMIN_EMAIL_ADDRESS="$EMAIL_ADMIN_USERNAME@$HOMESERVER_DOMAIN"
-    updateConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
+    updatePlaintextRootConfigVar EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$EMAIL_SMTP_USERNAME" ]; then
     EMAIL_SMTP_USERNAME="mailsender"
@@ -23965,17 +26998,29 @@ function installBaseStacks()
 {
   initCaddyCommon
   installPortainer
+  draw_progress_bar 57
   installStackByName adguard
+  draw_progress_bar 59
   installStackByName openldap
+  draw_progress_bar 61
   installStackByName mailu
+  draw_progress_bar 63
   installStackByName duplicati
+  draw_progress_bar 65
   installStackByName authelia
+  draw_progress_bar 67
   installStackByName syncthing
+  draw_progress_bar 69
   installStackByName heimdall
+  draw_progress_bar 71
   installStackByName ofelia
-  installHostInterfaceCaddy $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
+  draw_progress_bar 73
+  installHostInterfaceCaddy $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
+  draw_progress_bar 75
   installStackByName uptimekuma
+  draw_progress_bar 77
   installStackByName script-server
+  draw_progress_bar 79
 }
 
 function initServiceVars()
@@ -23984,6 +27029,7 @@ function initServiceVars()
   checkAddSvc "SVCD_ADGUARD=adguard,adguard,primary,admin,AdguardHome,adguard,hshq"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
   checkAddSvc "SVCD_BARASSISTANT=bar-assistant,bar-assistant,primary,user,Bar Assistant,bar-assistant,hshq"
+  checkAddSvc "SVCD_BIND_IP=bind-ip,bind-ip,other,user,BindIP,bind-ip,hshq"
   checkAddSvc "SVCD_CADDY=caddy,caddy,primary,admin,Caddy,caddy,hshq"
   checkAddSvc "SVCD_CADDYDNS=caddy,caddy-dns,primary,admin,CaddyDNS,caddy-dns,hshq"
   checkAddSvc "SVCD_CALIBRE_SERVER=calibre,calibre-server,primary,admin,Calibre-Server,calibre-server,hshq"
@@ -24575,7 +27621,7 @@ function emailUserVaultwardenCredentials()
 {
   vw_username=$1
   vw_email=$2
-  strOutput="_________________________________________________________________________\n\n"
+  strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
@@ -24587,12 +27633,15 @@ function emailUserVaultwardenCredentials()
 
 function emailFormattedCredentials()
 {
-  strOutput="Be careful keeping this in your mailbox, it contains all of your Admin passwords in plain text! If you intend to install and use Vaultwarden, then you will receive an email once it is installed, and it will contain this information in a format that you can easily import into your vault. You can also resend yourself this email later from within Script-server, i.e. 01 Misc Utils -> 11 Email All Credentials\n\n\n\n"
+  strOutput=""
+  strOutput=$strOutput"                        All Services Login Info                         "
+  strOutput=$strOutput"========================================================================\n"
+  strOutput=$strOutput"Be careful keeping this in your mailbox, it contains all of your Admin passwords in plain text! If you intend to install and use Vaultwarden, then you will receive an email once it is installed, and it will contain this information in a format that you can easily import into your vault. You can also resend yourself this email later from within Script-server, i.e. 01 Misc Utils -> 11 Email All Credentials\n\n\n\n"
   strOutput=$strOutput"Service Name, Username, Password, URL(s)\n"
-  strOutput=$strOutput"_________________________________________________________________________\n\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=$strOutput"________________________________________________________________________\n\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
@@ -24621,7 +27670,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
@@ -25673,6 +28722,7 @@ function performUpdatePortainer()
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
   unset image_update_map
+  image_update_map=""
   oldVer=v"$perform_stack_ver"
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -25706,7 +28756,9 @@ function restartPortainer()
   stopPortainer
   sleep 3
   startPortainer
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if ! [ -z "$PORTAINER_ADMIN_USERNAME" ] && ! [ -z "$PORTAINER_ADMIN_PASSWORD" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
 }
 
 function stopPortainer()
@@ -29619,9 +32671,9 @@ function installMailu()
   sleep 5
   echo "Adding initial users..."
   docker exec mailu-admin flask mailu config-import /initconfig/mail-config.yaml > /dev/null 2>&1
-  sleep 5
-  rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
+  sleep 2
   startStopStack mailu stop
+  rm -f $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
   sudo mv $HSHQ_STACKS_DIR/mailu/postfix-override.cf $HSHQ_STACKS_DIR/mailu/overrides/postfix/postfix.cf
   sudo mv $HSHQ_STACKS_DIR/mailu/dovecot-override.conf $HSHQ_STACKS_DIR/mailu/overrides/dovecot/dovecot.conf
   sudo mv $HSHQ_STACKS_DIR/mailu/custom.inc.php $HSHQ_STACKS_DIR/mailu/overrides/roundcube/custom.inc.php
@@ -31168,7 +34220,7 @@ function updateWazuhAgents()
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
   sudo apt-mark hold wazuh-agent
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    notifyRSLogin
+    promptTestRelayServerPassword
     loadSSHKey
     ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo apt-mark unhold wazuh-agent; sudo DEBIAN_FRONTEND=noninteractive apt update; sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver; sudo apt-mark hold wazuh-agent"
     unloadSSHKey
@@ -43174,7 +46226,7 @@ function mfClearMeiliData()
 function mfUpdateBarAssistantV4()
 {
   mfClearMeiliData
-  unset isStartStackFromStopped
+  isStartStackFromStopped=""
   sed -i "s/localhost:3000/localhost:8080/g" $HOME/bar-assistant-compose.yml
   sed -i "s/bar-assistant-app:3000/bar-assistant-app:8080/g" $HSHQ_STACKS_DIR/bar-assistant/web/nginx.conf
   sudo chown -R 33:33 $HSHQ_STACKS_DIR/bar-assistant/app
@@ -47645,7 +50697,7 @@ function installScriptServer()
   echo "Installing python3-tornado..."
   performAptInstall python3-tornado > /dev/null 2>&1
   initServicesCredentials
-  generateCert script-server "script-server,host.docker.internal" "127.0.0.1,$HOMESERVER_HOST_PRIMARY_INTERFACE_IP"
+  generateCert script-server "script-server,host.docker.internal,localhost" "127.0.0.1,$HOMESERVER_HOST_PRIMARY_INTERFACE_IP"
   outputConfigScriptServer
   htpasswd -bcBC 10 $HSHQ_STACKS_DIR/script-server/users $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD > /dev/null 2>&1
   cp $HSHQ_ASSETS_DIR/images/script-server.ico $HSHQ_STACKS_DIR/script-server/web/favicon.ico
@@ -47684,7 +50736,7 @@ function installScriptServer()
   sudo systemctl enable runScriptServer
   sudo systemctl start runScriptServer
   sleep 3
-  fullResetScriptServer
+  fullResetScriptServer true
   if ! [ "$SCRIPTSERVER_INIT_ENV" = "true" ]; then
     sendEmail -s "Script-server Login Info" -b "Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\nScript-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     SCRIPTSERVER_INIT_ENV=true
@@ -47710,7 +50762,6 @@ User=$USERNAME
 [Install]
 WantedBy=multi-user.target
 EOFHS
-
   cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/conf.json
 {
   "port": $SCRIPTSERVER_LOCALHOST_PORT,
@@ -47743,50 +50794,54 @@ EOFHS
   }
 }
 EOFHS
+  outputScriptServerTheme
+  outputAllScriptServerScripts true true
+  outputStackListsScriptServer
+}
 
+function outputScriptServerTheme()
+{
+  getUpdateAssets
+  rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-ApplyJoin.png
+  rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-Invite.png
+  cp $HSHQ_ASSETS_DIR/images/HSHQ-ApplyJoin.png $HSHQ_STACKS_DIR/script-server/web/img/
+  cp $HSHQ_ASSETS_DIR/images/HSHQ-Invite.png $HSHQ_STACKS_DIR/script-server/web/img/
+  rm -f $HSHQ_STACKS_DIR/script-server/conf/theme/theme.css
   cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/theme/theme.css
 html:root {
+
+    --primary-color-dark-color: #22262A;
+    --surface-color: #22262A;
+    --background-color: #22262A;
+
     --hover-color: rgba(255, 255, 255, 0.04);
     --focus-color: rgba(255, 255, 255, 0.12);
     --focus-color-solid: #424242;
-
-    --font-color-main: rgba(255, 255, 255, 0.87);
-    --font-color-medium: rgba(255, 255, 255, 0.60);
-    --font-color-disabled: rgba(255, 255, 255, 0.38);
-
+    --font-color-main: rgba(255, 255, 255, 1);
+    --font-color-medium: rgba(255, 255, 172, 1);
+    --font-color-disabled: rgba(255, 255, 255, 0.5);
     --primary-color: #FFFFAC;
     --primary-color-raised-hover-solid: #FFFFAC;
     --primary-color-raised-focus-solid: #FFFFAC;
     --primary-color-when-focused: rgba(0, 0, 0, 0.12);
     --primary-color-when-hovered: rgba(0, 0, 0, 0.04);
-    --font-on-primary-color-main: rgba(0, 0, 0, 0.87);
-    --font-on-primary-color-medium: rgba(0, 0, 0, 0.60);
-
-    --primary-color-dark-color: #3F647F;
+    --font-on-primary-color-main: rgba(0, 0, 0, 1);
+    --font-on-primary-color-medium: rgba(0, 0, 0, 1);
     --primary-color-dark-when-focused: rgba(0, 0, 0, 0.12);
     --primary-color-dark-when-hovered: rgba(0, 0, 0, 0.04);
-    --font-on-primary-color-dark-main: rgba(0, 0, 0, 0.87);
-    --font-on-primary-color-dark-medium: rgba(0, 0, 0, 0.60);
-
+    --font-on-primary-color-dark-main: rgba(255, 255, 255, 1);
+    --font-on-primary-color-dark-medium: rgba(255, 255, 172, 1);
     --primary-color-light-color: #FFFFAC;
-
-    --surface-color: #000000;
-
-    --background-color: #21292C;
     --background-color-slight-emphasis: rgba(255, 255, 255, 0.05);
     --background-color-high-emphasis: rgba(255, 255, 255, 0.09);
     --background-color-level-4dp: rgba(255, 255, 255, 0.09);
     --background-color-level-8dp: rgba(255, 255, 255, 0.12);
     --background-color-level-16dp: rgba(255, 255, 255, 0.15);
     --background-color-disabled: rgba(255, 255, 255, 0.12);
-
     --script-header-background: url('../theme/script-server_header.jpg') center / cover no-repeat;
     --login-header-background: url('../theme/script-server_login.jpg') center / cover no-repeat;
-
     --separator-color: #424242;
-
     --outline-color: rgba(255, 255, 255, 0.18);
-
 }
 
 .script-parameters-panel .parameter textarea {
@@ -47801,14 +50856,24 @@ html:root {
 }
 
 .log-panel {
-  min-height: 20em !important;
-  overflow: auto !important;
+    min-height: 20em !important;
+    overflow: auto !important;
+    background: #000000 !important;
+}
+
+#login-panel {
+    background-color: #000000 !important;
+}
+
+#login-body {
+    background: #000000 !important;
+}
+
+.content-panel a {
+    color: #00A8FF !important;
 }
 
 EOFHS
-
-  outputAllScriptServerScripts
-  outputStackListsScriptServer
 }
 
 function performUpdateScriptServer()
@@ -47825,14 +50890,28 @@ function clearAllScriptServerScripts()
 
 function fullResetScriptServer()
 {
+  isReplaceSSScripts="$1"
   clearAllScriptServerScripts
   rm -f $HSHQ_STACKS_DIR/script-server/logs/processes/*
   rm -fr $HSHQ_STACKS_DIR/script-server/temp/uploadFiles/*
-  outputAllScriptServerScripts
+  outputAllScriptServerScripts "$isReplaceSSScripts" true
 }
 
 function outputAllScriptServerScripts()
 {
+  isReplaceSSScripts="$1"
+  isReplaceUpdateScript="$2"
+  sudo_stdin_prompt="Checking sudo password..."
+  config_stdin_prompt="Checking config decrypt password..."
+  relaysudo_stdin_prompt="Getting RelayServer password..."
+  rs_cur_password_prompt="Getting current RS password..."
+  rs_new_password_prompt="Getting new RS password..."
+  if [ -z "$isReplaceSSScripts" ]; then
+    isReplaceSSScripts=true
+  fi
+  if [ -z "$isReplaceUpdateScript" ]; then
+    isReplaceUpdateScript=true
+  fi
   group_id_misc="01 Misc Utils"
   group_id_services="02 Services"
   group_id_scriptserver="03 Script-server Utils"
@@ -47876,28 +50955,92 @@ EOFSC
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 #!/bin/bash
 
-echo "\$1" | sudo -S -v -p "" > /dev/null 2>&1
-if [ \$? -ne 0 ]; then
-  echo "ERROR: Password is incorrect."
-  exit 1
-fi
+# Reading from stdin is better than parameters or environment variables,
+# since they can easily be seen in plaintext by running 'ps auxwwe'
+# However, using stdin redirection introduces a bit of a timing issue
+# between processes. The code below addresses this in the best possible
+# way, but some more analysis should be done to ensure that this cannot
+# be exploited.
 
+function main()
+{
+  read -s -p "$sudo_stdin_prompt" sudopw
+  if [ -z "\$sudopw" ]; then
+    read -t 5 -s -p "" sudopw
+  fi
+  if [ -z "\$sudopw" ]; then
+    sudopw=""
+    cat <<< "ERROR: Password is incorrect." 1>&2
+    exit 1
+  fi
+  echo "\$sudopw" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "bad"
+    sudopw=""
+    cat <<< "ERROR: Password is incorrect." 1>&2
+    exit 1
+  else
+    echo "good"
+  fi
+  sudopw=""
+}
+
+main
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 #!/bin/bash
 
-source $HSHQ_LIB_SCRIPT lib
-checkDecryptConfigFile \$1
+# See note in checkPass.sh
 
+function main()
+{
+  source $HSHQ_LIB_SCRIPT lib
+  read -s -p "$config_stdin_prompt" USER_CONFIG_PW
+  if [ -z "\$USER_CONFIG_PW" ]; then
+    read -t 5 -s -p "" USER_CONFIG_PW
+  fi
+  if [ -z "\$USER_CONFIG_PW" ]; then
+    USER_CONFIG_PW=""
+    cat <<< "ERROR: Incorrect password for encrypted configuration file." 1>&2
+    exit 3
+  fi
+  checkDecryptConfigFile
+  if [ \$? -ne 0 ]; then
+    exit 4
+  fi
+}
+
+main
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkRelayPass.sh
+#!/bin/bash
+
+function main()
+{
+  read -s -p "$relaysudo_stdin_prompt" relaysudopw
+  if [ -z "\$relaysudopw" ]; then
+    read -t 5 -s -p "" relaysudopw
+  fi
+  if [ -z "\$relaysudopw" ]; then
+    relaysudopw=""
+    cat <<< "ERROR: RelayServer password was not captured." 1>&2
+    exit 1
+  fi
+  USER_RELAY_SUDO_PW="\$relaysudopw"
+  echo "good"
+}
+
+main
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 #!/bin/bash
 
-checkRes=\$(checkIsOpenHSHQScript SS-Test)
+checkRes=\$(checkIsLockEnabled hshqopen SS-Test)
 if ! [ -z "\$checkRes" ]; then
-  echo "ERROR: The HSHQ script is already open or running in a different instance (\$checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset HSHQ Open Status function to reset it."
+  echo "ERROR: The HSHQ script is already open or running in a different instance (\$checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset Mutex Lock function to reset it."
   exit 8
 fi
 
@@ -47907,6 +51050,13 @@ EOFSC
 #!/bin/bash
 
 echo 10.\$(( \$RANDOM % 256 )).\$(( \$RANDOM % 256 )).\$((\$((\$RANDOM%250))+1))
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/generateRandomSubnet.sh
+#!/bin/bash
+
+echo 10.\$(( \$RANDOM % 256 )).\$(( \$RANDOM % 256 )).0
 
 EOFSC
 
@@ -48006,14 +51156,14 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/getWGInternetTrafficInterfaces.sh
 #!/bin/bash
+set +e
 
 echo "default"
-for curInt in $HSHQ_WIREGUARD_DIR/internet/*.conf;
+for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
 do
-  [ -e "\$curInt" ] || continue
-  echo \$(basename \${curInt%.*})
+  if ! test -f "\$conf"; then continue; fi
+  echo \$(basename \${conf%.*})
 done
-
 EOFSC
 
   # 01 Misc Utils
@@ -48049,7 +51199,7 @@ EOFSC
 {
   "name": "02 Restart Caddy Container",
   "script_path": "conf/scripts/restartCaddyContainer.sh",
-  "description": "Restarts a specific Caddy container. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Restarts a specific Caddy container. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -48081,7 +51231,6 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
-
 source $HSHQ_LIB_SCRIPT lib
 restartAllCaddyContainers
 echo "Caddy containers successfully restarted."
@@ -48092,7 +51241,7 @@ EOFSC
 {
   "name": "03 Restart All Caddy Containers",
   "script_path": "conf/scripts/restartAllCaddyContainers.sh",
-  "description": "Restarts all Caddy containers. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Restarts all Caddy containers. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
@@ -48139,13 +51288,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 certs_filename=\$(getArgumentValue filename "\$@")
 certs_domains=\$(getArgumentValue domains "\$@")
@@ -48164,14 +51310,12 @@ EOFSC
 {
   "name": "05 Generate Signed Certificate",
   "script_path": "conf/scripts/generateSignedCertificate.sh",
-  "description": "Generates a certificate signed by the Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/>\n- The resulting key/certificate pair will be stored in $HSHQ_SSL_DIR.\n- Multiple domain names and/or IP addresses should be a comma-separated list (no spaces).\n- Dates should be formatted as '2023-01-01 00:00:00 GMT'.\n- Leave start date empty to default to current date/time.\n- If end date is empty, then the certificate will expire $CERTS_INTERNAL_CA_DAYS days after the start date.",
+  "description": "Generates a certificate signed by the Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/>\n- The resulting key/certificate pair will be stored in $HSHQ_SSL_DIR.\n- Multiple domain names and/or IP addresses should be a comma-separated list (no spaces).\n- Dates should be formatted as '2023-01-01 00:00:00 GMT'.\n- Leave start date empty to default to current date/time.\n- If end date is empty, then the certificate will expire $CERTS_INTERNAL_CA_DAYS days after the start date.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48180,22 +51324,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
-      "secure": true,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
-      "pass_as": "argument"
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the filename",
@@ -48220,10 +51361,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     },
@@ -48250,10 +51388,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "pass_as": "argument"
     },
@@ -48281,13 +51416,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 caddyinstance=\$(getArgumentValue caddyinstance "\$@")
 
@@ -48303,14 +51435,12 @@ EOFSC
 {
   "name": "06 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyData.sh",
-  "description": "Clears out all data for the selected Caddy instance and restarts the stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.",
+  "description": "Clears out all data for the selected Caddy instance and restarts the stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48319,22 +51449,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Caddy Instance",
@@ -48363,13 +51490,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Restarting all stacks..."
@@ -48383,14 +51507,12 @@ EOFSC
 {
   "name": "07 Restart All Stacks",
   "script_path": "conf/scripts/restartAllStacks.sh",
-  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. The most prevalent case is when you run an update on the host system and docker is updated to a new version. The docker daemon is restarted as a result, but sometimes not everything comes back up correctly. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient (unless you are accessing this utility via IP on your home network, which is preferred). If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.",
+  "description": "Restarts all stacks. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>1. Stops all Docker stacks.\n2. Removes all Docker networks.\n3. Restarts the Docker daemon.\n4. Recreates all Docker networks.\n5. Starts all stacks that were stopped.<br/>\nThis function is useful to do a full fresh reboot of all services. You should rarely if ever need to do this, but there are certain situations where it might be needed. The most prevalent case is when you run an update on the host system and docker is updated to a new version. The docker daemon is restarted as a result, but sometimes not everything comes back up correctly. Depending on the number of stacks, this could take 10-15 minutes to complete. You will also lose access to this web app during the process, but it will continue to run in the background, so be patient (unless you are accessing this utility via IP on your home network, which is preferred). If you stop the process midway through, then you will have to manually fix any issues from the state that everything is in.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48399,22 +51521,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48425,13 +51544,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing login credentials in Vaultwarden format..."
@@ -48445,14 +51561,12 @@ EOFSC
 {
   "name": "08 Email Vaultwarden Credentials",
   "script_path": "conf/scripts/emailCredentialsVaultwarden.sh",
-  "description": "Emails Vaultwarden credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a format that can easily be imported into Vaultwarden, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails Vaultwarden credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a format that can easily be imported into Vaultwarden, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48461,22 +51575,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48487,13 +51598,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing Root CA..."
@@ -48507,14 +51615,12 @@ EOFSC
 {
   "name": "09 Email Root CA",
   "script_path": "conf/scripts/emailRootCA.sh",
-  "description": "Emails Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the Root Certificate Authority (CA) certificate to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails Root CA. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the Root Certificate Authority (CA) certificate to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48523,22 +51629,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48549,13 +51652,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 username=\$(getArgumentValue username "\$@")
 emailaddr=\$(getArgumentValue emailaddr "\$@")
@@ -48572,14 +51672,12 @@ EOFSC
 {
   "name": "10 Email User VW Template",
   "script_path": "conf/scripts/emailUserVaultwardenTemplate.sh",
-  "description": "Emails Vaultwarden template to user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function emails a Vaultwarden import template to the provided user at the provided email address. The template keeps all of the LDAP-based services together as a single entry within the Vaultwarden password manager. The default password is simply 'abcdefg', but the user only needs to change this one entry to their correct password. If they change their LDAP password in the future, then they need only change this one entry within Vaultwarden. The is simply a suggested convenience method for your users.",
+  "description": "Emails Vaultwarden template to user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function emails a Vaultwarden import template to the provided user at the provided email address. The template keeps all of the LDAP-based services together as a single entry within the Vaultwarden password manager. The default password is simply 'abcdefg', but the user only needs to change this one entry to their correct password. If they change their LDAP password in the future, then they need only change this one entry within Vaultwarden. The is simply a suggested convenience method for your users.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48588,22 +51686,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter LDAP username",
@@ -48627,10 +51722,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -48644,13 +51736,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing login credentials for all services..."
@@ -48664,14 +51753,12 @@ EOFSC
 {
   "name": "11 Email All Credentials",
   "script_path": "conf/scripts/emailCredentialsFormatted.sh",
-  "description": "Emails all login credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a human-readable format, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Emails all login credentials. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails all login credentials, in a human-readable format, to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48680,22 +51767,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48707,13 +51791,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 services=\$(getArgumentValue services "\$@")
 
@@ -48728,14 +51809,12 @@ EOFSC
 {
   "name": "01 Install Service(s)",
   "script_path": "conf/scripts/installServicesFromList.sh",
-  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Select the service(s) that you wish to install. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner).<br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48744,22 +51823,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "List of Services To Install",
@@ -48790,13 +51866,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 installAllAvailableStacks false
@@ -48809,14 +51882,12 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)",
+  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset Mutex Lock). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq/issues). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48825,22 +51896,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48851,13 +51919,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 services=\$(getArgumentValue services "\$@")
 
@@ -48872,14 +51937,12 @@ EOFSC
 {
   "name": "03 Update Service(s)",
   "script_path": "conf/scripts/updateServicesFromList.sh",
-  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that you plan to update. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.",
+  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that you plan to update. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48888,22 +51951,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "List of Services To Update",
@@ -48932,13 +51992,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 performAllAvailableStackUpdates false
@@ -48951,14 +52008,12 @@ EOFSC
 {
   "name": "04 Update All Available Services",
   "script_path": "conf/scripts/updateAllAvailableServices.sh",
-  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that will be updated. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.",
+  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that will be updated. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -48967,22 +52022,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -48993,13 +52045,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 services=\$(getArgumentValue services "\$@")
 
@@ -49015,14 +52064,12 @@ EOFSC
 {
   "name": "05 Remove Service(s)",
   "script_path": "conf/scripts/removeServicesFromList.sh",
-  "description": "Select the service(s) that you wish to remove. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>**!!! CAUTION !!!**  This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data for the selected service(s).",
+  "description": "Select the service(s) that you wish to remove. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>**!!! CAUTION !!!**  This will <ins>***permanently***</ins> remove <ins>***ALL***</ins> data for the selected service(s).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49031,22 +52078,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "List of Services To Remove",
@@ -49077,13 +52121,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Refreshing all services lists..."
@@ -49097,14 +52138,12 @@ EOFSC
 {
   "name": "06 Refresh Services Lists",
   "script_path": "conf/scripts/refreshServicesLists.sh",
-  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within this user interface, i.e. Install/Update/Remove. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.",
+  "description": "Refreshes all services lists. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will check the state of all available services and refresh the associated lists within this user interface, i.e. Install/Update/Remove. These lists are normally updated automatically. However, in the event of an error or some other unforeseen circumstance, this will perform a manual refresh.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49113,22 +52152,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -49141,13 +52177,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selstack=\$(getArgumentValue selstack "\$@")
 
@@ -49163,14 +52196,12 @@ EOFSC
 {
   "name": "07 Clear Service Temp Data",
   "script_path": "conf/scripts/clearTempRedisData.sh",
-  "description": "Clear Temp Data For Selected Service. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will stop the selected stack, delete all data from its respective Redis database, then restart the service. The use case for this function is in the event of a sudden power outage or some other unforseen circumstance, the Redis database could become corrupted and render the entire service unusable. The Redis database for each of these services functions as a caching mechanism, and can be safely cleared out if necessary.",
+  "description": "Clear Temp Data For Selected Service. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will stop the selected stack, delete all data from its respective Redis database, then restart the service. The use case for this function is in the event of a sudden power outage or some other unforseen circumstance, the Redis database could become corrupted and render the entire service unusable. The Redis database for each of these services functions as a caching mechanism, and can be safely cleared out if necessary.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49179,22 +52210,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select stack",
@@ -49236,7 +52264,7 @@ EOFSC
 {
   "name": "01 Clear History",
   "script_path": "conf/scripts/clearScriptServerProcessLogs.sh",
-  "description": "Clears out all of the process logs (history) in this app. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Clears out all of the process logs (history) in this app. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
@@ -49258,38 +52286,43 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-outputAllScriptServerScripts
+outputAllScriptServerScripts false true
 echo "Script-server scripts restored."
 set -e
 performExitFunctions false
 
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+fi
+}
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/restoreScriptServerScripts.json
 {
   "name": "02 Restore Scripts",
   "script_path": "conf/scripts/restoreScriptServerScripts.sh",
-  "description": "Restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Does not clear/remove any scripts, but will overwrite those with the same name.",
+  "description": "Restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Does not clear/remove any scripts, but will overwrite those with the same name.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49298,61 +52331,63 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 clearAllScriptServerScripts
-outputAllScriptServerScripts
+outputAllScriptServerScripts false true
 echo "Script-server scripts cleared and restored."
 set -e
 performExitFunctions false
 
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+fi
+}
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/clearRestoreScriptServerScripts.json
 {
   "name": "03 Clear and Restore Scripts",
   "script_path": "conf/scripts/clearRestoreScriptServerScripts.sh",
-  "description": "Clears and restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you have added/modified any scripts, they will be deleted.",
+  "description": "Clears and restores all Script-server scripts. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you have added/modified any scripts, they will be deleted.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49361,60 +52396,62 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-fullResetScriptServer
+fullResetScriptServer false
 echo "Script-server fully reset."
 set -e
 performExitFunctions false
 
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+fi
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+fi
+}
 EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/fullResetScriptServerScripts.json
 {
   "name": "04 Full Script-server Reset",
   "script_path": "conf/scripts/fullResetScriptServerScripts.sh",
-  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the Script-server app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.",
+  "description": "Performs a full reset. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Performs a full reset and restore of all scripts and runners in the Script-server app to default. Deletes all logs and temp files. If you have added/modified any scripts, they will be deleted.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_scriptserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49423,27 +52460,30 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
 
 EOFSC
+
+  if [ "$isReplaceSSScripts" = "true" ]; then
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/restoreScriptServerScripts.sh
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/clearRestoreScriptServerScripts.sh
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/fullResetScriptServerScripts.sh
+  fi
 
   # 04 System Utils
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkUpdateHSHQ.sh
@@ -49455,6 +52495,7 @@ latest_ver_wrapper=\$(getLatestVersionWrapper)
 this_ver_wrapper=\$(getThisVersionWrapper)
 latest_ver_lib=\$(getLatestVersionLib)
 this_ver_lib=\$(getThisVersionLib)
+pending_ver_lib=\$(getPendingVersionLib)
 
 if [ -z \$latest_ver_wrapper ]; then
   echo "ERROR: Could not obtain latest wrapper version, check your internet connection and try again."
@@ -49480,16 +52521,21 @@ output_rep=""
 is_any_avail=false
 
 if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
-  output_rep="\${output_rep}There is a a new version of the wrapper script available.\n"
+  output_rep="\${output_rep}There is a a new version of the wrapper script available.\n\n"
   output_rep="\${output_rep}Current wrapper version: \${this_ver_wrapper}\n"
   output_rep="\${output_rep}Latest wrapper version: \${latest_ver_wrapper}\n\n"
   is_any_avail=true
 fi
 
 if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
-  output_rep="\${output_rep}There is a a new version of the lib script available.\n"
+  output_rep="\${output_rep}There is a a new version of the lib script available.\n\n"
   output_rep="\${output_rep}Current lib version: \${this_ver_lib}\n"
   output_rep="\${output_rep}Latest lib version: \${latest_ver_lib}\n\n"
+  is_any_avail=true
+elif ! [ -z "\$pending_ver_lib" ]; then
+  output_rep="\${output_rep}There is a a pending version of the lib script available.\n\n"
+  output_rep="\${output_rep}Current lib version: \${this_ver_lib}\n"
+  output_rep="\${output_rep}Pending lib version: \${pending_ver_lib}\n\n"
   is_any_avail=true
 fi
 
@@ -49519,13 +52565,11 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh
 #!/bin/bash
-
+{
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkRelayPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
@@ -49536,6 +52580,7 @@ latest_ver_wrapper=\$(getLatestVersionWrapper)
 this_ver_wrapper=\$(getThisVersionWrapper)
 latest_ver_lib=\$(getLatestVersionLib)
 this_ver_lib=\$(getThisVersionLib)
+pending_ver_lib=\$(getPendingVersionLib)
 
 if [ -z \$latest_ver_wrapper ]; then
   echo "ERROR: Could not obtain latest wrapper version, check your internet connection and try again."
@@ -49558,7 +52603,7 @@ if [ \$this_ver_lib -eq 0 ]; then
 fi
 
 if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
-  wget -q4 -O \$HSHQ_WRAP_TMP \$HSHQ_WRAP_URL
+  wget -q4 -O \$HSHQ_WRAP_TMP \$(getLatestWrapperURL)
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_WRAP_TMP
     echo "ERROR: Could not obtain current version of wrapper script."
@@ -49584,7 +52629,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
   echo "Wrapper script verified and updated."
 fi
 
-if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
+if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && [ \$pending_ver_lib -lt \$latest_ver_lib ] ); then
   wget -q4 -O \$HSHQ_LIB_TMP \$(getLatestLibURL)
   if [ \$? -ne 0 ]; then
     rm -f \$HSHQ_LIB_TMP
@@ -49605,13 +52650,55 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ]; then
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
     exit 8
   fi
-  rm -f \$HSHQ_LIB_SCRIPT
-  mv \$HSHQ_LIB_TMP \$HSHQ_LIB_SCRIPT
+  rm -f \$HSHQ_NEW_LIB_SCRIPT
+  mv \$HSHQ_LIB_TMP \$HSHQ_NEW_LIB_SCRIPT
   echo "Lib script verified!"
 fi
 
-source $HSHQ_LIB_SCRIPT lib
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+# Acquire all locks
+checkRes="\$(acquireAllLocks)"
+if ! [ -z "\$checkRes" ]; then
+  # Could not get all locks, try again later.
+  echo "The necessary locks could not be obtained (\$checkRes). Please try applying the update later."
+  return
+fi
+decryptAndLoad false
+USER_CONFIG_PW=""
+
+if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
+  source \$HSHQ_NEW_LIB_SCRIPT lib
+  PRIOR_HSHQ_VERSION=\$(sed -n 2p \$HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ \$PRIOR_HSHQ_VERSION -lt \$LAST_RELAYSERVER_VERSION_UPDATE ]; then
+    testRelayServerPassword 
+    if [ \$? -ne 0 ]; then
+      echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
+      performExitFunctions false
+      releaseAllLocks false
+      return
+    fi
+  fi
+  performPreUpdateCheck
+  if [ \$? -eq 0 ]; then
+    mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
+  else
+    performExitFunctions false
+    releaseAllLocks false
+    return
+  fi
+else
+  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    testRelayServerPassword 
+    if [ \$? -ne 0 ]; then
+      echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
+      performExitFunctions false
+      releaseAllLocks false
+      return
+    fi
+  fi
+fi
+
+source \$HSHQ_LIB_SCRIPT lib
+checkUpdateVersion
 
 if ! [ "\$is_any_updated" = "true" ]; then
   is_any_updated="\$is_update_performed"
@@ -49625,23 +52712,29 @@ fi
 
 set -e
 performExitFunctions false
+releaseAllLocks false
 
+# Check if this got replaced by itself, and replace it if so
+if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh ]; then
+  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+fi
+}
 EOFSC
 
-  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+  if [ "$isReplaceUpdateScript" = "true" ]; then
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+  fi
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/performUpdateHSHQ.json
 {
   "name": "02 Perform Update HSHQ",
   "script_path": "conf/scripts/performUpdateHSHQ.sh",
-  "description": "Performs HSHQ Updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.",
+  "description": "Performs HSHQ Updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME), and automatically applies update(s) if available. Only applies update(s) with a valid signature on the new source code.<br/><br/>The RelayServer password will only apply if you are hosting a VPN and the server requires an update. The field requires an entry, so just leave the default value if not applicable.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49650,14 +52743,25 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter RelayServer sudo password",
+      "required": true,
+      "type": "text",
+      "default": "pass",
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -49665,7 +52769,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$relaysudo_stdin_prompt"
     }
   ]
 }
@@ -49676,8 +52781,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
@@ -49695,14 +52799,12 @@ EOFSC
 {
   "name": "03 Update Linux OS and Reboot",
   "script_path": "conf/scripts/updateHostAndReboot.sh",
-  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web app during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.",
+  "description": "Updates the host Linux Ubuntu OS and reboots the HomeServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This process will (obviously) disconnect you from this web app during the reboot process. It can take up to 5-10 minutes for all of the services to come back up after reboot, so be patient.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49711,7 +52813,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -49722,8 +52825,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 
 echo "Powering down..."
 sudo poweroff
@@ -49734,14 +52836,12 @@ EOFSC
 {
   "name": "04 Power off HomeServer",
   "script_path": "conf/scripts/poweroffHomeServer.sh",
-  "description": "Shuts down the HomeServer. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Shuts down the HomeServer. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49750,7 +52850,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -49773,7 +52874,7 @@ EOFSC
 {
   "name": "05 Download All Docker Images",
   "script_path": "conf/scripts/downloadAllDockerImages.sh",
-  "description": "Downloads all docker images. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.",
+  "description": "Downloads all docker images. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Enter confirm in the box below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -49795,30 +52896,28 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetHSHQOpenStatus.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetMutexLock.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
-closeHSHQScript "resetHSHQOpenStatus"
-echo "HSHQ status successfully reset."
+
+sellock=\$(getArgumentValue sellock "\$@")
+releaseLock "\$sellock" "resetMutexLock" true
+echo "Mutex lock (\$sellock) successfully reset."
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetHSHQOpenStatus.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetMutexLock.json
 {
-  "name": "06 Reset HSHQ Open Status",
-  "script_path": "conf/scripts/resetHSHQOpenStatus.sh",
-  "description": "Resets the HSHQ open status. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles.",
+  "name": "06 Reset Mutex Lock",
+  "script_path": "conf/scripts/resetMutexLock.sh",
+  "description": "Resets the selected mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A mutex lock, or mutual exclusion lock, is a mechanism to ensure only <ins>***ONE***</ins> instance is doing a certain thing at a time. A lock only needs to be manually reset if something went wrong, and the lock was never properly released by the holder.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>Only reset a lock if you are sure no other instances are holding the lock in normal operating conditions.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49827,6 +52926,21 @@ EOFSC
         }
       },
       "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Select lock",
+      "required": true,
+      "param": "-sellock=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2
+      },
+      "values": [ "hshqopen", "networkchecks" ],
+      "default": "hshqopen",
+      "secure": false,
       "pass_as": "argument"
     }
   ]
@@ -49838,13 +52952,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 newemail=\$(getArgumentValue newemail "\$@")
@@ -49871,14 +52982,12 @@ EOFSC
 {
   "name": "07 Change Connection Email",
   "script_path": "conf/scripts/changeConnectionEmail.sh",
-  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.",
+  "description": "Change a connection email. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will allow you to change any email address in the connections database. Be very careful with any changes, as it will affect where notifications are sent when network changes occur.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -49887,22 +52996,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -49930,10 +53036,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -49967,13 +53070,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 img=\$(getArgumentValue img "\$@")
 uploadHomeServerLogo "\$img"
@@ -49984,14 +53084,12 @@ EOFSC
 {
   "name": "09 Upload HomeServer Logo",
   "script_path": "conf/scripts/uploadHomeServerLogo.sh",
-  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 04 System Utils -> 10 Update HomeServer Logos function). The image must be a .png and it can be no larger than 1MB (1024 KB).",
+  "description": "Upload HomeServer Logo. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function uploads the logo image for your HomeServer as shown in the HomeServers section of the home page. It will also replace the file $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png, and your logo will be displayed on other networks accordingly (given that the other manager(s) run the 04 System Utils -> 10 Update HomeServer Logos function). Finally, it will replace the image /usr/share/icons/HSHQ/Homepage.png, which is the default source for the Homepage icon on the desktop (if applicable). The image must be a .png and it can be no larger than 1 MB.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50000,22 +53098,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select Image",
@@ -50060,8 +53155,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 
 echo "Sudo password is correct."
 
@@ -50071,14 +53165,12 @@ EOFSC
 {
   "name": "01 Sudo Password Test",
   "script_path": "conf/scripts/sudoPasswordTest.sh",
-  "description": "Checks if sudo (super user do...something) password is correct. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Checks if sudo (super user do...something) password is correct. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50087,7 +53179,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -50098,10 +53191,8 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+USER_CONFIG_PW=""
 
 echo "Config decrypt password is correct."
 
@@ -50111,14 +53202,12 @@ EOFSC
 {
   "name": "02 Decrypt Config Password Test",
   "script_path": "conf/scripts/decryptConfigPasswordTest.sh",
-  "description": "Checks if config decrypt password is correct. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Checks if config decrypt password is correct. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50127,30 +53216,50 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkOpenStatus.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkMutexLockStatus.sh
 #!/bin/bash
-
-source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-
-echo "The HSHQ script is not currently open in any other instance."
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sellock=\$(getArgumentValue sellock "\$@")
+source $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+checkRes=\$(checkIsLockEnabled \$sellock checkMutexLockStatus)
+if ! [ -z "\$checkRes" ]; then
+  echo "LOCK HELD: The lock (\$sellock) is currently held by a process: \$checkRes"
+else
+  echo "The lock (\$sellock) is not held by any instance."
+fi
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkOpenStatus.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkMutexLockStatus.json
 {
-  "name": "03 Check HSHQ Open Status",
-  "script_path": "conf/scripts/checkOpenStatus.sh",
-  "description": "Checks if the HSHQ script is open in another instance. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. If you need to reset it, go to Reset HSHQ Open Status in System Utils.",
+  "name": "03 Check Mutex Lock Status",
+  "script_path": "conf/scripts/checkMutexLockStatus.sh",
+  "description": "Checks the status of a mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance doing a certain thing at a time.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>This function does not perform any actions, it only reports the status. If you need to reset one of them, go to Reset Mutex Lock in System Utils.",
   "group": "$group_id_testing",
-  "parameters": []
+  "parameters": [
+    {
+      "name": "Select lock",
+      "required": true,
+      "param": "-sellock=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2
+      },
+      "values": [ "hshqopen", "networkchecks" ],
+      "default": "hshqopen",
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
 }
 
 EOFSC
@@ -50159,13 +53268,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 ischeckall=\$(getArgumentValue ischeckall "\$@")
 ipaddr=\$(getArgumentValue ipaddr "\$@")
@@ -50191,14 +53297,12 @@ EOFSC
 {
   "name": "04 Check for Network Collision",
   "script_path": "conf/scripts/checkIPAddress.sh",
-  "description": "Tests an IP address or subnet for network collisions. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided IP address or subnet intersects with any of the networks that this HomeServer is on. It does not assert any consequential actions, just performs the tests.<br/><br/>Regarding Check all possible connections - with it set to No, it will only check the network connections directly on this HomeServer. With it set to Yes, it will check any and all connections that this HomeServer manages, i.e. if hosting a VPN, then it will check all User and/or HS Internet connections, which may be on behalf of another device in the network. If the explanation for this distinction is confusing, then ask on the [Forum](https://forum.homeserverhq.com/).<br/><br/>If you want to test a subnet range, then input its CIDR length. For a single IP address, leave it at the default of 32.",
+  "description": "Tests an IP address or subnet for network collisions. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided IP address or subnet intersects with any of the networks that this HomeServer is on. It does not assert any consequential actions, just performs the tests.<br/><br/>Regarding Check all possible connections - with it set to No, it will only check the network connections directly on this HomeServer. With it set to Yes, it will check any and all connections that this HomeServer manages, i.e. if hosting a VPN, then it will check all User and/or HS Internet connections, which may be on behalf of another device in the network. If the explanation for this distinction is confusing, then ask on the [Forum](https://forum.homeserverhq.com/).<br/><br/>If you want to test a subnet range, then input its CIDR length. For a single IP address, leave it at the default of 32.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50207,22 +53311,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Check all possible connections?",
@@ -50251,10 +53352,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/generateRandomIP.sh"
@@ -50269,7 +53367,10 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "32",
       "min": "0",
@@ -50306,7 +53407,7 @@ EOFSC
 {
   "name": "05 Check WireGuard Key",
   "script_path": "conf/scripts/checkWireGuardKey.sh",
-  "description": "Tests a WireGuard key for validity. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided key (public/private/preshared) is a valid WireGuard key.",
+  "description": "Tests a WireGuard key for validity. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function checks whether the provided key (public/private/preshared) is a valid WireGuard key.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -50331,15 +53432,12 @@ EOFSC
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/testPortainer.sh
 #!/bin/bash
-
+echo "Start script"
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Testing Portainer"
@@ -50356,7 +53454,6 @@ if [ \$? -eq 0 ]; then
 else
   echo "ERROR: Could not get auth token - either there is a problem with the service or bad credentials"
 fi
-
 echo "End Test"
 set -e
 performExitFunctions false
@@ -50367,14 +53464,12 @@ EOFSC
 {
   "name": "06 Test Portainer Connection",
   "script_path": "conf/scripts/testPortainer.sh",
-  "description": "Tests Portainer Connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function tests the connectivity with the Portainer API. It acquires an auth token, then runs a simple query. If you change the admin password (in both Portainer and the config file), then use this function to test it before running any other utilities.",
+  "description": "Tests Portainer Connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function tests the connectivity with the Portainer API. It acquires an auth token, then runs a simple query. If you change the admin password (in both Portainer and the config file), then use this function to test it before running any other utilities.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50383,22 +53478,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -50410,13 +53502,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 configname=\$(getArgumentValue configname "\$@")
 
@@ -50437,14 +53526,12 @@ EOFSC
 {
   "name": "01 Invite to Network",
   "script_path": "conf/scripts/myNetworkInviteConnection.sh",
-  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or user device to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User device applications, for your your own internal nomenclature (use the Description that the applicant provided in the email as reference). Names for other connection types will be automatically generated.",
+  "description": "Performs a network invite. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-Invite.png](/img/HSHQ-Invite.png)To invite a HomeServer or user device to your network, you should have recieved an application via email. Paste the contents of the application into the corresponding field below. Ensure to review the details of the application including the email sender. You should <ins>***NEVER***</ins> invite anyone to your network that you do not know and trust. An invitation will be automatically sent to the requesting email address upon execution. The name field only applies to User device applications, for your your own internal nomenclature (use the Description that the applicant provided in the email as reference). Names for other connection types will be automatically generated.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50453,22 +53540,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a name for this configuration (User device invites only)",
@@ -50490,10 +53574,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -50507,13 +53588,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 configname=\$(getArgumentValue configname "\$@")
 requestemailaddress=\$(getArgumentValue requestemailaddress "\$@")
@@ -50542,14 +53620,12 @@ EOFSC
 {
   "name": "02 Invite Device to Network",
   "script_path": "conf/scripts/myNetworkInviteDeviceConnection.sh",
-  "description": "Performs a device invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 06 My Network -> 01 Invite to Network function. But if someone emailed you their client device's public key (and interface IP address), or you are adding one of your own devices (cellphone/laptop/tablet) to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated. Finally, if you allow public internet IP masquerade, then this device can masquerade its internet traffic via your RelayServer.",
+  "description": "Performs a device invite to your network. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to skip the application process and jump right to the invitation. If you received an application via email, then it would be easier to use the standard 06 My Network -> 01 Invite to Network function. But if someone emailed you their client device's public key (and interface IP address), or you are adding one of your own devices (cellphone/laptop/tablet) to your network, then this utilty can help speed up the process. <ins>***However***</ins>, if this is a new profile with no provided public key, then take the proper precautions as this method will generate and insert the <ins>***ACTUAL***</ins> private key into the configuration, i.e. <ins>***DO NOT***</ins> send this configuration to an email address of a centralized email provider, nor share this configuration over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. <br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and included in the configuration.\n\nIf you already have an existing profile:\n1. Include both the interface IP address and the public key of your existing profile.\n2. When the recipient receives the WireGuard configuration via email, append the peer configuration to the existing WireGuard profile.\n\nIf the preshared key is blank in any case, one will be generated. Finally, if you allow public internet IP masquerade, then this device can masquerade its internet traffic via your RelayServer.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50558,22 +53634,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a name for this configuration",
@@ -50597,10 +53670,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -50632,10 +53702,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -50662,10 +53729,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -50679,13 +53743,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 ipaddr=\$(getArgumentValue ipaddr "\$@")
 
@@ -50700,14 +53761,12 @@ EOFSC
 {
   "name": "03 Change Primary HS Int IP",
   "script_path": "conf/scripts/changeHSPrimaryInternetIP.sh",
-  "description": "Changes the interface IP address of the primary HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).",
+  "description": "Changes the interface IP address of the primary HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is in the event of a network collision. If this connection is the cause of the collision, then change it to something else, within the 10.0.0.0/8 range. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50716,22 +53775,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a new IP address",
@@ -50760,13 +53816,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 ipaddr=\$(getArgumentValue ipaddr "\$@")
@@ -50783,14 +53836,12 @@ EOFSC
 {
   "name": "04 Change Device IP",
   "script_path": "conf/scripts/changeDeviceIP.sh",
-  "description": "Changes the interface IP address of a device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address for their device due to a collision. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection. If <ins>you</ins> are the one initiating the change, i.e. the user did not request the change, then ensure to confer with them beforehand, since changing it has potential cascading effects on their device's interface peers.",
+  "description": "Changes the interface IP address of a device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The main use case for this function is if a user requests a new interface IP address for their device due to a collision. A new randomly selected value has been generated for you (refresh the page to regenerate a new one). No logic checks will be applied until execution, so even a randomly generated value could result in an error. If so, just try again with a new value (or use the 05 Testing -> 04 Check for Network Collision function to find a non-intersecting IP).<br/><br/>Upon a successful change, an email will be automatically sent to the corresponding email address for this connection. If <ins>you</ins> are the one initiating the change, i.e. the user did not request the change, then ensure to confer with them beforehand, since changing it has potential cascading effects on their device's interface peers.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50799,22 +53850,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -50842,10 +53890,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/generateRandomIP.sh"
@@ -50862,13 +53907,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 removeReason="\$4"
@@ -50885,14 +53927,12 @@ EOFSC
 {
   "name": "05 Remove HS VPN Connection",
   "script_path": "conf/scripts/removeHSVPNConnection.sh",
-  "description": "Removes a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.",
+  "description": "Removes a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer being removed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50901,22 +53941,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -50942,10 +53979,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -50959,13 +53993,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 removeReason="\$4"
@@ -50982,14 +54013,12 @@ EOFSC
 {
   "name": "06 Remove HS Int Connection",
   "script_path": "conf/scripts/removeHSInternetConnection.sh",
-  "description": "Removes a HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.",
+  "description": "Removes a HomeServer Internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the manager of the HomeServer with the internet connection being removed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -50998,22 +54027,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -51039,10 +54065,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -51056,13 +54079,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 removeReason="\$4"
@@ -51079,14 +54099,12 @@ EOFSC
 {
   "name": "07 Remove Device Connection",
   "script_path": "conf/scripts/removeDeviceConnection.sh",
-  "description": "Removes a client device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the user of the device being removed.",
+  "description": "Removes a client device connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for removal will be emailed to the user of the device being removed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51095,22 +54113,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -51136,10 +54151,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -51153,13 +54165,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing HomeServers DNS list..."
@@ -51173,14 +54182,12 @@ EOFSC
 {
   "name": "08 Email HomeServers DNS List",
   "script_path": "conf/scripts/emailHomeServersDNSList.sh",
-  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is the standard import format for HomeServers.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51189,22 +54196,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -51215,13 +54219,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing HomeServer DNS list for user devices..."
@@ -51235,14 +54236,12 @@ EOFSC
 {
   "name": "09 Email Client Device DNS List",
   "script_path": "conf/scripts/emailUsersDNSList.sh",
-  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this ecosystem).",
+  "description": "Emails HomeServers DNS list to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails a list of all HomeServers on your network and their corresponding internal IP addresses to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The format of the list is compatible with DNSMasq (a DNS server that is used for client devices within this ecosystem).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51251,22 +54250,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -51277,13 +54273,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing user details..."
@@ -51297,14 +54290,12 @@ EOFSC
 {
   "name": "10 Email Client Device Details",
   "script_path": "conf/scripts/emailMyNetworkClientDeviceDetails.sh",
-  "description": "Emails client device details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all client device connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the devices to the new network with the same information.",
+  "description": "Emails client device details to self. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Emails the full details for all client device connections to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). The main use case for this function is if you want to tear down and rebuild the primary network. This will allow you to re-add the devices to the new network with the same information.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51313,22 +54304,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -51339,13 +54327,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 strMsg="\$3"
 
@@ -51361,14 +54346,12 @@ EOFSC
 {
   "name": "11 Email All Broadcast",
   "script_path": "conf/scripts/emailMyNetworkBroadcast.sh",
-  "description": "Emails a broadcast message. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will send a broadcast message to all users and connected devices on your network.",
+  "description": "Emails a broadcast message. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will send a broadcast message to all users and connected devices on your network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51377,22 +54360,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the message",
@@ -51416,13 +54396,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 cdnsname=\$(getArgumentValue cdnsname "\$@")
 set +e
@@ -51437,14 +54414,12 @@ EOFSC
 {
   "name": "12 Create ClientDNS Server",
   "script_path": "conf/scripts/createClientDNSServer.sh",
-  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer's AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).",
+  "description": "Creates a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Creates a DNS server that can be used by client devices that are connected to multiple networks. This type of DNS server will 'intercept' DNS requests before they fall through to another underlying primary DNS server (the default fallback is the HomeServer's AdguardHome where this ClientDNS is installed). The main use case for this is when a client device is connected to a network to which the HomeServer is <ins>***NOT***</ins> connected. The DNS records for this foreign network cannot be stored on the HomeServer, since it is not on that network and would thus cause errors with the HomeServer's routing logic. A ClientDNS server resolves this problem.<br/><br/>The name for this server must contain 3-10 lowercase alpha-numeric characters, no spaces or special characters. An email containing the setup details will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51453,22 +54428,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a name",
@@ -51494,13 +54466,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selserver=\$(getArgumentValue selserver "\$@")
 set +e
@@ -51516,14 +54485,12 @@ EOFSC
 {
   "name": "13 Remove ClientDNS Server",
   "script_path": "conf/scripts/removeClientDNSServer.sh",
-  "description": "Removes a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Removes a ClientDNS server. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51532,22 +54499,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select server",
@@ -51573,39 +54537,70 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removePrimaryVPNConnection.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/hostVPN.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+read -s -p "$rs_cur_password_prompt" rs_cur_password
+if [ -z "\$rs_cur_password" ]; then
+  read -t 5 -s -p "" rs_cur_password
+fi
+if [ -z "\$rs_cur_password" ]; then
+  rs_cur_password=""
+  cat <<< "ERROR: Invalid RelayServer current password, please try again." 1>&2
+  exit 3
+fi
+echo "ok"
+read -s -p "$rs_new_password_prompt" rs_new_password
+if [ -z "\$rs_new_password" ]; then
+  read -t 5 -s -p "" rs_new_password
+fi
+if [ -z "\$rs_new_password" ]; then
+  rs_new_password=""
+  cat <<< "ERROR: Invalid RelayServer new password, please try again." 1>&2
+  exit 3
+fi
+echo "ok"
+echo "Obtaining networkchecks lock..."
+tgLock="\$(tryGetLock networkchecks Script-server-hostVPN)"
+if ! [ "\$tgLock" = "true" ]; then
+  checkRes="\$(getLockOpenMsg networkchecks)"
+  totLockAttempts=\$(getIncrementLockAttempts networkchecks)
+  strErr="Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+  exit
+fi
+setSystemState $SS_INSTALLING
+echo "Loading environment..."
+decryptConfigFileAndLoadEnvNoPrompts
 
-disconnectReason="\$3"
-
+rs_name=\$(getArgumentValue rs_name "\$@")
+rs_cur_username=\$(getArgumentValue rs_cur_username "\$@")
+rs_cur_ssh_port=\$(getArgumentValue rs_cur_ssh_port "\$@")
+rs_external_ip=\$(getArgumentValue rs_external_ip "\$@")
+rs_ledomains="\$(getArgumentValue rs_ledomains \$@)"
+rs_new_username=\$(getArgumentValue rs_new_username "\$@")
+rs_new_ssh_port=\$(getArgumentValue rs_new_ssh_port "\$@")
+rs_primary_vpn_subnet=\$(getArgumentValue rs_primary_vpn_subnet "\$@")
+webSetupHostedVPN
 set +e
-removeMyNetworkPrimaryVPN "\$disconnectReason"
-set -e
 performExitFunctions false
-
+setSystemState $SS_RUNNING
+releaseLock networkchecks "Script-server-hostVPN" false
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removePrimaryVPNConnection.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/hostVPN.json
 {
-  "name": "14 Remove Primary VPN",
-  "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
-  "description": "Complete removal of primary VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).",
+  "name": "14 Set Up Hosted VPN",
+  "script_path": "conf/scripts/hostVPN.sh",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete, so please be patient.<br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51614,12 +54609,24 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "RelayServer name",
+      "required": true,
+      "param": "-rs_name=",
       "same_arg_param": true,
       "type": "text",
       "ui": {
@@ -51628,8 +54635,209 @@ EOFSC
           "type": "new_line"
         }
       },
-      "secure": true,
+      "default": "$HOMESERVER_NAME RelayServer",
+      "secure": false,
       "pass_as": "argument"
+    },
+    {
+      "name": "Let's Encrypt subdomains",
+      "required": false,
+      "param": "-rs_ledomains=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "$(getLetsEncryptCertsDefault)",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "CURRENT Linux username",
+      "required": true,
+      "param": "-rs_cur_username=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "root",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "CURRENT Linux password",
+      "required": true,
+      "param": "-rs_cur_password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$rs_cur_password_prompt"
+    },
+    {
+      "name": "NEW Linux username",
+      "required": false,
+      "param": "-rs_new_username=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "$USERNAME",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "NEW Linux password",
+      "required": true,
+      "param": "-rs_new_password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "",
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$rs_new_password_prompt"
+    },
+    {
+      "name": "CURRENT SSH port",
+      "required": true,
+      "param": "-rs_cur_ssh_port=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "22",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "NEW SSH port",
+      "required": true,
+      "param": "-rs_new_ssh_port=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "$SSH_PORT",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "RelayServer IP address",
+      "required": true,
+      "param": "-rs_external_ip=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "VPN subnet",
+      "required": true,
+      "param": "-rs_primary_vpn_subnet=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": { 
+        "script": "conf/scripts/generateRandomSubnet.sh"
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/removePrimaryVPNConnection.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+
+disconnectReason="\$3"
+echo "Obtaining networkchecks lock..."
+tgLock="\$(tryGetLock networkchecks Script-server-removePrimaryVPNConnection)"
+if ! [ "\$tgLock" = "true" ]; then
+  totLockAttempts=\$(getIncrementLockAttempts networkchecks)
+  checkRes="\$(getLockOpenMsg networkchecks)"
+  strErr="Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
+  echo "\$strErr"
+  exit
+fi
+setSystemState $SS_REMOVING
+decryptConfigFileAndLoadEnvNoPrompts
+set +e
+removeMyNetworkPrimaryVPN "\$disconnectReason"
+set -e
+performExitFunctions false
+setSystemState $SS_RUNNING
+releaseLock networkchecks "Script-server-removePrimaryVPNConnection" false
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/removePrimaryVPNConnection.json
+{
+  "name": "15 Remove Primary VPN",
+  "script_path": "conf/scripts/removePrimaryVPNConnection.sh",
+  "description": "Complete removal of primary VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>If you are hosting a VPN, this will: \n1. Remove all HomeServers from your network.\n2. Delete all ClientDNS servers and data.\n3. Disconnect you from your RelayServer and delete its local backup data.\n4. Disable sending/receiving external email.\n5. In short, <ins>***TOTAL HOSTED VPN DESTRUCTION***</ins>\n\nIf you have joined this VPN as primary, this will: \n1. Disconnect you from this network.\n2. Disable sending/receiving external email.\n\nThis operation will not affect any other networks on which you are currently hosting, although you will be without external email services. The reason for disconnect/removal will be emailed to all HomeServers and clients on the network (before dismantling).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_mynetwork",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter a reason for disconnect/removal",
@@ -51654,13 +54862,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
 
@@ -51675,14 +54880,12 @@ EOFSC
 {
   "name": "01 HS VPN Application",
   "script_path": "conf/scripts/applyHSVPNConnection.sh",
-  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer VPN application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer VPN connection will allow you to host selected services on the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51691,22 +54894,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the recipient email address",
@@ -51732,13 +54932,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
 
@@ -51753,14 +54950,12 @@ EOFSC
 {
   "name": "02 HS Internet Application",
   "script_path": "conf/scripts/applyHSInternetConnection.sh",
-  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.",
+  "description": "Generates and sends a HomeServer internet application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A HomeServer internet connection will allow you to masquerade your internet IP address for a docker network (and thus specific docker containers) on your HomeServer via the RelayServer of the network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check the email address, as this will automatically send the application upon execution. You will also receive a manager (MGR) copy of this request in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Upon approval, you will recieve a join invitation via email. Go to the Join Network function with the invitation to finalize the connection.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51769,22 +54964,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the recipient email address",
@@ -51810,13 +55002,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 applyemailaddress=\$(getArgumentValue applyemailaddress "\$@")
 requestemailaddress=\$(getArgumentValue requestemailaddress "\$@")
@@ -51840,14 +55029,12 @@ EOFSC
 {
   "name": "03 User Device Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.",
+  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -51856,22 +55043,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the recipient email address",
@@ -51895,10 +55079,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -51930,10 +55111,7 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -51960,10 +55138,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -51977,13 +55152,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 lecertsubs=\$(getArgumentValue lecertsubs "\$@")
 
@@ -51998,14 +55170,12 @@ EOFSC
 {
   "name": "04 Primary VPN Application",
   "script_path": "conf/scripts/applyHSVPNPrimaryConnection.sh",
-  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This function is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network function with the invitation to finalize the connection.",
+  "description": "Generates a HomeServer primary VPN application. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)A primary VPN connection will allow you to host selected services as well as route your email. This function is specifically for joining a pre-existing network managed by someone you know and trust. You must point the DNS records on the domain name provider for your domain to the RelayServer of this network. Upon execution, you will receive the application in your admin mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). Since this is your primary VPN, which will route your email, you will have to use other means to send the application. There is nothing confidential in the application, it can be safely transmitted on any 3rd party medium (i.e. a centralized email provider, etc.). Upon approval, you will need to obtain the join invitation from the administrator of the network which you are applying (perhaps through the same means with which this application is transferred). Go to the Join Network function with the invitation to finalize the connection.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52014,22 +55184,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the LE cert subdomains",
@@ -52056,13 +55223,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "\$3" > \$HOME/join_hsv.cnf
@@ -52078,14 +55242,12 @@ EOFSC
 {
   "name": "05 Join Network",
   "script_path": "conf/scripts/joinNetwork.sh",
-  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This function can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.",
+  "description": "Joins a network via a provided configuration. [Need Help?](https://forum.homeserverhq.com/)<br/>![HSHQ-ApplyJoin.png](/img/HSHQ-ApplyJoin.png)This is the third and final step in establishing a connection with a private network. This function can be used for either a HomeServer VPN or HomeServer Internet connection. Paste the contents of the invitation you received via email into the corresponding field below. The private key that was generated during the application step will be automatically married back into this configuration based on the request ID.<br/><br/>Ensure to review the details of the invitation, specifically the email sender. You should <ins>***NEVER***</ins> just paste and execute an invitation from someone that you do not know and trust. There are safeguards that will help mitigate spoofing, but nothing is ever guaranteed.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52094,22 +55256,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter the invitation",
@@ -52133,13 +55292,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 disconnectReason="\$4"
@@ -52156,14 +55312,12 @@ EOFSC
 {
   "name": "06 Disconnect VPN Connection",
   "script_path": "conf/scripts/disconnectVPNConnection.sh",
-  "description": "Disconnect a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
+  "description": "Disconnect a HomeServer VPN connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52172,22 +55326,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -52213,10 +55364,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -52230,13 +55378,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
 disconnectReason="\$4"
@@ -52253,14 +55398,12 @@ EOFSC
 {
   "name": "07 Disconnect Int Connection",
   "script_path": "conf/scripts/disconnectInternetConnection.sh",
-  "description": "Disconnect a HomeServer internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.",
+  "description": "Disconnect a HomeServer internet connection. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>The reason for disconnecting will be emailed to the manager of the network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52269,22 +55412,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select connection",
@@ -52310,10 +55450,7 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -52327,13 +55464,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 dnsconfig="\$3"
 
@@ -52351,14 +55485,12 @@ EOFSC
 {
   "name": "08 Update HomeServer DNS",
   "script_path": "conf/scripts/updateHomeServerDNS.sh",
-  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.",
+  "description": "Update HomeServer DNS. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to update the DNS records for servers on other networks on which you are hosting. You do not need to use this for changes to your network, only changes to other networks. You should receive notices to update via email. Paste the indicated section within the email into the DNS config field below.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52367,22 +55499,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter DNS config",
@@ -52406,13 +55535,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Sync Adguard DNS server from database..."
@@ -52426,14 +55552,12 @@ EOFSC
 {
   "name": "09 Sync Adguard DNS Server",
   "script_path": "conf/scripts/syncAdguardDNS.sh",
-  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.",
+  "description": "Sync Adguard DNS server from database. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function sychronizes the DNS records from the database to the primary DNS server (Adguard). This should rarely if ever be needed. However, if you accidentally make changes to your Adguard server, or perhaps some other unforeseen circumstance, then this can restore back to the correct values.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52442,22 +55566,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -52469,13 +55590,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 adddomain=\$(getArgumentValue adddomain "\$@")
 mailsubdomain=\$(getArgumentValue mailsubdomain "\$@")
@@ -52494,14 +55612,12 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52510,22 +55626,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter domain name",
@@ -52549,10 +55662,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',MailHost from mailhosts order by ID asc;\" | sed 's/|//g'",
@@ -52570,13 +55680,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 seldomain=\$(getArgumentValue seldomain "\$@")
 
@@ -52594,14 +55701,12 @@ EOFSC
 {
   "name": "02 Remove Secondary Domain",
   "script_path": "conf/scripts/removeDomainFromRelayServer.sh",
-  "description": "Removes a secondary domain from the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This will also remove any LetsEncrypt paths and exposed (sub)domains on this domain as well.",
+  "description": "Removes a secondary domain from the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This will also remove any LetsEncrypt paths and exposed (sub)domains on this domain as well.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52610,22 +55715,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter domain name",
@@ -52655,13 +55757,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 adddomain=\$(getArgumentValue adddomain "\$@")
 basedom=\$(getArgumentValue basedom "\$@")
@@ -52695,14 +55794,12 @@ EOFSC
 {
   "name": "03 Add LE Subdomain",
   "script_path": "conf/scripts/addLEDomainToRelayServer.sh",
-  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This function will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.",
+  "description": "Add subdomain to be managed by LetsEncrypt. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Due to certificate trust chain issues with certain apps, typically mobile apps, there are particular cases where a service needs to serve a certificate chain that is signed by a non-custom Root CA. This function will add the requisite forwarding path on the RelayServer for a LetsEncrypt http challenge and allow the internal certificate to be managed by LetsEncrypt. There are more manual steps on the HomeServer side to fully enable LE cert management for a particular service. This function merely adds the path on the RelayServer. The services that are known to (or potentially) have these issues are already implemented by default.<br/>\nSelect the base domain, then enter only the subdomain portion in the subsequent field, i.e. without the base domain.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52711,22 +55808,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -52754,10 +55848,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -52771,13 +55862,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 seldomain=\$(getArgumentValue seldomain "\$@")
 set +e
@@ -52793,14 +55881,12 @@ EOFSC
 {
   "name": "04 Remove LE Subdomain",
   "script_path": "conf/scripts/removeLEDomainFromRelayServer.sh",
-  "description": "Removes path for LetsEncrypt from RelayServer. [Need Help?](https://forum.homeserverhq.com/)",
+  "description": "Removes path for LetsEncrypt from RelayServer. [Need Help?](https://forum.homeserverhq.com/) <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52809,22 +55895,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -52852,10 +55935,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from lecertdomains where BaseDomain='\${Select the base domain}';\"",
@@ -52873,13 +55953,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 adddomain=\$(getArgumentValue adddomain "\$@")
 basedom=\$(getArgumentValue basedom "\$@")
@@ -52912,14 +55989,12 @@ EOFSC
 {
   "name": "05 Add Exposed Subdomain",
   "script_path": "conf/scripts/addExposeDomainToRelayServer.sh",
-  "description": "Adds an exposed (sub)domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to expose a particular service on your HomeServer to the public internet. <ins>***Be very careful***</ins> with this capability as it will allow anyone on the internet to access the service that you expose. It will also automatically request (free)certificates for this (sub)domain from ZeroSSL on the RelayServer upon execution. Also note that for security reasons, some services are protected behind Authelia. So you can either expose Authelia to maintain that same security wall, or move the particular service into bypass mode in the Authelia configuration.<br/>\nSelect the base domain, then enter only the subdomain portion in the provided field below (all lowercase), i.e. www, filebrowser, etc. If the subdomain field is left blank, then the base domain will be added (you will need the base domain added if exposing Mastodon and/or Matrix (Synapse) for federation purposes).<br/>\nTo figure out what the subdomain is for a particular service, look in the address bar in your browser when accessing the service on your HomeServer. For example, if you wanted to expose Mealie, you should see https://mealie.$HOMESERVER_DOMAIN/ in the address bar, thus the subdomain is mealie.",
+  "description": "Adds an exposed (sub)domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to expose a particular service on your HomeServer to the public internet. <ins>***Be very careful***</ins> with this capability as it will allow anyone on the internet to access the service that you expose. It will also automatically request (free)certificates for this (sub)domain from ZeroSSL on the RelayServer upon execution. Also note that for security reasons, some services are protected behind Authelia. So you can either expose Authelia to maintain that same security wall, or move the particular service into bypass mode in the Authelia configuration.<br/>\nSelect the base domain, then enter only the subdomain portion in the provided field below (all lowercase), i.e. www, filebrowser, etc. If the subdomain field is left blank, then the base domain will be added (you will need the base domain added if exposing Mastodon and/or Matrix (Synapse) for federation purposes).<br/>\nTo figure out what the subdomain is for a particular service, look in the address bar in your browser when accessing the service on your HomeServer. For example, if you wanted to expose Mealie, you should see https://mealie.$HOMESERVER_DOMAIN/ in the address bar, thus the subdomain is mealie.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -52928,22 +56003,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -52971,10 +56043,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -52988,13 +56057,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 seldomain=\$(getArgumentValue seldomain "\$@")
 set +e
@@ -53010,14 +56076,12 @@ EOFSC
 {
   "name": "06 Remove Exposed Subdomain",
   "script_path": "conf/scripts/removeExposeDomainFromRelayServer.sh",
-  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>",
+  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/> <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53026,22 +56090,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the base domain",
@@ -53069,10 +56130,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from exposedomains where BaseDomain='\${Select the base domain}';\"",
@@ -53090,13 +56148,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Resetting Caddy data on RelayServer..."
@@ -53110,14 +56165,12 @@ EOFSC
 {
   "name": "07 Reset Caddy Data",
   "script_path": "conf/scripts/resetCaddyDNSRelayServer.sh",
-  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack. Note that this will delete all existing data and certificates in Caddy, which includes those obtained externally from ZeroSSL. Running this function too many times could result in a rate limit.",
+  "description": "Reset Caddy data on RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Clears out all data for the RelayServer Caddy instance and restarts the stack. This should only be used as a last resort if you encountering continual issues that do not resolve after restarting the stack. Note that this will delete all existing data and certificates in Caddy, which includes those obtained externally from ZeroSSL. Running this function too many times could result in a rate limit.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53126,22 +56179,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     }
   ]
 }
@@ -53152,13 +56202,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 pfName=\$(getArgumentValue pfName "\$@")
 pfExtStart=\$(getArgumentValue pfExtStart "\$@")
@@ -53185,14 +56232,12 @@ EOFSC
 {
   "name": "08 Add Port Forwarding Rule",
   "script_path": "conf/scripts/addPortForwardRule.sh",
-  "description": "Adds a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a port forwarding rule to the RelayServer. This will forward any packets arriving at the RelayServer to the selected internal host on the selected port or range of ports. If only a single port, then use the same value for Start and End. External is the value(s) which the RelayServer will listen on, and Internal is the mapped ports on the internal host. If a range of ports, then the SIZE of the range must be the same for both External and Internal (the start and end values between External and Internal CAN be diffferent). For the destination IP, you can either select from the internal domain list (as a convenience) or manually enter the IP address. If there is a non-zero value for the IP address, then the selected internal domain will be entirely ignored. If manually entering the IP address, it must be inside your VPN subnet range.",
+  "description": "Adds a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a port forwarding rule to the RelayServer. This will forward any packets arriving at the RelayServer to the selected internal host on the selected port or range of ports. If only a single port, then use the same value for Start and End. External is the value(s) which the RelayServer will listen on, and Internal is the mapped ports on the internal host. If a range of ports, then the SIZE of the range must be the same for both External and Internal (the start and end values between External and Internal CAN be diffferent). For the destination IP, you can either select from the internal domain list (as a convenience) or manually enter the IP address. If there is a non-zero value for the IP address, then the selected internal domain will be entirely ignored. If manually entering the IP address, it must be inside your VPN subnet range.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53201,23 +56246,20 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
 
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter rule name",
@@ -53235,13 +56277,31 @@ EOFSC
       "pass_as": "argument"
     },
     {
+      "name": "Select Protocol (tcp/udp/both)",
+      "required": true,
+      "param": "-pfProtocol=",
+      "same_arg_param": true,
+      "type": "list",
+      "default": "both",
+      "values": [
+        "tcp",
+        "udp",
+        "both"
+      ],
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
       "name": "Enter External Start Port",
       "required": true,
       "param": "-pfExtStart=",
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1,
+        "width_weight": 2,
         "separator_before": {
           "type": "new_line"
         }
@@ -53259,65 +56319,11 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": "",
       "min": "1",
       "max": "65535",
-      "secure": false,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter Internal Start Port",
-      "required": true,
-      "param": "-pfIntStart=",
-      "same_arg_param": true,
-      "type": "int",
-      "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "default": "",
-      "min": "1",
-      "max": "65535",
-      "secure": false,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter Internal End Port",
-      "required": true,
-      "param": "-pfIntEnd=",
-      "same_arg_param": true,
-      "type": "int",
-      "ui": {
-        "width_weight": 1
-      },
-      "default": "",
-      "min": "1",
-      "max": "65535",
-      "secure": false,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Select Protocol (tcp/udp/both)",
-      "required": true,
-      "param": "-pfProtocol=",
-      "same_arg_param": true,
-      "type": "list",
-      "default": "both",
-      "values": [
-        "tcp",
-        "udp",
-        "both"
-      ],
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
       "secure": false,
       "pass_as": "argument"
     },
@@ -53341,16 +56347,46 @@ EOFSC
       "pass_as": "argument"
     },
     {
+      "name": "Enter Internal Start Port",
+      "required": true,
+      "param": "-pfIntStart=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2
+      },
+      "default": "",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter Internal End Port",
+      "required": true,
+      "param": "-pfIntEnd=",
+      "same_arg_param": true,
+      "type": "int",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "",
+      "min": "1",
+      "max": "65535",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
       "name": "Enter destination IP address",
       "required": false,
       "param": "-pfIPAddress=",
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "0.0.0.0",
       "secure": false,
@@ -53365,13 +56401,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 pfRemRule=\$(getArgumentValue pfRemRule "\$@")
 pfRemID=\$(echo "\$pfRemRule" | cut -d"-" -f1)
@@ -53394,14 +56427,12 @@ EOFSC
 {
   "name": "09 Remove Port Forwarding Rule",
   "script_path": "conf/scripts/removePortForwardRule.sh",
-  "description": "Removes a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected port forwarding rule from the RelayServer.",
+  "description": "Removes a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected port forwarding rule from the RelayServer.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53410,22 +56441,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the rule to remove",
@@ -53471,164 +56499,6 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/hostVPN.sh
-#!/bin/bash
-
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
-
-cursshport=\$(getArgumentValue cursshport "\$@")
-curusername=\$(getArgumentValue curusername "\$@")
-curuserpass=\$(getArgumentValue curuserpass "\$@")
-newsshport=\$(getArgumentValue newsshport "\$@")
-newusername=\$(getArgumentValue newusername "\$@")
-newuserpass=\$(getArgumentValue newuserpass "\$@")
-
-set +e
-
-set -e
-performExitFunctions false
-
-EOFSC
-
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/hostVPN.json
-{
-  "name": "05 Host VPN",
-  "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Host a VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>",
-  "group": "$group_id_relayserver",
-  "parameters": [
-    {
-      "name": "Enter sudo password",
-      "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter config decrypt password",
-      "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter current SSH port",
-      "required": true,
-      "param": "-cursshport=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter current username",
-      "required": true,
-      "param": "-curusername=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter current user password",
-      "required": true,
-      "param": "-curuserpass=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter new SSH port",
-      "required": true,
-      "param": "-newsshport=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter new username",
-      "required": true,
-      "param": "-newusername=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    },
-    {
-      "name": "Enter new user password",
-      "required": true,
-      "param": "-newuserpass=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
-      },
-      "secure": true,
-      "pass_as": "argument"
-    }
-  ]
-}
-
-EOFSC
-
   # 09 Home Network
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/displayAllHomeServerHostInterfaces.sh
 #!/bin/bash
@@ -53659,13 +56529,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 addinterface=\$(getArgumentValue addinterface "\$@")
 createcaddy=\$(getArgumentValue createcaddy "\$@")
@@ -53693,14 +56560,12 @@ EOFSC
 {
   "name": "02 Add Host Interface",
   "script_path": "conf/scripts/addHomeServerHostInterface.sh",
-  "description": "Add network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a network interface on the host to be managed by the HSHQ firewall. It will also generate a (Caddy) reverse proxy instance (if selected) to serve its respective network specifically on this interface. The interface of the default route has already been added. This function is to add any additional adapters or connections.",
+  "description": "Add network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a network interface on the host to be managed by the HSHQ firewall. It will also generate a (Caddy) reverse proxy instance (if selected) to serve its respective network specifically on this interface. The interface of the default route has already been added. This function is to add any additional adapters or connections.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53709,22 +56574,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter interface name",
@@ -53753,10 +56615,7 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
@@ -53770,13 +56629,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selinterface=\$(getArgumentValue selinterface "\$@")
 selinterface=\$(echo "\$selinterface" | cut -d" " -f1 | xargs)
@@ -53865,14 +56721,12 @@ EOFSC
 {
   "name": "03 Edit Host Interface",
   "script_path": "conf/scripts/editHomeServerHostInterface.sh",
-  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are numerous actions that can be performed on a particular interface, and some actions require parameters that are available below the selected action.<br/><br/>Setting an interface as primary will determine what IP address the DNS records piont to, as well as the ip-based links on the home page.<br/><br/>Enabling/Disabling Expose to Network allows the selected ports to be accessible/inaccessible for the corresponding network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.<br/><br/>Setting an interface (wired or wireless) to a static IP requires an IP address, CIDR length, and gateway. When setting up a new wireless interface, you must also provide an initial network SSID (and password, if applicable).",
+  "description": "Edit a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit a particular host interface. There are numerous actions that can be performed on a particular interface, and some actions require parameters that are available below the selected action.<br/><br/>Setting an interface as primary will determine what IP address the DNS records point to, as well as the ip-based links on the home page.<br/><br/>Enabling/Disabling Expose to Network allows the selected ports to be accessible/inaccessible for the corresponding network. The use case for this is that your HomeServer might be on a hostile network locally, and you don't want to expose your services to that network. Be careful changing this setting, as it could disable your access to any and all services.<br/><br/>Setting an interface (wired or wireless) to a static IP requires an IP address, CIDR length, and gateway. When setting up a new wireless interface, you must also provide an initial network SSID (and password, if applicable).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -53881,19 +56735,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the interface to edit",
@@ -53934,7 +56788,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1,
+        "width_weight": 2,
         "separator_before": {
           "type": "new_line"
         }
@@ -53952,7 +56806,7 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "default": { 
         "script": "conf/scripts/getInterfaceCIDRLength.sh \"\${Select the interface to edit}\""
@@ -53969,7 +56823,10 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": { 
         "script": "conf/scripts/getInterfaceGateway.sh \"\${Select the interface to edit}\""
@@ -53984,7 +56841,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2
       },
       "values": [ "Edit Netplan Entry", "Replace Netplan Entry" ],
       "default": "Edit Netplan Entry",
@@ -54027,13 +56884,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 removeinterface=\$(getArgumentValue removeinterface "\$@")
 
@@ -54053,14 +56907,12 @@ EOFSC
 {
   "name": "04 Remove Host Interface",
   "script_path": "conf/scripts/removeHomeServerHostInterface.sh",
-  "description": "Remove a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected interface from management by HSHQ processes. You cannot remove the primary interface.",
+  "description": "Remove a HomeServer host interface. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function removes the selected interface from management by HSHQ processes. You cannot remove the primary interface.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54069,22 +56921,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the interface to remove",
@@ -54114,13 +56963,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 ruleName=\$(getArgumentValue ruleName "\$@")
 ipaddr=\$(getArgumentValue ipaddr "\$@")
@@ -54139,14 +56985,12 @@ EOFSC
 {
   "name": "05 Add Custom Subnet",
   "script_path": "conf/scripts/addCustomFirewallSubnet.sh",
-  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to add a custom subnet, which can then be selected in the 07 Edit Exposed Ports function. The use case for this is if you have any other VPN and/or networking interfaces that are not mananaged by HSHQ, but provide an easy means in which ports/services can be exposed to that corresponding network.",
+  "description": "Adds a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to add a custom subnet, which can then be selected in the 07 Edit Exposed Ports function. The use case for this is if you have any other VPN and/or networking interfaces that are not managed by HSHQ, but provide an easy means in which ports/services can be exposed to that corresponding network.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54155,22 +56999,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Enter rule name",
@@ -54194,10 +57035,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 1,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "0.0.0.0",
       "secure": false,
@@ -54210,7 +57048,10 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 1
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "32",
       "min": "0",
@@ -54227,13 +57068,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 pfRemRule=\$(getArgumentValue pfRemRule "\$@")
 pfRemID=\$(echo "\$pfRemRule" | cut -d" " -f1)
@@ -54255,14 +57093,12 @@ EOFSC
 {
   "name": "06 Remove Custom Subnet",
   "script_path": "conf/scripts/removeCustomFirewallSubnet.sh",
-  "description": "Removes a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Removes a selected custom firewall subnet that was added via 05 Add Custom Subnet.",
+  "description": "Removes a custom firewall subnet. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Removes a selected custom firewall subnet that was added via 05 Add Custom Subnet.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54271,22 +57107,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the rule to remove",
@@ -54316,13 +57149,10 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-configpw=\$(getArgumentValue configpw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh "\$configpw"
-source $HSHQ_LIB_SCRIPT lib
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-decryptConfigFileAndLoadEnvNoPrompts "\$configpw"
+decryptConfigFileAndLoadEnvNoPrompts
 
 selchain=\$(getArgumentValue selchain "\$@")
 sellist=\$(getArgumentValue sellist "\$@")
@@ -54341,14 +57171,12 @@ EOFSC
 {
   "name": "07 Edit Exposed Ports",
   "script_path": "conf/scripts/editExposedPorts.sh",
-  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list.<br/><br/>All ports must be comma-separated with no spaces.",
+  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list.<br/><br/>All ports must be comma-separated with no spaces.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54357,22 +57185,19 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Enter config decrypt password",
       "required": true,
-      "param": "-configpw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
     },
     {
       "name": "Select the firewall chain",
@@ -54397,10 +57222,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "conf/scripts/getExposedPortsVariablesLists.sh \${Select the firewall chain}",
@@ -54437,15 +57259,15 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
 set +e
 source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
-checkRes=\$(tryOpenHSHQScript boot)
-if ! [ -z "\$checkRes" ]; then
+tgLock="\$(tryGetLock hshqopen ResetFirewall)"
+if ! [ "\$tgLock" = "true" ]; then
+  checkRes="\$(getLockOpenMsg hshqopen)"
   echo "The HSHQ script is running in another instance (\$checkRes), returning..."
   return
 fi
@@ -54455,7 +57277,7 @@ echo "Adding rules to iptables..."
 checkUpdateAllIPTables resetFirewall
 echo "Reset firewall complete!"
 retVal=\$?
-closeHSHQScript "resetFirewall"
+releaseLock hshqopen "resetFirewall" false
 exit \$retVal
 
 EOFSC
@@ -54464,14 +57286,12 @@ EOFSC
 {
   "name": "08 Reset Firewall",
   "script_path": "conf/scripts/resetFirewall.sh",
-  "description": "Clears and restores firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function flushes and restores certain parts of the firewall, i.e. iptables. It does not affect all of the chains/tables, only the raw table, and the INPUT and DOCKER-USER chains in the filter table.",
+  "description": "Clears and restores firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function flushes and restores certain parts of the firewall, i.e. iptables. It does not affect all of the chains/tables, only the raw table, and the INPUT and DOCKER-USER chains in the filter table.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54480,7 +57300,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     }
   ]
 }
@@ -54491,8 +57312,7 @@ EOFSC
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
-sudopw=\$(getArgumentValue sudopw "\$@")
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh "\$sudopw"
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
@@ -54511,14 +57331,12 @@ EOFSC
 {
   "name": "09 Set Internet Traffic Interface",
   "script_path": "conf/scripts/setHostInternetWGInterface.sh",
-  "description": "Sets the interface for internet-bound host traffic. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to route internet-bound traffic on the HomeServer host via any WireGuard interfaces. When you set up your own RelayServer, a connection is set up for you by default. Select the WireGuard interface from the list below, or select default to use the normal default route(s).",
+  "description": "Sets the interface for internet-bound host traffic. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to route internet-bound traffic on the HomeServer host via any WireGuard interfaces. When you set up your own RelayServer, a connection is set up for you by default. Select the WireGuard interface from the list below, or select default to use the normal default route(s).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
       "name": "Enter sudo password",
       "required": true,
-      "param": "-sudopw=",
-      "same_arg_param": true,
       "type": "text",
       "ui": {
         "width_weight": 2,
@@ -54527,7 +57345,8 @@ EOFSC
         }
       },
       "secure": true,
-      "pass_as": "argument"
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
     },
     {
       "name": "Select the WireGuard interface",
@@ -54536,10 +57355,7 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "conf/scripts/getWGInternetTrafficInterfaces.sh",
@@ -54553,14 +57369,17 @@ EOFSC
 
 EOFSC
 
-  # Need to do a bit more work to migrate this function to web UI.
-  rm -f $HSHQ_STACKS_DIR/script-server/conf/scripts/hostVPN.sh
-  rm -f $HSHQ_STACKS_DIR/script-server/conf/runners/hostVPN.json
   # Also need to add transfer primary VPN function
 
   # Set permissions
   chmod 700 $HSHQ_STACKS_DIR/script-server/conf/scripts/*
   chmod 600 $HSHQ_STACKS_DIR/script-server/conf/runners/*
+}
+
+function cleanupScriptServerLogs()
+{
+  # This cleans up any private info that is output during the Hosted VPN setup process
+  rm -f $HSHQ_STACKS_DIR/script-server/logs/processes/14_Set_Up_Hosted_VPN*
 }
 
 function outputStackListsScriptServer()
@@ -54574,6 +57393,7 @@ function outputStackListsScriptServer()
 
   redislist=($(find $HSHQ_NONBACKUP_DIR/ -maxdepth 2 -type d -name redis | sort))
   rm -f $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
+  touch $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
   for curdir in "${redislist[@]}"
   do
     echo $(echo "$curdir" | rev | cut -d"/" -f2 | rev) >> $HSHQ_STACKS_DIR/script-server/conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME
@@ -55791,6 +58611,19 @@ EOFCF
 }
 # sn-sub-${SUB_FILES} END
 
+# sn-sub-${SUB_BIND_IP} BEGIN
+(sn-sub-${SUB_BIND_IP}) {
+  http://{\$CADDY_HSHQ_BIND_IP} {
+    root * /files
+    file_server browse
+    header Content-Type "application/octet-stream"
+    header Content-Disposition "attachment"
+    redir /ca.crt /${CERTS_ROOT_CA_NAME}.crt
+    redir /ca.der /${CERTS_ROOT_CA_NAME}.der
+  }
+}
+# sn-sub-${SUB_BIND_IP} END
+
 # sn-sub-${SUB_IMAGES} BEGIN
 (sn-sub-${SUB_IMAGES}) {
   https://$SUB_IMAGES.$HOMESERVER_DOMAIN {
@@ -55816,6 +58649,7 @@ import /snippets/svcs.snip
 import sn-base-domain
 import sn-sub-home
 import sn-sub-${SUB_FILES}
+import sn-sub-${SUB_BIND_IP}
 import sn-sub-${SUB_IMAGES}
 import sn-sub-${SUB_HSHQSTATUS}
 EOFCF
@@ -55830,13 +58664,14 @@ function installCaddy()
   set +e
   net_name=$1
   net_type=$2
-  bind_ip=$3
-  ca_name=$4
-  ca_url=$5
-  ca_subdomain=$6
-  ca_ip=$7
-  priv_ip_net="$8"
-  add_rip="$9"
+  ipVarName=$3
+  bind_ip=$4
+  ca_name=$5
+  ca_url=$6
+  ca_subdomain=$7
+  ca_ip=$8
+  priv_ip_net="$9"
+  add_rip="${10}"
 
   caddy_net_name=caddy-$net_name
   checkDeleteStackAndDirectory $caddy_net_name "Caddy"
@@ -55849,7 +58684,7 @@ function installCaddy()
   mkdir $HSHQ_STACKS_DIR/$caddy_net_name
   mkdir $HSHQ_STACKS_DIR/$caddy_net_name/config
   mkdir $HSHQ_STACKS_DIR/$caddy_net_name/data
-  outputConfigCaddy $net_name $caddy_net_name $net_type $bind_ip $ca_name $ca_url $ca_subdomain $ca_ip "$priv_ip_net" "$add_rip"
+  outputConfigCaddy $net_name $caddy_net_name $net_type $ipVarName $bind_ip $ca_name $ca_url $ca_subdomain $ca_ip "$priv_ip_net" "$add_rip"
   installStack $caddy_net_name $caddy_net_name "serving initial configuration" $HOME/$caddy_net_name.env
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -55862,13 +58697,14 @@ function outputConfigCaddy()
   net_name=$1
   caddy_net_name=$2
   net_type=$3
-  bind_ip=$4
-  ca_name=$5
-  ca_url=$6
-  ca_subdomain=$7
-  ca_ip=$8
-  priv_ip_net="$9"
-  add_rip="${10}"
+  ipVarName=$4
+  bind_ip=$5
+  ca_name=$6
+  ca_url=$7
+  ca_subdomain=$8
+  ca_ip=$9
+  priv_ip_net="${10}"
+  add_rip="${11}"
 
   case "$net_type" in
     home)
@@ -55889,8 +58725,8 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "\${$bind_ip}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
-      - "\${$bind_ip}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
+      - "\${$ipVarName}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
+      - "\${$ipVarName}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -55968,6 +58804,7 @@ CADDY_HSHQ_CA_NAME=$ca_name
 CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 $add_rip
 CADDY_HSHQ_PRIVATE_IPS=\${$priv_ip_net} $(getPrivateIPRangesCaddy $bind_ip)
 CADDY_HSHQ_CA_URL=$ca_url
+CADDY_HSHQ_BIND_IP=\${$ipVarName}
 EOFCE
       ;;
     primary)
@@ -56155,6 +58992,7 @@ CADDY_HSHQ_CA_NAME=$ca_name
 CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
+CADDY_HSHQ_BIND_IP=$bind_ip
 EOFCE
       ;;
     other)
@@ -56233,6 +59071,7 @@ CADDY_HSHQ_CA_NAME=$ca_name
 CADDY_HSHQ_CA_SUBNET=127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
 CADDY_HSHQ_PRIVATE_IPS=
 CADDY_HSHQ_CA_URL=$ca_url
+CADDY_HSHQ_BIND_IP=$bind_ip
 EOFCE
       ;;
     *)
@@ -56401,7 +59240,8 @@ function restartAllCaddyContainers()
 function installHostInterfaceCaddy()
 {
   interface_name="$1"
-  installCaddy home-$interface_name home $(getHSHostIPVarName $interface_name) home na na na $(getHSHostSubnetVarName $interface_name) "$(getNonPrivateConnectingIP)"
+  interface_ip="$2"
+  installCaddy home-$interface_name home $(getHSHostIPVarName $interface_name) "$interface_ip" home na na na $(getHSHostSubnetVarName $interface_name) "$(getNonPrivateConnectingIP)"
 }
 
 # ClientDNS

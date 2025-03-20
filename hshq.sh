@@ -1,5 +1,6 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=17
+HSHQ_WRAPPER_SCRIPT_VERSION=18
+
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,8 +21,8 @@ set -e
 function main()
 {
   IS_DISABLE_UPDATE_CHECKS=false
-  MENU_WIDTH=85
-  MENU_HEIGHT=25
+  MENU_WIDTH=69
+  MENU_HEIGHT=24
   MENU_INT_HEIGHT=10
   export NEWT_COLORS='
   root=,black
@@ -42,17 +43,21 @@ function main()
   '
   USERNAME=$(id -u -n)
   if [ -f $HOME/hshq/hshq.dev ]; then
+    HSHQ_WRAP_URL=https://homeserverhq.com/hshq-dev.sh
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion-dev
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-dev.sh
     HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-dev
   elif [ -f $HOME/hshq/hshq.test ]; then
+    HSHQ_WRAP_URL=https://homeserverhq.com/hshq-test.sh
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion-test
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-test.sh
     HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-test
   else
+    HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
     HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
   fi
-  HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
-  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
   HSHQ_GPG_FINGERPRINT=5B9C33067C71ABCFCE1ACF8A7F46128ABB7C1E42
@@ -61,30 +66,31 @@ function main()
   HSHQ_DATA_DIR=$HSHQ_BASE_DIR/data
   HSHQ_LIB_DIR=$HSHQ_DATA_DIR/lib
   HSHQ_LIB_SCRIPT=$HSHQ_LIB_DIR/hshqlib.sh
+  HSHQ_NEW_LIB_SCRIPT=$HSHQ_LIB_DIR/hshqlib.new
   HSHQ_LIB_TMP=$HOME/hshqlib.tmp
   HSHQ_WRAP_SCRIPT=$0
   HSHQ_WRAP_TMP=$HOME/hshqwrap.tmp
   MIN_REQUIRED_LIB_VERSION=28
 
   logo=$(cat << EOF
-
-        #===============================================================#
-        # ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
-        #  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
-        #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
-        #===============================================================#
-       HomeServerHQ Installation and Management Utility
-       Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
-       Licensed under GNU General Public License Version 3
+#===============================================================#
+# ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
+#  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
+#  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
+#===============================================================#
+        HomeServerHQ Installation and Management Utility
+    Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>    
+       Licensed under GNU General Public License Version 3      
+-----------------------------------------------------------------\n
 EOF
   )
-
-  while getopts ':a:p:s' opt; do
+  isPromptPW=false
+  while getopts ':a:ps' opt; do
     case "$opt" in
       a)
         CONNECTING_IP="$OPTARG" ;;
       p)
-        USER_SUDO_PW="$OPTARG" ;;
+        isPromptPW=true ;;
       s)
         is_skip_confirm=true ;;
       ?|h)
@@ -95,6 +101,9 @@ EOF
   shift "$(($OPTIND -1))"
 
   set +e
+  if [ "$isPromptPW" = "true" ]; then
+    read -s -p "" USER_SUDO_PW
+  fi
   is_dpkg_config=false
   if [[ "$(isProgramInstalled sudo)" = "false" ]]; then
     if ! [ "$USERNAME" = "root" ]; then
@@ -130,13 +139,13 @@ EOF
   rm -f $HOME/dead.letter
   # Also check if config directory exists, so that we don't perpetually remove needrestart. The user may have added it back.
   if [[ "$(isProgramInstalled needrestart)" = "true" ]] && ! [ -d $HSHQ_DATA_DIR/config ]; then
-    checkPromptUserPW
+    checkPromptUserPW false
     echo "Removing needrestart, please wait..."
     sudo sed -i "s/#\$nrconf{kernelhints} = -1;/\$nrconf{kernelhints} = -1;/g" /etc/needrestart/needrestart.conf
     sudo DEBIAN_FRONTEND=noninteractive apt remove -y needrestart > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled wget)" = "false" ]]; then
-    checkPromptUserPW
+    checkPromptUserPW false
     echo "Installing wget, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update
     if [ "$is_dpkg_config" = "false" ]; then
@@ -146,7 +155,7 @@ EOF
     performAptInstall wget > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled curl)" = "false" ]]; then
-    checkPromptUserPW
+    checkPromptUserPW false
     echo "Installing curl, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update
     if [ "$is_dpkg_config" = "false" ]; then
@@ -156,7 +165,7 @@ EOF
     performAptInstall curl > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled whiptail)" = "false" ]]; then
-    checkPromptUserPW
+    checkPromptUserPW false
     echo "Installing whiptail, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update
     if [ "$is_dpkg_config" = "false" ]; then
@@ -166,7 +175,7 @@ EOF
     performAptInstall whiptail > /dev/null 2>&1
   fi
   if [[ "$(isProgramInstalled gpg)" = "false" ]]; then
-    checkPromptUserPW
+    checkPromptUserPW false
     echo "Installing gnupg, please wait..."
     sudo DEBIAN_FRONTEND=noninteractive apt update
     if [ "$is_dpkg_config" = "false" ]; then
@@ -176,13 +185,10 @@ EOF
     performAptInstall gnupg > /dev/null 2>&1
   fi
   set -e
-
   initMenu=$(cat << EOF
 $logo
 
-
-
-                           Do you wish to continue?
+                   Do you wish to continue?
 
 EOF
   )
@@ -198,7 +204,6 @@ EOF
   if ! [ -z $CONNECTING_IP ]; then
     ciparg="-a $CONNECTING_IP"
   fi
-
   if [ "$USERNAME" = "root" ]; then
     showYesNoMessageBox "Non-Root" "You are running this script as root. You must run this from a non-root user account. Do you wish to create one now?"
     mbres=$?
@@ -208,7 +213,7 @@ EOF
       while [ -z "$LINUX_USERNAME" ]
       do
         LINUX_USERNAME=$(promptUserInputMenu "" "Enter Username" "Enter your desired username: ")
-        if [ $(checkValidString "$LINUX_USERNAME") = "false" ]; then
+        if [ $(checkValidUsername "$LINUX_USERNAME") = "false" ]; then
           showMessageBox "Invalid Character(s)" "The username contains invalid character(s). It must consist of a-z (lowercase) and/or 0-9"
           LINUX_USERNAME=""
         fi
@@ -247,7 +252,7 @@ EOF
         # This change was implemented on version 10 of the wrapper (hshq.sh), and 
         # version 68 of the lib (hshqlib.sh), in order to speed up the installation
         # process and eliminate duplicate prompting.
-        pwarg="-p $tmp_pw1"
+        USER_SUDO_PW="$tmp_pw1"
         pw_hash=$(openssl passwd -6 $tmp_pw1)
         tmp_pw1=""
         tmp_pw2=""
@@ -256,41 +261,135 @@ EOF
         getent group docker >/dev/null || sudo groupadd docker
         set -e
         usermod -aG docker $LINUX_USERNAME
-        showMessageBox "New User Created" "New user ($LINUX_USERNAME) has been created. This script has been moved into this user's home directory, i.e. /home/$LINUX_USERNAME."
+        showMessageBox "New User Created" "New user ($LINUX_USERNAME) has been created. This script will be moved into this user's home directory, i.e. /home/$LINUX_USERNAME. You will now be switched to this new user. Please restart this utility by entering 'bash hshq.sh'."
+      else
+        showMessageBox "User Selected" "This script will be moved into this user's home directory, i.e. /home/$LINUX_USERNAME. You will now be switched to this new user. Please restart this utility by entering 'bash hshq.sh'."
+      fi
+      if ! [ -z $CONNECTING_IP ]; then
+        mkdir -p /home/$LINUX_USERNAME/hshq
+        chown $LINUX_USERNAME:$LINUX_USERNAME /home/$LINUX_USERNAME/hshq
+        echo "$CONNECTING_IP" > /home/$LINUX_USERNAME/hshq/cip.txt
+        chown $LINUX_USERNAME:$LINUX_USERNAME /home/$LINUX_USERNAME/hshq/cip.txt
       fi
       chown ${LINUX_USERNAME}:${LINUX_USERNAME} $0
       mv $0 /home/$LINUX_USERNAME/
-      sudo -u $LINUX_USERNAME bash /home/$LINUX_USERNAME/$(basename $0) -s $ciparg $pwarg
+      su - $LINUX_USERNAME
+      exit
     fi
     exit 1
   fi
   set +e
   id -nG | grep docker > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    checkPromptUserPW
+    checkPromptUserPW false
     getent group docker >/dev/null || sudo groupadd docker
     sudo usermod -aG docker $USERNAME
-    if ! [ -z "$USER_SUDO_PW" ]; then
-      pwarg="-p $USER_SUDO_PW"
-    fi
-    sudo -u $USERNAME bash $0 -s $ciparg $pwarg
+    # This can cause infinite recursion given certain circumstances
+    #sudo -u $USERNAME bash $0 -s -p $ciparg <<< "$USER_SUDO_PW"
+    showMessageBox "Docker User" "The user ($USERNAME) has been added to the docker group. Please restart the installation utility. If you continue to see this message, you may have to reboot your system."
+    newgrp
     exit 0
   fi
   if ! [ -d $HSHQ_LIB_DIR ]; then
     mkdir -p $HSHQ_BASE_DIR $HSHQ_DATA_DIR $HSHQ_LIB_DIR
   fi
-
-  is_download_lib=false
+  is_pending_avail=false
+  if [ -f $HSHQ_NEW_LIB_SCRIPT ]; then
+    is_pending_avail=true
+  fi
   checkDownloadGPGKey
-  checkDownloadWrapper
-  checkDownloadLib
-
-  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
-  if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
-    showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
+  is_download_lib=false
+  checkAnyUpdates
+  if [ $? -eq 0 ]; then
+    checkDownloadWrapper
+    returnVal=$?
+    if [ $returnVal -eq 0 ]; then
+      checkDownloadLib
+    else
+      echo "Error updating wrapper ($returnVal)"
+    fi
+  fi
+  if [ -f $HSHQ_LIB_SCRIPT ]; then
+    hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
+    if [ $hshq_lib_local_version -lt $MIN_REQUIRED_LIB_VERSION ]; then
+      showMessageBox "Min Version Required" "You must have at least Version $MIN_REQUIRED_LIB_VERSION of the lib script to continue. Please update to the most recent version. Exiting..."
+      exit 1
+    fi
+  fi
+  is_apply_pending=false
+  if ! [ "$is_download_lib" = "true" ] && [ "$is_pending_avail" = "true" ]; then
+    showYesNoMessageBox "Pending Update" "There is a pending update. Do you wish to apply it now?"
+    if [ $? -eq 0 ]; then
+      is_apply_pending=true
+    fi
+  fi
+  if ! [ -f $HSHQ_LIB_SCRIPT ] && ! [ -f $HSHQ_NEW_LIB_SCRIPT ]; then
+    # This should never happen
+    showMessageBox "ERROR" "You are missing the required files, exiting..."
     exit 1
   fi
-  bash $HSHQ_LIB_SCRIPT run "$is_download_lib" "$CONNECTING_IP" "$USER_SUDO_PW"
+  if ! [ -f $HSHQ_LIB_SCRIPT ]; then
+    mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
+  elif [ "$is_download_lib" = "true" ] || [ "$is_apply_pending" = "true" ]; then
+    source $HSHQ_NEW_LIB_SCRIPT lib
+    set +e
+    if [[ $(type -t performPreUpdateCheck) = function ]]; then
+      # Aquire all locks
+      isGotAllLocks=false
+      checkRes="$(acquireAllLocks)"
+      if ! [ -z "$checkRes" ]; then
+        # Could not get all locks
+        showYesNoMessageBox "ERROR" "The necessary locks could not be obtained ($checkRes). They can be forcefully reset if you are certain that there are no other running HSHQ processes either in another console window or Script-server. Do you want to forcefully reset them?"
+        if [ $? -eq 0 ]; then
+          sudo -k
+          checkPromptUserPW false
+          releaseAllLocks true
+          checkRes="$(acquireAllLocks)"
+          if ! [ -z "$checkRes" ]; then
+            exit 6
+          fi
+          isGotAllLocks=true
+        fi
+      else
+        isGotAllLocks=true
+      fi
+      if [ "$isGotAllLocks" = "true" ]; then
+        # Get sudo and decrypt config
+        checkPromptUserPW true
+        if [ $? -ne 0 ]; then
+          releaseAllLocks false
+          exit 3
+        fi
+        promptTestDecryptConfigFile
+        if [ $? -ne 0 ]; then
+          releaseAllLocks false
+          exit 3
+        fi
+        PRIOR_HSHQ_VERSION=$hshq_lib_local_version
+        promptTestRelayServerPassword
+        performPreUpdateCheck
+        if [ $? -eq 0 ]; then
+          mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
+          source $HSHQ_LIB_SCRIPT update
+          showMessageBox "Update Complete" "All updates have been successfully applied."
+          releaseAllLocks false
+          is_download_lib=false
+        else
+          performExitFunctions false
+          releaseAllLocks false
+          return 0
+        fi
+      fi
+    else
+      mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
+    fi
+  fi
+  if ! [ -f $HSHQ_LIB_SCRIPT ]; then
+    # This should never happen
+    showMessageBox "ERROR" "You are missing the required files, exiting..."
+    exit 1
+  fi
+  source $HSHQ_LIB_SCRIPT run "$is_download_lib" "$CONNECTING_IP"
 }
 
 function checkDownloadGPGKey()
@@ -307,19 +406,52 @@ function checkDownloadGPGKey()
   fi
 }
 
-function checkDownloadWrapper()
+function checkAnyUpdates()
 {
+  isAny=false
   if [ "$IS_DISABLE_UPDATE_CHECKS" = "true" ]; then
-    return
+    return 2
   fi
   hshq_wrap_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_WRAP_VER_URL)
-  if [ $? -ne 0 ] || [ -z $hshq_wrap_latest_version ]; then
-    echo "Could not get latest wrapper version, proceeding with local version..."
-    rm -f $HSHQ_LIB_TMP
-    return
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+    return 3
   fi
   hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
   if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
+    isAny=true
+  fi
+  if ! [ -f $HSHQ_LIB_SCRIPT ]; then
+    return 0
+  fi
+  hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+    return 4
+  fi
+  hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT  | cut -d"=" -f2)
+  if [ $hshq_lib_local_version -lt $hshq_lib_latest_version ]; then
+    isAny=true
+  fi
+  if [ "$isAny" = "true" ]; then
+    updateMenu=$(cat << EOF
+$logo
+There is a more updated version of this software (Version $hshq_lib_latest_version).
+See release info at $HSHQ_RELEASES_URL for more details.
+
+         Do you want to obtain this latest version?
+
+EOF
+    )
+    if (whiptail --title "HomeServerHQ" --yesno "$updateMenu" $MENU_HEIGHT $MENU_WIDTH); then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+function checkDownloadWrapper()
+{
+  if [ $hshq_wrap_local_version -lt $hshq_wrap_latest_version ]; then
+    echo "Getting new wrapper.."
     wget -q4 -O $HSHQ_WRAP_TMP $HSHQ_WRAP_URL
     if [ $? -ne 0 ]; then
       rm -f $HSHQ_WRAP_TMP
@@ -330,12 +462,13 @@ function checkDownloadWrapper()
         showMessageBox "Download Error" "There was an error obtaining the required wrapper. Please try again later."
         exit 1
       fi
-      return
+      return 1
     fi
   else
     # No update needed
-    return
+    return 0
   fi
+  echo "Checking new wrapper..."
   hshq_wrap_dl_version=$(sed -n 2p $HSHQ_WRAP_TMP | cut -d"=" -f2)
   echo "Obtained Wrapper Version $hshq_wrap_dl_version"
   wget -q4 -O $HOME/wrap-${hshq_wrap_dl_version}.sig $HSHQ_SIG_BASE_URL/wrap-${hshq_wrap_dl_version}.sig
@@ -350,7 +483,7 @@ function checkDownloadWrapper()
       showMessageBox "Download Error" "There was an error obtaining the wrapper signature. Please try again later."
       exit 1
     fi
-    return
+    return 0
   fi
   echo "Verifying wrap with signature..."
   verifyFile $HSHQ_WRAP_TMP $HOME/wrap-${hshq_wrap_dl_version}.sig
@@ -370,11 +503,11 @@ function checkDownloadWrapper()
       showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
       exit 1
     fi
-    return
+    return 0
   fi
   # Verified
-  rm -f $HSHQ_WRAP_SCRIPT
-  mv $HSHQ_WRAP_TMP $HSHQ_WRAP_SCRIPT
+  chmod 744 $HSHQ_WRAP_TMP
+  mv -f $HSHQ_WRAP_TMP $HSHQ_WRAP_SCRIPT
   # Show message box
   showMessageBox "Wrapper Script Updated" "The wrapper script was updated. You will have to restart the script (bash hshq.sh). Exiting..."
   exit
@@ -382,35 +515,16 @@ function checkDownloadWrapper()
 
 function checkDownloadLib()
 {
-  if [ "$IS_DISABLE_UPDATE_CHECKS" = "true" ]; then
-    return
-  fi
   if [ -f $HSHQ_LIB_SCRIPT ]; then
-    hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
-    if [ $? -eq 0 ] && ! [ -z $hshq_lib_latest_version ]; then
-      hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
-      if [ $hshq_lib_local_version -lt $hshq_lib_latest_version ]; then
-        updateMenu=$(cat << EOF
-$logo
-
-
-           There is a more updated version of the software (Version $hshq_lib_latest_version).
-      See release info at $HSHQ_RELEASES_URL for more details.
-
-                  Do you want to obtain this latest version?
- 
-EOF
-        )
-        if ! (whiptail --title "HomeServerHQ" --yesno "$updateMenu" $MENU_HEIGHT $MENU_WIDTH); then
-          return
-        fi
-      else
-        # No updated needed
-        return
+    if [ -z "$hshq_lib_latest_version" ]; then
+      hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
+      if [ $? -ne 0 ] || [ -z "$hshq_lib_latest_version" ]; then
+        return 0
       fi
-    else
-      echo "Could not get latest lib version, proceeding with local version..."
-      return
+    fi
+    if [ $hshq_lib_local_version -ge $hshq_lib_latest_version ]; then
+      # No updated needed
+      return 0
     fi
   fi
   echo "Downloading latest version..."
@@ -423,7 +537,7 @@ EOF
       showMessageBox "Download Error" "There was an error obtaining the required lib. Please try again later."
       exit 1
     fi
-    return
+    return 0
   fi
   hshq_lib_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
   echo "Obtained Library Version $hshq_lib_dl_version"
@@ -437,7 +551,7 @@ EOF
       showMessageBox "Download Error" "There was an error obtaining the lib signature. Please try again later."
       exit 1
     fi
-    return
+    return 0
   fi
   echo "Signature downloaded (lib-${hshq_lib_dl_version}.sig)..."
   echo "Verifying lib with signature..."
@@ -460,12 +574,12 @@ EOF
       showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
       exit 1
     fi
-    return
+    return 0
   fi
   # Verified
   echo "Source code verified!"
-  rm -f $HSHQ_LIB_SCRIPT
-  mv $HSHQ_LIB_TMP $HSHQ_LIB_SCRIPT
+  rm -f $HSHQ_NEW_LIB_SCRIPT
+  mv $HSHQ_LIB_TMP $HSHQ_NEW_LIB_SCRIPT
   is_download_lib=true
 }
 
@@ -522,11 +636,9 @@ function getConnectingIPAddress()
 function showMessageBox()
 {
   msgmenu=$(cat << EOF
-
 $logo
+$2
 
-
-       $2
 EOF
   )
   whiptail --title "$1" --msgbox "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -535,10 +647,9 @@ EOF
 function showYesNoMessageBox()
 {
   msgmenu=$(cat << EOF
-
 $logo
-
 $2
+
 EOF
   )
   whiptail --title "$1" --yesno "$msgmenu" $MENU_HEIGHT $MENU_WIDTH
@@ -547,10 +658,9 @@ EOF
 function promptUserInputMenu()
 {
   usermenu=$(cat << EOF
-
 $logo
-
 $3
+
 EOF
   )
   menures=$(whiptail --title "$2" --inputbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH "$1" 3>&1 1>&2 2>&3)
@@ -563,10 +673,9 @@ EOF
 function promptPasswordMenu()
 {
   usermenu=$(cat << EOF
-
 $logo
-
 $2
+
 EOF
   )
   menures=$(whiptail --title "$1" --passwordbox "$usermenu" $MENU_HEIGHT $MENU_WIDTH 3>&1 1>&2 2>&3)
@@ -578,13 +687,25 @@ EOF
 
 function checkPromptUserPW()
 {
+  isReturnOnFail="$1"
   if ! [ "$USERNAME" = "root" ]; then
+    sudo -k
+    if ! [ -z "$USER_SUDO_PW" ]; then
+      echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        USER_SUDO_PW=""
+      fi
+    fi
     while [ -z "$USER_SUDO_PW" ]
     do
-      USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your current sudo password (This is only used for the installation process to eliminate duplicate prompting): ")
+      USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your sudo password for $USERNAME: ")
       retVal=$?
       if [ $retVal -ne 0 ]; then
-        exit 3
+        if [ "$isReturnOnFail" = "true" ]; then
+          return 3
+        else
+          exit 3
+        fi
       fi
       echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
       if [ $? -ne 0 ]; then
@@ -601,6 +722,16 @@ function checkValidString()
   check_string=$1
   addchars=$2
   if [[ $check_string =~ ^[0-9a-z$addchars]+$ ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function checkValidUsername()
+{
+  chkName="$1"
+  if echo "$chkName" | grep -Eq '^[a-z0-9]+$' && echo "$chkName" | cut -c1 | grep -Eq '[a-z]' && [ ${#chkName} -le 32 ] && [ ${#chkName} -ge 4 ]; then
     echo "true"
   else
     echo "false"
