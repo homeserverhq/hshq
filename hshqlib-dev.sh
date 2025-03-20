@@ -8961,7 +8961,9 @@ EOF
     3)
       addLECertPathsToRelayServerMsgbox ;;
     4)
-      createOrJoinPrimaryVPN ;;
+      #createOrJoinPrimaryVPN
+      showMessageBox "Deprecated" "This function is now only accessible via Script-server (https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN)."
+    ;;
     5)
       transferHostedVPN ;;
     6)
@@ -12953,7 +12955,7 @@ function decryptConfigFileAndLoadEnvNoPrompts()
   if ! [ "$tgLock" = "true" ]; then
     checkRes="$(getLockOpenMsg hshqopen)"
     USER_CONFIG_PW=""
-    echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset HSHQ Open Status function to reset it."
+    echo "ERROR: The HSHQ script is already open or running in a different instance ($checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset Mutex Lock function to reset it."
     exit 9
   fi
   set -e
@@ -24551,10 +24553,10 @@ function generateCertDialog()
 
 function getUpdateAssets()
 {
-  if [ -d $HSHQ_DATA_DIR/assets/.git ]; then
-    git -C $HSHQ_DATA_DIR/assets pull > /dev/null
+  if [ -d $HSHQ_ASSETS_DIR/.git ]; then
+    git -C $HSHQ_ASSETS_DIR pull > /dev/null
   else
-    git clone https://github.com/homeserverhq/assets.git $HSHQ_DATA_DIR/assets
+    git clone https://github.com/homeserverhq/assets.git $HSHQ_ASSETS_DIR
   fi
 }
 
@@ -50799,6 +50801,11 @@ EOFHS
 
 function outputScriptServerTheme()
 {
+  getUpdateAssets
+  rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-ApplyJoin.png
+  rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-Invite.png
+  cp $HSHQ_ASSETS_DIR/images/HSHQ-ApplyJoin.png $HSHQ_STACKS_DIR/script-server/web/img/
+  cp $HSHQ_ASSETS_DIR/images/HSHQ-Invite.png $HSHQ_STACKS_DIR/script-server/web/img/
   rm -f $HSHQ_STACKS_DIR/script-server/conf/theme/theme.css
   cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/theme/theme.css
 html:root {
@@ -51033,7 +51040,7 @@ EOFSC
 
 checkRes=\$(checkIsLockEnabled hshqopen SS-Test)
 if ! [ -z "\$checkRes" ]; then
-  echo "ERROR: The HSHQ script is already open or running in a different instance (\$checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset HSHQ Open Status function to reset it."
+  echo "ERROR: The HSHQ script is already open or running in a different instance (\$checkRes). This situation could occur if another scheduled process is currently running or the script exited prematurely with an error. If you are sure that this has occurred erroneously, then run the 04 System Utils -> 06 Reset Mutex Lock function to reset it."
   exit 8
 fi
 
@@ -51339,7 +51346,10 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "pass_as": "argument"
     },
@@ -51363,7 +51373,10 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "pass_as": "argument"
     },
@@ -51387,7 +51400,10 @@ EOFSC
       "type": "text",
       "secure": false,
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "pass_as": "argument"
     }
@@ -51454,7 +51470,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "docker ps -a --filter name=caddy- --format \"{{.Names}}\"",
@@ -51688,7 +51707,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -51822,7 +51844,10 @@ EOFSC
       "same_arg_param": true,
       "type": "multiselect",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "while read filename; do if ! [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/optionalStackList.txt",
@@ -51857,7 +51882,7 @@ EOFSC
 {
   "name": "02 Install All Available Services",
   "script_path": "conf/scripts/installAllAvailableServices.sh",
-  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset HSHQ Open Status). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq/issues). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Installs nearly all available services. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is an opinionated list of well known FOSS projects that a typical environment might have. The selections are also based on the amount of available system RAM. Services can also be installed via 02 Services -> 01 Install Service(s).<br/><br/>Note that after each service is installed, the reverse proxy (Caddy) will be restarted. The reverse proxy also serves <ins>this Script-server webpage</ins> (if you are accessing it via $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN rather than via IP address), so the console output will desync when this occurs. The process will continue to run in the background albeit this issue, so be patient and allow the process to complete. You can also refresh this webpage to resync the output. If you are accessing it via IP, then you will not experience any desync. The full log of the installation process can be viewed in the HISTORY section (bottom left corner). <br/><br/>If you are running this on a fresh installation, there are a lot of services that will be installed, it will take about 45 mins to an hour to complete. If for some reason the installation process halts abnormally, then attempt to determine which service via the most recent log entries. Then, reset the HSHQ open status (04 System Utils -> Reset Mutex Lock). <ins>***ENSURE***</ins> that this script is not still running before resetting this value, i.e. check the Status in the HISTORY section to ensure nothing is running. Then rerun this utility to install the remainder of services. After everything else has installed, remove the service that failed (02 Services -> 05 Remove Service(s)), and attempt to reinstall it. If it continues to fail to install, then report the issue [here on Github](https://github.com/homeserverhq/hshq/issues). <br/><br/>More details on all services can be found on the [HomeServerHQ Wiki](https://wiki.homeserverhq.com/en/foss-projects)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -51947,7 +51972,10 @@ EOFSC
       "same_arg_param": true,
       "type": "multiselect",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "cat conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME",
@@ -52071,7 +52099,10 @@ EOFSC
       "same_arg_param": true,
       "type": "multiselect",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "while read filename; do if [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/optionalStackList.txt",
@@ -52200,7 +52231,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "cat conf/$SCRIPTSERVER_REDIS_STACKLIST_FILENAME",
@@ -52729,7 +52763,10 @@ EOFSC
       "type": "text",
       "default": "pass",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": true,
       "pass_as": "stdin",
@@ -52859,21 +52896,23 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetHSHQOpenStatus.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/resetMutexLock.sh
 #!/bin/bash
 
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_LIB_SCRIPT lib
-releaseLock hshqopen "resetHSHQOpenStatus" false
-echo "HSHQ status successfully reset."
+
+sellock=\$(getArgumentValue sellock "\$@")
+releaseLock "\$sellock" "resetMutexLock" true
+echo "Mutex lock (\$sellock) successfully reset."
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetHSHQOpenStatus.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/resetMutexLock.json
 {
-  "name": "06 Reset HSHQ Open Status",
-  "script_path": "conf/scripts/resetHSHQOpenStatus.sh",
-  "description": "Resets the HSHQ open status. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. Only reset this state if you are sure no other instances are running in other windows or consoles.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "name": "06 Reset Mutex Lock",
+  "script_path": "conf/scripts/resetMutexLock.sh",
+  "description": "Resets the selected mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A mutex lock, or mutual exclusion lock, is a mechanism to ensure only <ins>***ONE***</ins> instance is doing a certain thing at a time. A lock only needs to be manually reset if something went wrong, and the lock was never properly released by the holder.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>Only reset a lock if you are sure no other instances are holding the lock in normal operating conditions.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": [
     {
@@ -52889,6 +52928,20 @@ EOFSC
       "secure": true,
       "pass_as": "stdin",
       "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Select lock",
+      "required": true,
+      "param": "-sellock=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2
+      },
+      "values": [ "hshqopen", "networkchecks" ],
+      "default": "hshqopen",
+      "secure": false,
+      "pass_as": "argument"
     }
   ]
 }
@@ -52964,7 +53017,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,': ',EmailAddress from connections order by ID asc;\" | sed 's/|//g'",
@@ -53063,7 +53119,10 @@ EOFSC
       "same_arg_param": true,
       "type": "file_upload",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "pass_as": "argument"
     }
@@ -53165,23 +53224,42 @@ EOFSC
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkOpenStatus.sh
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/checkMutexLockStatus.sh
 #!/bin/bash
-
-source $HSHQ_LIB_SCRIPT lib
-source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-
-echo "The HSHQ script is not currently open in any other instance."
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+sellock=\$(getArgumentValue sellock "\$@")
+source $HSHQ_LIB_DIR/$LOCK_UTILS_FILENAME
+checkRes=\$(checkIsLockEnabled \$sellock checkMutexLockStatus)
+if ! [ -z "\$checkRes" ]; then
+  echo "LOCK HELD: The lock (\$sellock) is currently held by a process: \$checkRes"
+else
+  echo "The lock (\$sellock) is not held by any instance."
+fi
 
 EOFSC
 
-  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkOpenStatus.json
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/checkMutexLockStatus.json
 {
-  "name": "03 Check HSHQ Open Status",
-  "script_path": "conf/scripts/checkOpenStatus.sh",
-  "description": "Checks if the HSHQ script is open in another instance. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance is running at a time. If you need to reset it, go to Reset HSHQ Open Status in System Utils.",
+  "name": "03 Check Mutex Lock Status",
+  "script_path": "conf/scripts/checkMutexLockStatus.sh",
+  "description": "Checks the status of a mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance doing a certain thing at a time.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>This function does not perform any actions, it only reports the status. If you need to reset one of them, go to Reset Mutex Lock in System Utils.",
   "group": "$group_id_testing",
-  "parameters": []
+  "parameters": [
+    {
+      "name": "Select lock",
+      "required": true,
+      "param": "-sellock=",
+      "same_arg_param": true,
+      "type": "list",
+      "ui": {
+        "width_weight": 2
+      },
+      "values": [ "hshqopen", "networkchecks" ],
+      "default": "hshqopen",
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
 }
 
 EOFSC
@@ -53259,7 +53337,10 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -53286,7 +53367,10 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "32",
       "min": "0",
@@ -53477,7 +53561,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -53568,7 +53655,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -53597,7 +53687,10 @@ EOFSC
         "No"
       ],
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -53621,7 +53714,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -53700,7 +53796,10 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": { 
         "script": "conf/scripts/generateRandomIP.sh"
@@ -53772,7 +53871,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name,' - ',IPAddress from connections where ConnectionType='user' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -53860,7 +53962,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -53943,7 +54048,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -54026,7 +54134,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='user' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -54268,7 +54379,10 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54335,7 +54449,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54403,7 +54520,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='clientdns' and NetworkType='mynetwork' order by ID asc;\" | sed 's/|//g'",
@@ -54510,7 +54630,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "$HOMESERVER_NAME RelayServer",
       "secure": false,
@@ -54536,7 +54659,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "root",
       "secure": false,
@@ -54562,7 +54688,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "$USERNAME",
       "secure": false,
@@ -54589,7 +54718,10 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "22",
       "min": "1",
@@ -54619,7 +54751,10 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54709,7 +54844,10 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54777,7 +54915,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54844,7 +54985,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54920,7 +55064,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54944,7 +55091,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -54973,7 +55123,10 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -55053,7 +55206,10 @@ EOFSC
       "type": "text",
       "default": "$(getLetsEncryptCertsDefault)",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -55119,7 +55275,10 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -55188,7 +55347,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_vpn' and NetworkType='other' order by ID asc;\" | sed 's/|//g'",
@@ -55271,7 +55433,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select '(',ID,') ',Name from connections where ConnectionType='homeserver_internet' and NetworkType='other' order by ID asc;\" | sed 's/|//g'",
@@ -55353,7 +55518,10 @@ EOFSC
       "required": true,
       "type": "multiline_text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -55479,7 +55647,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -55565,7 +55736,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain,' (',MailHost,')' from mailhostmap join mailhosts on mailhostmap.MailHostID = mailhosts.ID where IsFirstDomain=false order by mailhostmap.MailHostID;\" | sed 's/|//g'",
@@ -55655,7 +55829,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from mailhostmap order by MailHostID asc, IsFirstDomain desc;\"",
@@ -55739,7 +55916,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select BaseDomain from lecertdomains group by BaseDomain;\"",
@@ -55844,7 +56024,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select Domain from mailhostmap order by MailHostID asc, IsFirstDomain desc;\"",
@@ -55928,7 +56111,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select BaseDomain from exposedomains group by BaseDomain;\"",
@@ -56082,7 +56268,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -56112,7 +56301,10 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "",
       "min": "1",
@@ -56142,7 +56334,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select ID,'-',DomainName from hsvpn_connections where IsPrimary=true;\" | sed 's/|//g'",
@@ -56173,7 +56368,10 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "",
       "min": "1",
@@ -56264,7 +56462,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select ID,'-',Name,' (',ExtStart,'-',ExtEnd,'/',Protocol,')' from portforwarding where PFType='User' order by ID asc;\" | sed 's/|//g'",
@@ -56394,7 +56595,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -56552,7 +56756,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select InterfaceName,' (',ConnectionType,')' from connections where NetworkType='home_network';\" | sed 's/|//g'",
@@ -56581,7 +56788,10 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": { 
         "script": "conf/scripts/getInterfaceIP.sh \"\${Select the interface to edit}\""
@@ -56613,7 +56823,10 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": { 
         "script": "conf/scripts/getInterfaceGateway.sh \"\${Select the interface to edit}\""
@@ -56642,7 +56855,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -56726,7 +56942,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select InterfaceName,' (',ConnectionType,')' from connections where NetworkType='home_network';\" | sed 's/|//g'",
@@ -56801,7 +57020,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "argument"
@@ -56826,7 +57048,10 @@ EOFSC
       "same_arg_param": true,
       "type": "int",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": "32",
       "min": "0",
@@ -56903,7 +57128,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": {
         "script": "sqlite3 $HSHQ_DB \"select ID,' (Custom) ',Name,' [',Subnet,']' from customfwsubnet;\" | sed 's/|//g'",
@@ -56978,7 +57206,10 @@ EOFSC
       "same_arg_param": true,
       "type": "list",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "values": [ "INPUT", "DOCKER-USER" ],
       "secure": false,
@@ -57007,7 +57238,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "default": {
         "script": "conf/scripts/getExposedPortsByVariableName.sh \"\${Select the firewall chain}\" \"\${Select the list to edit}\"",
