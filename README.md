@@ -2,7 +2,7 @@
     <img src="https://github.com/homeserverhq/hshq/assets/118991087/44fa836e-33a1-4421-8078-a4408a0ba401" alt=""/>
 </a>
 
-## <a href="https://www.homeserverhq.com" target="_blank">HomeServerHQ</a> is an all-in-one home server infrastructure. It is designed to be simple and easy for anyone to setup and use, even without any prior software/IT experience. The installation and management utility performs the full installation of both the HomeServer and RelayServer, along with an integrated suite of free and open source software tools in less than an hour.<br/><br/> Even if you are behind CGNAT, you can still host an email server and/or public websites from your home, and remotely access your HomeServer from anywhere with any of your trusted devices. But it goes beyond just that. Due to a fairly novel networking approach, you'll effectively be running your own private internet. Security and privacy are the primary goals - all settings are pre-configured with safe, sane, and secure defaults.
+## <a href="https://www.homeserverhq.com" target="_blank">HomeServerHQ</a> is an all-in-one home server infrastructure. It is designed to be simple and easy for anyone to setup and use, even without any prior software/IT experience. The installation and management utility performs the full installation of both the HomeServer and RelayServer, along with an integrated suite of free and open source software tools in a matter of minutes.<br/><br/> Even if you are behind CGNAT, you can still host an email server and/or public websites from your home, and remotely access your HomeServer from anywhere with any of your trusted devices. But it goes beyond just that. Due to a fairly novel networking approach, you'll effectively be running your own private internet. Security and privacy are the primary goals - all settings are pre-configured with safe, sane, and secure defaults.
 
 ### For full instructions, see <a href="https://wiki.homeserverhq.com/getting-started" target="_blank">https://wiki.homeserverhq.com/getting-started</a>
 ### To verify source code, see <a href="https://wiki.homeserverhq.com/tutorials/source-code-verification" target="_blank">https://wiki.homeserverhq.com/tutorials/source-code-verification</a> 
@@ -13,18 +13,17 @@
 - [One-line Start Installation](#one-line-start-installation)
 - [Manual Installation](#manual-installation)
 - [Setup A Demo](#setup-a-demo)
+- [Custom ISOs](#custom-isos)
 - [Comparison of Features](#comparison-of-features)
   - [Home Server](#home-server)
   - [Networking](#networking)
 - [FAQ](#faq)
 
 ## Supported Distributions
-Distribution | State | Custom ISO |
-:------ | :------: | :------:
-Ubuntu 22.04 (Jammy Jellyfish) | Stable | Coming Soon
-Ubuntu 24.04 (Noble Numbat) | Experimental | Coming Soon
-Debian 12 (Bookworm) | Stable | <a href="https://downloads.homeserverhq.com/Debian12_HSHQ.iso" target="_blank">Download (758 MB)</a> [ <a href="https://downloads.homeserverhq.com/Debian12_HSHQ.sha256" target="_blank">sha256</a> ]
-Mint 22 (Wilma) | Experimental | Coming Soon
+ - Debian 12.9 (Bookworm)
+ - Ubuntu 22.04 (Jammy Jellyfish)
+ - Ubuntu 24.04 (Noble Numbat)
+ - Mint 22 (Wilma)
 
 ## One-line Start Installation
 ```
@@ -43,6 +42,34 @@ bash hshq.sh
 
 ## Setup a Demo
 #### See https://wiki.homeserverhq.com/en/tutorials/setup-demo for instructions on how to setup a demo environment.
+
+## Custom ISOs
+Description | Underlying Distro | Custom ISO |
+:------ | :------: | :------:
+Debian 12 Server | Debian 12.9 | <a href="https://downloads.homeserverhq.com/debian-12-server.iso" target="_blank">Download (2.0 GB)</a> [ <a href="https://downloads.homeserverhq.com/debian-12-server.sha256" target="_blank">sha256</a> ]
+Debian 12 GNOME | Debian 12.9 | <a href="https://downloads.homeserverhq.com/debian-12-gnome.iso" target="_blank">Download (3.9 GB)</a> [ <a href="https://downloads.homeserverhq.com/debian-12-gnome.sha256" target="_blank">sha256</a> ]
+Debian 12 Cinnamon | Debian 12.9 | <a href="https://downloads.homeserverhq.com/debian-12-cinnamon.iso" target="_blank">Download (3.9 GB)</a> [ <a href="https://downloads.homeserverhq.com/debian-12-cinnamon.sha256" target="_blank">sha256</a> ]
+Debian 12 KDE Plasma | Debian 12.9 | <a href="https://downloads.homeserverhq.com/debian-12-kde.iso" target="_blank">Download (4.1 GB)</a> [ <a href="https://downloads.homeserverhq.com/debian-12-kde.sha256" target="_blank">sha256</a> ]
+Debian 12 XFCE | Debian 12.9 | <a href="https://downloads.homeserverhq.com/debian-12-xfce.iso" target="_blank">Download (3.8 GB)</a> [ <a href="https://downloads.homeserverhq.com/debian-12-xfce.sha256" target="_blank">sha256</a> ]
+Debian 12 MATE | Debian 12.9 | <a href="https://downloads.homeserverhq.com/debian-12-mate.iso" target="_blank">Download (3.9 GB)</a> [ <a href="https://downloads.homeserverhq.com/debian-12-mate.sha256" target="_blank">sha256</a> ]
+Debian 12 Oliver* | Debian 12.9 | <a href="https://downloads.homeserverhq.com/debian-12-oliver.iso" target="_blank">Download (4.5 GB)</a> [ <a href="https://downloads.homeserverhq.com/debian-12-oliver.sha256" target="_blank">sha256</a> ]
+Mint 22 Cinnamon | Ubuntu 24.04 | <a href="https://downloads.homeserverhq.com/mint-22-cinnamon.iso" target="_blank">Download (3.5 GB)</a> [ <a href="https://downloads.homeserverhq.com/mint-22-cinnamon.sha256" target="_blank">sha256</a> ]
+Ubuntu 22 Server | Ubuntu 22.04 | <a href="https://downloads.homeserverhq.com/ubuntu-22-server.iso" target="_blank">Download (2.8 GB)</a> [ <a href="https://downloads.homeserverhq.com/ubuntu-22-server.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 Server | Ubuntu 24.04 | <a href="https://downloads.homeserverhq.com/ubuntu-24-server.iso" target="_blank">Download (3.0 GB)</a> [ <a href="https://downloads.homeserverhq.com/ubuntu-24-server.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 GNOME | Ubuntu 24.04 | <a href="https://downloads.homeserverhq.com/ubuntu-24-gnome.iso" target="_blank">Download (4.0 GB)</a> [ <a href="https://downloads.homeserverhq.com/ubuntu-24-gnome.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 KDE Plasma | Ubuntu 24.04 | <a href="https://downloads.homeserverhq.com/ubuntu-24-kde.iso" target="_blank">Download (4.0 GB)</a> [ <a href="https://downloads.homeserverhq.com/ubuntu-24-kde.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 XFCE | Ubuntu 24.04 | <a href="https://downloads.homeserverhq.com/ubuntu-24-xfce.iso" target="_blank">Download (4.2 GB)</a> [ <a href="https://downloads.homeserverhq.com/ubuntu-24-xfce.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 Oliver* | Ubuntu 24.04 | <a href="https://downloads.homeserverhq.com/ubuntu-24-oliver.iso" target="_blank">Download (5.4 GB)</a> [ <a href="https://downloads.homeserverhq.com/ubuntu-24-oliver.sha256" target="_blank">sha256</a> ]
+
+*An Oliver build contains ALL 5 desktop environments (GNOME, Cinnamon, KDE Plasma, XFCE, MATE), plus 1 more! (Budgie)
+
+Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute installation - start to finish. If you are unsure of which one to get, just get Oliver!
+
+To create a bootable USB:
+  1) Download and run <a href="https://etcher.balena.io/#download-etcher" target="_blank">Balena Etcher</a>
+  2) Select your downloaded ISO
+  3) Select your flash drive
+  3) Click Flash!
 
 ## Comparison of Features
 With respect to self-hosting on a home-based server, HomeServerHQ has made significant progress along two avenues - the home server itself and the networking aspect. Thus, the comparison metrics are separated into these two categories accordingly. There is a more in-depth discussion of the differences following each of the comparison tables.
