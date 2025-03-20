@@ -4658,7 +4658,6 @@ function loadVersionVars()
   DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
-  IS_HSHQ_DEV_TEST=$IS_HSHQ_DEV_TEST
 }
 
 function outputDockerSettings()
@@ -5549,7 +5548,6 @@ function loadVersionVars()
   DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
-  IS_HSHQ_DEV_TEST=$IS_HSHQ_DEV_TEST
 }
 
 function checkSupportedHostOS()
@@ -5557,16 +5555,13 @@ function checkSupportedHostOS()
   if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
     return
   fi
-  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
     return
   fi
-  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+  if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
     return
   fi
-  if [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
-    return
-  fi
-  if false && [ "\$IS_HSHQ_DEV_TEST" = "true" ] && [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
+  if [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
     return
   fi
 
