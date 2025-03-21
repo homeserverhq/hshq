@@ -22552,7 +22552,7 @@ function main()
     totLockAttempts=\$(getIncrementLockAttempts networkchecks)
     strErr="performNetworkingChecks.sh - Cannot obtain networkchecks lock(\$totLockAttempts): \$checkRes, exiting..."
     logHSHQEvent warning "\$strErr"
-    if [ \$((\$totLockAttempts % 60)) -eq 5 ]; then
+    if [ \$((\$totLockAttempts % 60)) -eq 30 ]; then
       source <(sudo cat \$HSHQ_PLAINTEXT_ROOT_CONFIG)
       source \$HSHQ_PLAINTEXT_USER_CONFIG
       sendEmail -s "HSHQ Networking Error" -b "There is an issue with your HomeServer networking that needs to be addressed. For more details, you can view the log by running the command 'cat /var/log/hshq.log'. The easiest way to (possibly) fix this problem would be to simply reboot your server. However, if you continue to recieve this message then there might be a real problem that needs to fixed. You can either ask on the forum (https://forum.homeserverhq.com) or you can submit a Github issue (https://github.com/homeserverhq/hshq/issues)."
