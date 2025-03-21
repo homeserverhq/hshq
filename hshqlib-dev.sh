@@ -32655,8 +32655,8 @@ function installMailu()
     SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   fi
   outputConfigMailu
-
-  installStack mailu mailu-admin "Listening at: http://0.0.0.0:8080" $HOME/mailu.env
+  outputMailuComposeTmp
+  installStack mailu mailu-admin "Listening at: http://0.0.0.0:8080" $HOME/mailu.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing Mailu"
@@ -32697,7 +32697,7 @@ function installMailu()
   sudo rm -fr $HSHQ_STACKS_DIR/mailu/clamav/*
   sleep 5
   echo "Restarting mailu stack..."
-  startStopStack mailu start
+  updateStackEnv mailu modFunMailuPostInstall
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MAILU.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -32853,8 +32853,274 @@ EOFMC
   fi
 }
 
+function outputMailuComposeTmp()
+{
+  # This compose is only different from outputMailuCompose by one
+  # line - in the admin container, the DNS server is set to the 
+  # mailu-unbound container rather than the default (Adguard).
+  # This bandaid fix will avoid an installation failure when
+  # adguard is not working correctly out of the gate.
+  rm -f $HOME/mailu-compose.yml
+  cat <<EOFMC > $HOME/mailu-compose.yml
+$STACK_VERSION_PREFIX mailu $(getScriptStackVersion mailu)
+
+services:
+  front:
+    image: $(getScriptImageByContainerName $SMTP_HOSTNAME)
+    container_name: $SMTP_HOSTNAME
+    hostname: $SMTP_HOSTNAME
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+      - dock-internalmail-net
+      - dock-proxy-net
+    ports:
+      - "$MAILU_PORT_1:$MAILU_PORT_1"
+      - "$MAILU_PORT_2:$MAILU_PORT_2"
+      - "$MAILU_PORT_3:$MAILU_PORT_3"
+      - "$MAILU_PORT_4:$MAILU_PORT_4"
+      - "$MAILU_PORT_5:$MAILU_PORT_5"
+      - "$MAILU_PORT_6:$MAILU_PORT_6"
+      - "$MAILU_PORT_7:$MAILU_PORT_7"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
+
+  resolver:
+    image: $(getScriptImageByContainerName mailu-unbound)
+    container_name: mailu-unbound
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      dock-mailu-ext-net:
+        ipv4_address: \${SUBNET_PREFIX}.253
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  redis:
+    image: $(getScriptImageByContainerName mailu-redis)
+    container_name: mailu-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-mailu-redis:/bitnami/redis/data
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+
+  admin:
+    image: $(getScriptImageByContainerName mailu-admin)
+    container_name: mailu-admin
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    dns:
+      - \${SUBNET_PREFIX}.253
+    depends_on:
+      - redis
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/initconfig:/initconfig
+      - \${HSHQ_STACKS_DIR}/mailu/data:/data
+      - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
+
+  imap:
+    image: $(getScriptImageByContainerName mailu-imap)
+    container_name: mailu-imap
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-int-net
+      - dock-mailu-ext-net
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/mail:/mail
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
+
+  smtp:
+    image: $(getScriptImageByContainerName mailu-smtp)
+    container_name: mailu-smtp
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
+      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
+
+  oletools:
+    image: $(getScriptImageByContainerName mailu-oletools)
+    container_name: mailu-oletools
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-int-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+#  fts_attachments:
+#    image: $(getScriptImageByContainerName mailu-tika)
+#    container_name: mailu-tika
+#    hostname: tika
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    networks:
+#      - dock-mailu-int-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+
+  antispam:
+    image: $(getScriptImageByContainerName mailu-antispam)
+    container_name: mailu-antispam
+    hostname: antispam
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-int-net
+      - dock-mailu-ext-net
+      - dock-proxy-net
+    dns:
+      - \${SUBNET_PREFIX}.253
+    depends_on:
+      - front
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd/local:/overrides
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd/override:/etc/rspamd/override.d
+
+$is_antivirus_commented_out  antivirus:
+$is_antivirus_commented_out    image: $(getScriptImageByContainerName mailu-antivirus)
+$is_antivirus_commented_out    container_name: mailu-antivirus
+$is_antivirus_commented_out    restart: unless-stopped
+$is_antivirus_commented_out    env_file: stack.env
+$is_antivirus_commented_out    security_opt:
+$is_antivirus_commented_out      - no-new-privileges:true
+$is_antivirus_commented_out    networks:
+$is_antivirus_commented_out      - dock-mailu-ext-net
+$is_antivirus_commented_out      - dock-proxy-net
+$is_antivirus_commented_out    volumes:
+$is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
+$is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
+$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/clamav
+
+  webdav:
+    image: $(getScriptImageByContainerName mailu-webdav)
+    container_name: mailu-webdav
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/dav:/data
+
+  fetchmail:
+    image: $(getScriptImageByContainerName mailu-fetchmail)
+    container_name: mailu-fetchmail
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
+
+  webmail:
+    image: $(getScriptImageByContainerName mailu-webmail)
+    container_name: mailu-webmail
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-mailu-ext-net
+    depends_on:
+      - imap
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/mailu/webmail:/data
+      - \${HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
+
+volumes:
+  v-mailu-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/mailu/redis
+
+networks:
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-mailu-int-net:
+    name: dock-mailu-int
+    external: true
+  dock-mailu-ext-net:
+    name: dock-mailu-ext
+    external: true
+
+EOFMC
+}
+
 function outputMailuCompose()
 {
+  rm -f $HOME/mailu-compose.yml
   cat <<EOFMC > $HOME/mailu-compose.yml
 $STACK_VERSION_PREFIX mailu $(getScriptStackVersion mailu)
 
@@ -33108,7 +33374,11 @@ networks:
     external: true
 
 EOFMC
+}
 
+function modFunMailuPostInstall()
+{
+  outputMailuCompose
 }
 
 function outputMailuMultimap()
