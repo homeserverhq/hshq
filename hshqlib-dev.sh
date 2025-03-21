@@ -52953,6 +52953,7 @@ PRIOR_HSHQ_VERSION=\$(sed -n 2p \$HSHQ_LIB_SCRIPT | cut -d"=" -f2)
 if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   source \$HSHQ_NEW_LIB_SCRIPT lib
   if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ \$PRIOR_HSHQ_VERSION -lt \$LAST_RELAYSERVER_VERSION_UPDATE ]; then
+    echo "Prior Version: \$PRIOR_HSHQ_VERSION, Last RelayServer Version Update: \$LAST_RELAYSERVER_VERSION_UPDATE, checking RelayServer password..."
     testRelayServerPassword 
     if [ \$? -ne 0 ]; then
       echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
@@ -52972,7 +52973,7 @@ if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   fi
 else
   if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ \$PRIOR_HSHQ_VERSION -lt \$LAST_RELAYSERVER_VERSION_UPDATE ]; then
-    echo "Prior Version: \$PRIOR_HSHQ_VERSION, Last RS Version Update: \$LAST_RELAYSERVER_VERSION_UPDATE"
+    echo "Prior Version: \$PRIOR_HSHQ_VERSION, Last RelayServer Version Update: \$LAST_RELAYSERVER_VERSION_UPDATE, checking RelayServer password..."
     testRelayServerPassword 
     if [ \$? -ne 0 ]; then
       echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
