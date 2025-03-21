@@ -30,6 +30,7 @@ function init()
   cd ~
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
+  PRIOR_HSHQ_VERSION=0
   LAST_RELAYSERVER_VERSION_UPDATE=121
   IS_DESKTOP_ENV=false
   if [ -d $HOME/Desktop ]; then
@@ -17926,7 +17927,7 @@ function performPreUpdateCheck()
 
 function promptTestRelayServerPassword()
 {
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ $PRIOR_HSHQ_VERSION -ge $LAST_RELAYSERVER_VERSION_UPDATE ]; then
     return
   fi
   set +e
