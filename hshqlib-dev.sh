@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=126
+HSHQ_LIB_SCRIPT_VERSION=127
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
