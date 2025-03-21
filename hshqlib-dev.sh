@@ -3772,6 +3772,7 @@ EOFRS
   else
     wgconfigfile="$HOME/User1_WireGuard.conf"
   fi
+  rm -f $wgconfigfile
   echo -e "$wgconfig" > $wgconfigfile
   sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
 }
@@ -23040,7 +23041,6 @@ function updateEndpointIPs()
   set +e
   ping_timeout=5
   conn_list=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
-
   for cur_id in "${conn_list[@]}"
   do
     is_int=$(sqlite3 $HSHQ_DB "select IsInternet from connections where ID='$cur_id';")
@@ -23049,9 +23049,9 @@ function updateEndpointIPs()
     if [ "$(checkIPByID $cur_id)" = "true" ]; then
       logHSHQEvent info "updateEndpointIPs - IP changed, restarting $cname..."
       if [ $is_int = 0 ]; then
-        systemctl restart wg-quick@$iname > /dev/null 2>&1
+        sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
       else
-        $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${iname}.conf restart > /dev/null 2>&1
+        sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${iname}.conf restart > /dev/null 2>&1
       fi
     fi
     if [ $is_int = 0 ]; then
@@ -23061,7 +23061,7 @@ function updateEndpointIPs()
         timeout $ping_timeout ping -c 1 $rs_ip > /dev/null 2>&1
         if [ $? -ne 0 ]; then
           logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname..."
-          systemctl restart wg-quick@$iname > /dev/null 2>&1
+          sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
         fi
       fi
     fi
@@ -23086,12 +23086,12 @@ function updateEndpointIPs()
   # Check/fix tunnelled WireGuard internet connections
   for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
   do
-    if ! test -f "$conf"; then continue; fi
-    resOut=$($HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
+    if ! sudo test -f "$conf"; then continue; fi
+    resOut=$(sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
     retVal=$?
     if [ $retVal -ne 0 ]; then
       logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
-      $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
+      sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
     fi
   done
 }
@@ -52675,6 +52675,7 @@ if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   performPreUpdateCheck
   if [ \$? -eq 0 ]; then
     mv \$HSHQ_NEW_LIB_SCRIPT \$HSHQ_LIB_SCRIPT
+    is_any_updated=true
   else
     performExitFunctions false
     releaseAllLocks false
