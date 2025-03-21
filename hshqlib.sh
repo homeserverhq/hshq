@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=127
+HSHQ_LIB_SCRIPT_VERSION=128
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -30,7 +30,6 @@ function init()
   cd ~
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
-  PRIOR_HSHQ_VERSION=0
   LAST_RELAYSERVER_VERSION_UPDATE=121
   IS_DESKTOP_ENV=false
   if [ -d $HOME/Desktop ]; then
@@ -17927,9 +17926,10 @@ function performPreUpdateCheck()
 
 function promptTestRelayServerPassword()
 {
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ $PRIOR_HSHQ_VERSION -ge $LAST_RELAYSERVER_VERSION_UPDATE ]; then
+  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     return
   fi
+  set +e
   while [ -z "$USER_RELAY_SUDO_PW" ]
   do
     if [ "$IS_CONSOLE_ENV" = "true" ]; then
@@ -17938,7 +17938,8 @@ function promptTestRelayServerPassword()
       if [ $retVal -ne 0 ]; then
         exit 3
       fi
-      if [ "$(testRelayServerPassword)" = "false" ]; then
+      testRelayServerPassword
+      if [ $? -ne 0 ]; then
         showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
         USER_RELAY_SUDO_PW=""
       fi
@@ -17946,7 +17947,8 @@ function promptTestRelayServerPassword()
       echo -e "\n\n"
       read -s -p "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: " USER_RELAY_SUDO_PW
       echo
-      if [ "$(testRelayServerPassword)" = "false" ]; then
+      testRelayServerPassword
+      if [ $? -ne 0 ]; then
         echo "The password is incorrect, please re-enter it."
         USER_RELAY_SUDO_PW=""
       fi
@@ -17958,13 +17960,13 @@ function testRelayServerPassword()
 {
   set +e
   loadSSHKey
+  set +e
   ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v" <<< "$USER_RELAY_SUDO_PW" > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    echo "true"
-  else
-    echo "false"
-  fi
+  retVal=$?
+  set +e
   unloadSSHKey
+  set +e
+  return $retVal
 }
 
 function version14Update()
@@ -52777,7 +52779,7 @@ latest_ver_lib=\$(getLatestVersionLib)
 this_ver_lib=\$(getThisVersionLib)
 pending_ver_lib=\$(getPendingVersionLib)
 
-if [ -z \$latest_ver_wrapper ]; then
+if [ -z "\$latest_ver_wrapper" ]; then
   echo "ERROR: Could not obtain latest wrapper version, check your internet connection and try again."
   exit
 fi
@@ -52787,7 +52789,7 @@ if [ \$this_ver_wrapper -eq 0 ]; then
   exit
 fi
 
-if [ -z \$latest_ver_lib ]; then
+if [ -z "\$latest_ver_lib" ]; then
   echo "ERROR: Could not obtain latest lib version, check your internet connection and try again."
   exit
 fi
@@ -52856,13 +52858,13 @@ set +e
 echo "Updating HSHQ..."
 is_any_updated=false
 
-latest_ver_wrapper=\$(getLatestVersionWrapper)
-this_ver_wrapper=\$(getThisVersionWrapper)
-latest_ver_lib=\$(getLatestVersionLib)
-this_ver_lib=\$(getThisVersionLib)
-pending_ver_lib=\$(getPendingVersionLib)
+latest_ver_wrapper="\$(getLatestVersionWrapper)"
+this_ver_wrapper="\$(getThisVersionWrapper)"
+latest_ver_lib="\$(getLatestVersionLib)"
+this_ver_lib="\$(getThisVersionLib)"
+pending_ver_lib="\$(getPendingVersionLib)"
 
-if [ -z \$latest_ver_wrapper ]; then
+if [ -z "\$latest_ver_wrapper" ]; then
   echo "ERROR: Could not obtain latest wrapper version, check your internet connection and try again."
   exit
 fi
@@ -52872,7 +52874,7 @@ if [ \$this_ver_wrapper -eq 0 ]; then
   exit
 fi
 
-if [ -z \$latest_ver_lib ]; then
+if [ -z "\$latest_ver_lib" ]; then
   echo "ERROR: Could not obtain latest lib version, check your internet connection and try again."
   exit
 fi
@@ -52940,21 +52942,23 @@ checkRes="\$(acquireAllLocks)"
 if ! [ -z "\$checkRes" ]; then
   # Could not get all locks, try again later.
   echo "The necessary locks could not be obtained (\$checkRes). Please try applying the update later."
-  return
+  exit 10
 fi
 decryptAndLoad false
 USER_CONFIG_PW=""
 
+set +e
+prior_version=\$(sed -n 2p \$HSHQ_LIB_SCRIPT | cut -d"=" -f2)
 if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   source \$HSHQ_NEW_LIB_SCRIPT lib
-  PRIOR_HSHQ_VERSION=\$(sed -n 2p \$HSHQ_LIB_SCRIPT | cut -d"=" -f2)
-  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ \$PRIOR_HSHQ_VERSION -lt \$LAST_RELAYSERVER_VERSION_UPDATE ]; then
+  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ \$prior_version -lt \$LAST_RELAYSERVER_VERSION_UPDATE ]; then
+    echo "Prior Version: \$prior_version, Last RelayServer Version Update: \$LAST_RELAYSERVER_VERSION_UPDATE, checking RelayServer password..."
     testRelayServerPassword 
     if [ \$? -ne 0 ]; then
       echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
       performExitFunctions false
       releaseAllLocks false
-      return
+      exit 11
     fi
   fi
   performPreUpdateCheck
@@ -52964,16 +52968,17 @@ if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   else
     performExitFunctions false
     releaseAllLocks false
-    return
+    exit 12
   fi
 else
-  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+  if [ "\$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ \$prior_version -lt \$LAST_RELAYSERVER_VERSION_UPDATE ]; then
+    echo "Prior Version: \$prior_version, Last RelayServer Version Update: \$LAST_RELAYSERVER_VERSION_UPDATE, checking RelayServer password..."
     testRelayServerPassword 
     if [ \$? -ne 0 ]; then
       echo "ERROR: The provided RelayServer password is incorrect. The update(s) were NOT applied."
       performExitFunctions false
       releaseAllLocks false
-      return
+      exit 13
     fi
   fi
 fi
