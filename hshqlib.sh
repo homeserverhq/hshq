@@ -3999,7 +3999,7 @@ function insertSQLHostedVPN()
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
 }
 
-function prepSvcsHostedVPN()
+function updateHeimdallUptimeKumaRelayServer()
 {
   docker container stop heimdall > /dev/null 2>&1
   docker container stop uptimekuma > /dev/null 2>&1
@@ -4019,6 +4019,10 @@ function prepSvcsHostedVPN()
   checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
   docker container start heimdall > /dev/null 2>&1
   docker container start uptimekuma > /dev/null 2>&1
+}
+
+function prepSvcsHostedVPN()
+{
   set +e
   echo "Emailing credentials..."
   emailVaultwardenCredentials true
@@ -8344,12 +8348,12 @@ function uploadVPNInstallScripts()
     tmp_pw2=""
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
-      tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
-      if [ -z "$tmp_pw1" ]; then
-        showMessageBox "Password Empty" "The password cannot be empty, please try again."
-        continue
-      fi
       if ! [ -z "$nonroot_username" ]; then
+        tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
+        if [ -z "$tmp_pw1" ]; then
+          showMessageBox "Password Empty" "The password cannot be empty, please try again."
+          continue
+        fi
         if [ $(checkValidPassword "$tmp_pw1" 16) = "false" ]; then
           showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
           tmp_pw1=""
@@ -8361,6 +8365,11 @@ function uploadVPNInstallScripts()
           showMessageBox "Password Mismatch" "The passwords do not match, please try again."
         fi
       else
+        tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
+        if [ -z "$tmp_pw1" ]; then
+          showMessageBox "Password Empty" "The password cannot be empty, please try again."
+          continue
+        fi
         tmp_pw2=$tmp_pw1
       fi
     done
@@ -8711,6 +8720,7 @@ function connectVPN()
     unloadSSHKey
     curdt=$(getCurrentDate)
     sudo sqlite3 $HSHQ_DB "update connections set LastUpdated='$curdt' where ID=$db_id;"
+    updateHeimdallUptimeKumaRelayServer
   fi
 }
 
@@ -27816,12 +27826,12 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
   # RelayServer Tab
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    insertIntoHeimdallDB "$FMLNAME_ADGUARD" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "adguardhome.png"
-    insertIntoHeimdallDB "$FMLNAME_CLIENTDNS" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "dnsmasq.png"
+    insertIntoHeimdallDB "$FMLNAME_ADGUARD" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "adguardhome.png"
+    insertIntoHeimdallDB "$FMLNAME_CLIENTDNS" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "dnsmasq.png"
     insertIntoHeimdallDB "$FMLNAME_CADDYDNS" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "dnsmasq.png"
-    insertIntoHeimdallDB "$FMLNAME_PORTAINER" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "portainer.png"
-    insertIntoHeimdallDB "$FMLNAME_RSPAMD" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "rspamd.png"
-    insertIntoHeimdallDB "$FMLNAME_SYNCTHING" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1 "syncthing.png"
+    insertIntoHeimdallDB "$FMLNAME_PORTAINER" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "portainer.png"
+    insertIntoHeimdallDB "$FMLNAME_RSPAMD" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "rspamd.png"
+    insertIntoHeimdallDB "$FMLNAME_SYNCTHING" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "syncthing.png"
     insertIntoHeimdallDB "$FMLNAME_WGPORTAL" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "wgportal.png"
     insertIntoHeimdallDB "$FMLNAME_FILEBROWSER" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "filebrowser.png"
   fi
@@ -27906,11 +27916,11 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
 
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
-    insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
-    insertServiceUptimeKuma "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
-    insertServiceUptimeKuma "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
-    insertServiceUptimeKuma "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 1
+    insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
+    insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
+    insertServiceUptimeKuma "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
+    insertServiceUptimeKuma "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
+    insertServiceUptimeKuma "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
     insertServiceUptimeKuma "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
   fi
 }
