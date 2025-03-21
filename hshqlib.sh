@@ -2463,8 +2463,8 @@ EOFHP
 [Desktop Entry]
 Name=HSHQ Console Util
 Exec=bash -ic "~/hshq.sh"
-Comment=Runs the HSHQ console-based management utility
 Terminal=true
+Comment=Runs the HSHQ console-based management utility
 Icon=/usr/share/icons/HSHQ/ConsoleHSHQ.png
 Type=Application
 Categories=HomeServerHQ
@@ -21591,15 +21591,30 @@ function nukeHSHQ()
     sudo rm -f /usr/share/applications/HomePage.desktop
     sudo rm -f /usr/share/applications/HSHQConsole.desktop
     sudo rm -f /usr/share/applications/HSHQScriptServer.desktop
-    cat <<EOFHP > ~/Desktop/InstallHSHQ.desktop
+    which terminator > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      # Specify terminator as console if possible
+      cat <<EOFHP > ~/Desktop/InstallHSHQ.desktop
+[Desktop Entry]
+Name=Install HSHQ
+Exec=/usr/bin/terminator -x bash -ic "~/hshq.sh"
+Comment=Starts the HSHQ installation script
+Icon=/usr/share/icons/HSHQ/InstallHSHQ.png
+Type=Application
+Categories=HomeServerHQ
+EOFHP
+    else
+      cat <<EOFHP > ~/Desktop/InstallHSHQ.desktop
 [Desktop Entry]
 Name=Install HSHQ
 Exec=bash -ic "~/hshq.sh"
-Comment=Starts the HSHQ installation script
 Terminal=true
+Comment=Starts the HSHQ installation script
 Icon=/usr/share/icons/HSHQ/InstallHSHQ.png
 Type=Application
+Categories=HomeServerHQ
 EOFHP
+    fi
     chmod 755 ~/Desktop/InstallHSHQ.desktop
     trustDesktopIcon "InstallHSHQ.desktop"
     tryDeleteRootCAFirefox
