@@ -52948,7 +52948,6 @@ decryptAndLoad false
 USER_CONFIG_PW=""
 
 set +e
-echo "HSHQ_LIB_SCRIPT: \$HSHQ_LIB_SCRIPT"
 prior_version=\$(sed -n 2p \$HSHQ_LIB_SCRIPT | cut -d"=" -f2)
 if [ -f \$HSHQ_NEW_LIB_SCRIPT ]; then
   source \$HSHQ_NEW_LIB_SCRIPT lib
