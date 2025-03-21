@@ -21620,6 +21620,7 @@ EOFHP
     fi
     chmod 755 ~/Desktop/InstallHSHQ.desktop
     trustDesktopIcon "InstallHSHQ.desktop"
+    sudo cp -f ~/Desktop/InstallHSHQ.desktop /usr/share/applications/
     tryDeleteRootCAFirefox
   fi
   rm -f "/home/$USERNAME/$HSHQ_INSTALL_NOTES_FILENAME"
