@@ -31,7 +31,7 @@ wget -q4N https://homeserverhq.com/hshq.sh && bash hshq.sh
 ```
 
 ## Manual Installation
-To perform the installation directly via GitHub (in case the webserver is unavailable), run the following commands as the first non-root user (ID=1000) on a fresh Ubuntu 22.04 installation:
+To perform the installation directly via GitHub (in case the webserver is unavailable), run the following commands as the first non-root user (ID=1000) on a fresh Linux installation:
 ```
 cd ~
 mkdir -p hshq hshq/data hshq/data/lib
