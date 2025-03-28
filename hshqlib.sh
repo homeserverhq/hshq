@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=128
+HSHQ_LIB_SCRIPT_VERSION=129
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -8378,7 +8378,7 @@ function uploadVPNInstallScripts()
     tmp_pw1=""
     tmp_pw2=""
     domain_ip_guess=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-    if [ -z $domain_ip_guess ] || [ "$isTransfer" = "true" ]; then
+    if [ -z "$domain_ip_guess" ] || [ "$isTransfer" = "true" ]; then
       domain_ip_guess="0.0.0.0"
     fi
     RELAYSERVER_SERVER_IP=""
@@ -11723,7 +11723,7 @@ function getGatewayOfInterface()
 
 function getIPFromHostname()
 {
-  echo $(dig $1 +short | grep '^[.0-9]*$')
+  echo $(dig $1 A +short | grep '^[.0-9]*$' | head -n 1)
 }
 
 function getAllowedPublicIPs()
