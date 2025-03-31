@@ -11405,7 +11405,7 @@ function removePlaintextRootConfigVar()
 {
   if [ -z "$1" ]; then
     echo "FATAL: removePlaintextRootConfigVar - the variable name cannot be empty"
-    exit
+    exit 11
   fi
   sudo sed -i "/$1/d" $HSHQ_PLAINTEXT_ROOT_CONFIG
 }
@@ -11419,7 +11419,7 @@ function removePlaintextUserConfigVar()
 {
   if [ -z "$1" ]; then
     echo "FATAL: removePlaintextUserConfigVar - the variable name cannot be empty"
-    exit
+    exit 11
   fi
   sed -i "/$1/d" $HSHQ_PLAINTEXT_USER_CONFIG
 }
@@ -11432,7 +11432,11 @@ function updateConfigVarInFile()
   fi
   if [ -z "$1" ]; then
     echo "FATAL: updateConfigVarInFile - the variable name cannot be empty"
-    exit
+    exit 11
+  fi
+  if ! [ "$(echo $2 | head -n 1)" = "$2" ]; then
+    echo "FATAL: updateConfigVarInFile - the value cannot have move than one line"
+    exit 11
   fi
   set +e
   is_ds=false
