@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=130
+HSHQ_LIB_SCRIPT_VERSION=131
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -296,7 +296,7 @@ function main()
   set -e
   checkConfigAvailable
   is_hshq_installed=false
-  if ! [ -z $CONFIG_FILE ] && [ -f $CONFIG_FILE ]; then
+  if ! [ -z "$CONFIG_FILE" ] && [ -f $CONFIG_FILE ]; then
     isInstalled=$(getConfigVarFromFile IS_INSTALLED $CONFIG_FILE)
     if [ "$isInstalled" = "true" ]; then
       is_hshq_installed=true
@@ -305,7 +305,7 @@ function main()
     else
       is_hshq_installed=false
     fi
-  elif ! [ -z $ENC_CONFIG_FILE ] && [ -f $ENC_CONFIG_FILE ]; then
+  elif ! [ -z "$ENC_CONFIG_FILE" ] && [ -f $ENC_CONFIG_FILE ]; then
     # Encrypted file found, assume installed.
     is_hshq_installed=true
   fi
@@ -542,7 +542,7 @@ function showRestoreUnencryptedMenu()
     return
   fi
   confirmRestore=$(promptUserInputMenu "" "Confirm" "The main restore process is ready to start. This will take awhile to complete, as all of the docker images must be re-downloaded. You will be prompted shortly for your config decrypt password. Enter the word 'restore' below to continue:")
-  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "restore" ]; then
+  if [ $? -ne 0 ] || [ -z "$confirmRestore" ] || ! [ "$confirmRestore" = "restore" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -888,7 +888,7 @@ EOF
   fi
   dup_pw=$(promptPasswordMenu "Enter Passphrase" "Enter the passphrase that you used to encrypt your Duplicati backup data: ")
   confirmRestore=$(promptUserInputMenu "" "Confirm" "The decryption process is ready to start. It could take anywhere from 15 minutes to many hours to decrypt the data from the encrypted state, depending on how much data. After this step, you will be prompted for additional information. So check back in an hour or so to complete the full server restore process. Enter the word 'decrypt' below to continue:")
-  if [ $? -ne 0 ] || [ -z $confirmRestore ] || ! [ "$confirmRestore" = "decrypt" ]; then
+  if [ $? -ne 0 ] || [ -z "$confirmRestore" ] || ! [ "$confirmRestore" = "decrypt" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -1371,7 +1371,7 @@ function updateLogrotateConfig()
 EOFLR
   
   sudo systemctl restart logrotate
-  if ! [ -z $ulrc_curE ]; then
+  if ! [ -z "$ulrc_curE" ]; then
     set -e
   fi
 }
@@ -1462,7 +1462,7 @@ function performSuggestedSecUpdates()
   sudo chmod og-rwx /etc/cron.monthly/
   sudo chown root:root /etc/cron.d/
   sudo chmod og-rwx /etc/cron.d/
-  if ! [ -z $disa_curE ]; then
+  if ! [ -z "$disa_curE" ]; then
     set -e
   fi
 }
@@ -1718,7 +1718,7 @@ function addToDisabledServices()
     updatePlaintextRootConfigVar DISABLED_SERVICES $DISABLED_SERVICES
   fi
   set +e
-  if ! [ -z $atds_curE ]; then
+  if ! [ -z "$atds_curE" ]; then
     set -e
   fi
 }
@@ -1842,7 +1842,7 @@ function initConfig()
   done
 
   if [ "$(checkIsIPPrivate $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "false" ]; then
-    if [ -z $CONNECTING_IP ]; then
+    if [ -z "$CONNECTING_IP" ]; then
       showMessageBox "Error with Connecting IP" "Could not determine connecting IP, exiting..."
       exit 1
     else
@@ -2643,7 +2643,7 @@ EOF
   if [ $? -ne 0 ]; then
     return
   fi
-  if [ $? -ne 0 ] || [ -z $confirmFormat ] || ! [ "$confirmFormat" = "format" ]; then
+  if [ $? -ne 0 ] || [ -z "$confirmFormat" ] || ! [ "$confirmFormat" = "format" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -2690,7 +2690,7 @@ EOF
   tmp_pw1=""
   tmp_pw2=""
   confirmFinal=$(promptUserInputMenu "" "Confirm" "The backup configuration is ready. To perform all actions, including erasing and formatting the selected disk, enter the word 'confirm' below:")
-  if [ $? -ne 0 ] || [ -z $confirmFinal ] || ! [ "$confirmFinal" = "confirm" ]; then
+  if [ $? -ne 0 ] || [ -z "$confirmFinal" ] || ! [ "$confirmFinal" = "confirm" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -2738,7 +2738,7 @@ EOF
   newPartID=$(sudo blkid -s UUID -o value $newPart)
   sudo cp /etc/fstab /etc/fstab.old
   echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
-  if [ -z $newPartID ]; then
+  if [ -z "$newPartID" ]; then
     echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   else
     echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
@@ -2902,7 +2902,7 @@ EOF
   newPartID=$(sudo blkid -s UUID -o value $newPart)
   sudo cp /etc/fstab /etc/fstab.old
   echo "# Backup Drive" | sudo tee -a /etc/fstab > /dev/null 2>&1
-  if [ -z $newPartID ]; then
+  if [ -z "$newPartID" ]; then
     echo "$newPart $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   else
     echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
@@ -3038,7 +3038,7 @@ Select the services that you wish to install:
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  if [ -z $sel_svcs ]; then
+  if [ -z "$sel_svcs" ]; then
     showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
     return 0
   fi
@@ -3162,9 +3162,9 @@ function getStacksToUpdate()
     check_stack_name=$(getStackNameFromComposeLine "$check_stack_firstline")
     if [ $? -ne 0 ]; then continue; fi
     check_stack_version=$(getVersionFromComposeLine "$check_stack_firstline")
-    if [ $? -ne 0 ] || [ -z $check_stack_version ]; then continue; fi
+    if [ $? -ne 0 ] || [ -z "$check_stack_version" ]; then continue; fi
     hshq_stack_ver=$(getScriptStackVersionNumber $(getScriptStackVersion $check_stack_name))
-    if [ $? -ne 0 ] || [ -z $hshq_stack_ver ]; then continue; fi
+    if [ $? -ne 0 ] || [ -z "$hshq_stack_ver" ]; then continue; fi
     if [ $check_stack_version -lt $hshq_stack_ver ]; then
       stacks_to_update_list=${stacks_to_update_list}"${check_stack_name},"
     fi
@@ -3201,7 +3201,7 @@ Select the services that you wish to update:
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  if [ -z $sel_svcs ]; then
+  if [ -z "$sel_svcs" ]; then
     showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
     return 0
   fi
@@ -3307,7 +3307,7 @@ Select the services that you wish to remove:
 EOF
   )
   sel_svcs=($(whiptail --title "Select Services" --checklist "$selsvcsmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
-  if [ -z $sel_svcs ]; then
+  if [ -z "$sel_svcs" ]; then
     showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
     return 0
   fi
@@ -4063,7 +4063,7 @@ function setupHostedVPN()
     return 0
   fi
   resetRelayServerData
-  if [ -z $RELAYSERVER_WG_VPN_NETNAME ]; then
+  if [ -z "$RELAYSERVER_WG_VPN_NETNAME" ]; then
     RELAYSERVER_WG_VPN_NETNAME="vpn-"${HOMESERVER_ABBREV:0:6}
     curNum=1
     while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
@@ -4078,7 +4078,7 @@ function setupHostedVPN()
     updateConfigVar RELAYSERVER_WG_VPN_NETNAME "$RELAYSERVER_WG_VPN_NETNAME"
   fi
 
-  if [ -z $RELAYSERVER_WG_INTERNET_NETNAME ]; then
+  if [ -z "$RELAYSERVER_WG_INTERNET_NETNAME" ]; then
     RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:6}"
     curNum=1
     while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_INTERNET_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
@@ -8317,7 +8317,7 @@ function uploadVPNInstallScripts()
   fi
   set +e
   echo "Checking known_hosts..."
-  if ! [ -z $HOMESERVER_DOMAIN ] && ! [ -z $RELAYSERVER_SSH_PORT ] && ! [ -z $RELAYSERVER_SERVER_IP ]; then
+  if ! [ -z "$HOMESERVER_DOMAIN" ] && ! [ -z "$RELAYSERVER_SSH_PORT" ] && ! [ -z "$RELAYSERVER_SERVER_IP" ]; then
     echo "Removing old known_hosts entry: [$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT"
     ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT"
     echo "Removing old known_hosts entry: [$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT"
@@ -8569,7 +8569,7 @@ function connectPrimaryVPN()
 {
   is_prompt_user="$1"
   db_id=$(getPrimaryVPN_DBID)
-  if ! [ -z $db_id ]; then
+  if ! [ -z "$db_id" ]; then
     connectVPN $db_id "$is_prompt_user"
   fi
 }
@@ -8587,12 +8587,12 @@ function getPrimaryVPN_IP()
 function connectPrimaryInternet()
 {
   db_id=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_internet' and NetworkType='primary';")
-  if [ -z $db_id ]; then
+  if [ -z "$db_id" ]; then
     return
   fi
   ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
   dockerSubnet=$(getConfigVarFromFile \#DOCKER_NETWORK_SUBNET $HSHQ_WIREGUARD_DIR/internet/${ifaceName}.conf root)
-  if [ -z $dockerSubnet ]; then
+  if [ -z "$dockerSubnet" ]; then
     dockerNetworkName=$(getConfigVarFromFile \#DOCKER_NETWORK_NAME $HSHQ_WIREGUARD_DIR/internet/${ifaceName}.conf root)
     conn_mtu=$(getConfigVarFromFile \#MTU $HSHQ_WIREGUARD_DIR/internet/${ifaceName}.conf root)
     dockerSubnet=$(getNextAvailableWGDockerNetwork $dockerNetworkName $conn_mtu)
@@ -8607,7 +8607,7 @@ function connectVPN()
   # Configuration files of this type are expected to be located in /etc/wireguard
   db_id=$1
   is_prompt_user="$2"
-  if [ -z $db_id ]; then
+  if [ -z "$db_id" ]; then
     echo "ERROR: No database ID provided."
     return
   fi
@@ -9158,7 +9158,7 @@ Select the network connections that you wish to remove:
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork';"))
-  if [ -z $vpn_arr ]; then
+  if [ -z "$vpn_arr" ]; then
     showMessageBox "Empty" "There are no eligible connections for this selection, returning..."
     return
   fi
@@ -9169,7 +9169,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
-  if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
+  if [ $? -ne 0 ] || [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -9191,7 +9191,7 @@ Select the network connections that you wish to remove:
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_internet' and NetworkType='mynetwork';"))
-  if [ -z $vpn_arr ]; then
+  if [ -z "$vpn_arr" ]; then
     showMessageBox "Empty" "There are no eligible connections for this selection, returning..."
     return
   fi
@@ -9202,7 +9202,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
-  if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
+  if [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -9242,7 +9242,7 @@ Select the network connections that you wish to remove:
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='user' and NetworkType='mynetwork';"))
-  if [ -z $vpn_arr ]; then
+  if [ -z "$vpn_arr" ]; then
     showMessageBox "Empty" "There are no eligible connections for this selection, returning..."
     return
   fi
@@ -9254,7 +9254,7 @@ EOF
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   removal_reason=$(promptUserInputMenu "" "Removal Reason" "Enter a reason for removal: ")
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
-  if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
+  if [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -9290,7 +9290,7 @@ function showMyNetworkCreateClientDNSMenu()
   if [ -z "$clientdns_stack_name" ]; then
     showMessageBox "Stack Name Empty" "The name cannot be empty."
   fi
-  if [ -z $clientdns_stack_name ]; then
+  if [ -z "$clientdns_stack_name" ]; then
     return
   fi
   performMyNetworkCreateClientDNS "$clientdns_stack_name"
@@ -9309,13 +9309,13 @@ function performMyNetworkCreateClientDNS()
   fi
   # Check if name exists in DB
   cdns_stack_name=$(sqlite3 $HSHQ_DB "select Name from connections where Name='clientdns-$clientdns_stack_name';")
-  if ! [ -z $cdns_stack_name ]; then
+  if ! [ -z "$cdns_stack_name" ]; then
     echo "ERROR: A stack with this name already exists."
     return
   fi
   # Check if stack exists in Portainer
   checkID=$(getStackID clientdns-${clientdns_stack_name})
-  if ! [ -z $checkID ]; then
+  if ! [ -z "$checkID" ]; then
     echo "ERROR: A stack with this name already exists."
     return
   fi
@@ -9378,7 +9378,7 @@ Select the network connections that you wish to remove:
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType='mynetwork';"))
-  if [ -z $vpn_arr ]; then
+  if [ -z "$vpn_arr" ]; then
     showMessageBox "Empty" "There are no eligible connections for this selection, returning..."
     return
   fi
@@ -9389,7 +9389,7 @@ EOF
   done
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpnremovemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove all selected network connections. To confirm, enter the word 'remove' below:")
-  if [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
+  if [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -9432,7 +9432,7 @@ Select the network connections that you wish to disconnect:
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_vpn' and NetworkType='other';"))
-  if [ -z $vpn_arr ]; then
+  if [ -z "$vpn_arr" ]; then
     showMessageBox "Empty" "There are no eligible connections for this selection, returning..."
     return
   fi
@@ -9444,7 +9444,7 @@ EOF
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
   is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
-  if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
+  if [ $? -ne 0 ] || [ -z "$is_remove" ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -9466,7 +9466,7 @@ Select the network connections that you wish to disconnect:
 EOF
   )
   vpn_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='homeserver_internet' and NetworkType='other';"))
-  if [ -z $vpn_arr ]; then
+  if [ -z "$vpn_arr" ]; then
     showMessageBox "Empty" "There are no eligible connections for this selection, returning..."
     return
   fi
@@ -9478,7 +9478,7 @@ EOF
   sel_vpn=($(whiptail --title "Select Network Connections" --checklist "$vpndisconnectmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   disconnect_reason=$(promptUserInputMenu "" "Disconnect Reason" "Enter a reason for disconnecting: ")
   is_remove=$(promptUserInputMenu "" "Confirm Disconnect" "This will disconnect all selected network connections. To confirm, enter the word 'disconnect' below:")
-  if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "disconnect" ]; then
+  if [ $? -ne 0 ] || [ -z "$is_remove" ] || ! [ "$is_remove" = "disconnect" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -10621,7 +10621,7 @@ function performNetworkJoin()
       fi
       if [ "$is_primary" = "true" ]; then
         checkPrimary=$(sqlite3 $HSHQ_DB "select ID from connections where NetworkType='primary';")
-        if ! [ -z $checkPrimary ]; then
+        if ! [ -z "$checkPrimary" ]; then
           echo "ERROR: There is already a primary network."
           rm -f $join_base_config_file
           rm -f $join_rootca_file
@@ -10767,7 +10767,7 @@ function removeMyNetworkPrimaryVPN()
 {
   disconnect_reason="$1"
   db_id=$(getPrimaryVPN_DBID)
-  if ! [ -z $db_id ]; then
+  if ! [ -z "$db_id" ]; then
     client_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
     ifaceName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
     ca_abbrev=$(sqlite3 $HSHQ_DB "select CA_Abbrev from hsvpn_connections where ID=$db_id;")
@@ -10836,14 +10836,14 @@ function removeMyNetworkPrimaryVPN()
       curDomain=$(sqlite3 $HSHQ_DB "select DomainName from hsvpn_connections where ID=$curID;")
       curDomainExtPrefix=$(sqlite3 $HSHQ_DB "select ExternalPrefix from hsvpn_connections where ID=$curID;")
       curMailHostID=$(sqlite3 $HSHQ_DB "select MailHostID from hsvpn_connections where ID=$curID;")
-      if ! [ -z $curMailHostID ]; then
+      if ! [ -z "$curMailHostID" ]; then
         sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhostmap where MailHostID=$curMailHostID;"
         sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhosts where ID=$curMailHostID;"
       fi
       removeRevertDNS $curDomain $curDomainExtPrefix
     done
     curMailHostID=$(sqlite3 $HSHQ_DB "select MailHostID from hsvpn_connections join connections on connections.ID = hsvpn_connections.ID where ConnectionType = 'homeserver_vpn' and NetworkType='primary';")
-    if ! [ -z $curMailHostID ]; then
+    if ! [ -z "$curMailHostID" ]; then
       sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhostmap where MailHostID=$curMailHostID;"
       sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhosts where ID=$curMailHostID;"
     fi
@@ -10896,7 +10896,7 @@ function removeMyNetworkHomeServerVPNConnection()
   is_primary=$(sqlite3 $HSHQ_DB "select IsPrimary from hsvpn_connections where ID=$db_id;")
   mail_host_id=$(sqlite3 $HSHQ_DB "select MailHostID from hsvpn_connections where ID=$db_id;")
   domain_ext_prefix=$(sqlite3 $HSHQ_DB "select ExternalPrefix from hsvpn_connections where ID=$db_id;")
-  if [ -z $pub_key ]; then
+  if [ -z "$pub_key" ]; then
     echo "ERROR: No matching DB entry, returning..."
     return
   fi
@@ -10986,7 +10986,7 @@ function removeMyNetworkNonHomeServerConnection()
     is_internet="true"
   fi
   is_in_vpn=false
-  if ! [ -z $is_vpn ] && [ "$is_vpn" = "true" ]; then
+  if ! [ -z "$is_vpn" ] && [ "$is_vpn" = "true" ]; then
     is_in_vpn=true
   fi
 
@@ -11385,9 +11385,9 @@ function getPlaintextRootConfigVar()
 function getConfigVarFromFile()
 {
   if [ "$3" = "root" ]; then
-    echo $(sudo grep ^$1= $2 | sed 's/^[^=]*=//' | sed 's/ *$//g')
+    echo $(sudo grep ^$1= $2 | sed 's/^[^=]*=//' | sed 's/ *$//g' | sed 's/"//g')
   else
-    echo $(grep ^$1= $2 | sed 's/^[^=]*=//' | sed 's/ *$//g')
+    echo $(grep ^$1= $2 | sed 's/^[^=]*=//' | sed 's/ *$//g' | sed 's/"//g')
   fi
 }
 
@@ -11468,7 +11468,7 @@ function updateConfigVarInFile()
       sed -i "s|^${1}=.*|${1}=\"${2}\"|g" "$3"
     fi
   fi
-  if ! [ -z $ucv_curE ]; then
+  if ! [ -z "$ucv_curE" ]; then
     set -e
   fi
 }
@@ -11536,7 +11536,7 @@ function removeAgentFromWazuhManager()
       docker exec wazuh.manager bash -c "/var/ossec/bin/manage_agents -r $rsID" > /dev/null 2>&1
     fi
   fi
-  if ! [ -z $rrswa_curE ]; then
+  if ! [ -z "$rrswa_curE" ]; then
     set -e
   fi
 }
@@ -11608,7 +11608,7 @@ function checkDeleteStackAndDirectory()
   fi
   performPostStackRemoval $stack_name
   set +e
-  if ! [ -z $cdsad_curE ]; then
+  if ! [ -z "$cdsad_curE" ]; then
     set -e
   fi
 }
@@ -11625,12 +11625,12 @@ function getPrivateIPRangesCaddy()
 {
   if ! [ "$(checkIsIPPrivate $1)" = "true" ]; then
     str_res=""
-    if ! [ -z $CONNECTING_IP ]; then
+    if ! [ -z "$CONNECTING_IP" ]; then
       str_res="${CONNECTING_IP}/32"
     fi
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
       rsip=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
-      if ! [ -z $rsip ] && ! [ "$rsip" = "$CONNECTING_IP" ]; then
+      if ! [ -z "$rsip" ] && ! [ "$rsip" = "$CONNECTING_IP" ]; then
         str_res=${str_res}" ${rsip}/32"
       fi
     fi
@@ -11642,7 +11642,7 @@ function getNonPrivateConnectingIP()
 {
   if ! [ "$(checkIsIPPrivate $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "true" ]; then
     str_res=""
-    if ! [ -z $CONNECTING_IP ]; then
+    if ! [ -z "$CONNECTING_IP" ]; then
       str_res="${CONNECTING_IP}/32"
     fi
     rsip=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
@@ -11722,11 +11722,11 @@ function getSubnetOfInterface()
     sleep 3
     ((num_tries++))
   done
-  if ! [ -z $gsoa_curE ]; then
-    set -e
-  fi
   if [[ $net_ip =~ ^169\.254\. ]]; then
     this_subnet="$DEFAULT_UNFOUND_IP_SUBNET"
+  fi
+  if ! [ -z "$gsoa_curE" ]; then
+    set -e
   fi
   echo "$this_subnet"
 }
@@ -11746,7 +11746,7 @@ function getAllowedPublicIPs()
 {
   set +e
   ips="0.0.0.0/5,8.0.0.0/7,11.0.0.0/8,12.0.0.0/6,16.0.0.0/4,32.0.0.0/3,64.0.0.0/2,128.0.0.0/3,160.0.0.0/5,168.0.0.0/6,172.0.0.0/12,172.32.0.0/11,172.64.0.0/10,172.128.0.0/9,173.0.0.0/8,174.0.0.0/7,176.0.0.0/4,192.0.0.0/9,192.128.0.0/11,192.160.0.0/13,192.169.0.0/16,192.170.0.0/15,192.172.0.0/14,192.176.0.0/12,192.192.0.0/10,193.0.0.0/8,194.0.0.0/7,196.0.0.0/6,200.0.0.0/5,208.0.0.0/4"
-  if ! [ -z $1 ]; then
+  if ! [ -z "$1" ]; then
     ips+=","$1
   fi
   set -e
@@ -12339,7 +12339,7 @@ function isIPInSubnet()
     echo "false"
   fi
   set +e
-  if ! [ -z $iiis_curE ]; then
+  if ! [ -z "$iiis_curE" ]; then
     set -e
   fi
 }
@@ -12395,7 +12395,7 @@ function checkNetworkIntersect()
 {
   net1=$1
   net2=$2
-  if [ -z $net1 ] || [ -z $net2 ]; then
+  if [ -z "$net1" ] || [ -z "$net2" ]; then
     echo "true"
     return
   fi
@@ -12473,7 +12473,7 @@ function getNextWGRoutingTableID()
 {
   rtid=100
   flist=$(sudo ls $HSHQ_WIREGUARD_DIR/internet)
-  if [ -z $flist ]; then
+  if [ -z "$flist" ]; then
     echo $rtid
     exit 0
   fi
@@ -12747,7 +12747,7 @@ function restartAllStacks()
     sleep 3
   done
   startStopStack uptimekuma start "$portainerToken"
-  if ! [ -z $ras_curE ]; then
+  if ! [ -z "$ras_curE" ]; then
     set -e
   fi
 }
@@ -13075,7 +13075,7 @@ function checkFileShellExpansion()
   else
     echo ""
   fi
-  if ! [ -z $cfse_curE ]; then
+  if ! [ -z "$cfse_curE" ]; then
     set -e
   fi
   echo "$retVal"
@@ -13096,10 +13096,10 @@ function installStack()
   sleep_interval=$5
   max_interval=$6
 
-  if [ -z $sleep_interval ]; then
+  if [ -z "$sleep_interval" ]; then
     sleep_interval=1
   fi
-  if [ -z $max_interval ]; then
+  if [ -z "$max_interval" ]; then
     max_interval=300
   fi
   logHSHQEvent info "installStack - Installing Stack ($stack_name)"
@@ -13313,10 +13313,10 @@ function waitForStack()
   sleep_interval=$4
   wfs_curE=${-//[^e]/}
   set +e
-  if [ -z $max_interval ]; then
+  if [ -z "$max_interval" ]; then
     max_interval=300
   fi
-  if [ -z $sleep_interval ]; then
+  if [ -z "$sleep_interval" ]; then
     sleep_interval=5
   fi
   isStackReady="false"
@@ -13334,7 +13334,7 @@ function waitForStack()
   done
   sleep 5
   set +e
-  if ! [ -z $wfs_curE ]; then
+  if ! [ -z "$wfs_curE" ]; then
     set -e
   fi
 }
@@ -13438,7 +13438,7 @@ function replaceSingleLineInFile()
     all_text=$(cat $r_filename)
     echo -e "${all_text%%$block_match_begin*}${replace_text}${all_text##*$block_match_begin}" > $r_filename
   fi
-  if ! [ -z $rslif_curE ]; then
+  if ! [ -z "$rslif_curE" ]; then
     set -e
   fi
 }
@@ -13455,7 +13455,7 @@ function replaceTextBlockInFile()
   match=$(grep "$block_match_begin" $r_filename)
   if ! [ -z "$match" ]; then
     all_text=$(cat $r_filename)
-    if ! [ -z $space_delim ]; then
+    if ! [ -z "$space_delim" ]; then
       replace_text=$(echo $replace_text | sed "s|$space_delim| |g")
     fi
     if [ "$is_keep_block_headers" = "true" ]; then
@@ -13478,7 +13478,7 @@ function replaceOrAppendTextBlockInFile()
   match=$(grep "$block_match_begin" $r_filename)
   if [ -z "$match" ]; then
     #Append
-    if ! [ -z $space_delim ]; then
+    if ! [ -z "$space_delim" ]; then
       replace_text=$(echo $replace_text | sed "s|$space_delim| |g")
     fi
     echo -e "\n${block_match_begin}\n${replace_text}\n${block_match_end}" >> $r_filename
@@ -13503,7 +13503,7 @@ function removeTextBlockInFile()
     mv $HOME/tmpremfile $r_filename
   fi
   set +e
-  if ! [ -z $rtbif_curE ]; then
+  if ! [ -z "$rtbif_curE" ]; then
     set -e
   fi
 }
@@ -13782,7 +13782,7 @@ function addHomeNetIP()
   set +e
   echo $HOMENET_ADDITIONAL_IPS | grep $add_ip >/dev/null
   if [ $? -ne 0 ]; then
-    if [ -z $HOMENET_ADDITIONAL_IPS ]; then
+    if [ -z "$HOMENET_ADDITIONAL_IPS" ]; then
       HOMENET_ADDITIONAL_IPS=$add_ip
     else
       HOMENET_ADDITIONAL_IPS=$HOMENET_ADDITIONAL_IPS","$add_ip
@@ -13824,7 +13824,7 @@ function isServiceDisabled()
   else
     isd_RetVal="$(isItemInCSVList $check_svc_disabled $DISABLED_SERVICES)"
   fi
-  if ! [ -z $isd_curE ]; then
+  if ! [ -z "$isd_curE" ]; then
     set -e
   fi
   echo "$isd_RetVal"
@@ -14023,18 +14023,28 @@ function loadSvcVars()
 
 function loadConfigVars()
 {
+  lcv_curE=${-//[^e]/}
   is_chk_update="$1"
   initServiceVars
+  set +e
   if sudo test -f $HSHQ_PLAINTEXT_ROOT_CONFIG; then
+    set -e
     source <(sudo cat $HSHQ_PLAINTEXT_ROOT_CONFIG)
   fi
+  set +e
   if test -f $HSHQ_PLAINTEXT_USER_CONFIG; then
+    set -e
     source $HSHQ_PLAINTEXT_USER_CONFIG
   fi
+  set -e
   source $CONFIG_FILE
   loadSvcVars
   if ! [ "$is_chk_update" = "false" ]; then
     checkUpdateVersion
+  fi
+  set +e
+  if ! [ -z "$lcv_curE" ]; then
+    set -e
   fi
 }
 
@@ -14505,14 +14515,14 @@ EOF
     menu_items=${menu_items}"$(echo "("$(echo $curdh | sed 's/|/)/1')) | OFF "
   done
   sel_host=$(whiptail --title "Select Delivery Host" --radiolist "$deliveryhostmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3)
-  if [ $? -ne 0 ] || [ -z $sel_host ]; then
+  if [ $? -ne 0 ] || [ -z "$sel_host" ]; then
     showMessageBox "Selection Empty" "Delivery host selection is empty, returning..."
     return 1
   fi
 
   mail_host_id=$(echo $sel_host | cut -d ")" -f1 | sed 's/(//' | sed 's/"//g')
   deliver_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections join hsvpn_connections on connections.ID = hsvpn_connections.ID where MailHostID=$mail_host_id;")
-  if [ -z $deliver_ip ]; then
+  if [ -z "$deliver_ip" ]; then
     showMessageBox "IP Not Found" "There is no domain in your network based on this delivery host, returning..."
     return 1
   fi
@@ -14554,7 +14564,7 @@ Select the domains that you wish to remove:
 EOF
   )
   domains_to_rem_qry=($(sqlite3 $HSHQ_DB "select Domain,MailHost from mailhostmap join mailhosts on mailhostmap.MailHostID = mailhosts.ID where IsFirstDomain=false;"))
-  if [ -z $domains_to_rem_qry ]; then
+  if [ -z "$domains_to_rem_qry" ]; then
     showMessageBox "Empty" "There are no eligible connections for this selection, returning..."
     return
   fi
@@ -14565,7 +14575,7 @@ EOF
   done
   sel_doms=($(whiptail --title "Select Domains" --checklist "$rem_menu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3))
   is_remove=$(promptUserInputMenu "" "Confirm Removal" "This will remove these domains from the RelayServer. To confirm, enter the word 'remove' below:")
-  if [ $? -ne 0 ] || [ -z $is_remove ] || ! [ "$is_remove" = "remove" ]; then
+  if [ $? -ne 0 ] || [ -z "$is_remove" ] || ! [ "$is_remove" = "remove" ]; then
     showMessageBox "Incorrect Confirmation" "The text did not match, returning..."
     return
   fi
@@ -14614,7 +14624,7 @@ function addSecondaryDomainToRelayServer()
     return 5
   fi
   deliver_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections join hsvpn_connections on connections.ID = hsvpn_connections.ID where MailHostID=$mail_host_id;")
-  if [ -z $deliver_ip ]; then
+  if [ -z "$deliver_ip" ]; then
     echo "ERROR: There is no domain in your network based on this delivery host."
     return 5
   fi
@@ -14700,7 +14710,7 @@ EOF
     menu_items=${menu_items}"$curdom | OFF "
   done
   sel_domain=$(whiptail --title "Select Base Domain" --radiolist "$seldomainmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT $menu_items 3>&1 1>&2 2>&3)
-  if [ $? -ne 0 ] || [ -z $sel_domain ]; then
+  if [ $? -ne 0 ] || [ -z "$sel_domain" ]; then
     showMessageBox "Selection Empty" "Base domain selection is empty, returning..."
     return 1
   fi
@@ -14728,7 +14738,7 @@ function addLECertPathsToRelayServer()
       return 2
     fi
     checkSub=$(sqlite3 $HSHQ_DB "select Domain from lecertdomains where Domain='$add_sub';")
-    if ! [ -z $checkSub ]; then
+    if ! [ -z "$checkSub" ]; then
       echo "$checkSub LE path has already been added to RelayServer."
     else
       newList=$newList"${add_sub},"
@@ -14806,7 +14816,7 @@ function addExposeDomainPathsToRelayServer()
       return 3
     fi
     checkSub=$(sqlite3 $HSHQ_DB "select Domain from exposedomains where Domain='$add_sub';")
-    if ! [ -z $checkSub ]; then
+    if ! [ -z "$checkSub" ]; then
       echo "$checkSub is already exposed on the RelayServer."
     else
       newList=$newList"${add_sub},"
@@ -15035,7 +15045,7 @@ function getMyNetworkHomeServersDNSUpdateEmailBody()
   email_body=""
   email_body=${email_body}"HomeServer DNS Update from $HOMESERVER_NAME\n"
   email_body=${email_body}"=======================================================================\n\n"
-  if ! [ -z $addOrRemove ]; then
+  if ! [ -z "$addOrRemove" ]; then
     case "$addOrRemove" in
       add)
         email_body=${email_body}"ADDED the following HomeServer: \n\n"
@@ -15081,7 +15091,7 @@ function getMyNetworkHomeServerDNSListClientDNSBody()
   email_body=${email_body}"These entries are formatted for DNSMasq and can be dropped directly\n"
   email_body=${email_body}"into your ClientDNS server.\n\n"
 
-  if ! [ -z $addOrRemove ]; then
+  if ! [ -z "$addOrRemove" ]; then
     case "$addOrRemove" in
       add)
         email_body=${email_body}"ADDED the following HomeServer: \n\n"
@@ -15258,11 +15268,11 @@ function removeRevertDNS()
   curExtPrefix=$2
   # First, try to downgrade to direct connection, i.e. we are hosting on their network.
   new_dns=$(sqlite3 $HSHQ_DB "select ID,PeerDomainExtPrefix,IPAddress from hsvpn_dns where PeerDomain='$curDomain' and HostDomain='$curDomain';")
-  if [ -z $new_dns ]; then
+  if [ -z "$new_dns" ]; then
     # No direct connection, try to find any other possible connections.
     new_dns=$(sqlite3 $HSHQ_DB "select ID,PeerDomainExtPrefix,IPAddress from hsvpn_dns where PeerDomain='$curDomain' order by DateAdded asc limit 1;")
   fi
-  if [ -z $new_dns ]; then
+  if [ -z "$new_dns" ]; then
     # No entries, delete current DNS entry
     deleteDomainAndWildcardAdguardHS "$curDomain"
     deleteDomainAdguardHS "*.$curExtPrefix.$curDomain"
@@ -15344,7 +15354,7 @@ function updateHomeServerDNS()
       if [ "$curHostDomain" = "$HOMESERVER_DOMAIN" ]; then
         continue
       fi
-      if ! [ -z $is_dns_added ]; then
+      if ! [ -z "$is_dns_added" ]; then
         # Check if IP has changed and update accordingly.
         db_ip=$(sqlite3 $HSHQ_DB "select IPAddress from hsvpn_dns where HostDomain='$curHostDomain' and PeerDomain='$curPeerDomain';")
         if ! [ "$db_ip" = "$curIP" ]; then
@@ -15361,7 +15371,7 @@ function updateHomeServerDNS()
       is_host_my_network=$(sqlite3 $HSHQ_DB "select PeerDomain from hsvpn_dns where HostDomain='$HOMESERVER_DOMAIN' and PeerDomain='$curPeerDomain';")
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ] && [ "$primaryDomain" = "$curHostDomain" ]; then
         is_active=1
-        if ! [ -z $is_dns_exist ]; then
+        if ! [ -z "$is_dns_exist" ]; then
           # DNS entry exists, but need to upgrade it since it is on our primary network.
           sudo sqlite3 $HSHQ_DB "update hsvpn_dns set IsActive=0 where PeerDomain='$curPeerDomain';"
         fi
@@ -15369,12 +15379,12 @@ function updateHomeServerDNS()
         addDomainAdguardHS "*.$curExtPrefix.$curPeerDomain" "A"
         insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://$SUB_HSHQHOME.$curPeerDomain" "hs2.png" true
       else
-        if [ -z $is_dns_exist ]; then
+        if [ -z "$is_dns_exist" ]; then
           # No entry exists, add a new one
           is_active=1
           addDomainAndWildcardAdguardHS "$curPeerDomain" "$curIP"
           addDomainAdguardHS "*.$curExtPrefix.$curPeerDomain" "A"
-        elif [ -z $is_host_my_network ] && [ "$curHostDomain" = "$curPeerDomain" ]; then
+        elif [ -z "$is_host_my_network" ] && [ "$curHostDomain" = "$curPeerDomain" ]; then
           # DNS entry exists, but need to upgrade it since it is a direct connection.
           is_active=1
           addDomainAndWildcardAdguardHS "$curPeerDomain" "$curIP"
@@ -15570,7 +15580,7 @@ function addDomainAndWildcardIgnoreQuerylogAndStatsHS()
     curl -s -X PUT -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$new_conf" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config/update
   fi
 
-  if ! [ -z $adawiqs_curE ]; then
+  if ! [ -z "$adawiqs_curE" ]; then
     set -e
   fi
 }
@@ -15598,7 +15608,7 @@ function removeDomainAndWildcardIgnoreQuerylogAndStatsHS()
     curl -s -X PUT -H "Authorization: Basic $basic_auth" -H 'Content-Type: application/json' -d "$new_conf" -k https://127.0.0.1:$ADGUARD_LOCALHOST_PORT/control/stats/config/update
   fi
 
-  if ! [ -z $rdawiqs_curE ]; then
+  if ! [ -z "$rdawiqs_curE" ]; then
     set -e
   fi
 }
@@ -16228,7 +16238,7 @@ user_pref("dom.enable_user_timing",				false);
 // PREF: Disable Web Audio API
 // https://bugzilla.mozilla.org/show_bug.cgi?id=1288359
 // NOTICE: Web Audio API is required for Unity web player/games
-user_pref("dom.webaudio.enabled",				false);
+user_pref("dom.webaudio.enabled",				true);
 
 // PREF: Disable Location-Aware Browsing (geolocation)
 // https://www.mozilla.org/en-US/firefox/geolocation/
@@ -17517,7 +17527,7 @@ function createInitialEnv()
   tmp_pw2=""
   while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
   do
-    tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of it (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc.: ")
+    tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password to encrypt/decrypt the configuration file. ENSURE you remember this or you will be IRREVERSIBLY locked out of it (unless you have a quantum super-computer) and you will not be able to apply updates, add new services, do networking functions, etc. Also note that this password will be stored in plain text inside of the same config file, in order to (re)encrypt the file in the future: ")
     if [ $? -ne 0 ]; then exit; fi
     if [ -z "$tmp_pw1" ]; then
       showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -18010,7 +18020,7 @@ function version14Update()
   done
   IFS=$OLDIFS
   set +e
-  if ! [ -z $v14_curE ]; then
+  if ! [ -z "$v14_curE" ]; then
     set -e
   fi
   addToDisabledServices netdata
@@ -18097,7 +18107,7 @@ function version22Update()
     exit 1
   fi
 
-  if ! [ -z $cdnsStackID ]; then
+  if ! [ -z "$cdnsStackID" ]; then
     docker network create --driver=bridge tmpnet > /dev/null 2>&1
     clientdns_subnet=$(getDockerSubnet tmpnet)
     clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
@@ -18374,7 +18384,7 @@ EOFMC
   http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
 
-  if ! [ -z $cdnsStackID ]; then
+  if ! [ -z "$cdnsStackID" ]; then
     # Replace ClientDNS stack
     cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}-compose.yml
 
@@ -19314,7 +19324,7 @@ function version55Update()
   if [ $? -ne 0 ]; then
     sed -i "s|^HOMESERVER_HOST_RANGE=.*|HOMESERVER_HOST_RANGE=$HOMESERVER_HOST_RANGE\nHOMENET_ADDITIONAL_IPS=|g" $CONFIG_FILE
   fi
-  if [ "$HOMESERVER_HOST_ISPRIVATE_IP" = "false" ] && ! [ -z $CONNECTING_IP ]; then
+  if [ "$HOMESERVER_HOST_ISPRIVATE_IP" = "false" ] && ! [ -z "$CONNECTING_IP" ]; then
     addHomeNetIP ${CONNECTING_IP}/32 false
   fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -19322,7 +19332,7 @@ function version55Update()
   fi
   if [ "$HOMESERVER_HOST_ISPRIVATE_IP" = "false" ]; then
     # Add special rules when HomeServer is on non-private network, i.e. cloud-server, etc.
-    if ! [ -z $HOMENET_ADDITIONAL_IPS ]; then
+    if ! [ -z "$HOMENET_ADDITIONAL_IPS" ]; then
       default_iface=$(getDefaultIface)
       sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMENET_ADDITIONAL_IPS --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
     fi
@@ -20916,7 +20926,7 @@ function setVersionOnStacks()
   do
     echo "Versioning ${curStack} stack..."
     stackID=$(getStackID $curStack "$portainerToken")
-    if ! [ "$curStack" = "portainer" ] && [ -z $stackID ]; then
+    if ! [ "$curStack" = "portainer" ] && [ -z "$stackID" ]; then
       continue
     fi
     curCompose=$HSHQ_STACKS_DIR/portainer/compose/$stackID/docker-compose.yml
@@ -21474,7 +21484,7 @@ function checkAddServiceToConfig()
     sed -i "s|# Service Details END|$replace_block|g" $CONFIG_FILE
   fi
   set +e
-  if ! [ -z $casc_curE ]; then
+  if ! [ -z "$casc_curE" ]; then
     set -e
   fi
 }
@@ -21496,7 +21506,7 @@ function checkAddVarsToServiceConfig()
     fi
   done
   set +e
-  if ! [ -z $cavc_curE ]; then
+  if ! [ -z "$cavc_curE" ]; then
     set -e
   fi
 }
@@ -21511,7 +21521,7 @@ function removeServiceFromConfig()
     removeTextBlockInFile "# $service_name (Service Details) BEGIN" "# $service_name (Service Details) END" $CONFIG_FILE
   fi
   set +e
-  if ! [ -z $rsfc_curE ]; then
+  if ! [ -z "$rsfc_curE" ]; then
     set -e
   fi
 }
@@ -21527,9 +21537,9 @@ function outputScripts()
 function nukeHSHQ()
 {
   set +e
-  if [ -z $HSHQ_BASE_DIR ]; then HSHQ_BASE_DIR=$HOME/hshq; fi
-  if [ -z $HSHQ_WIREGUARD_DIR ]; then HSHQ_WIREGUARD_DIR=$HOME/hshq/data/wireguard; fi
-  if [ -z $HSHQ_SCRIPTS_DIR ]; then HSHQ_SCRIPTS_DIR=$HOME/hshq/data/scripts; fi
+  if [ -z "$HSHQ_BASE_DIR" ]; then HSHQ_BASE_DIR=$HOME/hshq; fi
+  if [ -z "$HSHQ_WIREGUARD_DIR" ]; then HSHQ_WIREGUARD_DIR=$HOME/hshq/data/wireguard; fi
+  if [ -z "$HSHQ_SCRIPTS_DIR" ]; then HSHQ_SCRIPTS_DIR=$HOME/hshq/data/scripts; fi
   clear
   echo
   echo
@@ -24121,7 +24131,7 @@ function isProgramInstalled()
 {
   bin_name=$(echo $1 | cut -d"|" -f1)
   lib_name=$(echo $1 | cut -d"|" -f2)
-  if [[ -z $(sudo which ${bin_name}) ]]; then
+  if [[ -z "$(sudo which ${bin_name})" ]]; then
     echo "false"
   else
     echo "true"
@@ -24199,13 +24209,13 @@ function removeDocker()
 function outputDockerSettings()
 {
   sudo mkdir -p /etc/docker
-  if [ -z $DOCKER_NETWORK_RESERVED_RANGE ]; then
+  if [ -z "$DOCKER_NETWORK_RESERVED_RANGE" ]; then
     DOCKER_NETWORK_RESERVED_RANGE=172.16.0.0/15
   fi
-  if [ -z $DOCKER_NETWORK_SIZE ]; then
+  if [ -z "$DOCKER_NETWORK_SIZE" ]; then
     DOCKER_NETWORK_SIZE=24
   fi
-  if [ -z $DOCKER_METRICS_PORT ]; then
+  if [ -z "$DOCKER_METRICS_PORT" ]; then
     DOCKER_METRICS_PORT=8323
   fi
 
@@ -24701,7 +24711,7 @@ function prepPerformUpdate()
   perform_update_report=""
   portainerToken="$1"
   perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
-  if [ -z $perform_stack_id ]; then
+  if [ -z "$perform_stack_id" ]; then
     is_upgrade_error=true
     perform_update_report="ERROR($perform_stack_name): There was a problem with the Portainer API. If this error persists, try restarting Portainer."
     return 1
@@ -28826,7 +28836,7 @@ function startPortainer()
     sleep 1
     i=$((i+1))
   done
-  if ! [ -z $stpo_curE ]; then
+  if ! [ -z "$stpo_curE" ]; then
     set -e
   fi
   sleep 3
@@ -29237,7 +29247,7 @@ EOFR
       sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
     done
   fi
-  if ! [ -z $pai_curE ]; then
+  if ! [ -z "$pai_curE" ]; then
     set -e
   fi
 }
@@ -32693,7 +32703,7 @@ function installMailu()
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
   fi
-  if [ -z $SMTP_RELAY_HOST ] || [ -z $SMTP_RELAY_USERNAME ]; then
+  if [ -z "$SMTP_RELAY_HOST" ] || [ -z "$SMTP_RELAY_USERNAME" ]; then
     # Set these to something
     SMTP_RELAY_HOST="[$SUB_POSTFIX.internal.$HOMESERVER_DOMAIN]:587"
     SMTP_RELAY_USERNAME=$HOMESERVER_DOMAIN
@@ -32890,7 +32900,7 @@ user:
     displayed_name: '$(echo "$LDAP_PRIMARY_USER_FULLNAME" | rev | cut -d" " -f2- | rev)'
 
 EOFMC
-  if ! [ -z $RELAYSERVER_WGPORTAL_ADMIN_EMAIL ]; then
+  if ! [ -z "$RELAYSERVER_WGPORTAL_ADMIN_EMAIL" ]; then
     echo -e "alias:" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
     echo -e "  - email: $RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
     echo -e "    destination:" >> $HSHQ_STACKS_DIR/mailu/initconfig/mail-config.yaml
@@ -34522,7 +34532,7 @@ EOFWZ
 function updateWazuhAgents()
 {
   agent_ver="$1"
-  if [ -z $agent_ver ]; then
+  if [ -z "$agent_ver" ]; then
     agent_ver=$WAZUH_AGENT_VERSION
   fi
   sudo apt-mark unhold wazuh-agent
@@ -34602,7 +34612,7 @@ EOFRU
   echo "Restarting Wazuh manager, please wait..."
   docker exec -it wazuh.manager service wazuh-manager restart > /dev/null 2>&1
   set +e
-  if ! [ -z $vnwu_curE ]; then
+  if ! [ -z "$vnwu_curE" ]; then
     set -e
   fi
 }
@@ -58690,7 +58700,7 @@ function checkInsertServiceHeimdall()
   user_id=$(getHeimdallUserIDFromType $user_type)
   docker container stop heimdall > /dev/null 2>&1
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
-  if [ -z $insert_id ]; then
+  if [ -z "$insert_id" ]; then
     insertIntoHeimdallDB "$svc_proper_name" "$user_type" "$svc_url" "$svc_is_active" "$svc_img"
   else
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set pinned=$svc_is_active where user_id='$user_id' and url='$svc_url';"
@@ -58765,7 +58775,7 @@ function insertIntoHeimdallDB()
 
   # Ensure we always add the next item at the end
   lastOrder=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select max(\"order\") from items;")
-  if [ -z $lastOrder ]; then
+  if [ -z "$lastOrder" ]; then
     thisOrder=1
   else
     thisOrder=$(($lastOrder + 1))
@@ -60012,7 +60022,7 @@ function checkInsertServiceUptimeKuma()
   docker container stop uptimekuma > /dev/null 2>&1
   set -e
   svc_id=$(sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Select id from monitor where url='$svc_url';")
-  if [ -z $svc_id ]; then
+  if [ -z "$svc_id" ]; then
     insertServiceUptimeKuma "$svc_proper_name" "$user_type" "$svc_url" "$svc_is_active"
   else
     sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set active=$svc_is_active where url='$svc_url';"
