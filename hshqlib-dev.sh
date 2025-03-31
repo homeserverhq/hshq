@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=129
+HSHQ_LIB_SCRIPT_VERSION=130
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -373,9 +373,14 @@ EOF
       checkLoadConfig
       initConfig
       initCertificateAuthority
-      setupVPNConnection
-      if [ $? -ne 0 ]; then
-        exit
+      if [ "$IS_DESKTOP_ENV" = "true" ]; then
+        PRIMARY_VPN_SETUP_TYPE=none
+        updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
+      else
+        setupVPNConnection
+        if [ $? -ne 0 ]; then
+          exit
+        fi
       fi
       if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
         showMessageBox "Error" "Already installed or existing installation is in progress."
@@ -1027,7 +1032,7 @@ EOF
   "5" "Reset Caddy Data" \
   "6" "Restart All Stacks" \
   "7" "Email Vaultwarden Credentials" \
-  "5" "Email Root CA" \
+  "8" "Email Root CA" \
   "9" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
@@ -11398,6 +11403,10 @@ function updatePlaintextRootConfigVar()
 
 function removePlaintextRootConfigVar()
 {
+  if [ -z "$1" ]; then
+    echo "FATAL: removePlaintextRootConfigVar - the variable name cannot be empty"
+    exit
+  fi
   sudo sed -i "/$1/d" $HSHQ_PLAINTEXT_ROOT_CONFIG
 }
 
@@ -11408,6 +11417,10 @@ function updatePlaintextUserConfigVar()
 
 function removePlaintextUserConfigVar()
 {
+  if [ -z "$1" ]; then
+    echo "FATAL: removePlaintextUserConfigVar - the variable name cannot be empty"
+    exit
+  fi
   sed -i "/$1/d" $HSHQ_PLAINTEXT_USER_CONFIG
 }
 
@@ -11417,16 +11430,22 @@ function updateConfigVarInFile()
   if [ -z "$3" ]; then
     return
   fi
-  set +e
-  num_spaces=$(echo $2 | sed -e 's/\(.\)/\1\n/g' | grep " " | wc -l)
-  is_ds=false
-  if grep -q "[$]" <<< $2; then
-    is_ds=true
+  if [ -z "$1" ]; then
+    echo "FATAL: updateConfigVarInFile - the variable name cannot be empty"
+    exit
   fi
+  set +e
+  is_ds=false
   if [ "$4" = "root" ]; then
-    sudo grep -q "${1}=" $3
+    if sudo grep -q "[$]" <<< "$2"; then
+      is_ds=true
+    fi
+    sudo grep -q "${1}=" "$3"
   else
-    grep -q "${1}=" $3
+    if grep -q "[$]" <<< "$2"; then
+      is_ds=true
+    fi
+    grep -q "${1}=" "$3"
   fi
   if [ $? -ne 0 ]; then
     echo "Variable not found (${1}), exiting..."
@@ -11434,24 +11453,17 @@ function updateConfigVarInFile()
   fi
   if [ "$is_ds" = "true" ]; then
     if [ "$4" = "root" ]; then
-      sudo sed -i "s|^${1}=.*|${1}=\'${2}\'|g" $3
+      sudo sed -i "s|^${1}=.*|${1}=\'${2}\'|g" "$3"
     else
-      sed -i "s|^${1}=.*|${1}=\'${2}\'|g" $3
-    fi
-  elif [ $num_spaces -ne 0 ]; then
-    if [ "$4" = "root" ]; then
-      sudo sed -i "s|^${1}=.*|${1}=\"${2}\"|g" $3
-    else
-      sed -i "s|^${1}=.*|${1}=\"${2}\"|g" $3
+      sed -i "s|^${1}=.*|${1}=\'${2}\'|g" "$3"
     fi
   else
     if [ "$4" = "root" ]; then
-      sudo sed -i "s|^${1}=.*|${1}=${2}|g" $3
+      sudo sed -i "s|^${1}=.*|${1}=\"${2}\"|g" "$3"
     else
-      sed -i "s|^${1}=.*|${1}=${2}|g" $3
+      sed -i "s|^${1}=.*|${1}=\"${2}\"|g" "$3"
     fi
   fi
-  set +e
   if ! [ -z $ucv_curE ]; then
     set -e
   fi
@@ -17519,7 +17531,7 @@ function createInitialEnv()
       showMessageBox "Password Mismatch" "The passwords do not match, please try again."
     fi
   done
-  CONFIG_ENCRYPTION_PASSPHRASE=$tmp_pw1
+  CONFIG_ENCRYPTION_PASSPHRASE="$tmp_pw1"
   tmp_pw1=""
   tmp_pw2=""
   CONFIG_FILE=$HSHQ_CONFIG_DIR/$CONFIG_FILE_DEFAULT_FILENAME
@@ -25406,7 +25418,7 @@ RELAYSERVER_SYNCTHING_FOLDER_ID=
 # RelayServer Services END
 
 # Config File Encryption Passphrase BEGIN
-CONFIG_ENCRYPTION_PASSPHRASE=$CONFIG_ENCRYPTION_PASSPHRASE
+CONFIG_ENCRYPTION_PASSPHRASE="$CONFIG_ENCRYPTION_PASSPHRASE"
 # Config File Encryption Passphrase END
 
 # Docker Installation Info BEGIN
