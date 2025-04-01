@@ -23521,6 +23521,7 @@ function checkIPConflict()
         echo "You are using the ENTIRE 10.0.0.0/8 network for your home network - a terribly poor design choice. You will not be able to host a VPN or network with anyone. Please fix your network settings are restart the installation."
         return
       fi
+    fi
     if [ "$(checkNetworkIntersect $chk_subnet $DOCKER_NETWORK_RESERVED_RANGE)" = "true" ]; then
       echo "Your current home network subnet intersects within the $DOCKER_NETWORK_RESERVED_RANGE range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
       return
