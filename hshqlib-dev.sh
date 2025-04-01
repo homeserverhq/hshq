@@ -23518,11 +23518,16 @@ function checkIPConflict()
     if [ "$(checkNetworkIntersect $chk_subnet 10.0.0.0/8)" = "true" ]; then
       netsize=$(echo $chk_subnet | cut -d"/" -f2)
       if [ $netsize -eq 8 ]; then
-        echo "You are using the ENTIRE 10.0.0.0/8 network for your private network - a terribly poor design choice. You will not be able to host a VPN or network with anyone. Please fix your network settings are restart the installation."
+        echo "You are using the ENTIRE 10.0.0.0/8 network for your home network - a terribly poor design choice. You will not be able to host a VPN or network with anyone. Please fix your network settings are restart the installation."
         return
       fi
-    elif [ "$(checkNetworkIntersect $chk_subnet $DOCKER_NETWORK_RESERVED_RANGE)" = "true" ]; then
-      echo "Your current private network intersects within the $DOCKER_NETWORK_RESERVED_RANGE range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
+    if [ "$(checkNetworkIntersect $chk_subnet $DOCKER_NETWORK_RESERVED_RANGE)" = "true" ]; then
+      echo "Your current home network subnet intersects within the $DOCKER_NETWORK_RESERVED_RANGE range. This range is specifically reserved for Docker networking within this infrastructure. You must either change your router's LAN subnet or daisy-chain another router in between, and ideally set it in the 192.168.0.0/16 range."
+      return
+    fi
+    check_intersect="$(isNetworkIntersectOurNetworks $chk_subnet false false)"
+    if ! [ -z "$check_intersect" ]; then
+      echo "$check_intersect"
       return
     fi
   fi
