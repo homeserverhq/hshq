@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=130
+HSHQ_LIB_SCRIPT_VERSION=131
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -3540,7 +3540,7 @@ function webSetupHostedVPN()
     echo "ERROR: VPN subnet must be in the 10.0.0.0/8 range, returning..."
     return
   fi
-  is_intersect="$(isNetworkIntersectOurNetworks ${rs_primary_vpn_subnet}/24 false)"
+  is_intersect="$(isNetworkIntersectOurNetworks ${rs_primary_vpn_subnet}/24 false true)"
   if ! [ -z "$is_intersect" ]; then
     echo "ERROR: VPN subnet collision - $is_intersect, returning..."
     return
@@ -4200,7 +4200,7 @@ function setupHostedVPN()
 	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
       continue
 	fi
-    is_intersect="$(isNetworkIntersectOurNetworks $PRIMARY_VPN_SUBNET false)"
+    is_intersect="$(isNetworkIntersectOurNetworks $PRIMARY_VPN_SUBNET false true)"
     if ! [ -z "$is_intersect" ]; then
       if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
 	  showMessageBox "Network Collision" "Network Collision: $is_intersect"
@@ -10578,7 +10578,7 @@ function performNetworkJoin()
       vpn_subnet=$(getValueFromConfig VPNSubnet $join_base_config_file)
       # Check for intersection with our networks
       echo "Checking for network collision..."
-      check_intersect="$(isNetworkIntersectOurNetworks $vpn_subnet false)"
+      check_intersect="$(isNetworkIntersectOurNetworks $vpn_subnet false true)"
       if ! [ -z "$check_intersect" ]; then
         echo "ERROR: Network collision: $check_intersect"
         rm -f $join_base_config_file
@@ -10719,7 +10719,7 @@ function performNetworkJoin()
       fi
       # Check for intersection with our networks
       echo "Checking for network collision..."
-      check_intersect="$(isNetworkIntersectOurNetworks ${client_ip}/32 false)"
+      check_intersect="$(isNetworkIntersectOurNetworks ${client_ip}/32 false true)"
       if ! [ -z "$check_intersect" ]; then
         echo "ERROR: Network collision: $check_intersect"
         rm -f $join_base_config_file
@@ -11086,7 +11086,7 @@ function changeHSInternetPrimaryIPAddress()
   fi
   new_ip=$1
   echo "Checking for network collision..."
-  check_intersect="$(isNetworkIntersectOurNetworks ${new_ip}/32 false)"
+  check_intersect="$(isNetworkIntersectOurNetworks ${new_ip}/32 false true)"
   if ! [ -z "$check_intersect" ]; then
     echo "ERROR: Network collision: $check_intersect"
     return 2
@@ -12430,6 +12430,7 @@ function isNetworkIntersectOurNetworks()
 {
   checkNetwork=$1
   checkAll=$2
+  checkHostInterfaceSubnets=$3
   checknet_ip=$(echo $checkNetwork | cut -d"/" -f1)
   if [ "$(checkValidIPAddress $checknet_ip)" = "false" ]; then
     echo "ERROR: Invalid IP address/subnet."
@@ -12448,6 +12449,22 @@ function isNetworkIntersectOurNetworks()
       return
     fi
   done
+  if [ "$checkHostInterfaceSubnets" = "true" ] || [ "$checkAll" = "true" ]; then
+    hsnet_arr=($(sqlite3 $HSHQ_DB "select Network_Subnet,Name from connections where NetworkType='home_network';"))
+    for curhscheck in "${hsnet_arr[@]}"
+    do
+      curhsnet=$(echo "$curhscheck" | cut -d "|" -f1)
+      curhsname=$(echo "$curhscheck" | cut -d "|" -f2)
+      if [ -z "$curhsnet" ]; then
+        continue
+      fi
+      if [ "$(checkNetworkIntersect $curhsnet $checkNetwork)" = "true" ]; then
+        echo "The requested subnet ($checkNetwork) collides with a HomeServer host interface subnet ($curhsname - $curhsnet)"
+        IFS=$OIFS
+        return
+      fi
+    done
+  fi
   if [ "$checkAll" = "true" ]; then
     # Check all possible connections
     ip_arr=($(sqlite3 $HSHQ_DB "select IPAddress,Name from connections;"))
@@ -23501,10 +23518,7 @@ function checkIPConflict()
     if [ "$(checkNetworkIntersect $chk_subnet 10.0.0.0/8)" = "true" ]; then
       netsize=$(echo $chk_subnet | cut -d"/" -f2)
       if [ $netsize -eq 8 ]; then
-        echo "You are using the ENTIRE 10.0.0.0/8 network for your private network - a terribly poor design choice. Please fix your network settings are restart the installation."
-        return
-      elif [ $netsize -le 16 ]; then
-        echo "You are using a large portion of the 10.0.0.0/8 network for your private network - a very poor design choice. Please fix your network settings are restart the installation."
+        echo "You are using the ENTIRE 10.0.0.0/8 network for your private network - a terribly poor design choice. You will not be able to host a VPN or network with anyone. Please fix your network settings are restart the installation."
         return
       fi
     elif [ "$(checkNetworkIntersect $chk_subnet $DOCKER_NETWORK_RESERVED_RANGE)" = "true" ]; then
@@ -53606,7 +53620,7 @@ is_check_all=false
 if [ "\$ischeckall" = "Yes" ]; then
   is_check_all=true
 fi
-retVal=\$(isNetworkIntersectOurNetworks "\${ipaddr}/\${cidrlen}" \$is_check_all)
+retVal=\$(isNetworkIntersectOurNetworks "\${ipaddr}/\${cidrlen}" "\$is_check_all" "\$is_check_all")
 if [ -z "\$retVal" ]; then
   echo -e "\nThere are no network collisions with \${ipaddr}/\${cidrlen}\n"
 else
