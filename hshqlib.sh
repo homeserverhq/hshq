@@ -301,6 +301,9 @@ function main()
     if [ "$isInstalled" = "true" ]; then
       is_hshq_installed=true
       IS_CONFIG_FILE_UNENCRYPTED=true
+      set +e
+      fixConfigV130
+      set -e
       source $CONFIG_FILE
     else
       is_hshq_installed=false
@@ -14036,6 +14039,8 @@ function loadConfigVars()
     set -e
     source $HSHQ_PLAINTEXT_USER_CONFIG
   fi
+  set +e
+  fixConfigV130
   set -e
   source $CONFIG_FILE
   loadSvcVars
@@ -14046,6 +14051,11 @@ function loadConfigVars()
   if ! [ -z "$lcv_curE" ]; then
     set -e
   fi
+}
+
+function fixConfigV130()
+{
+  sed -i "s/,le\"\"/,le\"/g" $CONFIG_FILE
 }
 
 function checkAddSvc()
