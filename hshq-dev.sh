@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=18
+HSHQ_WRAPPER_SCRIPT_VERSION=19
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -366,7 +366,9 @@ EOF
           exit 3
         fi
         PRIOR_HSHQ_VERSION=$hshq_lib_local_version
-        promptTestRelayServerPassword
+        if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ $PRIOR_HSHQ_VERSION -lt $LAST_RELAYSERVER_VERSION_UPDATE ]; then
+          promptTestRelayServerPassword
+        fi
         performPreUpdateCheck
         if [ $? -eq 0 ]; then
           mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT

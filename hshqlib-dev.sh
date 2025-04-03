@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=131
+HSHQ_LIB_SCRIPT_VERSION=132
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -3645,7 +3645,7 @@ function checkForHSHQ()
 {
   findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
   if ! [ -z "\$findhshq" ]; then
-    echo "An hshq directory already exists: \$findhshq. You must log into the RelayServer and run the nuke.sh script (bash nuke.sh) to clear everythign out, exiting..."
+    echo "An hshq directory already exists: \$findhshq. You must log into the RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out, exiting..."
     exit 5
   fi
 }
@@ -3719,7 +3719,7 @@ EOFRS
           var_valueArr=($(echo $var_value | tr "," "\n"))
           var_valueArr[6]=le
           printf -v new_value '%s,' "${var_valueArr[@]}"
-          new_value=""$(echo "${new_value%,}")"\""
+          new_value="$(echo "${new_value%,}")"
           updateConfigVar $var_name $new_value
         fi
       done
@@ -4174,7 +4174,7 @@ function setupHostedVPN()
           var_valueArr=($(echo $var_value | tr "," "\n"))
           var_valueArr[6]=le
           printf -v new_value '%s,' "${var_valueArr[@]}"
-          new_value=""$(echo "${new_value%,}")"\""
+          new_value="$(echo "${new_value%,}")"
           updateConfigVar $var_name $new_value
           isReload=true
         fi
@@ -4685,7 +4685,8 @@ function outputDockerSettings()
     "syslog-address": "unixgram:///dev/log",
     "tag": "docker/{{.Name}}"
   },
-  "ipv6": false
+  "ipv6": false,
+  "registry-mirrors": ["https://mirror.gcr.io"]
 }
 EOFRL
   set +e
@@ -5105,18 +5106,8 @@ function pullImage()
   do
     # Refresh the sudo timestamp
     sudo -v
-    if [ "\${img_and_version:0:7}" = "ghcr.io" ] || [ "\${img_and_version:0:7}" = "quay.io" ] || [ "\${img_and_version:0:7}" = "lscr.io" ]; then
-      docker pull \$img_and_version
-      docker image inspect \$img_and_version > /dev/null 2>&1
-    else
-      if [ \$num_tries -lt 5 ]; then
-        docker pull mirror.gcr.io/\$img_and_version
-        docker image inspect mirror.gcr.io/\$img_and_version > /dev/null 2>&1
-      else
-        docker pull \$img_and_version
-        docker image inspect \$img_and_version > /dev/null 2>&1
-      fi
-    fi
+    docker pull \$img_and_version
+    docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
   done
@@ -5796,18 +5787,8 @@ function pullImage()
   do
     # Refresh the sudo timestamp
     sudo -v
-    if [ "\${img_and_version:0:7}" = "ghcr.io" ] || [ "\${img_and_version:0:7}" = "quay.io" ] || [ "\${img_and_version:0:7}" = "lscr.io" ]; then
-      docker pull \$img_and_version
-      docker image inspect \$img_and_version > /dev/null 2>&1
-    else
-      if [ \$num_tries -lt 5 ]; then
-        docker pull mirror.gcr.io/\$img_and_version
-        docker image inspect mirror.gcr.io/\$img_and_version > /dev/null 2>&1
-      else
-        docker pull \$img_and_version
-        docker image inspect \$img_and_version > /dev/null 2>&1
-      fi
-    fi
+    docker pull \$img_and_version
+    docker image inspect \$img_and_version > /dev/null 2>&1
     is_success=\$?
     ((num_tries++))
   done
@@ -9599,7 +9580,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
             var_valueArr=($(echo $var_value | tr "," "\n"))
             var_valueArr[6]=le
             printf -v new_value '%s,' "${var_valueArr[@]}"
-            new_value=""$(echo "${new_value%,}")"\""
+            new_value="$(echo "${new_value%,}")"
             updateConfigVar $var_name $new_value
             isReload=true
           fi
@@ -18007,9 +17988,6 @@ function performPreUpdateCheck()
 
 function promptTestRelayServerPassword()
 {
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ $PRIOR_HSHQ_VERSION -ge $LAST_RELAYSERVER_VERSION_UPDATE ]; then
-    return
-  fi
   set +e
   while [ -z "$USER_RELAY_SUDO_PW" ]
   do
@@ -20359,13 +20337,23 @@ function version131Update()
   # Fix matrix version number
   matrixStackID=$(getStackID matrix)
   if ! [ -z "$matrixStackID" ]; then
+    echo "Checking matrix stack version..."
     matrixComposeFile="$HSHQ_STACKS_DIR/portainer/compose/$matrixStackID/docker-compose.yml"
-    sudo grep "matrixdotorg/synapse:v1.118.0" $matrixComposeFile > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
+    sudo grep "matrixdotorg/synapse:v1.118.0" $matrixComposeFile
+    if [ $? -eq 0 ]; then
+      echo "Fixing matrix stack version..."
       sudo sed -i "1s|.*|$STACK_VERSION_PREFIX matrix v6|" $matrixComposeFile
     fi
   fi
   updateSysctl true
+  sudo grep "mirror.gcr.io" /etc/docker/daemon.json > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    outputDockerDaemonJson
+    echo "Docker daemon is being restarted. If you have a lot of containers, then this may take a few minutes..."
+    sudo systemctl restart docker
+    echo "Docker daemon successfully restarted. Please ensure that all stacks and containers are back up and running."
+    echo "If a service is not running correctly, then stop and restart the stack in Portainer."
+  fi
 }
 
 function updateRelayServerWithScript()
@@ -24281,23 +24269,7 @@ function outputDockerSettings()
   if [ -z "$DOCKER_METRICS_PORT" ]; then
     DOCKER_METRICS_PORT=8323
   fi
-
-  sudo tee /etc/docker/daemon.json >/dev/null <<EOFRL
-{
-  "default-address-pools":
-  [
-    {"base":"$DOCKER_NETWORK_RESERVED_RANGE","size":$DOCKER_NETWORK_SIZE}
-  ],
-  "log-driver": "syslog",
-  "log-opts": {
-    "syslog-address": "unixgram:///dev/log",
-    "tag": "docker/{{.Name}}"
-  },
-  "ipv6": false,
-  "metrics-addr": "0.0.0.0:$DOCKER_METRICS_PORT"
-}
-EOFRL
-
+  outputDockerDaemonJson
   sudo tee /etc/rsyslog.d/docker-logs.conf >/dev/null <<EOFRL
 \$FileCreateMode 0644
 \$template DockerDaemonLogFileName,"/var/log/docker/docker.log"
@@ -24319,6 +24291,26 @@ if \$programname == 'docker' then {
 \$FileCreateMode 0600
 EOFRL
 
+}
+
+function outputDockerDaemonJson()
+{
+  sudo tee /etc/docker/daemon.json >/dev/null <<EOFRL
+{
+  "default-address-pools":
+  [
+    {"base":"$DOCKER_NETWORK_RESERVED_RANGE","size":$DOCKER_NETWORK_SIZE}
+  ],
+  "log-driver": "syslog",
+  "log-opts": {
+    "syslog-address": "unixgram:///dev/log",
+    "tag": "docker/{{.Name}}"
+  },
+  "ipv6": false,
+  "metrics-addr": "0.0.0.0:$DOCKER_METRICS_PORT",
+  "registry-mirrors": ["https://mirror.gcr.io"]
+}
+EOFRL
 }
 
 function installDockerUbuntu2204()
@@ -24681,21 +24673,10 @@ function pullImage()
   is_success=1
   num_tries=1
   set +e
-  # mirror.gcr.io is a short-term fix. The long term fix is to host a container registry.
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
-    if [ "${img_and_version:0:7}" = "ghcr.io" ] || [ "${img_and_version:0:7}" = "quay.io" ] || [ "${img_and_version:0:7}" = "lscr.io" ]; then
-      docker pull $img_and_version
-      docker image inspect $img_and_version > /dev/null 2>&1
-    else
-      if [ $num_tries -lt 5 ]; then
-        docker pull mirror.gcr.io/$img_and_version
-        docker image inspect mirror.gcr.io/$img_and_version > /dev/null 2>&1
-      else
-        docker pull $img_and_version
-        docker image inspect $img_and_version > /dev/null 2>&1
-      fi
-    fi
+    docker pull $img_and_version
+    docker image inspect $img_and_version > /dev/null 2>&1
     is_success=$?
     ((num_tries++))
   done
@@ -24988,7 +24969,7 @@ function loadPinnedDockerImages()
   IMG_PIPED_API=1337kavin/piped:latest
   IMG_PIPED_CRON=barrypiccinni/psql-curl
   IMG_PIPED_WEB=nginx:1.25.3-alpine
-  IMG_PORTAINER=portainer/portainer-ce:2.27.3-alpine
+  IMG_PORTAINER=portainer/portainer-ce:2.21.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
   IMG_PROMETHEUS=prom/prometheus:v3.2.1
   IMG_REDIS=bitnami/redis:7.4.2
@@ -25019,7 +25000,7 @@ function getScriptStackVersion()
   stack_name=$1
   case "$stack_name" in
     portainer)
-      echo "v4" ;;
+      echo "v3" ;;
     adguard)
       echo "v6" ;;
     sysutils)
@@ -28850,24 +28831,19 @@ function performUpdatePortainer()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v3
       curImageList=portainer/portainer-ce:2.19.3-alpine
-      image_update_map[0]="portainer/portainer-ce:2.19.3-alpine,portainer/portainer-ce:2.27.3-alpine"
+      image_update_map[0]="portainer/portainer-ce:2.19.3-alpine,portainer/portainer-ce:2.21.4-alpine"
     ;;
     2)
-      newVer=v4
+      newVer=v3
       curImageList=portainer/portainer-ce:2.19.4-alpine
-      image_update_map[0]="portainer/portainer-ce:2.19.4-alpine,portainer/portainer-ce:2.27.3-alpine"
+      image_update_map[0]="portainer/portainer-ce:2.19.4-alpine,portainer/portainer-ce:2.21.4-alpine"
     ;;
     3)
-      newVer=v4
+      newVer=v3
       curImageList=portainer/portainer-ce:2.21.4-alpine
-      image_update_map[0]="portainer/portainer-ce:2.21.4-alpine,portainer/portainer-ce:2.27.3-alpine"
-    ;;
-    4)
-      newVer=v4
-      curImageList=portainer/portainer-ce:2.27.3-alpine
-      image_update_map[0]="portainer/portainer-ce:2.27.3-alpine,portainer/portainer-ce:2.27.3-alpine"
+      image_update_map[0]="portainer/portainer-ce:2.21.4-alpine,portainer/portainer-ce:2.21.4-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -34583,9 +34559,9 @@ function performUpdateWazuh()
       image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.9.1"
       image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.9.1"
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.9.1"
+      updateWazuhAgents "4.9.1-1"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" outputWazuhDashboardConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
-      updateWazuhAgents "4.9.1-1"
       return
     ;;
     6)
@@ -34595,6 +34571,8 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.9.1,wazuh/wazuh-indexer:4.11.2"
       image_update_map[2]="wazuh/wazuh-dashboard:4.9.1,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     7)
@@ -34603,6 +34581,10 @@ function performUpdateWazuh()
       image_update_map[0]="wazuh/wazuh-manager:4.11.2,wazuh/wazuh-manager:4.11.2"
       image_update_map[1]="wazuh/wazuh-indexer:4.11.2,wazuh/wazuh-indexer:4.11.2"
       image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,wazuh/wazuh-dashboard:4.11.2"
+      updateWazuhAgents "4.11.2-1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -38402,8 +38384,6 @@ general:
   donation_url: false
   contact_url: false
   enable_metrics: false
-search:
-  autocomplete: "startpage"
 server:
   base_url: false
   bind_address: "0.0.0.0"
@@ -38568,6 +38548,9 @@ function performUpdateSearxNG()
       newVer=v6
       curImageList=searxng/searxng:2025.4.1-e6308b816
       image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,searxng/searxng:2025.4.1-e6308b816"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfSearxngRemoveStartpage false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -38577,6 +38560,11 @@ function performUpdateSearxNG()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfSearxngRemoveStartpage()
+{
+  sed -i "/^search:/,+1d" $HSHQ_STACKS_DIR/searxng/web/settings.yml
 }
 
 # Jellyfin
@@ -41248,7 +41236,7 @@ function performUpdateHomeAssistant()
     ;;
     7)
       newVer=v8
-      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.10.4,nodered/node-red:4.0.5,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1
+      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.10.4,nodered/node-red:4.0.5,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="homeassistant/home-assistant:2024.10.4,homeassistant/home-assistant:2025.4.0"
       image_update_map[2]="nodered/node-red:4.0.5,nodered/node-red:4.0.9-22"
@@ -41257,7 +41245,7 @@ function performUpdateHomeAssistant()
     ;;
     8)
       newVer=v8
-      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2025.4.0,nodered/node-red:4.0.9-22,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1
+      curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2025.4.0,nodered/node-red:4.0.9-22,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="homeassistant/home-assistant:2025.4.0,homeassistant/home-assistant:2025.4.0"
       image_update_map[2]="nodered/node-red:4.0.9-22,nodered/node-red:4.0.9-22"
@@ -42061,7 +42049,7 @@ function performUpdateVaultwarden()
     ;;
     6)
       newVer=v7
-      curImageList=postgres:15.0-bullseye,vaultwarden/server:1.32.3-alpine,vividboarder/vaultwarden_ldap:2.0.1
+      curImageList=postgres:15.0-bullseye,vaultwarden/server:1.32.3-alpine,vividboarder/vaultwarden_ldap:2.0.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.32.3-alpine,vaultwarden/server:1.33.2-alpine"
       image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.2,vividboarder/vaultwarden_ldap:2.1.1"
@@ -44766,7 +44754,7 @@ function performUpdateMealie()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/mealie-recipes/mealie:v1.12.0,ghcr.io/mealie-recipes/mealie:v2.1.0"
     ;;
-    8)
+    7)
       newVer=v8
       curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v2.1.0
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
@@ -50207,7 +50195,7 @@ function installPenpot()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://penpot-frontend:80 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://penpot-frontend:8080 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -50433,7 +50421,7 @@ function performUpdatePenpot()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=postgres:15.0-bullseye,penpotapp/backend:2.2.1,penpotapp/frontend:2.2.1,penpotapp/exporter:2.2.1,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="penpotapp/backend:2.2.1,penpotapp/backend:2.5.4"
@@ -50449,6 +50437,9 @@ function performUpdatePenpot()
       image_update_map[2]="penpotapp/frontend:2.5.4,penpotapp/frontend:2.5.4"
       image_update_map[3]="penpotapp/exporter:2.5.4,penpotapp/exporter:2.5.4"
       image_update_map[4]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfPenpotFixPort false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -50458,6 +50449,25 @@ function performUpdatePenpot()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfPenpotFixPort()
+{
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PENPOT.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://penpot-frontend:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PENPOT $MANAGETLS_PENPOT "$is_integrate_hshq" $NETDEFAULT_PENPOT "$inner_block"
+  restartAllCaddyContainers
 }
 
 # EspoCRM
@@ -51209,7 +51219,7 @@ function performUpdateImmich()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-server:v1.121.0,ghcr.io/immich-app/immich-machine-learning:v1.121.0,bitnami/redis:7.0.5
       image_update_map[0]="docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,tensorchord/pgvecto-rs:pg14-v0.3.0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v1.121.0,ghcr.io/immich-app/immich-server:v1.131.3"
@@ -52765,11 +52775,12 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkRelayPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+TMP_USER_RELAY_SUDO_PW="\$USER_RELAY_SUDO_PW"
 decryptConfigFileAndLoadEnvNoPrompts
-
+USER_RELAY_SUDO_PW="\$TMP_USER_RELAY_SUDO_PW"
 services=\$(getArgumentValue services "\$@")
-
 set +e
 updateListOfStacks "\$services"
 set -e
@@ -52781,7 +52792,7 @@ EOFSC
 {
   "name": "03 Update Service(s)",
   "script_path": "conf/scripts/updateServicesFromList.sh",
-  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that you plan to update. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Select the service(s) that you wish to update. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that you plan to update. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/>The RelayServer password is only applicable if you are hosting a VPN. However, the password will not be checked for validity unless it is needed, which currently is only by Wazuh if updating the agent on the RelayServer. If you do not provide the correct password, then you will be prompted again during the upgrade process.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -52810,16 +52821,28 @@ EOFSC
       "stdin_expected_text": "$config_stdin_prompt"
     },
     {
+      "name": "Enter RelayServer sudo password",
+      "required": true,
+      "type": "text",
+      "default": "pass",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$relaysudo_stdin_prompt"
+    },
+    {
       "name": "List of Services To Update",
       "required": true,
       "param": "-services=",
       "same_arg_param": true,
       "type": "multiselect",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "values": {
         "script": "cat conf/$SCRIPTSERVER_UPDATE_STACKLIST_FILENAME",
@@ -52838,9 +52861,11 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkRelayPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+TMP_USER_RELAY_SUDO_PW="\$USER_RELAY_SUDO_PW"
 decryptConfigFileAndLoadEnvNoPrompts
-
+USER_RELAY_SUDO_PW="\$TMP_USER_RELAY_SUDO_PW"
 set +e
 performAllAvailableStackUpdates false
 set -e
@@ -52852,7 +52877,7 @@ EOFSC
 {
   "name": "04 Update All Available Services",
   "script_path": "conf/scripts/updateAllAvailableServices.sh",
-  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that will be updated. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in a loss of data or an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Updates all available services that have an update available. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><ins>***ENSURE***</ins> your have good and recent backups for any services that will be updated. Best possible efforts have been made to ensure smooth and reliable upgrades will be applied. However, <ins>***nothing***</ins> is guaranteed. In the event that an upgrade results in an unresponse service, just ask for help on the [Forum](https://forum.homeserverhq.com/) and we'll help get you back to a working state.<br/><br/>The RelayServer password is only applicable if you are hosting a VPN. However, the password will not be checked for validity unless it is needed, which currently is only by Wazuh if updating the agent on the RelayServer. If you do not provide the correct password, then you will be prompted again during the upgrade process.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_services",
   "parameters": [
     {
@@ -52879,6 +52904,21 @@ EOFSC
       "secure": true,
       "pass_as": "stdin",
       "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter RelayServer sudo password",
+      "required": true,
+      "type": "text",
+      "default": "pass",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$relaysudo_stdin_prompt"
     }
   ]
 }
@@ -55523,10 +55563,7 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "default": "$USERNAME",
       "secure": false,
@@ -55539,7 +55576,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": true,
       "pass_as": "stdin",
