@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=130
+HSHQ_LIB_SCRIPT_VERSION=131
 LOG_LEVEL=info
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -3718,7 +3718,7 @@ EOFRS
           var_valueArr=($(echo $var_value | tr "," "\n"))
           var_valueArr[6]=le
           printf -v new_value '%s,' "${var_valueArr[@]}"
-          new_value=""$(echo "${new_value%,}")"\""
+          new_value="$(echo "${new_value%,}")"
           updateConfigVar $var_name $new_value
         fi
       done
@@ -4173,7 +4173,7 @@ function setupHostedVPN()
           var_valueArr=($(echo $var_value | tr "," "\n"))
           var_valueArr[6]=le
           printf -v new_value '%s,' "${var_valueArr[@]}"
-          new_value=""$(echo "${new_value%,}")"\""
+          new_value="$(echo "${new_value%,}")"
           updateConfigVar $var_name $new_value
           isReload=true
         fi
@@ -9580,7 +9580,7 @@ function sendOtherNetworkApplyHomeServerVPNConfig()
             var_valueArr=($(echo $var_value | tr "," "\n"))
             var_valueArr[6]=le
             printf -v new_value '%s,' "${var_valueArr[@]}"
-            new_value=""$(echo "${new_value%,}")"\""
+            new_value="$(echo "${new_value%,}")"
             updateConfigVar $var_name $new_value
             isReload=true
           fi
