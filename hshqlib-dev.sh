@@ -189,7 +189,8 @@ function init()
 # ▀█  █  ▄▄  ▄▄ ▄▄ ▄▄▄ █▀▀▀█ ▄▄▄ ▄▄▄  ▄   ▄ ▄▄▄ ▄▄▄  █  █ █▀▀█  #
 #  █▀▀█ █  █ █ █ █ ▄▄  ▀▀▀▄▄ ▄▄  ▄▄▄▀ ▀▄ ▄▀ ▄▄  ▄▄▄▀ █▀▀█ █  █  #
 #  █  █ ▀▄▄▀ █   █ ▄▄▄ █▄▄▄█ ▄▄▄ ▄▄▄▄  ▀█▀  ▄▄▄ ▄▄▄▄ █  █ █▄▄█▄ #
-#===============================================================#\n
+#===============================================================#
+
 EOFLG
   )
   hshqwarninglogo=$(cat << EOFLG
@@ -302,6 +303,9 @@ function main()
     if [ "$isInstalled" = "true" ]; then
       is_hshq_installed=true
       IS_CONFIG_FILE_UNENCRYPTED=true
+      set +e
+      fixConfigV130
+      set -e
       source $CONFIG_FILE
     else
       is_hshq_installed=false
@@ -14053,6 +14057,8 @@ function loadConfigVars()
     set -e
     source $HSHQ_PLAINTEXT_USER_CONFIG
   fi
+  set +e
+  fixConfigV130
   set -e
   source $CONFIG_FILE
   loadSvcVars
@@ -14063,6 +14069,11 @@ function loadConfigVars()
   if ! [ -z "$lcv_curE" ]; then
     set -e
   fi
+}
+
+function fixConfigV130()
+{
+  sed -i "s/,le\"\"/,le\"/g" $CONFIG_FILE
 }
 
 function checkAddSvc()
@@ -17956,10 +17967,10 @@ function checkUpdateVersion()
     HSHQ_VERSION=126
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
-  if [ $HSHQ_VERSION -lt 131 ]; then
-    echo "Updating to Version 131..."
-    version131Update
-    HSHQ_VERSION=131
+  if [ $HSHQ_VERSION -lt 132 ]; then
+    echo "Updating to Version 132..."
+    version132Update
+    HSHQ_VERSION=132
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
@@ -20331,7 +20342,7 @@ function version126Update()
   outputScriptServerTheme
 }
 
-function version131Update()
+function version132Update()
 {
   set +e
   # Fix matrix version number
