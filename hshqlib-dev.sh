@@ -25620,6 +25620,7 @@ WIKIJS_DATABASE_USER_PASSWORD=
 
 # Duplicati (Service Details) BEGIN
 DUPLICATI_ADMIN_PASSWORD=
+DUPLICATI_SETTINGS_ENCRYPTION_KEY=
 # Duplicati (Service Details) END
 
 # Mastodon (Service Details) BEGIN
@@ -26331,6 +26332,10 @@ function initServicesCredentials()
   if [ -z "$DUPLICATI_ADMIN_PASSWORD" ]; then
     DUPLICATI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar DUPLICATI_ADMIN_PASSWORD $DUPLICATI_ADMIN_PASSWORD
+  fi
+  if [ -z "$DUPLICATI_SETTINGS_ENCRYPTION_KEY" ]; then
+    DUPLICATI_SETTINGS_ENCRYPTION_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar DUPLICATI_SETTINGS_ENCRYPTION_KEY $DUPLICATI_SETTINGS_ENCRYPTION_KEY
   fi
   if [ -z "$MASTODON_ADMIN_USERNAME" ]; then
     MASTODON_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mastodon"
@@ -28620,6 +28625,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}"
+  checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
 }
 
 # Stacks Installation/Update Functions
@@ -33608,7 +33614,7 @@ function performUpdateMailu()
       image_update_map[10]="ghcr.io/mailu/radicale:2.0.39,ghcr.io/mailu/radicale:2024.06.24"
       image_update_map[11]="ghcr.io/mailu/webmail:2.0.39,ghcr.io/mailu/webmail:2024.06.24"
       image_update_map[12]="apache/tika:2.9.2.1-full,apache/tika:2.9.2.1-full"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfMailuV4Update
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMailuV4Update
       mfMailuV4PostUpdate
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -33619,7 +33625,7 @@ function performUpdateMailu()
       image_update_map[0]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
       image_update_map[1]="ghcr.io/mailu/admin:2024.06.24,ghcr.io/mailu/admin:2024.06.36"
       image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.24,ghcr.io/mailu/rspamd:2024.06.36"
-      image_update_map[3]="clamav/clamav-debian:1.2.3-45,clamav/clamav-debian:1.2.3-45"
+      image_update_map[3]="clamav/clamav-debian:1.2.3-45,clamav/clamav-debian:1.4.2"
       image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.24,ghcr.io/mailu/fetchmail:2024.06.36"
       image_update_map[5]="ghcr.io/mailu/nginx:2024.06.24,ghcr.io/mailu/nginx:2024.06.36"
       image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.24,ghcr.io/mailu/dovecot:2024.06.36"
@@ -34560,7 +34566,7 @@ function performUpdateWazuh()
       image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
       image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.7.3"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateWazuhStackJavaMem
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateWazuhStackJavaMem
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -37194,6 +37200,7 @@ EOFDP
 PUID=0
 PGID=0
 CLI_ARGS=--webservice-password=$DUPLICATI_ADMIN_PASSWORD
+SETTINGS_ENCRYPTION_KEY=$DUPLICATI_SETTINGS_ENCRYPTION_KEY
 EOFDP
 }
 
@@ -37218,6 +37225,9 @@ function performUpdateDuplicati()
       newVer=v3
       curImageList=linuxserver/duplicati:2.1.0
       image_update_map[0]="linuxserver/duplicati:2.1.0,linuxserver/duplicati:2.1.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiAddSettingsEncryptionKey
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -37227,6 +37237,20 @@ function performUpdateDuplicati()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfDuplicatiAddSettingsEncryptionKey()
+{
+  mfdasek_curE=${-//[^e]/}
+  set +e
+  grep "SETTINGS_ENCRYPTION_KEY=" $HOME/duplicati.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    initServicesCredentials
+    echo "SETTINGS_ENCRYPTION_KEY=$DUPLICATI_SETTINGS_ENCRYPTION_KEY" >> $HOME/duplicati.env
+  fi
+  if ! [ -z "$mfdasek_curE" ]; then
+    set -e
+  fi
 }
 
 # Mastodon
@@ -39251,7 +39275,7 @@ function performUpdatePhotoPrism()
       curImageList=mariadb:10.7.3,photoprism/photoprism:220901-bullseye
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
       image_update_map[1]="photoprism/photoprism:220901-bullseye,photoprism/photoprism:240915"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdatePhotoPrismV2
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdatePhotoPrismV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       sendEmail -s "PhotoPrism Admin Login Info" -b "PhotoPrism Admin Username: $PHOTOPRISM_ADMIN_USERNAME\nPhotoPrism Admin Password: $PHOTOPRISM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
       PHOTOPRISM_INIT_ENV=true
@@ -39926,7 +39950,7 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfUpdateAutheliaConfig
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateAutheliaConfig
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -43094,7 +43118,7 @@ function performUpdateShlink()
         sleep 3
       fi
       sudo rm -fr $HSHQ_NONBACKUP_DIR/shlink/redis/*
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing "true" mfShlinkFixRedisUrl
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfShlinkFixRedisUrl
       if [ "$stackStatus" = "2" ];then
         startStopStack shlink stop "$portainerToken"
       fi
