@@ -3785,6 +3785,8 @@ EOFRS
   rm -f $wgconfigfile
   echo -e "$wgconfig" > $wgconfigfile
   sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
+  echo "Emailing credentials..."
+  emailVaultwardenCredentials true
 }
 
 function initRelayServerCredentials()
@@ -4033,9 +4035,6 @@ function updateHeimdallUptimeKumaRelayServer()
 
 function prepSvcsHostedVPN()
 {
-  set +e
-  echo "Emailing credentials..."
-  emailVaultwardenCredentials true
   set +e
   echo "Updating Portainer and Jitsi..."
   updatePortainerJitsiIPChanges
