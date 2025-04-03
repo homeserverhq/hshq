@@ -1280,6 +1280,7 @@ fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
+vm.swappiness = 10
 net.core.somaxconn = 65536
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
@@ -5104,9 +5105,18 @@ function pullImage()
   do
     # Refresh the sudo timestamp
     sudo -v
-    docker pull \$img_and_version > /dev/null 2>&1
-    img_name=\$(echo \$img_and_version | cut -d":" -f1)
-    docker image ls | grep "\$img_name"
+    if [ "\${img_and_version:0:7}" = "ghcr.io" ] || [ "\${img_and_version:0:7}" = "quay.io" ] || [ "\${img_and_version:0:7}" = "lscr.io" ]; then
+      docker pull \$img_and_version
+      docker image inspect \$img_and_version > /dev/null 2>&1
+    else
+      if [ \$num_tries -lt 5 ]; then
+        docker pull mirror.gcr.io/\$img_and_version
+        docker image inspect mirror.gcr.io/\$img_and_version > /dev/null 2>&1
+      else
+        docker pull \$img_and_version
+        docker image inspect \$img_and_version > /dev/null 2>&1
+      fi
+    fi
     is_success=\$?
     ((num_tries++))
   done
@@ -5622,7 +5632,7 @@ function install()
   installPortainer
   installMailRelay
   installWireGuard
-  #installFileBrowser
+  installFileBrowser
   installCaddy
   installOfelia
   installSyncthing
@@ -5786,9 +5796,18 @@ function pullImage()
   do
     # Refresh the sudo timestamp
     sudo -v
-    docker pull \$img_and_version > /dev/null 2>&1
-    img_name=\$(echo \$img_and_version | cut -d":" -f1)
-    docker image ls | grep "\$img_name"
+    if [ "\${img_and_version:0:7}" = "ghcr.io" ] || [ "\${img_and_version:0:7}" = "quay.io" ] || [ "\${img_and_version:0:7}" = "lscr.io" ]; then
+      docker pull \$img_and_version
+      docker image inspect \$img_and_version > /dev/null 2>&1
+    else
+      if [ \$num_tries -lt 5 ]; then
+        docker pull mirror.gcr.io/\$img_and_version
+        docker image inspect mirror.gcr.io/\$img_and_version > /dev/null 2>&1
+      else
+        docker pull \$img_and_version
+        docker image inspect \$img_and_version > /dev/null 2>&1
+      fi
+    fi
     is_success=\$?
     ((num_tries++))
   done
@@ -5806,7 +5825,7 @@ function pullDockerImages()
   pullImage $IMG_CADDY
   pullImage $IMG_DNSMASQ
   pullImage $IMG_MAIL_RELAY_UNBOUND
-  #pullImage $IMG_FILEBROWSER
+  pullImage $IMG_FILEBROWSER
   pullImage $IMG_OFELIA
   pullImage $IMG_PORTAINER
   pullImage $IMG_SYNCTHING
@@ -16255,6 +16274,7 @@ user_pref("dom.enable_user_timing",				false);
 // PREF: Disable Web Audio API
 // https://bugzilla.mozilla.org/show_bug.cgi?id=1288359
 // NOTICE: Web Audio API is required for Unity web player/games
+// Set this to true for Jitsi
 user_pref("dom.webaudio.enabled",				true);
 
 // PREF: Disable Location-Aware Browsing (geolocation)
@@ -16294,7 +16314,8 @@ user_pref("dom.network.enabled",				false);
 
 // PREF: Disable WebRTC entirely to prevent leaking internal IP addresses (Firefox < 42)
 // NOTICE: Disabling WebRTC breaks peer-to-peer file sharing tools (reep.io ...)
-user_pref("media.peerconnection.enabled",			false);
+// Set this to true for FileDrop
+user_pref("media.peerconnection.enabled",			true);
 
 // PREF: Don't reveal your internal IP when WebRTC is enabled (Firefox >= 42)
 // https://wiki.mozilla.org/Media/WebRTC/Privacy
@@ -20344,6 +20365,7 @@ function version131Update()
       sudo sed -i "1s|.*|$STACK_VERSION_PREFIX matrix v6|" $matrixComposeFile
     fi
   fi
+  updateSysctl true
 }
 
 function updateRelayServerWithScript()
@@ -24666,7 +24688,7 @@ function pullImage()
       docker pull $img_and_version
       docker image inspect $img_and_version > /dev/null 2>&1
     else
-      if [ $is_success -lt 5 ]; then
+      if [ $num_tries -lt 5 ]; then
         docker pull mirror.gcr.io/$img_and_version
         docker image inspect mirror.gcr.io/$img_and_version > /dev/null 2>&1
       else
@@ -24966,7 +24988,7 @@ function loadPinnedDockerImages()
   IMG_PIPED_API=1337kavin/piped:latest
   IMG_PIPED_CRON=barrypiccinni/psql-curl
   IMG_PIPED_WEB=nginx:1.25.3-alpine
-  IMG_PORTAINER=portainer/portainer-ce:2.21.4-alpine
+  IMG_PORTAINER=portainer/portainer-ce:2.27.3-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
   IMG_PROMETHEUS=prom/prometheus:v3.2.1
   IMG_REDIS=bitnami/redis:7.4.2
@@ -24997,7 +25019,7 @@ function getScriptStackVersion()
   stack_name=$1
   case "$stack_name" in
     portainer)
-      echo "v3" ;;
+      echo "v4" ;;
     adguard)
       echo "v6" ;;
     sysutils)
@@ -28828,19 +28850,24 @@ function performUpdatePortainer()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=portainer/portainer-ce:2.19.3-alpine
-      image_update_map[0]="portainer/portainer-ce:2.19.3-alpine,portainer/portainer-ce:2.21.4-alpine"
+      image_update_map[0]="portainer/portainer-ce:2.19.3-alpine,portainer/portainer-ce:2.27.3-alpine"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=portainer/portainer-ce:2.19.4-alpine
-      image_update_map[0]="portainer/portainer-ce:2.19.4-alpine,portainer/portainer-ce:2.21.4-alpine"
+      image_update_map[0]="portainer/portainer-ce:2.19.4-alpine,portainer/portainer-ce:2.27.3-alpine"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=portainer/portainer-ce:2.21.4-alpine
-      image_update_map[0]="portainer/portainer-ce:2.21.4-alpine,portainer/portainer-ce:2.21.4-alpine"
+      image_update_map[0]="portainer/portainer-ce:2.21.4-alpine,portainer/portainer-ce:2.27.3-alpine"
+    ;;
+    4)
+      newVer=v4
+      curImageList=portainer/portainer-ce:2.27.3-alpine
+      image_update_map[0]="portainer/portainer-ce:2.27.3-alpine,portainer/portainer-ce:2.27.3-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -55490,19 +55517,6 @@ EOFSC
       "pass_as": "argument"
     },
     {
-      "name": "CURRENT Linux password",
-      "required": true,
-      "param": "-rs_cur_password=",
-      "same_arg_param": true,
-      "type": "text",
-      "ui": {
-        "width_weight": 2
-      },
-      "secure": true,
-      "pass_as": "stdin",
-      "stdin_expected_text": "$rs_cur_password_prompt"
-    },
-    {
       "name": "NEW Linux username",
       "required": false,
       "param": "-rs_new_username=",
@@ -55517,6 +55531,19 @@ EOFSC
       "default": "$USERNAME",
       "secure": false,
       "pass_as": "argument"
+    },
+    {
+      "name": "CURRENT Linux password",
+      "required": true,
+      "param": "-rs_cur_password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$rs_cur_password_prompt"
     },
     {
       "name": "NEW Linux password",
@@ -60293,6 +60320,7 @@ function installUptimeKuma()
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "INSERT INTO notification(id,name,active,user_id,is_default,config) VALUES(1,'Service Alerts',1,1,1,'{\"name\":\"Service Alerts\",\"type\":\"smtp\",\"isDefault\":true,\"smtpSecure\":false,\"smtpHost\":\"$SMTP_HOSTNAME\",\"smtpPort\":$SMTP_HOSTPORT,\"smtpFrom\":\"\\\"Uptime Kuma $(getAdminEmailName)\\\" <$EMAIL_ADMIN_EMAIL_ADDRESS>\",\"smtpTo\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"applyExisting\":true}');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('keepDataPeriodDays',30,'general');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('primaryBaseURL','https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN','general');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('serverTimezone','\"$TZ\"','general');"
   insertServicesUptimeKuma
   startStopStack uptimekuma start
 
