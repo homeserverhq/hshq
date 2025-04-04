@@ -1285,7 +1285,7 @@ fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
-vm.swappiness = 10
+vm.swappiness = 1
 net.core.somaxconn = 65536
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
@@ -3080,6 +3080,7 @@ function installListOfServices()
   do
     installStackByName $curStack true
   done
+  sudo systemctl daemon-reload
   sudo systemctl restart ntp
   docker container restart authelia > /dev/null 2>&1
   removeSudoTimeoutInstall
@@ -7992,12 +7993,12 @@ https://$RELAYSERVER_EXT_EMAIL_HOSTNAME {
 # This provides a way to share files externally
 # The service is disabled by default.
 
-https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
-  import safe-header
-  reverse_proxy http://filebrowser {
-    import trusted-proxy-list
-  }
-}
+#https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
+#  import safe-header
+#  reverse_proxy http://filebrowser {
+#    import trusted-proxy-list
+#  }
+#}
 
 # Sample for providing public internet access to a service.
 # Remove the # from the beginning of each line in the block
@@ -8705,7 +8706,9 @@ function connectVPN()
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     set +e
     echo "Installing ClientDNS..."
-    installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP $ADMIN_USERNAME_BASE"_clientdns" $(pwgen -c -n 32 1)
+    CLIENTDNS_USER1_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_clientdns"
+    CLIENTDNS_USER1_ADMIN_PASSWORD="$(pwgen -c -n 32 1)"
+    installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP "$CLIENTDNS_USER1_ADMIN_USERNAME" "$CLIENTDNS_USER1_ADMIN_PASSWORD"
     sleep 10
     loadSSHKey
     # Setup syncthing link
@@ -16430,7 +16433,8 @@ user_pref("dom.maxHardwareConcurrency",				2);
 // https://en.wikipedia.org/wiki/WebAssembly
 // https://trac.torproject.org/projects/tor/ticket/21549
 // NOTICE: WebAssembly is required for Unity web player/games
-user_pref("javascript.options.wasm",				false);
+// Required by InfluxDB
+user_pref("javascript.options.wasm",				true);
 
 /******************************************************************************
  * SECTION: Misc                                                              *
@@ -16768,7 +16772,8 @@ user_pref("privacy.userContext.enabled",			true);
 // NOTICE: RFP breaks some keyboard shortcuts used in certain websites (see #443)
 // NOTICE: RFP changes your time zone
 // NOTICE: RFP breaks some DDoS protection pages (Cloudflare)
-user_pref("privacy.resistFingerprinting",			true);
+// Must have this for Adguard, Linkwarden, and possibly others - affects the displayed time
+user_pref("privacy.resistFingerprinting",			false);
 
 // PREF: disable mozAddonManager Web API [FF57+]
 // https://bugzilla.mozilla.org/buglist.cgi?bug_id=1384330
@@ -23036,11 +23041,11 @@ function uploadHomeServerLogo()
     sudo rm -f /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-*
     sudo cp -f $HSHQ_ASSETS_DIR/images/${HOMESERVER_DOMAIN}.png /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png
     if [ -f $HOME/Desktop/HomePage.desktop ]; then
-      updateConfigVarInFile Icon /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png ~/Desktop/HomePage.desktop root
+      sudo sed -i "s|^Icon=.*|Icon=/usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png|" ~/Desktop/HomePage.desktop
       trustDesktopIcon "HomePage.desktop"
     fi
     if sudo test -f /usr/share/applications/HomePage.desktop; then
-      updateConfigVarInFile Icon /usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png /usr/share/applications/HomePage.desktop root
+      sudo sed -i "s|^Icon=.*|Icon=/usr/share/icons/HSHQ/${HOMESERVER_DOMAIN}-${rand_string}.png|" /usr/share/applications/HomePage.desktop
     fi
   fi
   echo "HomeServer logo updated succesfully!"
@@ -24804,7 +24809,7 @@ function upgradeStack()
   comp_stack_id=$2
   old_ver=$3
   new_ver=$4
-  cur_img_list=$5
+  cur_img_list="$5"
   upgrade_compose_file=$6
   portainerToken="$7"
   stackModFunction=$8
@@ -24820,6 +24825,23 @@ function upgradeStack()
     stack_upgrade_report="ERROR ($comp_stack_name): Container image mismatch, stack version: $old_ver, image list: $cur_img_list"
     return
   fi
+
+  # Even though the image list (cur_img_list) matches the corresponding
+  # items in the update map (image_update_map), they are both used as
+  # a deliberate means of double-checking the intended images. This next
+  # loop block confirms that they match.
+  curImageListArr=($(echo $cur_img_list | tr "," "\n"))
+  curItemNum=0
+  for cur_repl in "${image_update_map[@]}"
+  do
+    new_img=$(echo $cur_repl | cut -d"," -f2)
+    if ! [ "$new_img" = "${curImageListArr[$curItemNum]}" ]; then
+      is_upgrade_error=true
+      stack_upgrade_report="ERROR ($comp_stack_name): Image list does not match update map ($cur_img_list) - This is a developer error"
+      return
+    fi
+    ((curItemNum++))
+  done
   for cur_repl in "${image_update_map[@]}"
   do
     new_img=$(echo $cur_repl | cut -d"," -f2)
@@ -24845,6 +24867,7 @@ function upgradeStack()
     fi
   done
   sudo sed -i "1s|.*|$STACK_VERSION_PREFIX $comp_stack_name $new_ver|" $upgrade_compose_file
+  set +e
   $stackModFunction
   if [ "$isStartStackFromStopped" = "true" ] && [ "$isReinstallStack" = "false" ]; then
     unset isStartStackFromStopped
@@ -24856,9 +24879,9 @@ function upgradeStack()
       sudo cp $HSHQ_STACKS_DIR/portainer/compose/$comp_stack_id/stack.env $HOME/${comp_stack_name}.env
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}-compose.yml
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}.env
+      set +e
       $stackReinstallModFunction
       updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env "$portainerToken"
-      #rm -f $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env
     else
       restartStackIfRunning $comp_stack_name 3 "$portainerToken"
     fi
@@ -24883,7 +24906,7 @@ function loadPinnedDockerImages()
   IMG_CADDY=caddy:2.9.1
   IMG_CALIBRE_SERVER=linuxserver/calibre:8.1.1
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.24
-  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.49.9
+  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.49.11
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
   IMG_CODESERVER=codercom/code-server:4.98.2
   IMG_COLLABORA=collabora/code:24.04.13.2.1
@@ -38289,7 +38312,7 @@ function installSearxNG()
 
   generateCert searxng-caddy searxng-caddy
   outputConfigSearxNG
-  installStack searxng searxng-app "Listen on 0.0.0.0" $HOME/searxng.env
+  installStack searxng searxng-app "Listen on " $HOME/searxng.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -40893,6 +40916,66 @@ function installHomeAssistant()
 
 function outputConfigHomeAssistant()
 {
+  outputComposeHomeAssistant
+  cat <<EOFHA > $HOME/homeassistant.env
+UID=$USERID
+GID=$GROUPID
+PYTHON_VER=python3.13
+EOFHA
+
+  cat <<EOFCF > $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf
+{
+    "PORT": 443,
+    "BASEPATH": "/hass-config",
+    "HASS_API": "",
+    "USERNAME": "$HOMEASSISTANT_CONFIGURATOR_USER",
+    "PASSWORD": "{sha256}$(echo -n $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD | openssl dgst -sha256 | cut -d"=" -f2 | xargs)",
+    "SSL_CERTIFICATE": "/certs/homeassistant-configurator.crt",
+    "SSL_KEY": "/certs/homeassistant-configurator.key"
+}
+EOFCF
+
+  cat <<EOFCF > $HOME/noderedsettings.conf
+module.exports = {
+    flowFile: 'flows.json',
+    flowFilePretty: true,
+    credentialSecret: "$(pwgen -c -n 32 1)",
+    https: {
+      key: require("fs").readFileSync('/data/homeassistant-nodered.key'),
+      cert: require("fs").readFileSync('/data/homeassistant-nodered.crt')
+    },
+    requireHttps: true,
+    uiPort: 443,
+    logging: {
+        console: {
+            level: "info",
+            metrics: false,
+            audit: false
+        }
+    },
+    exportGlobalContextKeys: false,
+    externalModules: {
+    },
+    editorTheme: {
+        theme: "dark",
+        tours: false
+    },
+    functionExternalModules: true,
+    functionGlobalContext: {
+    },
+    debugMaxLength: 1000,
+    mqttReconnectTime: 15000,
+    serialReconnectTime: 15000,
+}
+EOFCF
+
+  outputHASSPanels
+  outputHASSConfigYaml
+}
+
+function outputComposeHomeAssistant()
+{
+  rm -f $HOME/homeassistant-compose.yml
   cat <<EOFHA > $HOME/homeassistant-compose.yml
 $STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
 
@@ -40955,7 +41038,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.12/site-packages/certifi/cacert.pem:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
       - \${HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
       - \${HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
       - \${HSHQ_STACKS_DIR}/homeassistant/config:/config
@@ -41046,59 +41129,6 @@ networks:
 
 EOFHA
 
-  cat <<EOFHA > $HOME/homeassistant.env
-UID=$USERID
-GID=$GROUPID
-EOFHA
-
-  cat <<EOFCF > $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf
-{
-    "PORT": 443,
-    "BASEPATH": "/hass-config",
-    "HASS_API": "",
-    "USERNAME": "$HOMEASSISTANT_CONFIGURATOR_USER",
-    "PASSWORD": "{sha256}$(echo -n $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD | openssl dgst -sha256 | cut -d"=" -f2 | xargs)",
-    "SSL_CERTIFICATE": "/certs/homeassistant-configurator.crt",
-    "SSL_KEY": "/certs/homeassistant-configurator.key"
-}
-EOFCF
-
-  cat <<EOFCF > $HOME/noderedsettings.conf
-module.exports = {
-    flowFile: 'flows.json',
-    flowFilePretty: true,
-    credentialSecret: "$(pwgen -c -n 32 1)",
-    https: {
-      key: require("fs").readFileSync('/data/homeassistant-nodered.key'),
-      cert: require("fs").readFileSync('/data/homeassistant-nodered.crt')
-    },
-    requireHttps: true,
-    uiPort: 443,
-    logging: {
-        console: {
-            level: "info",
-            metrics: false,
-            audit: false
-        }
-    },
-    exportGlobalContextKeys: false,
-    externalModules: {
-    },
-    editorTheme: {
-        theme: "dark",
-        tours: false
-    },
-    functionExternalModules: true,
-    functionGlobalContext: {
-    },
-    debugMaxLength: 1000,
-    mqttReconnectTime: 15000,
-    serialReconnectTime: 15000,
-}
-EOFCF
-
-  outputHASSPanels
-  outputHASSConfigYaml
 }
 
 function outputHASSConfigYaml()
@@ -41261,11 +41291,11 @@ function performUpdateHomeAssistant()
       return
     ;;
     6)
-      newVer=v8
+      newVer=v7
       curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2024.7.4,nodered/node-red:4.0.2,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="homeassistant/home-assistant:2024.7.4,homeassistant/home-assistant:2025.4.0"
-      image_update_map[2]="nodered/node-red:4.0.2,nodered/node-red:4.0.9-22"
+      image_update_map[1]="homeassistant/home-assistant:2024.7.4,homeassistant/home-assistant:2024.10.4"
+      image_update_map[2]="nodered/node-red:4.0.2,nodered/node-red:4.0.5"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.0.1,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3"
     ;;
@@ -41277,6 +41307,9 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:4.0.5,nodered/node-red:4.0.9-22"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfHomeAssistantUpdatePythonCertPath
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     8)
       newVer=v8
@@ -41303,157 +41336,7 @@ function mfV4UpdateHASS()
   # Typically, we would be more surgical with the changes,
   # but in this case, the amount of users affected is minimal.
   outputHASSConfigYaml
-  cat <<EOFHA > $HOME/homeassistant-compose.yml
-$STACK_VERSION_PREFIX homeassistant $(getScriptStackVersion homeassistant)
-
-services:
-  homeassistant-db:
-    image: $(getScriptImageByContainerName homeassistant-db)
-    container_name: homeassistant-db
-    hostname: homeassistant-db
-    user: "\${UID}:\${GID}"
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    shm_size: 256mb
-    networks:
-      - dock-privateip-net
-      - dock-dbs-net
-    ports:
-      - "$HOMEASSISTANT_DB_LOCALHOST_PORT:5432"
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/dbexport:/dbexport
-    environment:
-      - POSTGRES_DB=$HOMEASSISTANT_DATABASE_NAME
-      - POSTGRES_USER=$HOMEASSISTANT_DATABASE_USER
-      - POSTGRES_PASSWORD=$HOMEASSISTANT_DATABASE_USER_PASSWORD
-    labels:
-      - "ofelia.enabled=true"
-      - "ofelia.job-exec.homeassistant-hourly-db.schedule=@every 1h"
-      - "ofelia.job-exec.homeassistant-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.homeassistant-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.homeassistant-hourly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.homeassistant-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.homeassistant-hourly-db.email-from=Home Assistant Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-      - "ofelia.job-exec.homeassistant-hourly-db.mail-only-on-error=true"
-      - "ofelia.job-exec.homeassistant-monthly-db.schedule=0 0 8 1 * *"
-      - "ofelia.job-exec.homeassistant-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.homeassistant-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.homeassistant-monthly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.homeassistant-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.homeassistant-monthly-db.email-from=Home Assistant Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-      - "ofelia.job-exec.homeassistant-monthly-db.mail-only-on-error=false"
-
-  homeassistant-app:
-    image: $(getScriptImageByContainerName homeassistant-app)
-    container_name: homeassistant-app
-    hostname: homeassistant-app
-    restart: unless-stopped
-    env_file: stack.env
-    privileged: true
-    depends_on:
-      - homeassistant-db
-    network_mode: host
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.12/site-packages/certifi/cacert.pem:ro
-      - \${HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
-      - \${HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
-      - \${HSHQ_STACKS_DIR}/homeassistant/config:/config
-      - \${HSHQ_STACKS_DIR}/homeassistant/media:/media
-
-  homeassistant-nodered:
-    image: $(getScriptImageByContainerName homeassistant-nodered)
-    container_name: homeassistant-nodered
-    hostname: homeassistant-nodered
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - homeassistant-app
-    networks:
-      - dock-proxy-net
-      - dock-privateip-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/nodered:/data
-      - \${HSHQ_SSL_DIR}/homeassistant-nodered.crt:/data/homeassistant-nodered.crt
-      - \${HSHQ_SSL_DIR}/homeassistant-nodered.key:/data/homeassistant-nodered.key
-
-  homeassistant-configurator:
-    image: $(getScriptImageByContainerName homeassistant-configurator)
-    container_name: homeassistant-configurator
-    hostname: homeassistant-configurator
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - homeassistant-app
-    networks:
-      - dock-proxy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/homeassistant-configurator.crt:/certs/homeassistant-configurator.crt
-      - \${HSHQ_SSL_DIR}/homeassistant-configurator.key:/certs/homeassistant-configurator.key
-      - \${HSHQ_STACKS_DIR}/homeassistant/configurator:/config
-      - \${HSHQ_STACKS_DIR}/homeassistant/config:/hass-config
-
-  homeassistant-tasmoadmin:
-    image: $(getScriptImageByContainerName homeassistant-tasmoadmin)
-    container_name: homeassistant-tasmoadmin
-    hostname: homeassistant-tasmoadmin
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - homeassistant-app
-    networks:
-      - dock-proxy-net
-      - dock-privateip-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/tasmoadmin:/data
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-ext-net:
-    name: dock-ext
-    external: true
-  dock-dbs-net:
-    name: dock-dbs
-    external: true
-  dock-privateip-net:
-    name: dock-privateip
-    external: true
-  dock-internalmail-net:
-    name: dock-internalmail
-    external: true
-
-EOFHA
-
+  outputComposeHomeAssistant
   chmod 600 $HOME/homeassistant-compose.yml
   sudo chown root:root $HOME/homeassistant-compose.yml
   sudo mv $HOME/homeassistant-compose.yml $upgrade_compose_file
@@ -41468,6 +41351,18 @@ function mfUpdateHASSiFramesConfig()
   fi
   outputHASSConfigYaml
   sudo mv $HSHQ_STACKS_DIR/homeassistant/configuration.yaml $HSHQ_STACKS_DIR/homeassistant/config/configuration.yaml
+}
+
+function mfHomeAssistantUpdatePythonCertPath()
+{
+  # This will address the python version cert path correctly
+  # by moving the version to an environment variable.
+  # Much easier to update in the future.
+  sed -i "s|\/etc\/ssl\/certs\/ca-certificates.crt:\/usr\/local\/lib\/python.*|\/etc\/ssl\/certs\/ca-certificates.crt:\/usr\/local\/lib\/\${PYTHON_VER}\/site-packages\/certifi\/cacert.pem:ro|g" $HOME/homeassistant-compose.yml
+  grep "PYTHON_VER=" $HOME/homeassistant.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "PYTHON_VER=python3.13" >> $HOME/homeassistant.env
+  fi
 }
 
 # Gitlab
@@ -47913,6 +47808,7 @@ function installPaperless()
 
 function outputConfigPaperless()
 {
+  rm -f $HOME/paperless-compose.yml
   cat <<EOFJT > $HOME/paperless-compose.yml
 $STACK_VERSION_PREFIX paperless $(getScriptStackVersion paperless)
 
@@ -48009,7 +47905,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/python3.12/site-packages/certifi/cacert.pem:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
       - v-paperless-data:/usr/src/paperless/data
       - v-paperless-media:/usr/src/paperless/media
       - \${HSHQ_STACKS_DIR}/paperless/export:/usr/src/paperless/export
@@ -48070,7 +47966,7 @@ networks:
       driver: default
 
 EOFJT
-
+  rm -f $HOME/paperless.env
   cat <<EOFJT > $HOME/paperless.env
 POSTGRES_DB=$PAPERLESS_DATABASE_NAME
 POSTGRES_USER=$PAPERLESS_DATABASE_USER
@@ -48094,8 +47990,9 @@ PAPERLESS_EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
 PAPERLESS_EMAIL_USE_TLS=true
 PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect
 PAPERLESS_SOCIALACCOUNT_PROVIDERS={\"openid_connect\":{\"SCOPE\":[\"openid\",\"profile\",\"email\"],\"OAUTH_PKCE_ENABLED\":true,\"APPS\":[{\"provider_id\":\"authelia\",\"name\":\"Authelia\",\"client_id\":\"paperless\",\"secret\":\"$PAPERLESS_OIDC_CLIENT_SECRET\",\"settings\":{\"server_url\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\",\"token_auth_method\":\"client_secret_basic\"}}]}}
+PYTHON_VER=python3.12
 EOFJT
-
+  rm -f $HOME/paperless.oidc
   cat <<EOFIM > $HOME/paperless.oidc
 # Authelia OIDC Client paperless BEGIN
       - client_id: paperless
@@ -48116,7 +48013,6 @@ EOFJT
         token_endpoint_auth_method: client_secret_basic
 # Authelia OIDC Client paperless END
 EOFIM
-
 }
 
 function performUpdatePaperless()
@@ -48152,6 +48048,9 @@ function performUpdatePaperless()
       image_update_map[2]="apache/tika:3.0.0.0,apache/tika:3.1.0.0"
       image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.13.2,ghcr.io/paperless-ngx/paperless-ngx:2.14.7"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPaperlessUpdatePythonCertPath
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     4)
       newVer=v4
@@ -48176,6 +48075,18 @@ function mvFixRedisDir()
 {
   outputConfigPaperless
   docker volume rm paperless_v-paperless-redis
+}
+
+function mfPaperlessUpdatePythonCertPath()
+{
+  # This will address the python version cert path correctly
+  # by moving the version to an environment variable.
+  # Much easier to update in the future.
+  sed -i "s|\/etc\/ssl\/certs\/ca-certificates.crt:\/usr\/local\/lib\/python.*|\/etc\/ssl\/certs\/ca-certificates.crt:\/usr\/local\/lib\/\${PYTHON_VER}\/site-packages\/certifi\/cacert.pem:ro|g" $HOME/paperless-compose.yml
+  grep "PYTHON_VER=" $HOME/paperless.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "PYTHON_VER=python3.12" >> $HOME/paperless.env
+  fi
 }
 
 # Speedtest Tracker Local
@@ -48903,13 +48814,13 @@ function performUpdateChangeDetection()
     4)
       newVer=v5
       curImageList=ghcr.io/dgtlmoon/changedetection.io:0.47.05,dgtlmoon/sockpuppetbrowser:latest
-      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.47.05,ghcr.io/dgtlmoon/changedetection.io:0.49.9"
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.47.05,ghcr.io/dgtlmoon/changedetection.io:0.49.11"
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     5)
       newVer=v5
-      curImageList=ghcr.io/dgtlmoon/changedetection.io:0.49.9,dgtlmoon/sockpuppetbrowser:latest
-      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.49.9,ghcr.io/dgtlmoon/changedetection.io:0.49.9"
+      curImageList=ghcr.io/dgtlmoon/changedetection.io:0.49.11,dgtlmoon/sockpuppetbrowser:latest
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.49.11,ghcr.io/dgtlmoon/changedetection.io:0.49.11"
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     *)
@@ -60396,6 +60307,7 @@ function installUptimeKuma()
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('keepDataPeriodDays',30,'general');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('primaryBaseURL','https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN','general');"
   sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value,type) VALUES('serverTimezone','\"$TZ\"','general');"
+  sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "REPLACE INTO setting(key,value) VALUES('initServerTimezone','true');"
   insertServicesUptimeKuma
   startStopStack uptimekuma start
 
