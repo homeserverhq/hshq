@@ -12674,7 +12674,7 @@ function updateStackByID()
     ((usid_numTries++))
   done
   if [ $usid_retVal -ne 0 ]; then
-    echo "ERROR: Could not get update stack in Portainer..." 1>&2
+    echo "ERROR: Could not update stack in Portainer..." 1>&2
     return
   fi
   rm -f $update_compose_file $update_env_file $HOME/${update_stack_name}-json.tmp
@@ -12814,12 +12814,13 @@ function envToJson()
   fi
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  lines=$(cat $1)
+  lines="$(cat $1)"
   jsonstring="["
   for line in $lines
   do
     key="$(sed 's/=.*//' <<< "$line")"
     value="$(sed 's/^[^=]*=//' <<< "$line")"
+    value="$(echo $value | sed 's/\"/\\\"/g')"
     jsonstring="$jsonstring{\"name\":\"$key\",\"value\":\"$value\"},"
   done
   jsonstring="${jsonstring%?}]"
@@ -24913,7 +24914,7 @@ function loadPinnedDockerImages()
   IMG_CODESERVER=codercom/code-server:4.98.2
   IMG_COLLABORA=collabora/code:24.04.13.2.1
   IMG_COTURN=coturn/coturn:4.6.3
-  IMG_DISCOURSE=bitnami/discourse:3.4.1
+  IMG_DISCOURSE=bitnami/discourse:3.3.2
   IMG_DNSMASQ=jpillora/dnsmasq:1.1
   IMG_DOZZLE=amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
@@ -25088,7 +25089,7 @@ function getScriptStackVersion()
     vaultwarden)
       echo "v7" ;;
     discourse)
-      echo "v7" ;;
+      echo "v6" ;;
     syncthing)
       echo "v7" ;;
     codeserver)
@@ -37245,14 +37246,14 @@ function performUpdateDuplicati()
       newVer=v3
       curImageList=linuxserver/duplicati:2.0.8
       image_update_map[0]="linuxserver/duplicati:2.0.8,linuxserver/duplicati:2.1.0"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiAddSettingsEncryptionKey
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     3)
       newVer=v3
       curImageList=linuxserver/duplicati:2.1.0
       image_update_map[0]="linuxserver/duplicati:2.1.0,linuxserver/duplicati:2.1.0"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiAddSettingsEncryptionKey
-      perform_update_report="${perform_update_report}$stack_upgrade_report"
-      return
     ;;
     *)
       is_upgrade_error=true
@@ -38603,14 +38604,14 @@ function performUpdateSearxNG()
       newVer=v6
       curImageList=searxng/searxng:2024.10.31-fa108c140
       image_update_map[0]="searxng/searxng:2024.10.31-fa108c140,searxng/searxng:2025.4.1-e6308b816"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfSearxngRemoveStartpage false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     6)
       newVer=v6
       curImageList=searxng/searxng:2025.4.1-e6308b816
       image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,searxng/searxng:2025.4.1-e6308b816"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfSearxngRemoveStartpage false
-      perform_update_report="${perform_update_report}$stack_upgrade_report"
-      return
     ;;
     *)
       is_upgrade_error=true
@@ -42285,25 +42286,18 @@ function performUpdateDiscourse()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     5)
-      newVer=v7
+      newVer=v6
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.2.5,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/discourse:3.2.5,bitnami/discourse:3.4.1"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     6)
-      newVer=v7
+      newVer=v6
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.3.2,bitnami/redis:7.0.5
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/discourse:3.3.2,bitnami/discourse:3.4.1"
-      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-    ;;
-    7)
-      newVer=v7
-      curImageList=postgres:15.0-bullseye,bitnami/discourse:3.4.1,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/discourse:3.4.1,bitnami/discourse:3.4.1"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[1]="bitnami/discourse:3.3.2,bitnami/discourse:3.3.2"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     *)
       is_upgrade_error=true
@@ -50376,6 +50370,9 @@ function performUpdatePenpot()
       image_update_map[2]="penpotapp/frontend:2.2.1,penpotapp/frontend:2.5.4"
       image_update_map[3]="penpotapp/exporter:2.2.1,penpotapp/exporter:2.5.4"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfPenpotFixPort false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     2)
       newVer=v2
@@ -50385,9 +50382,6 @@ function performUpdatePenpot()
       image_update_map[2]="penpotapp/frontend:2.5.4,penpotapp/frontend:2.5.4"
       image_update_map[3]="penpotapp/exporter:2.5.4,penpotapp/exporter:2.5.4"
       image_update_map[4]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfPenpotFixPort false
-      perform_update_report="${perform_update_report}$stack_upgrade_report"
-      return
     ;;
     *)
       is_upgrade_error=true
@@ -51169,15 +51163,15 @@ function performUpdateImmich()
     1)
       newVer=v2
       curImageList=docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-server:v1.121.0,ghcr.io/immich-app/immich-machine-learning:v1.121.0,bitnami/redis:7.0.5
-      image_update_map[0]="docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[0]="docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v1.121.0,ghcr.io/immich-app/immich-server:v1.131.3"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.121.0,ghcr.io/immich-app/immich-machine-learning:v1.131.3"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     2)
       newVer=v2
-      curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
-      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,tensorchord/pgvecto-rs:pg14-v0.3.0"
+      curImageList=tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
+      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.131.3"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3"
       image_update_map[3]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
@@ -60247,13 +60241,13 @@ function performUpdateClientDNS()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=jpillora/dnsmasq:1.1,linuxserver/wireguard:1.0.20210914
       image_update_map[0]="jpillora/dnsmasq:1.1,jpillora/dnsmasq:1.1"
       image_update_map[1]="linuxserver/wireguard:1.0.20210914,linuxserver/wireguard:1.0.20210914-r4-ls72"
     ;;
     2)
-      newVer=v1
+      newVer=v2
       curImageList=jpillora/dnsmasq:1.1,linuxserver/wireguard:1.0.20210914-r4-ls72
       image_update_map[0]="jpillora/dnsmasq:1.1,jpillora/dnsmasq:1.1"
       image_update_map[1]="linuxserver/wireguard:1.0.20210914-r4-ls72,linuxserver/wireguard:1.0.20210914-r4-ls72"
