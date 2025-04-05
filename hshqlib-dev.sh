@@ -1877,8 +1877,10 @@ function initConfig()
       DISABLED_SERVICES=$DS_MEM_16
     elif [ $total_ram -lt 22 ]; then
       DISABLED_SERVICES=$DS_MEM_22
-    else
+    elif [ $total_ram -lt 28 ]; then
       DISABLED_SERVICES=$DS_MEM_28
+    else
+      DISABLED_SERVICES=$DS_MEM_HIGH
     fi
     updatePlaintextRootConfigVar DISABLED_SERVICES $DISABLED_SERVICES
   fi
@@ -24834,8 +24836,8 @@ function upgradeStack()
   curItemNum=0
   for cur_repl in "${image_update_map[@]}"
   do
-    new_img=$(echo $cur_repl | cut -d"," -f2)
-    if ! [ "$new_img" = "${curImageListArr[$curItemNum]}" ]; then
+    cur_img=$(echo $cur_repl | cut -d"," -f1)
+    if ! [ "$cur_img" = "${curImageListArr[$curItemNum]}" ]; then
       is_upgrade_error=true
       stack_upgrade_report="ERROR ($comp_stack_name): Image list does not match update map ($cur_img_list) - This is a developer error"
       return
@@ -24904,7 +24906,7 @@ function loadPinnedDockerImages()
   IMG_BARASSISTANT_SALTRIM=barassistant/salt-rim:4.1.0
   IMG_BARASSISTANT_WEB=nginx:1.27.4-alpine
   IMG_CADDY=caddy:2.9.1
-  IMG_CALIBRE_SERVER=linuxserver/calibre:8.1.1
+  IMG_CALIBRE_SERVER=linuxserver/calibre:8.2.1
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.24
   IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.49.11
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
@@ -28053,12 +28055,12 @@ function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
   HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,sqlpad"
-
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,netdata,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr
   DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
+  DS_MEM_HIGH=netdata,photoprism
 }
 
 function getScriptImageByContainerName()
@@ -45831,13 +45833,13 @@ function performUpdateCalibre()
     5)
       newVer=v6
       curImageList=linuxserver/calibre:7.20.0,linuxserver/calibre-web:0.6.23
-      image_update_map[0]="linuxserver/calibre:7.20.0,linuxserver/calibre:8.1.1"
+      image_update_map[0]="linuxserver/calibre:7.20.0,linuxserver/calibre:8.2.1"
       image_update_map[1]="linuxserver/calibre-web:0.6.23,linuxserver/calibre-web:0.6.24"
     ;;
     6)
       newVer=v6
-      curImageList=linuxserver/calibre:8.1.1,linuxserver/calibre-web:0.6.24
-      image_update_map[0]="linuxserver/calibre:8.1.1,linuxserver/calibre:8.1.1"
+      curImageList=linuxserver/calibre:8.2.1,linuxserver/calibre-web:0.6.24
+      image_update_map[0]="linuxserver/calibre:8.2.1,linuxserver/calibre:8.2.1"
       image_update_map[1]="linuxserver/calibre-web:0.6.24,linuxserver/calibre-web:0.6.24"
     ;;
     *)
