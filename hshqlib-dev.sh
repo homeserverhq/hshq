@@ -21623,12 +21623,12 @@ function nukeHSHQ()
   echo "============================================================"
   echo
   echo
-  sudo -k
   read -p "Type 'nuclear' (no quotes): " isnuke
   if ! [ "$isnuke" = "nuclear" ]; then
     echo "String does not match, exiting..."
     return 1
   fi
+  sudo -k
   sudo crontab -r
   killall ssh-agent > /dev/null 2>&1
   sudo docker ps -q | xargs sudo docker stop
