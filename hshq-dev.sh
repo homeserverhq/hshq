@@ -508,7 +508,7 @@ function checkDownloadWrapper()
     return 0
   fi
   # Verified
-  chmod 744 $HSHQ_WRAP_TMP
+  chmod 755 $HSHQ_WRAP_TMP
   mv -f $HSHQ_WRAP_TMP $HSHQ_WRAP_SCRIPT
   # Show message box
   showMessageBox "Wrapper Script Updated" "The wrapper script was updated. You will have to restart the script (bash hshq.sh). Exiting..."

@@ -53459,6 +53459,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
   fi
   rm -f \$HSHQ_WRAP_SCRIPT
   mv \$HSHQ_WRAP_TMP \$HSHQ_WRAP_SCRIPT
+  chmod 755 \$HSHQ_WRAP_SCRIPT
   is_any_updated=true
   echo "Wrapper script verified and updated."
 fi
