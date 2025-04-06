@@ -39824,7 +39824,8 @@ webauthn:
   timeout: 60s
   display_name: "$HOMESERVER_NAME"
   attestation_conveyance_preference: indirect
-  user_verification: preferred
+  selection_criteria:
+    user_verification: preferred
 
 duo_api:
   disable: true
@@ -39999,12 +40000,18 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.38.17,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.38.17,authelia/authelia:4.39.1"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     5)
       newVer=v5
       curImageList=authelia/authelia:4.39.1,bitnami/redis:7.4.2
       image_update_map[0]="authelia/authelia:4.39.1,authelia/authelia:4.39.1"
       image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -40047,6 +40054,15 @@ EOFAE
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
+function mfAutheliaFixConfigV133()
+{
+  set +e
+  grep "selection_criteria:" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i "s/user_verification:.*/selection_criteria:\n    user_verification: preferred/" $HSHQ_STACKS_DIR/authelia/config/configuration.yml 
   fi
 }
 
