@@ -21627,7 +21627,7 @@ function nukeHSHQ()
   read -p "Type 'nuclear' (no quotes): " isnuke
   if ! [ "$isnuke" = "nuclear" ]; then
     echo "String does not match, exiting..."
-    exit 1
+    return 1
   fi
   sudo crontab -r
   killall ssh-agent > /dev/null 2>&1
