@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=18
+HSHQ_WRAPPER_SCRIPT_VERSION=19
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -366,7 +366,9 @@ EOF
           exit 3
         fi
         PRIOR_HSHQ_VERSION=$hshq_lib_local_version
-        promptTestRelayServerPassword
+        if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] && [ $PRIOR_HSHQ_VERSION -lt $LAST_RELAYSERVER_VERSION_UPDATE ]; then
+          promptTestRelayServerPassword
+        fi
         performPreUpdateCheck
         if [ $? -eq 0 ]; then
           mv $HSHQ_NEW_LIB_SCRIPT $HSHQ_LIB_SCRIPT
@@ -495,18 +497,18 @@ function checkDownloadWrapper()
     rm -f $HSHQ_LIB_TMP
     echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
     echo " There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). "
-    echo "   Please email security@homeserverhq.com as soon as possible.  "
+    echo " Please email security@homeserverhq.com as soon as possible.  "
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
     if [ -f $HSHQ_LIB_SCRIPT ]; then
-      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). \n Please email security@homeserverhq.com as soon as possible.\n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n Proceeding safely with local version..."
     else
-      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n There was a verification error on the downloaded script.\n Please email security@homeserverhq.com as soon as possible.\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\nExiting..."
       exit 1
     fi
     return 0
   fi
   # Verified
-  chmod 744 $HSHQ_WRAP_TMP
+  chmod 755 $HSHQ_WRAP_TMP
   mv -f $HSHQ_WRAP_TMP $HSHQ_WRAP_SCRIPT
   # Show message box
   showMessageBox "Wrapper Script Updated" "The wrapper script was updated. You will have to restart the script (bash hshq.sh). Exiting..."
