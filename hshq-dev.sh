@@ -497,12 +497,12 @@ function checkDownloadWrapper()
     rm -f $HSHQ_LIB_TMP
     echo "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@"
     echo " There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). "
-    echo "   Please email security@homeserverhq.com as soon as possible.  "
+    echo " Please email security@homeserverhq.com as soon as possible.  "
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
     if [ -f $HSHQ_LIB_SCRIPT ]; then
-      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n        There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Proceeding safely with local version..."
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n There was a verification error on the latest wrapper version (${hshq_wrap_dl_version}). \n Please email security@homeserverhq.com as soon as possible.\n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n Proceeding safely with local version..."
     else
-      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n           There was a verification error on the downloaded script.    \n          Please email security@homeserverhq.com as soon as possible.  \n       @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n       Exiting..."
+      showMessageBox "Security Alert" "@@@@@@@@@@@@@@@@@@@@@@@  SECURITY ALERT  @@@@@@@@@@@@@@@@@@@@@@@\n There was a verification error on the downloaded script.\n Please email security@homeserverhq.com as soon as possible.\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\nExiting..."
       exit 1
     fi
     return 0
