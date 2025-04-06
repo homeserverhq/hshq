@@ -20370,8 +20370,9 @@ function version132Update()
     outputDockerDaemonJson
     echo "Docker daemon is being restarted. If you have a lot of containers, then this may take a few minutes..."
     sudo systemctl restart docker
-    echo "Docker daemon successfully restarted. Please ensure that all stacks and containers are back up and running."
-    echo "If a service is not running correctly, then stop and restart the stack in Portainer."
+    echo "Docker daemon successfully restarted. Please log in to Portainer and confirm that all containers are"
+    echo "running, i.e. none of them have exited. If any have exited, then ensure to restart the entire stack."
+    echo "You can also double check in UptimeKuma that all services are in a good running state."  
   fi
 }
 
@@ -36039,7 +36040,7 @@ function performUpdateNextcloud()
 
 function performMaintenanceNextcloud()
 {
-  waitForStack "ready to handle connections" nextcloud-app 600 5
+  waitForStack "ready to handle connections" nextcloud-app 3600 5
   if [ "$isStackReady" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
     docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
@@ -48315,10 +48316,10 @@ function performUpdateSpeedtestTrackerLocal()
       return
     ;;
     3)
-      newVer=v4
+      newVer=v3
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.18.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:0.18.3,linuxserver/speedtest-tracker:0.20.8"
+      image_update_map[1]="linuxserver/speedtest-tracker:0.18.3,linuxserver/speedtest-tracker:0.18.3"
       is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): This version of Speedtest Tracker cannot be upgraded to the next version. You must uninstall your current version and reinstall the new version."
       return
@@ -48587,10 +48588,16 @@ function performUpdateSpeedtestTrackerVPN()
       return
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:0.20.8
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:0.20.8,linuxserver/speedtest-tracker:0.20.8"
+      image_update_map[1]="linuxserver/speedtest-tracker:0.20.8,linuxserver/speedtest-tracker:1.3.0"
+    ;;
+    5)
+      newVer=v5
+      curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:1.3.0
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,linuxserver/speedtest-tracker:1.3.0"
     ;;
     *)
       is_upgrade_error=true
@@ -49769,14 +49776,14 @@ function performUpdatePiped()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=postgres:15.0-bullseye,1337kavin/piped-frontend:latest,1337kavin/piped-proxy:latest,1337kavin/piped:latest,barrypiccinni/psql-curl,nginx:1.25.3-alpine
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="1337kavin/piped-frontend:latest,1337kavin/piped-frontend:latest"
       image_update_map[2]="1337kavin/piped-proxy:latest,1337kavin/piped-proxy:latest"
-      image_update_map[2]="1337kavin/piped:latest,1337kavin/piped:latest"
-      image_update_map[2]="barrypiccinni/psql-curl,barrypiccinni/psql-curl"
-      image_update_map[2]="nginx:1.25.3-alpine,nginx:1.27.4-alpine"
+      image_update_map[3]="1337kavin/piped:latest,1337kavin/piped:latest"
+      image_update_map[4]="barrypiccinni/psql-curl,barrypiccinni/psql-curl"
+      image_update_map[5]="nginx:1.25.3-alpine,nginx:1.27.4-alpine"
     ;;
     2)
       newVer=v2
@@ -49784,9 +49791,9 @@ function performUpdatePiped()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="1337kavin/piped-frontend:latest,1337kavin/piped-frontend:latest"
       image_update_map[2]="1337kavin/piped-proxy:latest,1337kavin/piped-proxy:latest"
-      image_update_map[2]="1337kavin/piped:latest,1337kavin/piped:latest"
-      image_update_map[2]="barrypiccinni/psql-curl,barrypiccinni/psql-curl"
-      image_update_map[2]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      image_update_map[3]="1337kavin/piped:latest,1337kavin/piped:latest"
+      image_update_map[4]="barrypiccinni/psql-curl,barrypiccinni/psql-curl"
+      image_update_map[5]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -50409,6 +50416,7 @@ function mfPenpotFixPort()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PENPOT $MANAGETLS_PENPOT "$is_integrate_hshq" $NETDEFAULT_PENPOT "$inner_block"
+  set +e
   restartAllCaddyContainers
 }
 
@@ -60029,28 +60037,34 @@ function addCaddySnippetImport()
   svc_nettype=$3
   case "$net_type" in
     home)
-      checkAddLineToFile "import $svc_name" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home ;;
+      checkAddLineToFile "import $svc_name" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Home
+    ;;
     primary)
       if [ "$svc_nettype" = "primary" ] || [ "$svc_nettype" = "other" ]; then
         checkAddLineToFile "import $svc_name" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Primary
-      fi ;;
+      fi
+    ;;
     other)
       if [ "$svc_nettype" = "other" ]; then
         checkAddLineToFile "import $svc_name" $HSHQ_STACKS_DIR/caddy-common/caddyfiles/CaddyfileBody-Other
-      fi ;;
+      fi
+    ;;
   esac
 }
 
 function checkAddLineToFile()
 {
+  caltf_curE=${-//[^e]/}
   add_line=$1
   sn_file=$2
   set +e
-  grep "$add_line" $sn_file
+  grep "$add_line" $sn_file > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo -e "$add_line" >> $sn_file
   fi
-  set -e
+  if ! [ -z "$caltf_curE" ]; then
+    set -e
+  fi
 }
 
 function removeCaddySnippetImport()
