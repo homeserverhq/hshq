@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=134
+HSHQ_LIB_SCRIPT_VERSION=135
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -54411,9 +54411,9 @@ configname=\$(getArgumentValue configname "\$@")
 
 set +e
 if [ -z "\$configname" ]; then
-  echo "\$3" > \$HOME/apply_hsv.cnf
+  echo "\$1" > \$HOME/apply_hsv.cnf
 else
-  echo "\$4" > \$HOME/apply_hsv.cnf
+  echo "\$2" > \$HOME/apply_hsv.cnf
 fi
 performNetworkInvite "\$HOME/apply_hsv.cnf" "\$configname"
 retVal=\$?
@@ -54813,7 +54813,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-removeReason="\$4"
+removeReason="\$2"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -54899,7 +54899,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-removeReason="\$4"
+removeReason="\$2"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -54985,7 +54985,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-removeReason="\$4"
+removeReason="\$2"
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -55232,7 +55232,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
-strMsg="\$3"
+strMsg="\$1"
 
 set +e
 echo "Emailing broadcast message..."
@@ -55687,7 +55687,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
-disconnectReason="\$3"
+disconnectReason="\$1"
 echo "Obtaining networkchecks lock..."
 tgLock="\$(tryGetLock networkchecks Script-server-removePrimaryVPNConnection)"
 if ! [ "\$tgLock" = "true" ]; then
@@ -56129,7 +56129,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-echo "\$3" > \$HOME/join_hsv.cnf
+echo "\$1" > \$HOME/join_hsv.cnf
 performNetworkJoin true \$HOME/join_hsv.cnf
 rm -f \$HOME/join_hsv.cnf
 
@@ -56198,7 +56198,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-disconnectReason="\$4"
+disconnectReason="\$2"
 
 set +e
 dis_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -56284,7 +56284,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-disconnectReason="\$4"
+disconnectReason="\$2"
 
 set +e
 dis_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
@@ -56369,7 +56369,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
-dnsconfig="\$3"
+dnsconfig="\$1"
 
 set +e
 echo "Updating HomeServer DNS..."
@@ -57132,7 +57132,7 @@ EOFSC
 {
   "name": "08 Add Port Forwarding Rule",
   "script_path": "conf/scripts/addPortForwardRule.sh",
-  "description": "Adds a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a port forwarding rule to the RelayServer. This will forward any packets arriving at the RelayServer to the selected internal host on the selected port or range of ports. If only a single port, then use the same value for Start and End. External is the value(s) which the RelayServer will listen on, and Internal is the mapped ports on the internal host. If a range of ports, then the SIZE of the range must be the same for both External and Internal (the start and end values between External and Internal CAN be diffferent). For the destination IP, you can either select from the internal domain list (as a convenience) or manually enter the IP address. If there is a non-zero value for the IP address, then the selected internal domain will be entirely ignored. If manually entering the IP address, it must be inside your VPN subnet range.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Adds a port forwarding rule. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function adds a port forwarding rule to the RelayServer. This will forward any packets arriving at the RelayServer to the selected internal host on the selected port or range of ports.<br/><br/>If only a single port, then use the same value for Start and End. External is the value(s) which the RelayServer will listen on, and Internal is the mapped ports on the internal host. If a range of ports, then the SIZE of the range must be the same for both External and Internal (the start and end values between External and Internal CAN be diffferent).<br/><br/>For the destination IP, you can either select from the internal domain list (as a convenience) or manually enter the IP address. If there is a non-zero value for the IP address, then the selected internal domain will be entirely ignored. If manually entering the IP address, it must be inside your VPN subnet range.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
