@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=133
+HSHQ_LIB_SCRIPT_VERSION=134
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -3691,6 +3691,13 @@ EOFRS
     echo "ERROR: There was a problem with the RelayServer, see above."
     return
   fi
+  RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
+  RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
+  RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
+  RELAYSERVER_HSHQ_SCRIPTS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/scripts
+  RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/secrets
+  RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/stacks
+  RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_DATA_DIR/ssl
   echo "All is good, assigning values..."
   # Everything is good, let's begin
   resetRelayServerData
@@ -3702,6 +3709,13 @@ EOFRS
   updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
   updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
   updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
+  updateConfigVar RELAYSERVER_HSHQ_BASE_DIR $RELAYSERVER_HSHQ_BASE_DIR
+  updateConfigVar RELAYSERVER_HSHQ_DATA_DIR $RELAYSERVER_HSHQ_DATA_DIR
+  updateConfigVar RELAYSERVER_HSHQ_NONBACKUP_DIR $RELAYSERVER_HSHQ_NONBACKUP_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SCRIPTS_DIR $RELAYSERVER_HSHQ_SCRIPTS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SECRETS_DIR $RELAYSERVER_HSHQ_SECRETS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
+  updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
   updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
   updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
@@ -17982,6 +17996,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=132
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 134 ]; then
+    echo "Updating to Version 134..."
+    version134Update
+    HSHQ_VERSION=134
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20374,6 +20394,26 @@ function version132Update()
     echo "Docker daemon successfully restarted. Please log in to Portainer and confirm that all containers are"
     echo "running, i.e. none of them have exited. If any have exited, then ensure to restart the entire stack."
     echo "You can also double check in UptimeKuma that all services are in a good running state."  
+  fi
+}
+
+function version134Update()
+{
+  if [ -z "$RELAYSERVER_HSHQ_BASE_DIR" ]; then
+    RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
+    RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
+    RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
+    RELAYSERVER_HSHQ_SCRIPTS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/scripts
+    RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/secrets
+    RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/stacks
+    RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_DATA_DIR/ssl
+    updateConfigVar RELAYSERVER_HSHQ_BASE_DIR $RELAYSERVER_HSHQ_BASE_DIR
+    updateConfigVar RELAYSERVER_HSHQ_DATA_DIR $RELAYSERVER_HSHQ_DATA_DIR
+    updateConfigVar RELAYSERVER_HSHQ_NONBACKUP_DIR $RELAYSERVER_HSHQ_NONBACKUP_DIR
+    updateConfigVar RELAYSERVER_HSHQ_SCRIPTS_DIR $RELAYSERVER_HSHQ_SCRIPTS_DIR
+    updateConfigVar RELAYSERVER_HSHQ_SECRETS_DIR $RELAYSERVER_HSHQ_SECRETS_DIR
+    updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
+    updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   fi
 }
 
@@ -46110,7 +46150,6 @@ function installLinkwarden()
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
     restartAllCaddyContainers
     checkAddDBSqlPad linkwarden "$FMLNAME_LINKWARDEN" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -46890,7 +46929,6 @@ function installFreshRSS()
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
     restartAllCaddyContainers
     checkAddDBSqlPad freshrss "$FMLNAME_FRESHRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -47168,7 +47206,6 @@ function installKeila()
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
     restartAllCaddyContainers
     checkAddDBSqlPad keila "$FMLNAME_KEILA" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -47422,7 +47459,6 @@ function installWallabag()
     insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
     restartAllCaddyContainers
     checkAddDBSqlPad wallabag "$FMLNAME_WALLABAG" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -47832,7 +47868,6 @@ function installPaperless()
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
     restartAllCaddyContainers
     checkAddDBSqlPad paperless "$FMLNAME_PAPERLESS" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -48189,7 +48224,6 @@ function installSpeedtestTrackerLocal()
     insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
     checkAddDBSqlPad speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -48452,7 +48486,6 @@ function installSpeedtestTrackerVPN()
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
     checkAddDBSqlPad speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -48934,7 +48967,6 @@ function installHuginn()
     insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
     restartAllCaddyContainers
     checkAddDBSqlPad huginn "$FMLNAME_HUGINN" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -49482,7 +49514,6 @@ function installPiped()
     insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png"
     restartAllCaddyContainers
     checkAddDBSqlPad piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -50190,7 +50221,6 @@ function installPenpot()
     insertEnableSvcAll penpot "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" "penpot.png"
     restartAllCaddyContainers
     checkAddDBSqlPad penpot "$FMLNAME_PENPOT" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
-    echo ""
   fi
   docker image rm $IMG_TOMCAT > /dev/null 2>&1
 }
@@ -50516,7 +50546,6 @@ function installEspoCRM()
     insertEnableSvcAll espocrm "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" "espocrm.png"
     restartAllCaddyContainers
     checkAddDBSqlPad espocrm "$FMLNAME_ESPOCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -50820,7 +50849,6 @@ function installImmich()
     insertEnableSvcAll immich "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" "immich.png"
     restartAllCaddyContainers
     checkAddDBSqlPad immich "$FMLNAME_IMMICH" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
-    echo ""
   fi
 }
 
@@ -58679,7 +58707,13 @@ function checkAddDBSqlPad()
   sdb_username=$6
   sdb_password=$7
   set +e
-  updateStackEnv sqlpad modFunUpdateSQLPad
+  updateStackEnv sqlpad modFunUpdateSQLPad > /dev/null 2>&1
+  usRetVal=$?
+  if [ $usRetVal -eq 2 ]; then
+    echo "WARNING: Could not find SQLPad stack, it may not be installed."
+  elif [ $usRetVal -ne 0 ]; then
+    echo "ERROR: There was an unknown error with SQLPad"
+  fi
 }
 
 # Heimdall
