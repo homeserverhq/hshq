@@ -19,6 +19,7 @@ LOG_LEVEL=info
 
 set -e
 
+
 function init()
 {
   # Version 74 Update
