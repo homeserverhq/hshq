@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=132
+HSHQ_LIB_SCRIPT_VERSION=133
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -12896,15 +12896,16 @@ function modFunUpdateMailuRelaySettings()
 
 function getPasswordWithSymbol()
 {
-  # Generates a password with one random character replaced with "_"
+  # Generates a password with "_" inserted somewhere randomly
   # This appeases any symbol requirements that certain password policies enforce.
   pw_length=$1
   if [ -z "$pw_length" ] || [ $pw_length -lt 2 ]; then
     pw_length=32
   fi
+  pw_length=$((pw_length-1))
   rand_pw=$(pwgen -c -n $pw_length 1)
   rand_pos=$(( ( RANDOM % $pw_length )  + 1 ))
-  echo ${rand_pw:0:rand_pos-1}"_"${rand_pw:rand_pos}
+  echo ${rand_pw:0:rand_pos}"_"${rand_pw:rand_pos}
 }
 
 function performExitFunctions()
@@ -26297,7 +26298,7 @@ function initServicesCredentials()
     updateConfigVar WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD $WAZUH_USERS_SNAPSHOTRESTORE_PASSWORD
   fi
   if [ -z "$WAZUH_MANAGER_AUTH_PASSWORD" ]; then
-    WAZUH_MANAGER_AUTH_PASSWORD=$(pwgen -c -n 32 1)
+    WAZUH_MANAGER_AUTH_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar WAZUH_MANAGER_AUTH_PASSWORD $WAZUH_MANAGER_AUTH_PASSWORD
   fi
   if [ -z "$COLLABORA_ADMIN_USERNAME" ]; then
@@ -37923,7 +37924,6 @@ function performUpdateMastodon()
       image_update_map[2]="tootsuite/mastodon:v4.3.1,tootsuite/mastodon:v4.3.1"
       image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
       image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
-      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.1,tootsuite/mastodon-streaming:v4.3.1"
       # This update simply fixes the mastodon-streaming issue, i.e. it has its own container and a few aspects of the docker compose needed an update
       # See https://github.com/mastodon/mastodon/pull/31554/files/51638f89b57613f01b1696b8644478ff4937937b#diff-e45e45baeda1c1e73482975a664062aa56f20c03dd9d64a827aba57775bed0d3
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateMastodonV7
@@ -38116,6 +38116,7 @@ function mfUpdateMastodonV7()
   set +e
   rm -f $HOME/mastodon-compose.yml
   outputMastodonCompose
+  pullImage $IMG_MASTODON_STREAMING
   grep "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY" $HSHQ_STACKS_DIR/mastodon/stack.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
@@ -39823,7 +39824,8 @@ webauthn:
   timeout: 60s
   display_name: "$HOMESERVER_NAME"
   attestation_conveyance_preference: indirect
-  user_verification: preferred
+  selection_criteria:
+    user_verification: preferred
 
 duo_api:
   disable: true
@@ -39998,12 +40000,18 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.38.17,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.38.17,authelia/authelia:4.39.1"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     5)
       newVer=v5
       curImageList=authelia/authelia:4.39.1,bitnami/redis:7.4.2
       image_update_map[0]="authelia/authelia:4.39.1,authelia/authelia:4.39.1"
       image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -40046,6 +40054,15 @@ EOFAE
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     docker container restart codeserver > /dev/null 2>&1
+  fi
+}
+
+function mfAutheliaFixConfigV133()
+{
+  set +e
+  grep "selection_criteria:" $HSHQ_STACKS_DIR/authelia/config/configuration.yml > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    sed -i "s/user_verification:.*/selection_criteria:\n    user_verification: preferred/" $HSHQ_STACKS_DIR/authelia/config/configuration.yml 
   fi
 }
 
@@ -44365,11 +44382,9 @@ GITEA__database__USER=$GITEA_DATABASE_USER
 GITEA__database__PASSWD=$GITEA_DATABASE_USER_PASSWORD
 GITEA__mailer__ENABLED=true
 GITEA__mailer__FROM=Gitea $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
-GITEA__mailer__MAILER_TYPE=smtp
-GITEA__mailer__HOST=$SMTP_HOSTNAME
+GITEA__mailer__PROTOCOL=smtp+starttls
 GITEA__mailer__SMTP_ADDR=$SMTP_HOSTNAME
 GITEA__mailer__SMTP_PORT=$SMTP_HOSTPORT
-GITEA__mailer__IS_TLS_ENABLED=false
 GITEA__service__DISABLE_REGISTRATION=true
 GITEA__security__INSTALL_LOCK=true
 EOFGL
@@ -44418,12 +44433,18 @@ function performUpdateGitea()
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.22.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="gitea/gitea:1.22.3,gitea/gitea:1.23.6"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGiteaRemoveDeprecatedEnvVars
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     7)
       newVer=v7
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.23.6
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="gitea/gitea:1.23.6,gitea/gitea:1.23.6"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGiteaRemoveDeprecatedEnvVars
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     *)
       is_upgrade_error=true
@@ -44433,6 +44454,18 @@ function performUpdateGitea()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfGiteaRemoveDeprecatedEnvVars()
+{
+  set +e
+  sed -i "/GITEA__mailer__MAILER_TYPE=/d" $HOME/gitea.env
+  sed -i "/GITEA__mailer__HOST=/d" $HOME/gitea.env
+  sed -i "/GITEA__mailer__MAILER_TYPE=/d" $HOME/gitea.env
+  grep "GITEA__mailer__PROTOCOL=" $HOME/gitea.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "GITEA__mailer__PROTOCOL=smtp+starttls" >> $HOME/gitea.env
+  fi
 }
 
 # Mealie
