@@ -37924,7 +37924,6 @@ function performUpdateMastodon()
       image_update_map[2]="tootsuite/mastodon:v4.3.1,tootsuite/mastodon:v4.3.1"
       image_update_map[3]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
       image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
-      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.1,tootsuite/mastodon-streaming:v4.3.1"
       # This update simply fixes the mastodon-streaming issue, i.e. it has its own container and a few aspects of the docker compose needed an update
       # See https://github.com/mastodon/mastodon/pull/31554/files/51638f89b57613f01b1696b8644478ff4937937b#diff-e45e45baeda1c1e73482975a664062aa56f20c03dd9d64a827aba57775bed0d3
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateMastodonV7
@@ -38117,6 +38116,7 @@ function mfUpdateMastodonV7()
   set +e
   rm -f $HOME/mastodon-compose.yml
   outputMastodonCompose
+  pullImage $IMG_MASTODON_STREAMING
   grep "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY" $HSHQ_STACKS_DIR/mastodon/stack.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
