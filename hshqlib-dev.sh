@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=135
+HSHQ_LIB_SCRIPT_VERSION=136
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -904,9 +904,11 @@ EOF
   docker container rm duplicati-restore > /dev/null 2>&1
   docker run -d --name=duplicati-restore -v /tmp/dupconfig:/config -v $backupDirTL/$selBackupDir:/backup -v $HSHQ_RESTORE_DIR:/restore $IMG_DUPLICATI > /dev/null 2>&1
   echo "Recreating duplicati database..."
-  docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
+  #docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
+  docker exec -it duplicati-restore bash -c "/app/duplicati/duplicati-cli repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
   echo "Database recreated, restoring files..."
-  docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
+  #docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
+  docker exec -it duplicati-restore bash -c "/app/duplicati/duplicati-cli restore /backup --dbpath=/config/hshqrestore.sqlite --restore-path=/restore --overwrite=true --restore-permissions --passphrase=$dup_pw"
   docker container stop duplicati-restore > /dev/null 2>&1
   docker container rm duplicati-restore > /dev/null 2>&1
   sudo rm -fr /tmp/dupconfig
@@ -2210,15 +2212,15 @@ function initInstallation()
     echo -e "________________________________________________________________________\n"
     if [ "$IS_DESKTOP_ENV" = "true" ]; then
       hdir=/home/$USERNAME/Desktop
-      echo -e "Do you want to retain the above information in a file on your Desktop,"
-      echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
+      is_keep_config=y
+      echo -e "The above information has been saved to your Desktop, i.e. $hdir/$HSHQ_INSTALL_NOTES_FILENAME."
     else
       hdir=/home/$USERNAME
       echo -e "Do you want to retain the above information in a file in the home directory,"
       echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
+      echo -e "information is very sensitive and you should delete the file as soon"
+      read -p "as you are finished with it. Enter 'y' or 'n': " is_keep_config
     fi
-    echo -e "information is very sensitive and you should delete the file as soon"
-    read -p "as you are finished with it. Enter 'y' or 'n': " is_keep_config
     if [ "$is_keep_config" = "y" ]; then
       final_prompt="After reading the above section, enter 'install' or 'exit': "
       rm -f "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
@@ -2612,6 +2614,11 @@ function showConfigureSimpleBackupMenu()
     showMessageBox "ERROR" "There is already a backup in Duplicati that uses the /backups directory, returning..."
     return
   fi
+  dtok="$(getDuplicatiToken)"
+  if [ -z "$dtok" ]; then
+    showMessageBox "ERROR" "The Duplicati auth token is empty, returning..."
+    return
+  fi
   dbackmenu=$(cat << EOF
 
 $(getLogo)
@@ -2751,6 +2758,7 @@ EOF
   else
     echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
+  sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     sudo mv /etc/fstab.old /etc/fstab
@@ -2820,6 +2828,12 @@ EOF
         "Name": "retention-policy",
         "Value": "1W:1D,4W:1W,12M:1M",
         "Argument": null
+      },
+      {
+        "Filter": "",
+        "Name": "--ignore-advisory-locking",
+        "Value": "true",
+        "Argument": null
       }
     ],
     "Filters": [],
@@ -2831,9 +2845,44 @@ EOF
   }
 }
 EOFBU
-  sudo mv $HOME/hshq-backup.json $HSHQ_STACKS_DIR/duplicati/config/
-  docker exec duplicati bash -c "mono /app/duplicati/Duplicati.CommandLine.ConfigurationImporter.exe /config/hshq-backup.json --import-metadata=false --server-datafolder=/config"
-  showMessageBox "SUCCESS" "Your backup is configured. It will run automatically starting at $mydate, or you can trigger it manually. You will recieve a daily email in your admin email account ($EMAIL_ADMIN_EMAIL_ADDRESS) after each backup. You can view/edit the configuration in https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN ."
+  sleep 3
+  echo "Getting Duplicati auth token..."
+  dtok="$(getDuplicatiToken)"
+  if [ -z "$dtok" ]; then
+    showMessageBox "ERROR" "ERROR: The Duplicati auth token is empty, returning..."
+  else
+    echo "Got token, importing backup configuration..."
+  fi
+  http --check-status --ignore-stdin POST https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/backups "Authorization: Bearer $dtok" @$HOME/hshq-backup.json > /dev/null 2>&1
+  #docker exec duplicati bash -c "mono /app/duplicati/Duplicati.CommandLine.ConfigurationImporter.exe /config/hshq-backup.json --import-metadata=false --server-datafolder=/config"
+  uplRetval=$?
+  sudo rm -f $HOME/hshq-backup.json
+  if [ $uplRetval -ne 0 ]; then
+    showMessageBox "ERROR" "ERROR: The backup job was not uploaded to Duplicati. Please report this error on Github or the Forum."
+  else
+    showMessageBox "SUCCESS" "Your backup is configured. It will run automatically starting at $mydate, or you can trigger it manually. You will recieve a daily email in your admin email account ($EMAIL_ADMIN_EMAIL_ADDRESS) after each backup. You can view/edit the configuration in https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN ."
+  fi
+}
+
+function getDuplicatiToken()
+{
+  maxDupTries=10
+  curDupTries=0
+  isSuccess=false
+  dupToken=""
+  while [ $curDupTries -lt $maxDupTries ]
+  do
+    dupToken=$(http --check-status --ignore-stdin --timeout=300 https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/api/v1/auth/login password=$DUPLICATI_ADMIN_PASSWORD | jq -r .AccessToken)
+    if [ $? -eq 0 ] && ! [ -z "$dupToken" ]; then
+      isSuccess=true
+      break
+    fi
+    ((curDupTries++))
+    sleep 3
+  done
+  if [ "$isSuccess" = "true" ]; then
+    echo "$dupToken"
+  fi
 }
 
 function showMountBackupDriveMenu()
@@ -18002,6 +18051,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=134
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 136 ]; then
+    echo "Updating to Version 136..."
+    version136Update
+    HSHQ_VERSION=136
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20415,6 +20470,11 @@ function version134Update()
     updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
     updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   fi
+}
+
+function version136Update()
+{
+  rm -f $HSHQ_STACKS_DIR/duplicati/config/hshq-backup.json
 }
 
 function updateRelayServerWithScript()
