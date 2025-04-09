@@ -2213,7 +2213,8 @@ function initInstallation()
     if [ "$IS_DESKTOP_ENV" = "true" ]; then
       hdir=/home/$USERNAME/Desktop
       is_keep_config=y
-      echo -e "The above information has been saved to your Desktop, i.e. $hdir/$HSHQ_INSTALL_NOTES_FILENAME."
+      echo -e "The above information has been saved to your Desktop,"
+      echo -e "i.e. $hdir/$HSHQ_INSTALL_NOTES_FILENAME."
     else
       hdir=/home/$USERNAME
       echo -e "Do you want to retain the above information in a file in the home directory,"
