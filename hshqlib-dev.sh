@@ -20478,7 +20478,7 @@ function version134Update()
 
 function version136Update()
 {
-  rm -f $HSHQ_STACKS_DIR/duplicati/config/hshq-backup.json
+  sudo rm -f $HSHQ_STACKS_DIR/duplicati/config/hshq-backup.json
 }
 
 function updateRelayServerWithScript()
@@ -25119,6 +25119,7 @@ function loadPinnedDockerImages()
   IMG_SEARXNG=searxng/searxng:2025.4.1-e6308b816
   IMG_SHLINK_APP=shlinkio/shlink:4.4.6
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.3.0
+  IMG_SNIPPETBOX=pawelmalak/snippet-box:latest
   IMG_SNYPY_API=ghcr.io/snypy/snypy-backend:1.5.2
   IMG_SNYPY_STATIC=ghcr.io/snypy/snypy-static:1.5.2
   IMG_SNYPY_APP=ghcr.io/snypy/snypy-frontend:1.5.1
@@ -25276,6 +25277,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     snypy)
       echo "v1" ;;
+    snippetbox)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -25413,6 +25416,7 @@ function pullDockerImages()
   pullImage $IMG_SNYPY_API
   pullImage $IMG_SNYPY_STATIC
   pullImage $IMG_SNYPY_APP
+  pullImage $IMG_SNIPPETBOX
 }
 
 function pullImagesUpdatePB()
@@ -27473,6 +27477,7 @@ function initServiceVars()
   checkAddSvc "SVCD_SEARXNG=searxng,searxng,primary,user,SearxNG,searxng,hshq"
   checkAddSvc "SVCD_SHLINK_APP=shlink,shlink-app,other,user,Shlink App,links,hshq"
   checkAddSvc "SVCD_SHLINK_WEB=shlink,shlink-web,primary,admin,Shlink,shlink,hshq"
+  checkAddSvc "SVCD_SNIPPETBOX=snippetbox,snippetbox,primary,user,SnippetBox,snippetbox,hshq"
   checkAddSvc "SVCD_SNYPY_APP=snypy,snypy-app,primary,user,SnyPy App,snypy,hshq"
   checkAddSvc "SVCD_SNYPY_API=snypy,snypy-api,primary,user,SnyPy API,snypy-api,hshq"
   checkAddSvc "SVCD_SPEEDTEST_TRACKER_LOCAL=speedtest-tracker-local,speedtest-tracker-local,primary,admin,Speedtest Tracker Local,speedtest-tracker-local,hshq"
@@ -27625,6 +27630,8 @@ function installStackByName()
       installPastefy $is_integrate ;;
     snypy)
       installSnyPy $is_integrate ;;
+    snippetbox)
+      installSnippetBox $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -27781,6 +27788,8 @@ function performUpdateStackByName()
       performUpdatePastefy "$portainerToken" ;;
     snypy)
       performUpdateSnyPy "$portainerToken" ;;
+    snippetbox)
+      performUpdateSnippetBox "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -27873,6 +27882,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SNYPY_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SNIPPETBOX.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
@@ -28189,6 +28199,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0 "homarr.png"
   insertIntoHeimdallDB "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0 "pastefy.png"
   insertIntoHeimdallDB "$FMLNAME_SNYPY" $USERTYPE_SNYPY "https://$SUB_SNYPY.$HOMESERVER_DOMAIN" 0 "snypy.png"
+  insertIntoHeimdallDB "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0 "snippetbox.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -28284,6 +28295,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_MATOMO" $USERTYPE_HOMARR "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_SNYPY" $USERTYPE_SNYPY "https://$SUB_SNYPY.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
 
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -28304,7 +28316,7 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,sqlpad"
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,snypy
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,snypy
@@ -28864,6 +28876,9 @@ function getScriptImageByContainerName()
       ;;
     "snypy-api")
       container_image=$IMG_SNYPY_API
+      ;;
+    "snippetbox")
+      container_image=$IMG_SNIPPETBOX
       ;;
     *)
       ;;
@@ -53986,6 +54001,115 @@ function performUpdateSnyPy()
       image_update_map[1]="ghcr.io/snypy/snypy-backend:1.5.2,ghcr.io/snypy/snypy-backend:1.5.2"
       image_update_map[2]="ghcr.io/snypy/snypy-static:1.5.2,ghcr.io/snypy/snypy-static:1.5.2"
       image_update_map[3]="ghcr.io/snypy/snypy-frontend:1.5.1,ghcr.io/snypy/snypy-frontend:1.5.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# SnippetBox
+function installSnippetBox()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory snippetbox "SnippetBox"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName snippetbox)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/snippetbox
+  mkdir $HSHQ_STACKS_DIR/snippetbox/data
+  set +e
+  outputConfigSnippetBox
+  installStack snippetbox snippetbox-app "" $HOME/snippetbox.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://snippetbox:5000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SNIPPETBOX $MANAGETLS_SNIPPETBOX "$is_integrate_hshq" $NETDEFAULT_SNIPPETBOX "$inner_block"
+  insertSubAuthelia $SUB_SNIPPETBOX.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll snippetbox "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" "snippetbox.png"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigSnippetBox()
+{
+  cat <<EOFMT > $HOME/snippetbox-compose.yml
+$STACK_VERSION_PREFIX snippetbox $(getScriptStackVersion snippetbox)
+
+services:
+  snippetbox:
+    image: $(getScriptImageByContainerName snippetbox)
+    container_name: snippetbox
+    hostname: snippetbox
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/snippetbox/data:/app/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+
+EOFMT
+
+  cat <<EOFMT > $HOME/snippetbox.env
+TZ=\${TZ}
+
+EOFMT
+
+}
+
+function performUpdateSnippetBox()
+{
+  perform_stack_name=snippetbox
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=pawelmalak/snippet-box:latest
+      image_update_map[0]="pawelmalak/snippet-box:latest,pawelmalak/snippet-box:latest"
     ;;
     *)
       is_upgrade_error=true
