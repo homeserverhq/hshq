@@ -51717,7 +51717,7 @@ function installMatomo()
     return $retVal
   fi
   if ! [ "$MATOMO_INIT_ENV" = "true" ]; then
-    sendEmail -s "Matomo Admin Login Info" -b "Matomo Admin Username: $MATOMO_ADMIN_USERNAME\nMatomo Admin Password: $MATOMO_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Matomo Admin Login Info" -b "Matomo Admin Username: $MATOMO_ADMIN_USERNAME\nMatomo Admin Email: ${MATOMO_ADMIN_USERNAME}@${HOMESERVER_DOMAIN}\nMatomo Admin Password: $MATOMO_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     MATOMO_INIT_ENV=true
     updateConfigVar MATOMO_INIT_ENV $MATOMO_INIT_ENV
   fi
@@ -51998,7 +51998,6 @@ function installPastefy()
   sleep 5
   addUserMailu alias $PASTEFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   PASTEFY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $PASTEFY_ADMIN_PASSWORD | tr -d ':\n')
-
   outputConfigPastefy
   installStack pastefy pastefy-app "" $HOME/pastefy.env
   retVal=$?
@@ -52006,7 +52005,7 @@ function installPastefy()
     return $retVal
   fi
   if ! [ "$PASTEFY_INIT_ENV" = "true" ]; then
-    sendEmail -s "Pastefy Admin Login Info" -b "Pastefy Admin Username: $PASTEFY_ADMIN_USERNAME\nPastefy Admin Password: $PASTEFY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    #sendEmail -s "Pastefy Admin Login Info" -b "Pastefy Admin Username: $PASTEFY_ADMIN_USERNAME\nPastefy Admin Password: $PASTEFY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PASTEFY_INIT_ENV=true
     updateConfigVar PASTEFY_INIT_ENV $PASTEFY_INIT_ENV
   fi
