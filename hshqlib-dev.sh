@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=136
+HSHQ_LIB_SCRIPT_VERSION=137
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -3100,12 +3100,13 @@ EOF
     showMessageBox "Empty Selection" "You have not selected anything, returning to main menu..."
     return 0
   fi
-  showYesNoMessageBox "Perform Integration?" "Do you want to automatically integrate these services, i.e. within Caddy, Heimdall, UptimeKuma, etc.?"
-  if [ $? -eq 0 ]; then
-    is_integrate=true
-  else
-    is_integrate=false
-  fi
+  #showYesNoMessageBox "Perform Integration?" "Do you want to automatically integrate these services, i.e. within Caddy, Heimdall, UptimeKuma, etc.?"
+  is_integrate=true
+  #if [ $? -eq 0 ]; then
+  #  is_integrate=true
+  #else
+  #  is_integrate=false
+  #fi
   showYesNoMessageBox "Confirm Installation" "This selected service(s) will be installed, Continue?"
   if [ $? -ne 0 ]; then
     return
@@ -3163,12 +3164,12 @@ function installAllAvailableStacks()
   fi
   is_integrate=true
   if [ "$is_msgbox_prompt" = "true" ]; then
-    showYesNoMessageBox "Perform Integration?" "Do you want to automatically integrate these services, i.e. within Caddy, Heimdall, UptimeKuma, etc.?"
-    if [ $? -eq 0 ]; then
-      is_integrate=true
-    else
-      is_integrate=false
-    fi
+    #showYesNoMessageBox "Perform Integration?" "Do you want to automatically integrate these services, i.e. within Caddy, Heimdall, UptimeKuma, etc.?"
+    #if [ $? -eq 0 ]; then
+    #  is_integrate=true
+    #else
+    #  is_integrate=false
+    #fi
     showYesNoMessageBox "Confirm Installation" "All available service(s) will be installed, Continue?"
     if [ $? -ne 0 ]; then
       return
@@ -3635,7 +3636,7 @@ function webSetupHostedVPN()
   echo "Logging into RelayServer..."
   SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo hello >/dev/null"
   if [ $? -ne 0 ]; then
-    echo "ERROR: There was an problem logging in to the RelayServer, returning..."
+    echo "ERROR: There was a problem logging in to the RelayServer, returning..."
     return
   fi
   # 2. Upload check script
@@ -8711,6 +8712,7 @@ function connectVPN()
           break
         fi
         echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
+        sudo -v
         sleep 30
         total_attempts=$((total_attempts + 1))
       done
@@ -12918,9 +12920,10 @@ function updateStackEnv()
   fi
   extractStackToHome $updateStackName $updateStackID
   $updateModFunction
-  if [ $? -ne 0 ]; then
+  rtVal=$?
+  if [ $rtVal -ne 0 ]; then
     rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
-    return 3
+    return $rtVal
   fi
   updateStackByID $updateStackName $updateStackID $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env "$portainerToken"
   rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
@@ -25008,7 +25011,6 @@ function loadPinnedDockerImages()
   IMG_AUTHELIA=authelia/authelia:4.39.1
   IMG_BARASSISTANT_APP=barassistant/server:5.2.0
   IMG_BARASSISTANT_SALTRIM=barassistant/salt-rim:4.1.0
-  IMG_BARASSISTANT_WEB=nginx:1.27.4-alpine
   IMG_CADDY=caddy:2.9.1
   IMG_CALIBRE_SERVER=linuxserver/calibre:8.2.1
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.24
@@ -25079,17 +25081,17 @@ function loadPinnedDockerImages()
   IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.36
   IMG_MASTODON_APP=tootsuite/mastodon:v4.3.7
   IMG_MASTODON_STREAMING=tootsuite/mastodon-streaming:v4.3.7
-  IMG_MASTODON_WEB=nginx:1.27.4-alpine
   IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.17.4
   IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.96
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.127.1
+  IMG_MATOMO_APP=matomo:5.3.1-fpm-alpine
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v2.8.0
   IMG_MEILISEARCH=getmeili/meilisearch:v1.6
   IMG_MYSQL=mariadb:10.7.3
   IMG_NETDATA=netdata/netdata:v2.3.2
   IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
-  IMG_NEXTCLOUD_WEB=nginx:1.27.4-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
+  IMG_NGINX=nginx:1.27.4-alpine
   IMG_NTFY=binwiederhier/ntfy:v2.11.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.9.1
   IMG_OFELIA=mcuadros/ofelia:0.3.16
@@ -25099,6 +25101,7 @@ function loadPinnedDockerImages()
   IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.14.7
   IMG_PAPERLESS_GOTENBERG=gotenberg/gotenberg:8.19.1
   IMG_PAPERLESS_TIKA=apache/tika:3.1.0.0
+  IMG_PASTEFY=interaapps/pastefy:7.0.3
   IMG_PEERTUBE_APP=chocobozzz/peertube:v7.1.0-bookworm
   IMG_PENPOT_BACKEND=penpotapp/backend:2.5.4
   IMG_PENPOT_FRONTEND=penpotapp/frontend:2.5.4
@@ -25108,7 +25111,6 @@ function loadPinnedDockerImages()
   IMG_PIPED_PROXY=1337kavin/piped-proxy:latest
   IMG_PIPED_API=1337kavin/piped:latest
   IMG_PIPED_CRON=barrypiccinni/psql-curl
-  IMG_PIPED_WEB=nginx:1.25.3-alpine
   IMG_PORTAINER=portainer/portainer-ce:2.21.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
   IMG_PROMETHEUS=prom/prometheus:v3.2.1
@@ -25117,6 +25119,9 @@ function loadPinnedDockerImages()
   IMG_SEARXNG=searxng/searxng:2025.4.1-e6308b816
   IMG_SHLINK_APP=shlinkio/shlink:4.4.6
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.3.0
+  IMG_SNYPY_API=ghcr.io/snypy/snypy-backend:1.5.2
+  IMG_SNYPY_STATIC=ghcr.io/snypy/snypy-static:1.5.2
+  IMG_SNYPY_APP=ghcr.io/snypy/snypy-frontend:1.5.1
   IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:1.3.0
   IMG_SQLPAD=sqlpad/sqlpad:7.5.3
   IMG_STIRLINGPDF=frooodle/s-pdf:0.45.0
@@ -25265,6 +25270,12 @@ function getScriptStackVersion()
       echo "v2" ;;
     homarr)
       echo "v2" ;;
+    matomo)
+      echo "v1" ;;
+    pastefy)
+      echo "v1" ;;
+    snypy)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -25288,6 +25299,7 @@ function pullDockerImages()
   pullImage $IMG_REDIS
   pullImage $IMG_POSTGRES
   pullImage $IMG_MYSQL
+  pullImage $IMG_NGINX
   pullImage $IMG_ADGUARD
   pullImage $IMG_GRAFANA
   pullImage $IMG_PROMETHEUS
@@ -25313,7 +25325,6 @@ function pullDockerImages()
   pullImage $IMG_COLLABORA
   pullImage $IMG_NETDATA
   pullImage $IMG_NEXTCLOUD_APP
-  pullImage $IMG_NEXTCLOUD_WEB
   pullImage $IMG_NEXTCLOUD_IMAGINARY
   pullImage $IMG_JITSI_WEB
   pullImage $IMG_JITSI_PROSODY
@@ -25324,7 +25335,6 @@ function pullDockerImages()
   pullImage $IMG_WIKIJS
   pullImage $IMG_DUPLICATI
   pullImage $IMG_MASTODON_APP
-  pullImage $IMG_MASTODON_WEB
   pullImage $IMG_DOZZLE
   pullImage $IMG_SEARXNG
   pullImage $IMG_JELLYFIN
@@ -25370,7 +25380,6 @@ function pullDockerImages()
   pullImage $IMG_LINKWARDEN
   pullImage $IMG_STIRLINGPDF
   pullImage $IMG_BARASSISTANT_APP
-  pullImage $IMG_BARASSISTANT_WEB
   pullImage $IMG_MEILISEARCH
   pullImage $IMG_BARASSISTANT_SALTRIM
   pullImage $IMG_FRESHRSS
@@ -25399,6 +25408,11 @@ function pullDockerImages()
   pullImage $IMG_IMMICH_APP
   pullImage $IMG_IMMICH_ML
   pullImage $IMG_HOMARR_APP
+  pullImage $IMG_MATOMO_APP
+  pullImage $IMG_PASTEFY
+  pullImage $IMG_SNYPY_API
+  pullImage $IMG_SNYPY_STATIC
+  pullImage $IMG_SNYPY_APP
 }
 
 function pullImagesUpdatePB()
@@ -26132,6 +26146,36 @@ HOMARR_ADMIN_PASSWORD=
 HOMARR_OIDC_CLIENT_SECRET=
 # Homarr (Service Details) END
 
+# Matomo (Service Details) BEGIN
+MATOMO_INIT_ENV=true
+MATOMO_ADMIN_USERNAME=
+MATOMO_ADMIN_PASSWORD=
+MATOMO_ADMIN_EMAIL_ADDRESS=
+MATOMO_DATABASE_NAME=
+MATOMO_DATABASE_ROOT_PASSWORD=
+MATOMO_DATABASE_USER=
+MATOMO_DATABASE_USER_PASSWORD=
+# Matomo (Service Details) END
+
+# Pastefy (Service Details) BEGIN
+PASTEFY_INIT_ENV=true
+PASTEFY_ADMIN_USERNAME=
+PASTEFY_ADMIN_PASSWORD=
+PASTEFY_ADMIN_EMAIL_ADDRESS=
+PASTEFY_DATABASE_NAME=
+PASTEFY_DATABASE_ROOT_PASSWORD=
+PASTEFY_DATABASE_USER=
+PASTEFY_DATABASE_USER_PASSWORD=
+# Pastefy (Service Details) END
+
+# SnyPy (Service Details) BEGIN
+SNYPY_INIT_ENV=true
+SNYPY_DATABASE_NAME=
+SNYPY_DATABASE_USER=
+SNYPY_DATABASE_USER_PASSWORD=
+SNYPY_SECRET_KEY=
+# SnyPy (Service Details) END
+
 # Service Details END
 EOFCF
 
@@ -26375,7 +26419,7 @@ function initServicesCredentials()
     updateConfigVar WAZUH_USERS_DASHBOARD_PASSWORD $WAZUH_USERS_DASHBOARD_PASSWORD
   fi
   if [ -z "$WAZUH_USERS_ADMIN_USERNAME" ]; then
-    WAZUH_USERS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_wazuh_indexer"
+    WAZUH_USERS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_wazuh"
     updateConfigVar WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_USERNAME
   fi
   if [ -z "$WAZUH_USERS_ADMIN_PASSWORD" ]; then
@@ -27186,6 +27230,78 @@ function initServicesCredentials()
     HOMARR_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
     updateConfigVar HOMARR_OIDC_CLIENT_SECRET $HOMARR_OIDC_CLIENT_SECRET
   fi
+  if [ -z "$MATOMO_ADMIN_USERNAME" ]; then
+    MATOMO_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_matomo"
+    updateConfigVar MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_USERNAME
+  fi
+  if [ -z "$MATOMO_ADMIN_PASSWORD" ]; then
+    MATOMO_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MATOMO_ADMIN_PASSWORD $MATOMO_ADMIN_PASSWORD
+  fi
+  if [ -z "$MATOMO_ADMIN_EMAIL_ADDRESS" ]; then
+    MATOMO_ADMIN_EMAIL_ADDRESS=$MATOMO_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MATOMO_ADMIN_EMAIL_ADDRESS $MATOMO_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$MATOMO_DATABASE_NAME" ]; then
+    MATOMO_DATABASE_NAME=matomodb
+    updateConfigVar MATOMO_DATABASE_NAME $MATOMO_DATABASE_NAME
+  fi
+  if [ -z "$MATOMO_DATABASE_ROOT_PASSWORD" ]; then
+    MATOMO_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MATOMO_DATABASE_ROOT_PASSWORD $MATOMO_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$MATOMO_DATABASE_USER" ]; then
+    MATOMO_DATABASE_USER=matomo-user
+    updateConfigVar MATOMO_DATABASE_USER $MATOMO_DATABASE_USER
+  fi
+  if [ -z "$MATOMO_DATABASE_USER_PASSWORD" ]; then
+    MATOMO_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MATOMO_DATABASE_USER_PASSWORD $MATOMO_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$PASTEFY_ADMIN_USERNAME" ]; then
+    PASTEFY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_pastefy"
+    updateConfigVar PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_USERNAME
+  fi
+  if [ -z "$PASTEFY_ADMIN_PASSWORD" ]; then
+    PASTEFY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PASTEFY_ADMIN_PASSWORD $PASTEFY_ADMIN_PASSWORD
+  fi
+  if [ -z "$PASTEFY_ADMIN_EMAIL_ADDRESS" ]; then
+    PASTEFY_ADMIN_EMAIL_ADDRESS=$PASTEFY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar PASTEFY_ADMIN_EMAIL_ADDRESS $PASTEFY_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$PASTEFY_DATABASE_NAME" ]; then
+    PASTEFY_DATABASE_NAME=pastefydb
+    updateConfigVar PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_NAME
+  fi
+  if [ -z "$PASTEFY_DATABASE_ROOT_PASSWORD" ]; then
+    PASTEFY_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PASTEFY_DATABASE_ROOT_PASSWORD $PASTEFY_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$PASTEFY_DATABASE_USER" ]; then
+    PASTEFY_DATABASE_USER=pastefy-user
+    updateConfigVar PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER
+  fi
+  if [ -z "$PASTEFY_DATABASE_USER_PASSWORD" ]; then
+    PASTEFY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PASTEFY_DATABASE_USER_PASSWORD $PASTEFY_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$SNYPY_DATABASE_NAME" ]; then
+    SNYPY_DATABASE_NAME=snypydb
+    updateConfigVar SNYPY_DATABASE_NAME $SNYPY_DATABASE_NAME
+  fi
+  if [ -z "$SNYPY_DATABASE_USER" ]; then
+    SNYPY_DATABASE_USER=snypy-user
+    updateConfigVar SNYPY_DATABASE_USER $SNYPY_DATABASE_USER
+  fi
+  if [ -z "$SNYPY_DATABASE_USER_PASSWORD" ]; then
+    SNYPY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SNYPY_DATABASE_USER_PASSWORD $SNYPY_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$SNYPY_SECRET_KEY" ]; then
+    SNYPY_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar SNYPY_SECRET_KEY $SNYPY_SECRET_KEY
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -27334,6 +27450,7 @@ function initServiceVars()
   checkAddSvc "SVCD_MATRIX_ELEMENT_PRIVATE=matrix,element-private,other,user,Matrix Element (Private Jitsi),element-private,hshq"
   checkAddSvc "SVCD_MATRIX_ELEMENT_PUBLIC=matrix,element-public,other,user,Matrix Element (Public Jitsi),element-public,hshq"
   checkAddSvc "SVCD_MATRIX_SYNAPSE=matrix,synapse,other,user,Synapse,synapse,le"
+  checkAddSvc "SVCD_MATOMO=matomo,matomo,primary,admin,Matomo,matomo,hshq"
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
@@ -27341,6 +27458,7 @@ function initServiceVars()
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
   checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
+  checkAddSvc "SVCD_PASTEFY=pastefy,pastefy,primary,user,Pastefy,pastefy,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
   checkAddSvc "SVCD_PENPOT=penpot,penpot,other,user,Penpot,penpot,hshq"
   checkAddSvc "SVCD_PHOTOPRISM=photoprism,photoprism,other,user,PhotoPrism,photoprism,hshq"
@@ -27355,6 +27473,8 @@ function initServiceVars()
   checkAddSvc "SVCD_SEARXNG=searxng,searxng,primary,user,SearxNG,searxng,hshq"
   checkAddSvc "SVCD_SHLINK_APP=shlink,shlink-app,other,user,Shlink App,links,hshq"
   checkAddSvc "SVCD_SHLINK_WEB=shlink,shlink-web,primary,admin,Shlink,shlink,hshq"
+  checkAddSvc "SVCD_SNYPY_APP=snypy,snypy-app,primary,user,SnyPy App,snypy,hshq"
+  checkAddSvc "SVCD_SNYPY_API=snypy,snypy-api,primary,user,SnyPy API,snypy-api,hshq"
   checkAddSvc "SVCD_SPEEDTEST_TRACKER_LOCAL=speedtest-tracker-local,speedtest-tracker-local,primary,admin,Speedtest Tracker Local,speedtest-tracker-local,hshq"
   checkAddSvc "SVCD_SPEEDTEST_TRACKER_VPN=speedtest-tracker-vpn,speedtest-tracker-vpn,primary,admin,Speedtest Tracker VPN,speedtest-tracker-vpn,hshq"
   checkAddSvc "SVCD_SQLPAD=sqlpad,sqlpad,primary,admin,SQLPad,sqlpad,hshq"
@@ -27499,6 +27619,12 @@ function installStackByName()
       installImmich $is_integrate ;;
     homarr)
       installHomarr $is_integrate ;;
+    matomo)
+      installMatomo $is_integrate ;;
+    pastefy)
+      installPastefy $is_integrate ;;
+    snypy)
+      installSnyPy $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -27649,6 +27775,12 @@ function performUpdateStackByName()
       performUpdateImmich "$portainerToken" ;;
     homarr)
       performUpdateHomarr "$portainerToken" ;;
+    matomo)
+      performUpdateMatomo "$portainerToken" ;;
+    pastefy)
+      performUpdatePastefy "$portainerToken" ;;
+    snypy)
+      performUpdateSnyPy "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -27716,6 +27848,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PIPED_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SNYPY_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia bypass END\n"
@@ -27737,7 +27870,9 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SNYPY_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
@@ -27761,6 +27896,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_ITTOOLS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JUPYTER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM_WIZARD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MATOMO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NETDATA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PORTAINER.$HOMESERVER_DOMAIN\n"
@@ -27792,7 +27928,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
@@ -27847,6 +27983,8 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_EMAIL_ADDRESS $IMMICH_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -27893,7 +28031,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_DASHBOARD_USERNAME $WAZUH_USERS_DASHBOARD_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
@@ -27947,6 +28085,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_USERNAME $IMMICH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -28002,6 +28142,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0 "jupyter.png"
   insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
   insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
+  insertIntoHeimdallDB "$FMLNAME_MATOMO" $USERTYPE_HOMARR "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0 "matomo.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # Users Tab
   insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png"
@@ -28046,6 +28187,8 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0 "espocrm.png"
   insertIntoHeimdallDB "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0 "immich.png"
   insertIntoHeimdallDB "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0 "homarr.png"
+  insertIntoHeimdallDB "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0 "pastefy.png"
+  insertIntoHeimdallDB "$FMLNAME_SNYPY" $USERTYPE_SNYPY "https://$SUB_SNYPY.$HOMESERVER_DOMAIN" 0 "snypy.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -28138,6 +28281,9 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_MATOMO" $USERTYPE_HOMARR "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_SNYPY" $USERTYPE_SNYPY "https://$SUB_SNYPY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
 
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -28158,11 +28304,11 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,snypy
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,snypy
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
   DS_MEM_HIGH=netdata,photoprism
 }
@@ -28267,7 +28413,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_NEXTCLOUD_IMAGINARY
       ;;
     "nextcloud-web")
-      container_image=$IMG_NEXTCLOUD_WEB
+      container_image=$IMG_NGINX
       ;;
     "jitsi-web")
       container_image=$IMG_JITSI_WEB
@@ -28324,7 +28470,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_MASTODON_APP
       ;;
     "mastodon-web")
-      container_image=$IMG_MASTODON_WEB
+      container_image=$IMG_NGINX
       ;;
     "mastodon-elasticsearch")
       container_image=$IMG_MASTODON_ELASTICSEARCH
@@ -28543,7 +28689,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_BARASSISTANT_SALTRIM
       ;;
     "bar-assistant-web")
-      container_image=$IMG_BARASSISTANT_WEB
+      container_image=$IMG_NGINX
       ;;
     "freshrss-db")
       container_image=$IMG_POSTGRES
@@ -28630,7 +28776,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_PIPED_CRON
       ;;
     "piped-web")
-      container_image=$IMG_PIPED_WEB
+      container_image=$IMG_NGINX
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -28692,6 +28838,33 @@ function getScriptImageByContainerName()
     "homarr-app")
       container_image=$IMG_HOMARR_APP
       ;;
+    "matomo-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "matomo-app")
+      container_image=$IMG_MATOMO_APP
+      ;;
+    "matomo-web")
+      container_image=$IMG_NGINX
+      ;;
+    "pastefy-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "pastefy-app")
+      container_image=$IMG_PASTEFY
+      ;;
+    "snypy-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "snypy-app")
+      container_image=$IMG_SNYPY_APP
+      ;;
+    "snypy-static")
+      container_image=$IMG_SNYPY_STATIC
+      ;;
+    "snypy-api")
+      container_image=$IMG_SNYPY_API
+      ;;
     *)
       ;;
   esac
@@ -28735,6 +28908,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_OIDC_CLIENT_SECRET="
   checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET="
+  checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "SnyPy" "SNYPY_INIT_ENV=false,SNYPY_DATABASE_NAME=,SNYPY_DATABASE_USER=,SNYPY_DATABASE_USER_PASSWORD=,SNYPY_SECRET_KEY="
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
@@ -35028,15 +35204,19 @@ function installNextcloud()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_NEXTCLOUD_APP
+  pullImage $(getScriptImageByContainerName nextcloud-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_NEXTCLOUD_WEB
+  pullImage $(getScriptImageByContainerName nextcloud-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_NEXTCLOUD_IMAGINARY
+  pullImage $(getScriptImageByContainerName nextcloud-imaginary)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nextcloud-push)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -37394,11 +37574,15 @@ function installMastodon()
     return 1
   fi
   set -e
-  pullImage $IMG_MASTODON_APP
+  pullImage $(getScriptImageByContainerName mastodon-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_MASTODON_WEB
+  pullImage $(getScriptImageByContainerName mastodon-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName mastodon-streaming)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -46541,19 +46725,19 @@ function installBarAssistant()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_BARASSISTANT_APP
+  pullImage $(getScriptImageByContainerName bar-assistant-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_BARASSISTANT_WEB
+  pullImage $(getScriptImageByContainerName bar-assistant-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_MEILISEARCH
+  pullImage $(getScriptImageByContainerName bar-assistant-meilisearch)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_BARASSISTANT_SALTRIM
+  pullImage $(getScriptImageByContainerName bar-assistant-saltrim)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -49482,23 +49666,23 @@ function installPiped()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PIPED_FRONTEND
+  pullImage $(getScriptImageByContainerName piped-frontend)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PIPED_PROXY
+  pullImage $(getScriptImageByContainerName piped-proxy)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PIPED_API
+  pullImage $(getScriptImageByContainerName piped-api)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PIPED_CRON
+  pullImage $(getScriptImageByContainerName piped-cron)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PIPED_WEB
+  pullImage $(getScriptImageByContainerName piped-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -51472,6 +51656,2527 @@ function performUpdateHomarr()
       newVer=v2
       curImageList=ghcr.io/ajnart/homarr:0.15.10
       image_update_map[0]="ghcr.io/ajnart/homarr:0.15.10,ghcr.io/ajnart/homarr:0.15.10"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Matomo
+function installMatomo()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory matomo "Matomo"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName matomo-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/matomo
+  mkdir $HSHQ_STACKS_DIR/matomo/config
+  mkdir $HSHQ_STACKS_DIR/matomo/db
+  mkdir $HSHQ_STACKS_DIR/matomo/dbexport
+  mkdir $HSHQ_STACKS_DIR/matomo/web
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $MATOMO_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $MATOMO_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  MATOMO_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MATOMO_ADMIN_PASSWORD | tr -d ':\n')
+
+  outputConfigMatomo
+  installStack matomo matomo-app "ready to handle connections" $HOME/matomo.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$MATOMO_INIT_ENV" = "true" ]; then
+    sendEmail -s "Matomo Admin Login Info" -b "Matomo Admin Username: $MATOMO_ADMIN_USERNAME\nMatomo Admin Password: $MATOMO_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MATOMO_INIT_ENV=true
+    updateConfigVar MATOMO_INIT_ENV $MATOMO_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MATOMO.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://matomo-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MATOMO $MANAGETLS_MATOMO "$is_integrate_hshq" $NETDEFAULT_MATOMO "$inner_block"
+  insertSubAuthelia $SUB_MATOMO.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll matomo "$FMLNAME_MATOMO" $USERTYPE_MATOMO "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" "matomo.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad matomo "$FMLNAME_MATOMO" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigMatomo()
+{
+  cat <<EOFMT > $HOME/matomo-compose.yml
+$STACK_VERSION_PREFIX matomo $(getScriptStackVersion matomo)
+
+services:
+  matomo-db:
+    image: $(getScriptImageByContainerName matomo-db)
+    container_name: matomo-db
+    hostname: matomo-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-matomo-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-matomo-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/matomo/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.matomo-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.matomo-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.matomo-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.matomo-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.matomo-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.matomo-hourly-db.email-from=Matomo Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.matomo-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.matomo-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.matomo-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.matomo-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.matomo-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.matomo-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.matomo-monthly-db.email-from=Matomo Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.matomo-monthly-db.mail-only-on-error=false"
+
+  matomo-app:
+    image: $(getScriptImageByContainerName matomo-app)
+    container_name: matomo-app
+    hostname: matomo-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - matomo-db
+    networks:
+      - int-matomo-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-matomo-web:/var/www/html:z
+
+  matomo-web:
+    image: $(getScriptImageByContainerName matomo-web)
+    container_name: matomo-web
+    hostname: matomo-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-matomo-net
+      - dock-proxy-net
+    depends_on:
+      - matomo-app
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/matomo/config/nginx.conf:/etc/nginx/conf.d/default.conf:z,ro
+      - v-matomo-web:/var/www/html:z,ro
+
+volumes:
+  v-matomo-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/matomo/db
+  v-matomo-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/matomo/web
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-matomo-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/matomo.env
+TZ=\${TZ}
+MYSQL_DATABASE=$MATOMO_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$MATOMO_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$MATOMO_DATABASE_USER
+MYSQL_PASSWORD=$MATOMO_DATABASE_USER_PASSWORD
+MATOMO_DATABASE_HOST=matomo-db
+MATOMO_DATABASE_ADAPTER=mysql
+MATOMO_DATABASE_TABLES_PREFIX=matomo_
+MATOMO_DATABASE_USERNAME=$MATOMO_DATABASE_USER
+MATOMO_DATABASE_PASSWORD=$MATOMO_DATABASE_USER_PASSWORD
+MATOMO_DATABASE_DBNAME=$MATOMO_DATABASE_NAME
+EOFMT
+
+  cat <<EOFMT > $HSHQ_STACKS_DIR/matomo/config/nginx.conf
+upstream php-handler {
+	server matomo-app:9000;
+}
+
+server {
+	listen 80;
+
+	add_header Referrer-Policy origin; # make sure outgoing links don't show the URL to the Matomo instance
+	root /var/www/html; # replace with path to your matomo instance
+	index index.php;
+	try_files \$uri \$uri/ =404;
+
+	## only allow accessing the following php files
+	location ~ ^/(index|matomo|piwik|js/index|plugins/HeatmapSessionRecording/configs).php {
+		# regex to split \$uri to \$fastcgi_script_name and \$fastcgi_path
+		fastcgi_split_path_info ^(.+\.php)(/.+)\$;
+
+		# Check that the PHP script exists before passing it
+		try_files \$fastcgi_script_name =404;
+
+		include fastcgi_params;
+		fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+		fastcgi_param PATH_INFO \$fastcgi_path_info;
+		fastcgi_param HTTP_PROXY ""; # prohibit httpoxy: https://httpoxy.org/
+		fastcgi_pass php-handler;
+	}
+
+	## deny access to all other .php files
+	location ~* ^.+\.php\$ {
+		deny all;
+		return 403;
+	}
+
+	## disable all access to the following directories
+	location ~ /(config|tmp|core|lang) {
+		deny all;
+		return 403; # replace with 404 to not show these directories exist
+	}
+	location ~ /\.ht {
+		deny all;
+		return 403;
+	}
+
+	location ~ js/container_.*_preview\.js\$ {
+		expires off;
+		add_header Cache-Control 'private, no-cache, no-store';
+	}
+
+	location ~ \.(gif|ico|jpg|png|svg|js|css|htm|html|mp3|mp4|wav|ogg|avi|ttf|eot|woff|woff2|json)\$ {
+		allow all;
+		## Cache images,CSS,JS and webfonts for an hour
+		## Increasing the duration may improve the load-time, but may cause old files to show after an Matomo upgrade
+		expires 1h;
+		add_header Pragma public;
+		add_header Cache-Control "public";
+	}
+
+	location ~ /(libs|vendor|plugins|misc/user) {
+		deny all;
+		return 403;
+	}
+
+	## properly display textfiles in root directory
+	location ~/(.*\.md|LEGALNOTICE|LICENSE) {
+		default_type text/plain;
+	}
+}
+
+EOFMT
+
+}
+
+function performUpdateMatomo()
+{
+  perform_stack_name=matomo
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mariadb:10.7.3,matomo:5.3.1-fpm-alpine,nginx:1.27.4-alpine
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="matomo:5.3.1-fpm-alpine,matomo:5.3.1-fpm-alpine"
+      image_update_map[2]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Pastefy
+function installPastefy()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory pastefy "Pastefy"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName pastefy-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/pastefy
+  mkdir $HSHQ_STACKS_DIR/pastefy/db
+  mkdir $HSHQ_STACKS_DIR/pastefy/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $PASTEFY_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $PASTEFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  PASTEFY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $PASTEFY_ADMIN_PASSWORD | tr -d ':\n')
+
+  outputConfigPastefy
+  installStack pastefy pastefy-app "" $HOME/pastefy.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$PASTEFY_INIT_ENV" = "true" ]; then
+    sendEmail -s "Pastefy Admin Login Info" -b "Pastefy Admin Username: $PASTEFY_ADMIN_USERNAME\nPastefy Admin Password: $PASTEFY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    PASTEFY_INIT_ENV=true
+    updateConfigVar PASTEFY_INIT_ENV $PASTEFY_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PASTEFY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://pastefy-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PASTEFY $MANAGETLS_PASTEFY "$is_integrate_hshq" $NETDEFAULT_PASTEFY "$inner_block"
+  insertSubAuthelia $SUB_PASTEFY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll pastefy "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" "pastefy.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad pastefy "$FMLNAME_PASTEFY" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigPastefy()
+{
+  cat <<EOFMT > $HOME/pastefy-compose.yml
+$STACK_VERSION_PREFIX pastefy $(getScriptStackVersion pastefy)
+
+services:
+  pastefy-db:
+    image: $(getScriptImageByContainerName pastefy-db)
+    container_name: pastefy-db
+    hostname: pastefy-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-pastefy-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-pastefy-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/pastefy/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.pastefy-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.pastefy-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.pastefy-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.pastefy-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.pastefy-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.pastefy-hourly-db.email-from=Pastefy Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.pastefy-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.pastefy-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.pastefy-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.pastefy-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.pastefy-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.pastefy-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.pastefy-monthly-db.email-from=Pastefy Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.pastefy-monthly-db.mail-only-on-error=false"
+
+  pastefy-app:
+    image: $(getScriptImageByContainerName pastefy-app)
+    container_name: pastefy-app
+    hostname: pastefy-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - pastefy-db
+    networks:
+      - int-pastefy-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-pastefy-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/pastefy/db
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-pastefy-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/pastefy.env
+TZ=\${TZ}
+MYSQL_DATABASE=$PASTEFY_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$PASTEFY_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$PASTEFY_DATABASE_USER
+MYSQL_PASSWORD=$PASTEFY_DATABASE_USER_PASSWORD
+DATABASE_HOST=pastefy-db
+DATABASE_DRIVER=mysql
+DATABASE_NAME=$PASTEFY_DATABASE_NAME
+DATABASE_USER=$PASTEFY_DATABASE_USER
+DATABASE_PASSWORD=$PASTEFY_DATABASE_USER_PASSWORD
+SERVER_NAME=https://$SUB_PASTEFY.$HOMESERVER_DOMAIN
+PASTEFY_INFO_CUSTOM_NAME=$HOMESERVER_NAME Pastefy
+PASTEFY_LOGIN_REQUIRED=false
+PASTEFY_LOGIN_REQUIRED_CREATE=false
+PASTEFY_LOGIN_REQUIRED_READ=false
+PASTEFY_ENCRYPTION_DEFAULT=false
+PASTEFY_GRANT_ACCESS_REQUIRED=false
+PASTEFY_LIST_PASTES=false
+PASTEFY_PUBLIC_STATS=false
+PASTEFY_PUBLIC_PASTES=false
+EOFMT
+
+}
+
+function performUpdatePastefy()
+{
+  perform_stack_name=pastefy
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mariadb:10.7.3,interaapps/pastefy:7.0.3
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="interaapps/pastefy:7.0.3,interaapps/pastefy:7.0.3"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# SnyPy
+function installSnyPy()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory snypy "SnyPy"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName snypy-api)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName snypy-static)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName snypy-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/snypy
+  mkdir $HSHQ_STACKS_DIR/snypy/db
+  mkdir $HSHQ_STACKS_DIR/snypy/dbexport
+  mkdir $HSHQ_STACKS_DIR/snypy/fixtures
+  mkdir $HSHQ_STACKS_DIR/snypy/static
+  initServicesCredentials
+  set +e
+  outputConfigSnyPy
+  installStack snypy snypy-app "" $HOME/snypy.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$SNYPY_INIT_ENV" = "true" ]; then
+    SNYPY_INIT_ENV=true
+    updateConfigVar SNYPY_INIT_ENV $SNYPY_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://snypy-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SNYPY_APP $MANAGETLS_SNYPY_APP "$is_integrate_hshq" $NETDEFAULT_SNYPY_APP "$inner_block"
+  insertSubAuthelia $SUB_SNYPY_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SNYPY_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://snypy-api:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SNYPY_API $MANAGETLS_SNYPY_API "$is_integrate_hshq" $NETDEFAULT_SNYPY_API "$inner_block"
+  insertSubAuthelia $SUB_SNYPY_API.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll snypy "$FMLNAME_SNYPY_APP" $USERTYPE_SNYPY_APP "https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN" "snypy.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad snypy "$FMLNAME_SNYPY_APP" postgres snypy-db $SNYPY_DATABASE_NAME $SNYPY_DATABASE_USER $SNYPY_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigSnyPy()
+{
+  cat <<EOFMT > $HOME/snypy-compose.yml
+$STACK_VERSION_PREFIX snypy $(getScriptStackVersion snypy)
+
+services:
+  snypy-db:
+    image: $(getScriptImageByContainerName snypy-db)
+    container_name: snypy-db
+    hostname: snypy-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-snypy-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/snypy/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/snypy/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.snypy-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.snypy-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.snypy-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.snypy-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.snypy-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.snypy-hourly-db.email-from=SnyPy Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.snypy-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.snypy-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.snypy-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.snypy-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.snypy-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.snypy-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.snypy-monthly-db.email-from=SnyPy Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.snypy-monthly-db.mail-only-on-error=false"
+
+  snypy-api:
+    image: $(getScriptImageByContainerName snypy-api)
+    container_name: snypy-api
+    hostname: snypy-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - snypy-db
+    networks:
+      - int-snypy-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/snypy/fixtures:/fixtures/
+
+  snypy-static:
+    image: $(getScriptImageByContainerName snypy-static)
+    container_name: snypy-static
+    hostname: snypy-static
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - snypy-db
+    networks:
+      - int-snypy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  snypy-app:
+    image: $(getScriptImageByContainerName snypy-app)
+    container_name: snypy-app
+    hostname: snypy-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - snypy-api
+      - snypy-static
+    networks:
+      - int-snypy-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-snypy-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/snypy.env
+TZ=\${TZ}
+POSTGRES_PASSWORD=$SNYPY_DATABASE_USER_PASSWORD
+POSTGRES_USER=$SNYPY_DATABASE_USER
+POSTGRES_DB=$SNYPY_DATABASE_NAME
+POSTGRES_INITDB_ARGS=--data-checksums
+DEBUG=False
+SECRET_KEY=$SNYPY_SECRET_KEY
+ALLOWED_HOSTS=$SUB_SNYPY_API.$HOMESERVER_DOMAIN
+DATABASE_URL=psql://$SNYPY_DATABASE_USER:$SNYPY_DATABASE_USER_PASSWORD@snypy-db:5432/$SNYPY_DATABASE_NAME
+EMAIL_URL=smtp+tls://$SMTP_HOSTNAME:$SMTP_HOSTPORT
+CORS_ORIGIN_WHITELIST=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN
+CSRF_TRUSTED_ORIGINS=http://127.0.0.1
+REGISTER_VERIFICATION_URL=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN/verify-user
+RESET_PASSWORD_VERIFICATION_URL=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN/set-password/?token={token}
+REGISTER_EMAIL_VERIFICATION_URL=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN/verify-email
+REST_API_URL=https://$SUB_SNYPY_API.$HOMESERVER_DOMAIN
+STATIC_URL=http://snypy-static/
+SENTRY_ENABLED=False
+EOFMT
+
+  cat <<EOFSP > $HSHQ_STACKS_DIR/snypy/fixtures/setup.json
+[
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "add_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "change_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "delete_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "add_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "change_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "delete_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "add_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "change_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "delete_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "add_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "change_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "delete_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "add_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "change_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "delete_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add Token",
+        "content_type": [
+            "django_rest_multitokenauth",
+            "multitoken"
+        ],
+        "codename": "add_multitoken"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change Token",
+        "content_type": [
+            "django_rest_multitokenauth",
+            "multitoken"
+        ],
+        "codename": "change_multitoken"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete Token",
+        "content_type": [
+            "django_rest_multitokenauth",
+            "multitoken"
+        ],
+        "codename": "delete_multitoken"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add extension",
+        "content_type": [
+            "snippets",
+            "extension"
+        ],
+        "codename": "add_extension"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change extension",
+        "content_type": [
+            "snippets",
+            "extension"
+        ],
+        "codename": "change_extension"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete extension",
+        "content_type": [
+            "snippets",
+            "extension"
+        ],
+        "codename": "delete_extension"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add file",
+        "content_type": [
+            "snippets",
+            "file"
+        ],
+        "codename": "add_file"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change file",
+        "content_type": [
+            "snippets",
+            "file"
+        ],
+        "codename": "change_file"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete file",
+        "content_type": [
+            "snippets",
+            "file"
+        ],
+        "codename": "delete_file"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add label",
+        "content_type": [
+            "snippets",
+            "label"
+        ],
+        "codename": "add_label"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change label",
+        "content_type": [
+            "snippets",
+            "label"
+        ],
+        "codename": "change_label"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete label",
+        "content_type": [
+            "snippets",
+            "label"
+        ],
+        "codename": "delete_label"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add language",
+        "content_type": [
+            "snippets",
+            "language"
+        ],
+        "codename": "add_language"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change language",
+        "content_type": [
+            "snippets",
+            "language"
+        ],
+        "codename": "change_language"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete language",
+        "content_type": [
+            "snippets",
+            "language"
+        ],
+        "codename": "delete_language"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add snippet",
+        "content_type": [
+            "snippets",
+            "snippet"
+        ],
+        "codename": "add_snippet"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change snippet",
+        "content_type": [
+            "snippets",
+            "snippet"
+        ],
+        "codename": "change_snippet"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete snippet",
+        "content_type": [
+            "snippets",
+            "snippet"
+        ],
+        "codename": "delete_snippet"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add snippet label",
+        "content_type": [
+            "snippets",
+            "snippetlabel"
+        ],
+        "codename": "add_snippetlabel"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change snippet label",
+        "content_type": [
+            "snippets",
+            "snippetlabel"
+        ],
+        "codename": "change_snippetlabel"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete snippet label",
+        "content_type": [
+            "snippets",
+            "snippetlabel"
+        ],
+        "codename": "delete_snippetlabel"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add team",
+        "content_type": [
+            "teams",
+            "team"
+        ],
+        "codename": "add_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change team",
+        "content_type": [
+            "teams",
+            "team"
+        ],
+        "codename": "change_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete team",
+        "content_type": [
+            "teams",
+            "team"
+        ],
+        "codename": "delete_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add user team",
+        "content_type": [
+            "teams",
+            "userteam"
+        ],
+        "codename": "add_userteam"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change user team",
+        "content_type": [
+            "teams",
+            "userteam"
+        ],
+        "codename": "change_userteam"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete user team",
+        "content_type": [
+            "teams",
+            "userteam"
+        ],
+        "codename": "delete_userteam"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add user",
+        "content_type": [
+            "users",
+            "user"
+        ],
+        "codename": "add_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change user",
+        "content_type": [
+            "users",
+            "user"
+        ],
+        "codename": "change_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete user",
+        "content_type": [
+            "users",
+            "user"
+        ],
+        "codename": "delete_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "view_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "view_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "view_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "view_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "view_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view Token",
+        "content_type": [
+            "django_rest_multitokenauth",
+            "multitoken"
+        ],
+        "codename": "view_multitoken"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view extension",
+        "content_type": [
+            "snippets",
+            "extension"
+        ],
+        "codename": "view_extension"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view file",
+        "content_type": [
+            "snippets",
+            "file"
+        ],
+        "codename": "view_file"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view label",
+        "content_type": [
+            "snippets",
+            "label"
+        ],
+        "codename": "view_label"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view language",
+        "content_type": [
+            "snippets",
+            "language"
+        ],
+        "codename": "view_language"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view snippet",
+        "content_type": [
+            "snippets",
+            "snippet"
+        ],
+        "codename": "view_snippet"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view snippet label",
+        "content_type": [
+            "snippets",
+            "snippetlabel"
+        ],
+        "codename": "view_snippetlabel"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view team",
+        "content_type": [
+            "teams",
+            "team"
+        ],
+        "codename": "view_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view user team",
+        "content_type": [
+            "teams",
+            "userteam"
+        ],
+        "codename": "view_userteam"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view user",
+        "content_type": [
+            "users",
+            "user"
+        ],
+        "codename": "view_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can add Password Reset Token",
+        "content_type": [
+            "django_rest_passwordreset",
+            "resetpasswordtoken"
+        ],
+        "codename": "add_resetpasswordtoken"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can change Password Reset Token",
+        "content_type": [
+            "django_rest_passwordreset",
+            "resetpasswordtoken"
+        ],
+        "codename": "change_resetpasswordtoken"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can delete Password Reset Token",
+        "content_type": [
+            "django_rest_passwordreset",
+            "resetpasswordtoken"
+        ],
+        "codename": "delete_resetpasswordtoken"
+    }
+},
+{
+    "model": "auth.permission",
+    "fields": {
+        "name": "Can view Password Reset Token",
+        "content_type": [
+            "django_rest_passwordreset",
+            "resetpasswordtoken"
+        ],
+        "codename": "view_resetpasswordtoken"
+    }
+},
+{
+    "model": "auth.group",
+    "fields": {
+        "name": "User",
+        "permissions": [
+            [
+                "view_extension",
+                "snippets",
+                "extension"
+            ],
+            [
+                "add_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "change_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "delete_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "view_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "add_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "change_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "delete_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "view_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "view_language",
+                "snippets",
+                "language"
+            ],
+            [
+                "add_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "change_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "delete_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "view_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "add_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "change_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "delete_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "view_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "add_team",
+                "teams",
+                "team"
+            ],
+            [
+                "change_team",
+                "teams",
+                "team"
+            ],
+            [
+                "delete_team",
+                "teams",
+                "team"
+            ],
+            [
+                "view_team",
+                "teams",
+                "team"
+            ],
+            [
+                "add_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "change_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "delete_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "view_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "view_user",
+                "users",
+                "user"
+            ]
+        ]
+    }
+},
+{
+    "model": "auth.group",
+    "fields": {
+        "name": "Administrator",
+        "permissions": [
+            [
+                "view_extension",
+                "snippets",
+                "extension"
+            ],
+            [
+                "add_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "change_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "delete_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "view_file",
+                "snippets",
+                "file"
+            ],
+            [
+                "add_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "change_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "delete_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "view_label",
+                "snippets",
+                "label"
+            ],
+            [
+                "view_language",
+                "snippets",
+                "language"
+            ],
+            [
+                "add_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "change_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "delete_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "view_snippet",
+                "snippets",
+                "snippet"
+            ],
+            [
+                "add_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "change_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "delete_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "view_snippetlabel",
+                "snippets",
+                "snippetlabel"
+            ],
+            [
+                "add_team",
+                "teams",
+                "team"
+            ],
+            [
+                "change_team",
+                "teams",
+                "team"
+            ],
+            [
+                "delete_team",
+                "teams",
+                "team"
+            ],
+            [
+                "view_team",
+                "teams",
+                "team"
+            ],
+            [
+                "add_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "change_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "delete_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "view_userteam",
+                "teams",
+                "userteam"
+            ],
+            [
+                "add_user",
+                "users",
+                "user"
+            ],
+            [
+                "change_user",
+                "users",
+                "user"
+            ],
+            [
+                "delete_user",
+                "users",
+                "user"
+            ],
+            [
+                "view_user",
+                "users",
+                "user"
+            ]
+        ]
+    }
+},
+{
+    "model": "users.user",
+    "fields": {
+        "password": "pbkdf2_sha256$260000$EebAx3nXf1dexLasgavCcr$OR8BPYrSWePXDxV2SB4dDaabmnmgRzb7Zqs3/s6cSs4=",
+        "last_login": "2021-10-17T13:23:55.876Z",
+        "is_superuser": true,
+        "username": "admin",
+        "first_name": "",
+        "last_name": "",
+        "email": "",
+        "is_staff": true,
+        "is_active": true,
+        "date_joined": "2018-06-09T08:11:07.178Z",
+        "groups": [],
+        "user_permissions": []
+    }
+},
+{
+    "model": "snippets.snippet",
+    "pk": 1,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.519Z",
+        "modified_date": "2018-06-28T20:37:21.794Z",
+        "user": [
+            "admin"
+        ],
+        "team": 1,
+        "title": "Wordpress Docker Compose",
+        "description": "Easy Wordpress development with Docker and Docker Compose",
+        "visibility": "PRIVATE"
+    }
+},
+{
+    "model": "snippets.snippet",
+    "pk": 6,
+    "fields": {
+        "created_date": "2018-04-25T17:42:53.893Z",
+        "modified_date": "2018-06-28T20:37:28.976Z",
+        "user": [
+            "admin"
+        ],
+        "team": 1,
+        "title": "Docker database dumps",
+        "description": "sudo ./export.sh",
+        "visibility": "PRIVATE"
+    }
+},
+{
+    "model": "snippets.snippet",
+    "pk": 7,
+    "fields": {
+        "created_date": "2018-04-25T17:55:10.896Z",
+        "modified_date": "2018-06-13T09:29:46.610Z",
+        "user": [
+            "admin"
+        ],
+        "team": 1,
+        "title": "Markdown reference",
+        "description": "This is intended as a quick reference for markdown syntax.",
+        "visibility": "PRIVATE"
+    }
+},
+{
+    "model": "snippets.snippet",
+    "pk": 13,
+    "fields": {
+        "created_date": "2018-09-12T19:39:21.380Z",
+        "modified_date": "2019-12-30T18:45:14.495Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "title": "Code 2",
+        "description": "Test",
+        "visibility": "PRIVATE"
+    }
+},
+{
+    "model": "snippets.file",
+    "pk": 1,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.468Z",
+        "modified_date": "2018-04-22T07:34:17.882Z",
+        "snippet": 1,
+        "language": 10,
+        "name": "docker-compose.yml",
+        "content": "version: '2'\r\nservices:\r\n  wordpress:\r\n    image: wordpress:latest # https://hub.docker.com/_/wordpress/\r\n    ports:\r\n      - 127.0.0.1:80:80 # change ip if required\r\n    volumes:\r\n      - ./config/php.conf.uploads.ini:/usr/local/etc/php/conf.d/uploads.ini\r\n      - ./wp-app:/var/www/html # Full wordpress project\r\n      #- ./plugin-name/trunk/:/var/www/html/wp-content/plugins/plugin-name # Plugin development\r\n      #- ./theme-name/trunk/:/var/www/html/wp-content/themes/theme-name # Theme development\r\n    environment:\r\n      WORDPRESS_DB_HOST: db\r\n      WORDPRESS_DB_NAME: wordpress\r\n      WORDPRESS_DB_USER: root\r\n      WORDPRESS_DB_PASSWORD: password\r\n    depends_on:\r\n      - db\r\n    networks:\r\n      - wordpress-network\r\n  db:\r\n    image: mysql:latest # https://hub.docker.com/_/mysql/ - or mariadb https://hub.docker.com/_/mariadb\r\n    ports:\r\n      - 127.0.0.1:3306:3306 # change ip if required\r\n    command: [\r\n        '--default_authentication_plugin=mysql_native_password',\r\n        '--character-set-server=utf8mb4',\r\n        '--collation-server=utf8mb4_unicode_ci'\r\n    ]\r\n    volumes:\r\n      - ./wp-data:/docker-entrypoint-initdb.d\r\n    environment:\r\n      MYSQL_DATABASE: wordpress\r\n      MYSQL_ROOT_PASSWORD: password\r\n    networks:\r\n      - wordpress-network\r\nnetworks:\r\n  wordpress-network:\r\n      driver: bridge"
+    }
+},
+{
+    "model": "snippets.file",
+    "pk": 9,
+    "fields": {
+        "created_date": "2018-04-29T07:33:47.850Z",
+        "modified_date": "2018-06-10T11:44:26.779Z",
+        "snippet": 6,
+        "language": 8,
+        "name": "export.sh",
+        "content": "#!/bin/bash\r\n_os=\"`uname`\"\r\n_now=$(date +\"%m_%d_%Y\")\r\n_file=\"wp-data/data_$_now.sql\"\r\ndocker-compose exec db sh -c 'exec mysqldump \"$MYSQL_DATABASE\" -uroot -p\"$MYSQL_ROOT_PASSWORD\"' > $_file\r\nif [[ $_os == \"Darwin\"* ]] ; then\r\n  sed -i '.bak' 1,1d $_file\r\nelse\r\n  sed -i 1,1d $_file # Removes the password warning from the file\r\nfi"
+    }
+},
+{
+    "model": "snippets.file",
+    "pk": 10,
+    "fields": {
+        "created_date": "2018-04-29T07:57:04.646Z",
+        "modified_date": "2018-06-09T08:46:51.530Z",
+        "snippet": 7,
+        "language": 9,
+        "name": "docs.md",
+        "content": "# H1\r\n## H2\r\n### H3\r\n#### H4\r\n##### H5\r\n###### H6\r\n\r\nAlternatively, for H1 and H2, an underline-ish style:\r\n\r\nAlt-H1\r\n======\r\n\r\nAlt-H2\r\n------\r\n\r\nEmphasis, aka italics, with *asterisks* or _underscores_.\r\n\r\nStrong emphasis, aka bold, with **asterisks** or __underscores__.\r\n\r\nCombined emphasis with **asterisks and _underscores_**.\r\n\r\nStrikethrough uses two tildes. ~~Scratch this.~~\r\n\r\n1. First ordered list item\r\n2. Another item\r\n⋅⋅* Unordered sub-list. \r\n1. Actual numbers don't matter, just that it's a number\r\n⋅⋅1. Ordered sub-list\r\n4. And another item.\r\n\r\n⋅⋅⋅You can have properly indented paragraphs within list items. Notice the blank line above, and the leading spaces (at least one, but we'll use three here to also align the raw Markdown).\r\n\r\n⋅⋅⋅To have a line break without a paragraph, you will need to use two trailing spaces.⋅⋅\r\n⋅⋅⋅Note that this line is separate, but within the same paragraph.⋅⋅\r\n⋅⋅⋅(This is contrary to the typical GFM line break behaviour, where trailing spaces are not required.)\r\n\r\n* Unordered list can use asterisks\r\n- Or minuses\r\n+ Or pluses"
+    }
+},
+{
+    "model": "snippets.file",
+    "pk": 11,
+    "fields": {
+        "created_date": "2019-04-14T18:02:19.143Z",
+        "modified_date": "2019-04-14T18:02:19.143Z",
+        "snippet": 13,
+        "language": 11,
+        "name": "test.json",
+        "content": "{\n  \"name\": \"sny-py\",\n  \"version\": \"0.0.0\",\n  \"license\": \"MIT\",\n  \"scripts\": {\n    \"ng\": \"ng\",\n    \"start\": \"ng serve\",\n    \"build\": \"ng build --prod\",\n    \"test\": \"ng test\",\n    \"lint\": \"ng lint\",\n    \"e2e\": \"ng e2e\"\n  },\n  \"private\": true,\n  \"dependencies\": {\n    \"@angular/animations\": \"7.2.13\",\n    \"@angular/common\": \"7.2.13\",\n    \"@angular/compiler\": \"7.2.13\",\n    \"@angular/core\": \"7.2.13\",\n    \"@angular/forms\": \"7.2.13\",\n    \"@angular/http\": \"7.2.13\",\n    \"@angular/platform-browser\": \"7.2.13\",\n    \"@angular/platform-browser-dynamic\": \"7.2.13\",\n    \"@angular/router\": \"7.2.13\",\n    \"@fortawesome/angular-fontawesome\": \"0.3.0\",\n    \"@fortawesome/fontawesome-svg-core\": \"^1.2.17\",\n    \"@fortawesome/free-brands-svg-icons\": \"^5.8.1\",\n    \"@fortawesome/free-regular-svg-icons\": \"^5.8.1\",\n    \"@fortawesome/free-solid-svg-icons\": \"^5.8.1\",\n    \"@ng-bootstrap/ng-bootstrap\": \"^4.1.1\",\n    \"@ng-select/ng-select\": \"^2.17.0\",\n    \"bootstrap\": \"^4.3.1\",\n    \"core-js\": \"^2.6.5\",\n    \"monaco-editor\": \"^0.16.2\",\n    \"ngx-anx-forms\": \"^0.2.2\",\n    \"ngx-monaco-editor\": \"^7.0.0\",\n    \"ngx-perfect-scrollbar\": \"^7.2.1\",\n    \"ngx-pipes\": \"^2.4.6\",\n    \"ngx-resource-factory\": \"0.0.11\",\n    \"ngx-toastr\": \"^10.0.2\",\n    \"rxjs\": \"^6.4.0\",\n    \"rxjs-compat\": \"^6.4.0\",\n    \"zone.js\": \"^0.9.0\"\n  },\n  \"devDependencies\": {\n    \"@angular-devkit/build-angular\": \"^0.13.8\",\n    \"@angular/cli\": \"7.3.8\",\n    \"@angular/compiler-cli\": \"7.2.13\",\n    \"@angular/language-service\": \"7.2.13\",\n    \"@types/jasmine\": \"^3.3.12\",\n    \"@types/jasminewd2\": \"~2.0.6\",\n    \"@types/node\": \"^11.13.4\",\n    \"codelyzer\": \"^5.0.0\",\n    \"jasmine-core\": \"~3.4.0\",\n    \"jasmine-spec-reporter\": \"~4.2.1\",\n    \"karma\": \"^4.0.1\",\n    \"karma-chrome-launcher\": \"~2.2.0\",\n    \"karma-coverage-istanbul-reporter\": \"^2.0.5\",\n    \"karma-jasmine\": \"^2.0.1\",\n    \"karma-jasmine-html-reporter\": \"^1.4.0\",\n    \"protractor\": \"^5.4.2\",\n    \"ts-node\": \"~8.0.3\",\n    \"tslint\": \"~5.15.0\",\n    \"typescript\": \"~3.2.4\"\n  }\n}"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 1,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": null,
+        "team": null,
+        "name": "Django"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 2,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-11-17T14:25:21.870Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Angular"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 3,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Laravel"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 4,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-06-10T12:24:51.779Z",
+        "user": [
+            "admin"
+        ],
+        "team": 1,
+        "name": "Wordpress"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 5,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Drupal"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 6,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Typo3"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 7,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Symfony"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 8,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Linux"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 9,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Prestashop"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 10,
+    "fields": {
+        "created_date": "2018-04-22T07:26:49.494Z",
+        "modified_date": "2018-04-22T07:26:49.507Z",
+        "user": [
+            "admin"
+        ],
+        "team": null,
+        "name": "Magento"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 11,
+    "fields": {
+        "created_date": "2018-04-29T07:52:05.488Z",
+        "modified_date": "2018-06-10T11:38:26.919Z",
+        "user": null,
+        "team": 1,
+        "name": "Docker"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 15,
+    "fields": {
+        "created_date": "2018-06-13T20:49:22.706Z",
+        "modified_date": "2018-06-13T20:49:22.706Z",
+        "user": [
+            "admin"
+        ],
+        "team": 3,
+        "name": "Label 3"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 17,
+    "fields": {
+        "created_date": "2018-06-13T20:50:10.597Z",
+        "modified_date": "2018-06-13T20:50:10.597Z",
+        "user": [
+            "admin"
+        ],
+        "team": 3,
+        "name": "Label 4"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 18,
+    "fields": {
+        "created_date": "2018-06-28T20:38:49.912Z",
+        "modified_date": "2018-06-28T20:38:49.912Z",
+        "user": [
+            "admin"
+        ],
+        "team": 1,
+        "name": "Markdown"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 20,
+    "fields": {
+        "created_date": "2019-04-14T18:01:20.466Z",
+        "modified_date": "2019-04-14T18:01:20.466Z",
+        "user": null,
+        "team": null,
+        "name": "Label 1"
+    }
+},
+{
+    "model": "snippets.label",
+    "pk": 21,
+    "fields": {
+        "created_date": "2019-04-14T18:01:25.285Z",
+        "modified_date": "2019-04-14T18:01:25.285Z",
+        "user": null,
+        "team": null,
+        "name": "Label 2"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 1,
+    "fields": {
+        "name": "python"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 2,
+    "fields": {
+        "name": "php"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 3,
+    "fields": {
+        "name": "css"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 4,
+    "fields": {
+        "name": "html"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 5,
+    "fields": {
+        "name": "text"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 6,
+    "fields": {
+        "name": "typescript"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 7,
+    "fields": {
+        "name": "javascript"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 8,
+    "fields": {
+        "name": "sh"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 9,
+    "fields": {
+        "name": "markdown"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 10,
+    "fields": {
+        "name": "yaml"
+    }
+},
+{
+    "model": "snippets.language",
+    "pk": 11,
+    "fields": {
+        "name": "json"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 1,
+    "fields": {
+        "language": 1,
+        "name": "py"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 2,
+    "fields": {
+        "language": 2,
+        "name": "php"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 3,
+    "fields": {
+        "language": 3,
+        "name": "css"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 4,
+    "fields": {
+        "language": 4,
+        "name": "html"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 5,
+    "fields": {
+        "language": 4,
+        "name": "htm"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 6,
+    "fields": {
+        "language": 5,
+        "name": "txt"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 7,
+    "fields": {
+        "language": 10,
+        "name": "yml"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 8,
+    "fields": {
+        "language": 6,
+        "name": "ts"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 9,
+    "fields": {
+        "language": 7,
+        "name": "js"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 10,
+    "fields": {
+        "language": 8,
+        "name": "sh"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 11,
+    "fields": {
+        "language": 9,
+        "name": "md"
+    }
+},
+{
+    "model": "snippets.extension",
+    "pk": 12,
+    "fields": {
+        "language": 11,
+        "name": "json"
+    }
+},
+{
+    "model": "snippets.snippetlabel",
+    "pk": 270,
+    "fields": {
+        "snippet": 1,
+        "label": 4
+    }
+},
+{
+    "model": "snippets.snippetlabel",
+    "pk": 271,
+    "fields": {
+        "snippet": 1,
+        "label": 11
+    }
+},
+{
+    "model": "snippets.snippetlabel",
+    "pk": 272,
+    "fields": {
+        "snippet": 6,
+        "label": 11
+    }
+},
+{
+    "model": "snippets.snippetlabel",
+    "pk": 274,
+    "fields": {
+        "snippet": 7,
+        "label": 18
+    }
+},
+{
+    "model": "teams.team",
+    "pk": 1,
+    "fields": {
+        "created_date": "2018-06-09T08:23:16.598Z",
+        "modified_date": "2018-06-09T08:23:16.598Z",
+        "name": "Team 1"
+    }
+},
+{
+    "model": "teams.team",
+    "pk": 3,
+    "fields": {
+        "created_date": "2018-06-13T09:01:53.056Z",
+        "modified_date": "2018-06-13T09:01:53.056Z",
+        "name": "Team 2"
+    }
+},
+{
+    "model": "teams.team",
+    "pk": 4,
+    "fields": {
+        "created_date": "2019-12-30T18:34:25.697Z",
+        "modified_date": "2019-12-30T18:34:25.697Z",
+        "name": "Team 3"
+    }
+},
+{
+    "model": "teams.userteam",
+    "pk": 3,
+    "fields": {
+        "created_date": "2018-06-13T09:01:53.077Z",
+        "modified_date": "2020-04-08T05:32:59.734Z",
+        "user": [
+            "admin"
+        ],
+        "team": 3,
+        "role": "SUBSCRIBER"
+    }
+},
+{
+    "model": "teams.userteam",
+    "pk": 9,
+    "fields": {
+        "created_date": "2018-06-13T20:12:15.114Z",
+        "modified_date": "2018-11-12T22:44:12.362Z",
+        "user": [
+            "admin"
+        ],
+        "team": 1,
+        "role": "EDITOR"
+    }
+}
+]
+EOFSP
+}
+
+function performUpdateSnyPy()
+{
+  perform_stack_name=snypy
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=postgres:15.0-bullseye,ghcr.io/snypy/snypy-backend:1.5.2,ghcr.io/snypy/snypy-static:1.5.2,ghcr.io/snypy/snypy-frontend:1.5.1
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/snypy/snypy-backend:1.5.2,ghcr.io/snypy/snypy-backend:1.5.2"
+      image_update_map[2]="ghcr.io/snypy/snypy-static:1.5.2,ghcr.io/snypy/snypy-static:1.5.2"
+      image_update_map[3]="ghcr.io/snypy/snypy-frontend:1.5.1,ghcr.io/snypy/snypy-frontend:1.5.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# ExampleService
+function installExampleService()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory exampleservice "ExampleService"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName exampleservice-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/exampleservice
+  mkdir $HSHQ_STACKS_DIR/exampleservice/config
+  mkdir $HSHQ_STACKS_DIR/exampleservice/db
+  mkdir $HSHQ_STACKS_DIR/exampleservice/dbexport
+  mkdir $HSHQ_STACKS_DIR/exampleservice/web
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $EXAMPLESERVICE_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $EXAMPLESERVICE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  EXAMPLESERVICE_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $EXAMPLESERVICE_ADMIN_PASSWORD | tr -d ':\n')
+
+  outputConfigExampleService
+  installStack exampleservice exampleservice-app "" $HOME/exampleservice.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$EXAMPLESERVICE_INIT_ENV" = "true" ]; then
+    sendEmail -s "ExampleService Admin Login Info" -b "ExampleService Admin Username: $EXAMPLESERVICE_ADMIN_PASSWORD\nExampleService Admin Password: $EXAMPLESERVICE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    EXAMPLESERVICE_INIT_ENV=true
+    updateConfigVar EXAMPLESERVICE_INIT_ENV $EXAMPLESERVICE_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://exampleservice-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_EXAMPLESERVICE $MANAGETLS_EXAMPLESERVICE "$is_integrate_hshq" $NETDEFAULT_EXAMPLESERVICE "$inner_block"
+  insertSubAuthelia $SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE" $USERTYPE_EXAMPLESERVICE "https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN" "exampleservice.png"
+    restartAllCaddyContainers
+    checkAddDBSqlPad exampleservice "$FMLNAME_EXAMPLESERVICE" mysql exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigExampleService()
+{
+  cat <<EOFMT > $HOME/exampleservice-compose.yml
+$STACK_VERSION_PREFIX exampleservice $(getScriptStackVersion exampleservice)
+
+services:
+  exampleservice-db:
+    image: $(getScriptImageByContainerName exampleservice-db)
+    container_name: exampleservice-db
+    hostname: exampleservice-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-exampleservice-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-exampleservice-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/exampleservice/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.exampleservice-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.exampleservice-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.exampleservice-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.exampleservice-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.exampleservice-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.exampleservice-hourly-db.email-from=ExampleService Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.exampleservice-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.exampleservice-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.exampleservice-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.exampleservice-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.exampleservice-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.exampleservice-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.exampleservice-monthly-db.email-from=ExampleService Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.exampleservice-monthly-db.mail-only-on-error=false"
+
+  exampleservice-app:
+    image: $(getScriptImageByContainerName exampleservice-app)
+    container_name: exampleservice-app
+    hostname: exampleservice-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - exampleservice-db
+    networks:
+      - int-exampleservice-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-exampleservice-web:/var/www/html:z
+
+volumes:
+  v-exampleservice-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/exampleservice/db
+  v-exampleservice-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/exampleservice/web
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-exampleservice-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/exampleservice.env
+TZ=\${TZ}
+
+EOFMT
+
+}
+
+function performUpdateExampleService()
+{
+  perform_stack_name=exampleservice
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
     ;;
     *)
       is_upgrade_error=true
@@ -58608,6 +61313,14 @@ SQLPAD_CONNECTIONS__mealie__username=$MEALIE_DATABASE_USER
 SQLPAD_CONNECTIONS__mealie__password=$MEALIE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__mealie__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__mealie__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__matomo__name=Matomo
+SQLPAD_CONNECTIONS__matomo__driver=mysql
+SQLPAD_CONNECTIONS__matomo__host=matomo-db
+SQLPAD_CONNECTIONS__matomo__database=$MATOMO_DATABASE_NAME
+SQLPAD_CONNECTIONS__matomo__username=$MATOMO_DATABASE_USER
+SQLPAD_CONNECTIONS__matomo__password=$MATOMO_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__matomo__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__matomo__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
@@ -58624,6 +61337,14 @@ SQLPAD_CONNECTIONS__paperless__username=$PAPERLESS_DATABASE_USER
 SQLPAD_CONNECTIONS__paperless__password=$PAPERLESS_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__paperless__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__paperless__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__pastefy__name=Pastefy
+SQLPAD_CONNECTIONS__pastefy__driver=mysql
+SQLPAD_CONNECTIONS__pastefy__host=pastefy-db
+SQLPAD_CONNECTIONS__pastefy__database=$PASTEFY_DATABASE_NAME
+SQLPAD_CONNECTIONS__pastefy__username=$PASTEFY_DATABASE_USER
+SQLPAD_CONNECTIONS__pastefy__password=$PASTEFY_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__pastefy__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__pastefy__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__peertube__name=PeerTube
 SQLPAD_CONNECTIONS__peertube__driver=postgres
 SQLPAD_CONNECTIONS__peertube__host=peertube-db
@@ -58764,7 +61485,7 @@ function modFunUpdateSQLPad()
 {
   grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
   if [ $? -eq 0 ]; then
-    return 2
+    return 3
   fi
   echo "SQLPAD_CONNECTIONS__${sdb_name}__name=$sdb_formal" >> $HOME/${updateStackName}.env
   echo "SQLPAD_CONNECTIONS__${sdb_name}__driver=$sdb_driver" >> $HOME/${updateStackName}.env
@@ -58790,6 +61511,8 @@ function checkAddDBSqlPad()
   usRetVal=$?
   if [ $usRetVal -eq 2 ]; then
     echo "WARNING: Could not find SQLPad stack, it may not be installed."
+  elif [ $usRetVal -eq 3 ]; then
+    echo "INFO: Already added to SQLPad"
   elif [ $usRetVal -ne 0 ]; then
     echo "ERROR: There was an unknown error with SQLPad"
   fi
@@ -59437,8 +62160,11 @@ function insertIntoHeimdallDB()
     color_string=$RELAYSERVER_COLOR_CODE
   fi
 
-  cp $HSHQ_ASSETS_DIR/images/$svc_img $HSHQ_STACKS_DIR/heimdall/config/www/icons/
-
+  if [ -f $HSHQ_ASSETS_DIR/images/$svc_img ]; then
+    cp -f $HSHQ_ASSETS_DIR/images/$svc_img $HSHQ_STACKS_DIR/heimdall/config/www/icons/
+  else
+    cp -f $HSHQ_ASSETS_DIR/images/heimdall.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/$svc_img
+  fi
   # Ensure we always add the next item at the end
   lastOrder=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select max(\"order\") from items;")
   if [ -z "$lastOrder" ]; then
