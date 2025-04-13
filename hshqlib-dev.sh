@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=137
+HSHQ_LIB_SCRIPT_VERSION=138
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -52,6 +52,7 @@ function init()
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
   RELAYSERVER_INSTALL_COMPLETE_FILE=installed
+  RELAYSERVER_SWAP_SIZE=2G
   HSHQ_LOG_FILE=/var/log/hshq.log
   HSHQ_INSTALL_NOTES_FILENAME='HomeServer_Install_Notes.txt'
   SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
@@ -137,17 +138,17 @@ function init()
     IS_HSHQ_DEV_TEST=true
   fi
   HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
-  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
+  HSHQ_WRAP_VER_URL=https://homeserverhq.com/ver/getwrapversion
   HSHQ_WRAP_DEV_URL=https://homeserverhq.com/hshq-dev.sh
-  HSHQ_WRAP_DEV_VER_URL=https://homeserverhq.com/getwrapversion-dev
+  HSHQ_WRAP_DEV_VER_URL=https://homeserverhq.com/ver/getwrapversion-dev
   HSHQ_WRAP_TEST_URL=https://homeserverhq.com/hshq-test.sh
-  HSHQ_WRAP_TEST_VER_URL=https://homeserverhq.com/getwrapversion-test
+  HSHQ_WRAP_TEST_VER_URL=https://homeserverhq.com/ver/getwrapversion-test
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
-  HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
+  HSHQ_LIB_VER_URL=https://homeserverhq.com/ver/getversion
   HSHQ_LIB_DEV_URL=https://homeserverhq.com/hshqlib-dev.sh
-  HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/getversion-dev
+  HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/ver/getversion-dev
   HSHQ_LIB_TEST_URL=https://homeserverhq.com/hshqlib-test.sh
-  HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/getversion-test
+  HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/ver/getversion-test
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
   HSHQ_GPG_FINGERPRINT=5B9C33067C71ABCFCE1ACF8A7F46128ABB7C1E42
@@ -1287,7 +1288,7 @@ fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
-vm.swappiness = 1
+vm.swappiness = 10
 net.core.somaxconn = 65536
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
@@ -4483,7 +4484,7 @@ function main()
   fi
   sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
 
-  set -e
+  set +e
   # Change SSH port on host
   sudo sed -i "s|^#*Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
   sudo sed -i "s|^Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
@@ -4509,8 +4510,24 @@ function main()
   # Set timezone
   sudo timedatectl set-timezone "$TZ"
 
+  # Create swap file
+  createSwapfile
+
+  set -e
   installDependencies
   createDockerNetworks
+}
+
+function createSwapfile()
+{
+  sudo grep swapfile /etc/fstab > /dev/null 2>&1
+  if [ \$? -ne 0 ] && ! [ -f /swapfile ]; then
+    sudo fallocate -l $RELAYSERVER_SWAP_SIZE /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  fi
 }
 
 function updateSysctl()
@@ -14191,11 +14208,11 @@ function loadDirectoryStructure()
 function getLatestVersionWrapper()
 {
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
-    echo $(curl --silent $HSHQ_WRAP_DEV_VER_URL)
+    echo $(curl -L --silent $HSHQ_WRAP_DEV_VER_URL)
   elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    echo $(curl --silent $HSHQ_WRAP_TEST_VER_URL)
+    echo $(curl -L --silent $HSHQ_WRAP_TEST_VER_URL)
   else
-    echo $(curl --silent $HSHQ_WRAP_VER_URL)
+    echo $(curl -L --silent $HSHQ_WRAP_VER_URL)
   fi
 }
 
@@ -20481,6 +20498,12 @@ function version136Update()
   sudo rm -f $HSHQ_STACKS_DIR/duplicati/config/hshq-backup.json
 }
 
+function version138Update()
+{
+  outputPerformNetworkingChecks
+  updateSysctl true
+}
+
 function updateRelayServerWithScript()
 {
   # This function assumes that a script file
@@ -22675,44 +22698,6 @@ EOFMS
   sudo chmod 0500 $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh
   sudo chown root:root $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh
 
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh >/dev/null <<EOFWG
-#!/bin/bash
-
-set +e
-scriptsdir=$HSHQ_SCRIPTS_DIR
-function main()
-{
-  CMD="ip rule add suppress_prefixlength 0 table main priority 1000"
-  CHECK=\$(ip rule show | grep -w "suppress_prefixlength")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip rule add from $NET_PRIVATEIP_SUBNET table 42 priority 2000"
-  CHECK=\$(ip rule show | grep -w "from $NET_PRIVATEIP_SUBNET lookup 42")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip route add blackhole default metric 3 table 42"
-  CHECK=\$(ip route show table 42 2>/dev/null | grep -w "blackhole")
-  while_check "\$CMD" "\$CHECK"
-}
-
-function while_check()
-{
-  RETVAL=\$?
-  numIter=1
-  while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
-    CMD=\$(\$1)
-    RETVAL=\$?
-    numIter=\$((\$numIter+1))
-    sleep 1
-  done
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 0500 $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
-
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo tee $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh >/dev/null <<EOFWG
 #!/bin/bash
@@ -22745,6 +22730,34 @@ EOFWG
   outputPerformNetworkingChecks
 }
 
+function checkUpdateDockerPrivateIP()
+{
+  set +e
+  CMD="sudo ip rule add suppress_prefixlength 0 table main priority 1000"
+  CHECK=$(sudo ip rule show | grep -w "suppress_prefixlength")
+  whileCheckCommand "$CMD" "$CHECK" $?
+
+  CMD="sudo ip rule add from $NET_PRIVATEIP_SUBNET table 42 priority 2000"
+  CHECK=$(sudo ip rule show | grep -w "from $NET_PRIVATEIP_SUBNET lookup 42")
+  whileCheckCommand "$CMD" "$CHECK" $?
+
+  CMD="sudo ip route add blackhole default metric 3 table 42"
+  CHECK=$(sudo ip route show table 42 2>/dev/null | grep -w "blackhole")
+  whileCheckCommand "$CMD" "$CHECK" $?
+}
+
+function whileCheckCommand()
+{
+  RETVAL=$1
+  numIter=1
+  while [ $RETVAL -ne 0 ] && [ $numIter -lt 100 ]; do
+    CMD=$($1)
+    RETVAL=$?
+    numIter=$(($numIter+1))
+    sleep 1
+  done
+}
+
 function outputPerformNetworkingChecks()
 {
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
@@ -22762,6 +22775,15 @@ SS_RUNNING=$SS_RUNNING
 
 function main()
 {
+  if ! [ -f \$SYSTEM_STATE_FILENAME ]; then
+    tee \$SYSTEM_STATE_FILENAME >/dev/null <<EOFSS
+SYS_STATE=running
+LAST_NETWORK_CHECK=0
+IS_DEBUG=false
+EOFSS
+    chmod 644 \$SYSTEM_STATE_FILENAME
+    chown $USERNAME:$USERNAME \$SYSTEM_STATE_FILENAME
+  fi
   source \$SYSTEM_STATE_FILENAME
   isTooSoon="\$(isCheckTooSoon \$LAST_NETWORK_CHECK)"
   if ! [ "\$SYS_STATE" = "\$SS_RUNNING" ] || [ "\$isTooSoon" = "true" ]; then
@@ -23237,8 +23259,8 @@ function checkAllHSHQNetworking()
     sleep 1
     startStopStack adguard start
   fi
+  checkUpdateDockerPrivateIP
   updateEndpointIPs
-  #cleanupScriptServerLogs
   checkNonLockedUnencrytpedConfig "$cahn_callerName"
   funRetVal=$(($funRetVal + $?))
   if [ "$isLockError" = "false" ]; then
@@ -23344,7 +23366,7 @@ function checkIPByID()
 function wgDockInternetUpAll()
 {
   logHSHQEvent info "wgDockInternetUpAll - BEGIN"
-  $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
+  checkUpdateDockerPrivateIP
   for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf 
   do
     if ! test -f "$conf"; then continue; fi
@@ -24816,7 +24838,7 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_EXTERNAL_BRIDGE_NAME --driver=bridge --subnet $NET_EXTERNAL_SUBNET dock-ext > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_WEBPROXY_BRIDGE_NAME --driver=bridge --subnet $NET_WEBPROXY_SUBNET --internal dock-proxy > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_PRIVATEIP_BRIDGE_NAME --driver=bridge --subnet $NET_PRIVATEIP_SUBNET dock-privateip > /dev/null
-  sudo $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
+  checkUpdateDockerPrivateIP
   docker network create -o com.docker.network.bridge.name=$NET_INTERNALMAIL_BRIDGE_NAME --driver=bridge --subnet $NET_INTERNALMAIL_SUBNET --internal dock-internalmail > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_DBS_BRIDGE_NAME --driver=bridge --subnet $NET_DBS_SUBNET --internal dock-dbs > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null
@@ -56409,7 +56431,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
   fi
   rm -f \$HSHQ_WRAP_SCRIPT
   mv \$HSHQ_WRAP_TMP \$HSHQ_WRAP_SCRIPT
-  chmod 755 \$HSHQ_WRAP_SCRIPT
+  chmod 544 \$HSHQ_WRAP_SCRIPT
   is_any_updated=true
   echo "Wrapper script verified and updated."
 fi
@@ -56436,6 +56458,7 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && 
     exit 8
   fi
   rm -f \$HSHQ_NEW_LIB_SCRIPT
+  chmod 644 \$HSHQ_LIB_TMP
   mv \$HSHQ_LIB_TMP \$HSHQ_NEW_LIB_SCRIPT
   echo "Lib script verified!"
 fi
