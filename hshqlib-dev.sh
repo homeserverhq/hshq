@@ -1282,6 +1282,7 @@ function updateSysctl()
 {
   isPerfUpdate=$1
   set +e
+  sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo tee /etc/sysctl.d/88-hshq.conf >/dev/null <<EOFSC
 kernel.panic = 10
 fs.file-max = 10000000
@@ -18086,6 +18087,12 @@ function checkUpdateVersion()
     echo "Updating to Version 136..."
     version136Update
     HSHQ_VERSION=136
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 138 ]; then
+    echo "Updating to Version 138..."
+    version138Update
+    HSHQ_VERSION=138
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
@@ -34977,11 +34984,12 @@ EOFLO
 
 function removeWazuhAgent()
 {
-  sudo systemctl stop wazuh-agent
-  sudo systemctl disable wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
-  sudo apt-mark unhold wazuh-agent
-  sudo systemctl daemon-reload
+  echo "Removing any prior wazuh agent installation..."
+  sudo systemctl stop wazuh-agent > /dev/null 2>&1
+  sudo systemctl disable wazuh-agent > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages > /dev/null 2>&1
+  sudo apt-mark unhold wazuh-agent > /dev/null 2>&1
+  sudo systemctl daemon-reload > /dev/null 2>&1
 }
 
 function version91WazuhUpdate()
