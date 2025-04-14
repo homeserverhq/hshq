@@ -22734,24 +22734,25 @@ function checkUpdateDockerPrivateIP()
 {
   set +e
   CMD="sudo ip rule add suppress_prefixlength 0 table main priority 1000"
-  CHECK=$(sudo ip rule show | grep -w "suppress_prefixlength")
-  whileCheckCommand "$CMD" "$CHECK" $?
+  CHECK="sudo ip rule show | grep -w \"suppress_prefixlength\" > /dev/null 2>&1"
+  whileCheckCommand "$CMD" "$CHECK"
 
   CMD="sudo ip rule add from $NET_PRIVATEIP_SUBNET table 42 priority 2000"
-  CHECK=$(sudo ip rule show | grep -w "from $NET_PRIVATEIP_SUBNET lookup 42")
-  whileCheckCommand "$CMD" "$CHECK" $?
+  CHECK="sudo ip rule show | grep -w \"from $NET_PRIVATEIP_SUBNET lookup 42\" > /dev/null 2>&1"
+  whileCheckCommand "$CMD" "$CHECK"
 
   CMD="sudo ip route add blackhole default metric 3 table 42"
-  CHECK=$(sudo ip route show table 42 2>/dev/null | grep -w "blackhole")
-  whileCheckCommand "$CMD" "$CHECK" $?
+  CHECK="sudo ip route show table 42 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
+  whileCheckCommand "$CMD" "$CHECK"
 }
 
 function whileCheckCommand()
 {
-  RETVAL=$1
+  eval "$2"
+  RETVAL=$?
   numIter=1
   while [ $RETVAL -ne 0 ] && [ $numIter -lt 100 ]; do
-    CMD=$($1)
+    eval "$1" > /dev/null 2>&1
     RETVAL=$?
     numIter=$(($numIter+1))
     sleep 1
@@ -23447,10 +23448,11 @@ function main()
 
 function while_check()
 {
+  eval "\$2"
   RETVAL=\$?
   numIter=1
   while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
-    CMD=\$(\$1)
+    eval "\$1" > /dev/null 2>&1
     RETVAL=\$?
     numIter=\$((\$numIter+1))
     sleep 1
@@ -23474,11 +23476,11 @@ function up()
   fi
 
   CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 2000"
-  CHECK=\$(ip rule show | grep -w "from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID")
+  CHECK="ip rule show | grep -w \"from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 
   if ! [[ "\$IS_ENABLED" = "yes" ]] && ! [[ "\$IS_ENABLED" = "true" ]]; then
@@ -23496,7 +23498,7 @@ function up()
   fi
 
   CMD="ip route add default via \$CLIENT_ADDR_NO_CIDR metric 2 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "\$CLIENT_ADDR_NO_CIDR")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"\$CLIENT_ADDR_NO_CIDR\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 
   if [ "\$HOST_INTERNET_TRAFFIC_INTERFACE" = "\$NETWORK_NAME" ]; then
@@ -23517,11 +23519,11 @@ function down()
   echo "Connection: \$NETWORK_NAME is down"
   if ! [ -z \$DOCKER_NETWORK_SUBNET ]; then
     CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 2000"
-    CHECK=\$(ip rule show | grep -w "from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID")
+    CHECK="ip rule show | grep -w \"from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID\" > /dev/null 2>&1"
     while_check "\$CMD" "\$CHECK"
   fi
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 }
 
@@ -23551,7 +23553,7 @@ function status()
   # to a down state, then the container will not be
   # cleaned up.
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
   isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
   if [ -z "\$isCurl" ]; then
