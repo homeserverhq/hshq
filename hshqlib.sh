@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=138
+HSHQ_LIB_SCRIPT_VERSION=139
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -14249,11 +14249,11 @@ function getThisVersionWrapper()
 function getLatestVersionLib()
 {
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
-    echo $(curl --silent $HSHQ_LIB_DEV_VER_URL)
+    echo $(curl -L --silent $HSHQ_LIB_DEV_VER_URL)
   elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    echo $(curl --silent $HSHQ_LIB_TEST_VER_URL)
+    echo $(curl -L --silent $HSHQ_LIB_TEST_VER_URL)
   else
-    echo $(curl --silent $HSHQ_LIB_VER_URL)
+    echo $(curl -L --silent $HSHQ_LIB_VER_URL)
   fi
 }
 
@@ -28319,7 +28319,7 @@ function initServiceDefaults()
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
   DS_MEM_HIGH=netdata,photoprism
 }
