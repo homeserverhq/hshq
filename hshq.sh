@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=19
+HSHQ_WRAPPER_SCRIPT_VERSION=20
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -44,22 +44,23 @@ function main()
   USERNAME=$(id -u -n)
   if [ -f $HOME/hshq/hshq.dev ]; then
     HSHQ_WRAP_URL=https://homeserverhq.com/hshq-dev.sh
-    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion-dev
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/ver/getwrapversion-dev
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-dev.sh
-    HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-dev
+    HSHQ_LIB_VER_URL=https://homeserverhq.com/ver/getversion-dev
   elif [ -f $HOME/hshq/hshq.test ]; then
     HSHQ_WRAP_URL=https://homeserverhq.com/hshq-test.sh
-    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion-test
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/ver/getwrapversion-test
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib-test.sh
-    HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion-test
+    HSHQ_LIB_VER_URL=https://homeserverhq.com/ver/getversion-test
   else
     HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
-    HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
+    HSHQ_WRAP_VER_URL=https://homeserverhq.com/ver/getwrapversion
     HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
-    HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
+    HSHQ_LIB_VER_URL=https://homeserverhq.com/ver/getversion
   fi
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
+  HSHQ_SIGN_PUB_KEY=https://homeserverhq.com/misc/hshq.asc
   HSHQ_GPG_FINGERPRINT=5B9C33067C71ABCFCE1ACF8A7F46128ABB7C1E42
   HSHQ_GPG_FINGERPRINT_SHORT=7F46128ABB7C1E42
   HSHQ_BASE_DIR=$HOME/hshq
@@ -399,7 +400,7 @@ function checkDownloadGPGKey()
   gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "Obtaining HomeServerHQ Public GPG Key..."
-    curl -s https://homeserverhq.com/hshq.asc | gpg --import > /dev/null 2>&1
+    curl -L -s $HSHQ_SIGN_PUB_KEY | gpg --import > /dev/null 2>&1
   fi
   gpg --list-keys $HSHQ_GPG_FINGERPRINT > /dev/null 2>&1
   if [ $? -ne 0 ]; then
@@ -414,7 +415,7 @@ function checkAnyUpdates()
   if [ "$IS_DISABLE_UPDATE_CHECKS" = "true" ]; then
     return 2
   fi
-  hshq_wrap_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_WRAP_VER_URL)
+  hshq_wrap_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_WRAP_VER_URL)
   if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
     return 3
   fi
@@ -425,7 +426,7 @@ function checkAnyUpdates()
   if ! [ -f $HSHQ_LIB_SCRIPT ]; then
     return 0
   fi
-  hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
+  hshq_lib_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
   if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
     return 4
   fi
@@ -508,7 +509,7 @@ function checkDownloadWrapper()
     return 0
   fi
   # Verified
-  chmod 755 $HSHQ_WRAP_TMP
+  chmod 544 $HSHQ_WRAP_TMP
   mv -f $HSHQ_WRAP_TMP $HSHQ_WRAP_SCRIPT
   # Show message box
   showMessageBox "Wrapper Script Updated" "The wrapper script was updated. You will have to restart the script (bash hshq.sh). Exiting..."
@@ -519,7 +520,7 @@ function checkDownloadLib()
 {
   if [ -f $HSHQ_LIB_SCRIPT ]; then
     if [ -z "$hshq_lib_latest_version" ]; then
-      hshq_lib_latest_version=$(curl --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
+      hshq_lib_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
       if [ $? -ne 0 ] || [ -z "$hshq_lib_latest_version" ]; then
         return 0
       fi
@@ -581,6 +582,7 @@ function checkDownloadLib()
   # Verified
   echo "Source code verified!"
   rm -f $HSHQ_NEW_LIB_SCRIPT
+  chmod 644 $HSHQ_LIB_TMP
   mv $HSHQ_LIB_TMP $HSHQ_NEW_LIB_SCRIPT
   is_download_lib=true
 }

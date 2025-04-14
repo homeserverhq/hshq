@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=137
+HSHQ_LIB_SCRIPT_VERSION=138
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -52,6 +52,7 @@ function init()
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
   RELAYSERVER_INSTALL_COMPLETE_FILE=installed
+  RELAYSERVER_SWAP_SIZE=2G
   HSHQ_LOG_FILE=/var/log/hshq.log
   HSHQ_INSTALL_NOTES_FILENAME='HomeServer_Install_Notes.txt'
   SCRIPTSERVER_FULL_STACKLIST_FILENAME=fullStackList.txt
@@ -137,17 +138,17 @@ function init()
     IS_HSHQ_DEV_TEST=true
   fi
   HSHQ_WRAP_URL=https://homeserverhq.com/hshq.sh
-  HSHQ_WRAP_VER_URL=https://homeserverhq.com/getwrapversion
+  HSHQ_WRAP_VER_URL=https://homeserverhq.com/ver/getwrapversion
   HSHQ_WRAP_DEV_URL=https://homeserverhq.com/hshq-dev.sh
-  HSHQ_WRAP_DEV_VER_URL=https://homeserverhq.com/getwrapversion-dev
+  HSHQ_WRAP_DEV_VER_URL=https://homeserverhq.com/ver/getwrapversion-dev
   HSHQ_WRAP_TEST_URL=https://homeserverhq.com/hshq-test.sh
-  HSHQ_WRAP_TEST_VER_URL=https://homeserverhq.com/getwrapversion-test
+  HSHQ_WRAP_TEST_VER_URL=https://homeserverhq.com/ver/getwrapversion-test
   HSHQ_LIB_URL=https://homeserverhq.com/hshqlib.sh
-  HSHQ_LIB_VER_URL=https://homeserverhq.com/getversion
+  HSHQ_LIB_VER_URL=https://homeserverhq.com/ver/getversion
   HSHQ_LIB_DEV_URL=https://homeserverhq.com/hshqlib-dev.sh
-  HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/getversion-dev
+  HSHQ_LIB_DEV_VER_URL=https://homeserverhq.com/ver/getversion-dev
   HSHQ_LIB_TEST_URL=https://homeserverhq.com/hshqlib-test.sh
-  HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/getversion-test
+  HSHQ_LIB_TEST_VER_URL=https://homeserverhq.com/ver/getversion-test
   HSHQ_RELEASES_URL=https://homeserverhq.com/releases
   HSHQ_SIG_BASE_URL=https://homeserverhq.com/signatures/
   HSHQ_GPG_FINGERPRINT=5B9C33067C71ABCFCE1ACF8A7F46128ABB7C1E42
@@ -1281,13 +1282,14 @@ function updateSysctl()
 {
   isPerfUpdate=$1
   set +e
+  sudo rm -f /etc/sysctl.d/88-hshq.conf
   sudo tee /etc/sysctl.d/88-hshq.conf >/dev/null <<EOFSC
 kernel.panic = 10
 fs.file-max = 10000000
 fs.nr_open = 10000000
 fs.inotify.max_user_instances = 8192
 fs.inotify.max_user_watches = 524288
-vm.swappiness = 1
+vm.swappiness = 10
 net.core.somaxconn = 65536
 net.netfilter.nf_conntrack_max = 1048576
 net.netfilter.nf_conntrack_tcp_loose = 0
@@ -3742,6 +3744,16 @@ EOFRS
     echo "ERROR: There was a problem with the RelayServer, see above."
     return
   fi
+  pullImage $IMG_WIREGUARD
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was a problem pulling the WireGuard docker image..."
+    return
+  fi
+  pullImage $IMG_DNSMASQ
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was a problem pulling the DNSMasq docker image..."
+    return
+  fi
   RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
   RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
   RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
@@ -4483,7 +4495,7 @@ function main()
   fi
   sudo iptables -C INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp --dport \$cur_ssh_port -j ACCEPT
 
-  set -e
+  set +e
   # Change SSH port on host
   sudo sed -i "s|^#*Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
   sudo sed -i "s|^Port .*\$|Port $RELAYSERVER_SSH_PORT|g" /etc/ssh/sshd_config
@@ -4509,8 +4521,24 @@ function main()
   # Set timezone
   sudo timedatectl set-timezone "$TZ"
 
+  # Create swap file
+  createSwapfile
+
+  set -e
   installDependencies
   createDockerNetworks
+}
+
+function createSwapfile()
+{
+  sudo grep swapfile /etc/fstab > /dev/null 2>&1
+  if [ \$? -ne 0 ] && ! [ -f /swapfile ]; then
+    sudo fallocate -l $RELAYSERVER_SWAP_SIZE /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+  fi
 }
 
 function updateSysctl()
@@ -14191,11 +14219,11 @@ function loadDirectoryStructure()
 function getLatestVersionWrapper()
 {
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
-    echo $(curl --silent $HSHQ_WRAP_DEV_VER_URL)
+    echo $(curl -L --silent $HSHQ_WRAP_DEV_VER_URL)
   elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    echo $(curl --silent $HSHQ_WRAP_TEST_VER_URL)
+    echo $(curl -L --silent $HSHQ_WRAP_TEST_VER_URL)
   else
-    echo $(curl --silent $HSHQ_WRAP_VER_URL)
+    echo $(curl -L --silent $HSHQ_WRAP_VER_URL)
   fi
 }
 
@@ -18061,6 +18089,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=136
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 138 ]; then
+    echo "Updating to Version 138..."
+    version138Update
+    HSHQ_VERSION=138
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20481,6 +20515,12 @@ function version136Update()
   sudo rm -f $HSHQ_STACKS_DIR/duplicati/config/hshq-backup.json
 }
 
+function version138Update()
+{
+  outputPerformNetworkingChecks
+  updateSysctl true
+}
+
 function updateRelayServerWithScript()
 {
   # This function assumes that a script file
@@ -22675,44 +22715,6 @@ EOFMS
   sudo chmod 0500 $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh
   sudo chown root:root $HSHQ_SCRIPTS_DIR/userasroot/checkCaddyContainers.sh
 
-  sudo rm -f $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
-  sudo tee $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh >/dev/null <<EOFWG
-#!/bin/bash
-
-set +e
-scriptsdir=$HSHQ_SCRIPTS_DIR
-function main()
-{
-  CMD="ip rule add suppress_prefixlength 0 table main priority 1000"
-  CHECK=\$(ip rule show | grep -w "suppress_prefixlength")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip rule add from $NET_PRIVATEIP_SUBNET table 42 priority 2000"
-  CHECK=\$(ip rule show | grep -w "from $NET_PRIVATEIP_SUBNET lookup 42")
-  while_check "\$CMD" "\$CHECK"
-
-  CMD="ip route add blackhole default metric 3 table 42"
-  CHECK=\$(ip route show table 42 2>/dev/null | grep -w "blackhole")
-  while_check "\$CMD" "\$CHECK"
-}
-
-function while_check()
-{
-  RETVAL=\$?
-  numIter=1
-  while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
-    CMD=\$(\$1)
-    RETVAL=\$?
-    numIter=\$((\$numIter+1))
-    sleep 1
-  done
-}
-
-main "\$@"
-EOFWG
-  sudo chmod 0500 $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
-  sudo chown root:root $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
-
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh
   sudo tee $HSHQ_SCRIPTS_DIR/root/clearRoutingTable.sh >/dev/null <<EOFWG
 #!/bin/bash
@@ -22745,6 +22747,35 @@ EOFWG
   outputPerformNetworkingChecks
 }
 
+function checkUpdateDockerPrivateIP()
+{
+  set +e
+  CMD="sudo ip rule add suppress_prefixlength 0 table main priority 1000"
+  CHECK="sudo ip rule show | grep -w \"suppress_prefixlength\" > /dev/null 2>&1"
+  whileCheckCommand "$CMD" "$CHECK"
+
+  CMD="sudo ip rule add from $NET_PRIVATEIP_SUBNET table 42 priority 2000"
+  CHECK="sudo ip rule show | grep -w \"from $NET_PRIVATEIP_SUBNET lookup 42\" > /dev/null 2>&1"
+  whileCheckCommand "$CMD" "$CHECK"
+
+  CMD="sudo ip route add blackhole default metric 3 table 42"
+  CHECK="sudo ip route show table 42 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
+  whileCheckCommand "$CMD" "$CHECK"
+}
+
+function whileCheckCommand()
+{
+  eval "$2"
+  RETVAL=$?
+  numIter=1
+  while [ $RETVAL -ne 0 ] && [ $numIter -lt 100 ]; do
+    eval "$1" > /dev/null 2>&1
+    RETVAL=$?
+    numIter=$(($numIter+1))
+    sleep 1
+  done
+}
+
 function outputPerformNetworkingChecks()
 {
   sudo rm -f $HSHQ_SCRIPTS_DIR/root/performNetworkingChecks.sh
@@ -22762,6 +22793,15 @@ SS_RUNNING=$SS_RUNNING
 
 function main()
 {
+  if ! [ -f \$SYSTEM_STATE_FILENAME ]; then
+    tee \$SYSTEM_STATE_FILENAME >/dev/null <<EOFSS
+SYS_STATE=running
+LAST_NETWORK_CHECK=0
+IS_DEBUG=false
+EOFSS
+    chmod 644 \$SYSTEM_STATE_FILENAME
+    chown $USERNAME:$USERNAME \$SYSTEM_STATE_FILENAME
+  fi
   source \$SYSTEM_STATE_FILENAME
   isTooSoon="\$(isCheckTooSoon \$LAST_NETWORK_CHECK)"
   if ! [ "\$SYS_STATE" = "\$SS_RUNNING" ] || [ "\$isTooSoon" = "true" ]; then
@@ -23237,8 +23277,8 @@ function checkAllHSHQNetworking()
     sleep 1
     startStopStack adguard start
   fi
+  checkUpdateDockerPrivateIP
   updateEndpointIPs
-  #cleanupScriptServerLogs
   checkNonLockedUnencrytpedConfig "$cahn_callerName"
   funRetVal=$(($funRetVal + $?))
   if [ "$isLockError" = "false" ]; then
@@ -23344,7 +23384,7 @@ function checkIPByID()
 function wgDockInternetUpAll()
 {
   logHSHQEvent info "wgDockInternetUpAll - BEGIN"
-  $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
+  checkUpdateDockerPrivateIP
   for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf 
   do
     if ! test -f "$conf"; then continue; fi
@@ -23425,10 +23465,11 @@ function main()
 
 function while_check()
 {
+  eval "\$2"
   RETVAL=\$?
   numIter=1
   while [ \$RETVAL -ne 0 ] && [ \$numIter -lt 100 ]; do
-    CMD=\$(\$1)
+    eval "\$1" > /dev/null 2>&1
     RETVAL=\$?
     numIter=\$((\$numIter+1))
     sleep 1
@@ -23452,11 +23493,11 @@ function up()
   fi
 
   CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 2000"
-  CHECK=\$(ip rule show | grep -w "from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID")
+  CHECK="ip rule show | grep -w \"from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 
   if ! [[ "\$IS_ENABLED" = "yes" ]] && ! [[ "\$IS_ENABLED" = "true" ]]; then
@@ -23474,7 +23515,7 @@ function up()
   fi
 
   CMD="ip route add default via \$CLIENT_ADDR_NO_CIDR metric 2 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "\$CLIENT_ADDR_NO_CIDR")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"\$CLIENT_ADDR_NO_CIDR\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 
   if [ "\$HOST_INTERNET_TRAFFIC_INTERFACE" = "\$NETWORK_NAME" ]; then
@@ -23495,11 +23536,11 @@ function down()
   echo "Connection: \$NETWORK_NAME is down"
   if ! [ -z \$DOCKER_NETWORK_SUBNET ]; then
     CMD="ip rule add from \$DOCKER_NETWORK_SUBNET table \$ROUTING_TABLE_ID priority 2000"
-    CHECK=\$(ip rule show | grep -w "from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID")
+    CHECK="ip rule show | grep -w \"from \$DOCKER_NETWORK_SUBNET lookup \$ROUTING_TABLE_ID\" > /dev/null 2>&1"
     while_check "\$CMD" "\$CHECK"
   fi
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
 }
 
@@ -23529,7 +23570,7 @@ function status()
   # to a down state, then the container will not be
   # cleaned up.
   CMD="ip route add blackhole default metric 3 table \$ROUTING_TABLE_ID"
-  CHECK=\$(ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w "blackhole")
+  CHECK="ip route show table \$ROUTING_TABLE_ID 2>/dev/null | grep -w \"blackhole\" > /dev/null 2>&1"
   while_check "\$CMD" "\$CHECK"
   isCurl=\$(docker ps -a --filter name=\${NETWORK_NAME}-curl --format "{{.Names}}")
   if [ -z "\$isCurl" ]; then
@@ -24816,7 +24857,7 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=$NET_EXTERNAL_BRIDGE_NAME --driver=bridge --subnet $NET_EXTERNAL_SUBNET dock-ext > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_WEBPROXY_BRIDGE_NAME --driver=bridge --subnet $NET_WEBPROXY_SUBNET --internal dock-proxy > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_PRIVATEIP_BRIDGE_NAME --driver=bridge --subnet $NET_PRIVATEIP_SUBNET dock-privateip > /dev/null
-  sudo $HSHQ_SCRIPTS_DIR/root/dockPrivateIP.sh
+  checkUpdateDockerPrivateIP
   docker network create -o com.docker.network.bridge.name=$NET_INTERNALMAIL_BRIDGE_NAME --driver=bridge --subnet $NET_INTERNALMAIL_SUBNET --internal dock-internalmail > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_DBS_BRIDGE_NAME --driver=bridge --subnet $NET_DBS_SUBNET --internal dock-dbs > /dev/null
   docker network create -o com.docker.network.bridge.name=$NET_LDAP_BRIDGE_NAME --driver=bridge --subnet $NET_LDAP_SUBNET --internal dock-ldap > /dev/null
@@ -25120,9 +25161,6 @@ function loadPinnedDockerImages()
   IMG_SHLINK_APP=shlinkio/shlink:4.4.6
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.3.0
   IMG_SNIPPETBOX=pawelmalak/snippet-box:latest
-  IMG_SNYPY_API=ghcr.io/snypy/snypy-backend:1.5.2
-  IMG_SNYPY_STATIC=ghcr.io/snypy/snypy-static:1.5.2
-  IMG_SNYPY_APP=ghcr.io/snypy/snypy-frontend:1.5.1
   IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:1.3.0
   IMG_SQLPAD=sqlpad/sqlpad:7.5.3
   IMG_STIRLINGPDF=frooodle/s-pdf:0.45.0
@@ -25275,8 +25313,6 @@ function getScriptStackVersion()
       echo "v1" ;;
     pastefy)
       echo "v1" ;;
-    snypy)
-      echo "v1" ;;
     snippetbox)
       echo "v1" ;;
     ofelia)
@@ -25413,9 +25449,6 @@ function pullDockerImages()
   pullImage $IMG_HOMARR_APP
   pullImage $IMG_MATOMO_APP
   pullImage $IMG_PASTEFY
-  pullImage $IMG_SNYPY_API
-  pullImage $IMG_SNYPY_STATIC
-  pullImage $IMG_SNYPY_APP
   pullImage $IMG_SNIPPETBOX
 }
 
@@ -26171,14 +26204,6 @@ PASTEFY_DATABASE_ROOT_PASSWORD=
 PASTEFY_DATABASE_USER=
 PASTEFY_DATABASE_USER_PASSWORD=
 # Pastefy (Service Details) END
-
-# SnyPy (Service Details) BEGIN
-SNYPY_INIT_ENV=true
-SNYPY_DATABASE_NAME=
-SNYPY_DATABASE_USER=
-SNYPY_DATABASE_USER_PASSWORD=
-SNYPY_SECRET_KEY=
-# SnyPy (Service Details) END
 
 # Service Details END
 EOFCF
@@ -27290,22 +27315,6 @@ function initServicesCredentials()
     PASTEFY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PASTEFY_DATABASE_USER_PASSWORD $PASTEFY_DATABASE_USER_PASSWORD
   fi
-  if [ -z "$SNYPY_DATABASE_NAME" ]; then
-    SNYPY_DATABASE_NAME=snypydb
-    updateConfigVar SNYPY_DATABASE_NAME $SNYPY_DATABASE_NAME
-  fi
-  if [ -z "$SNYPY_DATABASE_USER" ]; then
-    SNYPY_DATABASE_USER=snypy-user
-    updateConfigVar SNYPY_DATABASE_USER $SNYPY_DATABASE_USER
-  fi
-  if [ -z "$SNYPY_DATABASE_USER_PASSWORD" ]; then
-    SNYPY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar SNYPY_DATABASE_USER_PASSWORD $SNYPY_DATABASE_USER_PASSWORD
-  fi
-  if [ -z "$SNYPY_SECRET_KEY" ]; then
-    SNYPY_SECRET_KEY=$(pwgen -c -n 32 1)
-    updateConfigVar SNYPY_SECRET_KEY $SNYPY_SECRET_KEY
-  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -27478,8 +27487,6 @@ function initServiceVars()
   checkAddSvc "SVCD_SHLINK_APP=shlink,shlink-app,other,user,Shlink App,links,hshq"
   checkAddSvc "SVCD_SHLINK_WEB=shlink,shlink-web,primary,admin,Shlink,shlink,hshq"
   checkAddSvc "SVCD_SNIPPETBOX=snippetbox,snippetbox,primary,user,SnippetBox,snippetbox,hshq"
-  checkAddSvc "SVCD_SNYPY_APP=snypy,snypy-app,primary,user,SnyPy App,snypy,hshq"
-  checkAddSvc "SVCD_SNYPY_API=snypy,snypy-api,primary,user,SnyPy API,snypy-api,hshq"
   checkAddSvc "SVCD_SPEEDTEST_TRACKER_LOCAL=speedtest-tracker-local,speedtest-tracker-local,primary,admin,Speedtest Tracker Local,speedtest-tracker-local,hshq"
   checkAddSvc "SVCD_SPEEDTEST_TRACKER_VPN=speedtest-tracker-vpn,speedtest-tracker-vpn,primary,admin,Speedtest Tracker VPN,speedtest-tracker-vpn,hshq"
   checkAddSvc "SVCD_SQLPAD=sqlpad,sqlpad,primary,admin,SQLPad,sqlpad,hshq"
@@ -27628,8 +27635,6 @@ function installStackByName()
       installMatomo $is_integrate ;;
     pastefy)
       installPastefy $is_integrate ;;
-    snypy)
-      installSnyPy $is_integrate ;;
     snippetbox)
       installSnippetBox $is_integrate ;;
     heimdall)
@@ -27786,8 +27791,6 @@ function performUpdateStackByName()
       performUpdateMatomo "$portainerToken" ;;
     pastefy)
       performUpdatePastefy "$portainerToken" ;;
-    snypy)
-      performUpdateSnyPy "$portainerToken" ;;
     snippetbox)
       performUpdateSnippetBox "$portainerToken" ;;
     heimdall)
@@ -27857,7 +27860,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PIPED_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SNYPY_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia bypass END\n"
@@ -27881,7 +27883,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SNYPY_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SNIPPETBOX.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
@@ -28198,7 +28199,6 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0 "immich.png"
   insertIntoHeimdallDB "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0 "homarr.png"
   insertIntoHeimdallDB "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0 "pastefy.png"
-  insertIntoHeimdallDB "$FMLNAME_SNYPY" $USERTYPE_SNYPY "https://$SUB_SNYPY.$HOMESERVER_DOMAIN" 0 "snypy.png"
   insertIntoHeimdallDB "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0 "snippetbox.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
@@ -28294,7 +28294,6 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_MATOMO" $USERTYPE_HOMARR "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_SNYPY" $USERTYPE_SNYPY "https://$SUB_SNYPY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
 
@@ -28318,8 +28317,8 @@ function initServiceDefaults()
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
   HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,snypy
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,snypy
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy
   DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
   DS_MEM_HIGH=netdata,photoprism
@@ -28865,18 +28864,6 @@ function getScriptImageByContainerName()
     "pastefy-app")
       container_image=$IMG_PASTEFY
       ;;
-    "snypy-db")
-      container_image=$IMG_POSTGRES
-      ;;
-    "snypy-app")
-      container_image=$IMG_SNYPY_APP
-      ;;
-    "snypy-static")
-      container_image=$IMG_SNYPY_STATIC
-      ;;
-    "snypy-api")
-      container_image=$IMG_SNYPY_API
-      ;;
     "snippetbox")
       container_image=$IMG_SNIPPETBOX
       ;;
@@ -28925,7 +28912,6 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET="
   checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "SnyPy" "SNYPY_INIT_ENV=false,SNYPY_DATABASE_NAME=,SNYPY_DATABASE_USER=,SNYPY_DATABASE_USER_PASSWORD=,SNYPY_SECRET_KEY="
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
@@ -34998,11 +34984,12 @@ EOFLO
 
 function removeWazuhAgent()
 {
-  sudo systemctl stop wazuh-agent
-  sudo systemctl disable wazuh-agent
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages
-  sudo apt-mark unhold wazuh-agent
-  sudo systemctl daemon-reload
+  echo "Removing any prior wazuh agent installation..."
+  sudo systemctl stop wazuh-agent > /dev/null 2>&1
+  sudo systemctl disable wazuh-agent > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages > /dev/null 2>&1
+  sudo apt-mark unhold wazuh-agent > /dev/null 2>&1
+  sudo systemctl daemon-reload > /dev/null 2>&1
 }
 
 function version91WazuhUpdate()
@@ -52166,1851 +52153,6 @@ function performUpdatePastefy()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-# SnyPy
-function installSnyPy()
-{
-  set +e
-  is_integrate_hshq=$1
-  checkDeleteStackAndDirectory snypy "SnyPy"
-  cdRes=$?
-  if [ $cdRes -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName snypy-api)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName snypy-static)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName snypy-app)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  set -e
-
-  mkdir $HSHQ_STACKS_DIR/snypy
-  mkdir $HSHQ_STACKS_DIR/snypy/db
-  mkdir $HSHQ_STACKS_DIR/snypy/dbexport
-  mkdir $HSHQ_STACKS_DIR/snypy/fixtures
-  mkdir $HSHQ_STACKS_DIR/snypy/static
-  initServicesCredentials
-  set +e
-  outputConfigSnyPy
-  installStack snypy snypy-app "" $HOME/snypy.env
-  retVal=$?
-  if [ $retVal -ne 0 ]; then
-    return $retVal
-  fi
-  if ! [ "$SNYPY_INIT_ENV" = "true" ]; then
-    SNYPY_INIT_ENV=true
-    updateConfigVar SNYPY_INIT_ENV $SNYPY_INIT_ENV
-  fi
-  sleep 3
-  set -e
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://snypy-app {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_SNYPY_APP $MANAGETLS_SNYPY_APP "$is_integrate_hshq" $NETDEFAULT_SNYPY_APP "$inner_block"
-  insertSubAuthelia $SUB_SNYPY_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_SNYPY_API.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://snypy-api:8000 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_SNYPY_API $MANAGETLS_SNYPY_API "$is_integrate_hshq" $NETDEFAULT_SNYPY_API "$inner_block"
-  insertSubAuthelia $SUB_SNYPY_API.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
-  if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll snypy "$FMLNAME_SNYPY_APP" $USERTYPE_SNYPY_APP "https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN" "snypy.png"
-    restartAllCaddyContainers
-    checkAddDBSqlPad snypy "$FMLNAME_SNYPY_APP" postgres snypy-db $SNYPY_DATABASE_NAME $SNYPY_DATABASE_USER $SNYPY_DATABASE_USER_PASSWORD
-  fi
-}
-
-function outputConfigSnyPy()
-{
-  cat <<EOFMT > $HOME/snypy-compose.yml
-$STACK_VERSION_PREFIX snypy $(getScriptStackVersion snypy)
-
-services:
-  snypy-db:
-    image: $(getScriptImageByContainerName snypy-db)
-    container_name: snypy-db
-    hostname: snypy-db
-    user: "\${UID}:\${GID}"
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    shm_size: 256mb
-    networks:
-      - int-snypy-net
-      - dock-dbs-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/snypy/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/snypy/dbexport:/dbexport
-    labels:
-      - "ofelia.enabled=true"
-      - "ofelia.job-exec.snypy-hourly-db.schedule=@every 1h"
-      - "ofelia.job-exec.snypy-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.snypy-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.snypy-hourly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.snypy-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.snypy-hourly-db.email-from=SnyPy Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-      - "ofelia.job-exec.snypy-hourly-db.mail-only-on-error=true"
-      - "ofelia.job-exec.snypy-monthly-db.schedule=0 0 8 1 * *"
-      - "ofelia.job-exec.snypy-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.snypy-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.snypy-monthly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.snypy-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.snypy-monthly-db.email-from=SnyPy Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-      - "ofelia.job-exec.snypy-monthly-db.mail-only-on-error=false"
-
-  snypy-api:
-    image: $(getScriptImageByContainerName snypy-api)
-    container_name: snypy-api
-    hostname: snypy-api
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - snypy-db
-    networks:
-      - int-snypy-net
-      - dock-proxy-net
-      - dock-internalmail-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/snypy/fixtures:/fixtures/
-
-  snypy-static:
-    image: $(getScriptImageByContainerName snypy-static)
-    container_name: snypy-static
-    hostname: snypy-static
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - snypy-db
-    networks:
-      - int-snypy-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-  snypy-app:
-    image: $(getScriptImageByContainerName snypy-app)
-    container_name: snypy-app
-    hostname: snypy-app
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - snypy-api
-      - snypy-static
-    networks:
-      - int-snypy-net
-      - dock-proxy-net
-      - dock-internalmail-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-internalmail-net:
-    name: dock-internalmail
-    external: true
-  dock-dbs-net:
-    name: dock-dbs
-    external: true
-  int-snypy-net:
-    driver: bridge
-    internal: true
-    ipam:
-      driver: default
-
-EOFMT
-
-  cat <<EOFMT > $HOME/snypy.env
-TZ=\${TZ}
-POSTGRES_PASSWORD=$SNYPY_DATABASE_USER_PASSWORD
-POSTGRES_USER=$SNYPY_DATABASE_USER
-POSTGRES_DB=$SNYPY_DATABASE_NAME
-POSTGRES_INITDB_ARGS=--data-checksums
-DEBUG=False
-SECRET_KEY=$SNYPY_SECRET_KEY
-ALLOWED_HOSTS=$SUB_SNYPY_API.$HOMESERVER_DOMAIN
-DATABASE_URL=psql://$SNYPY_DATABASE_USER:$SNYPY_DATABASE_USER_PASSWORD@snypy-db:5432/$SNYPY_DATABASE_NAME
-EMAIL_URL=smtp+tls://$SMTP_HOSTNAME:$SMTP_HOSTPORT
-CORS_ORIGIN_WHITELIST=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN
-CSRF_TRUSTED_ORIGINS=http://127.0.0.1
-REGISTER_VERIFICATION_URL=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN/verify-user
-RESET_PASSWORD_VERIFICATION_URL=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN/set-password/?token={token}
-REGISTER_EMAIL_VERIFICATION_URL=https://$SUB_SNYPY_APP.$HOMESERVER_DOMAIN/verify-email
-REST_API_URL=https://$SUB_SNYPY_API.$HOMESERVER_DOMAIN
-STATIC_URL=http://snypy-static/
-SENTRY_ENABLED=False
-EOFMT
-
-  cat <<EOFSP > $HSHQ_STACKS_DIR/snypy/fixtures/setup.json
-[
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add log entry",
-        "content_type": [
-            "admin",
-            "logentry"
-        ],
-        "codename": "add_logentry"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change log entry",
-        "content_type": [
-            "admin",
-            "logentry"
-        ],
-        "codename": "change_logentry"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete log entry",
-        "content_type": [
-            "admin",
-            "logentry"
-        ],
-        "codename": "delete_logentry"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add permission",
-        "content_type": [
-            "auth",
-            "permission"
-        ],
-        "codename": "add_permission"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change permission",
-        "content_type": [
-            "auth",
-            "permission"
-        ],
-        "codename": "change_permission"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete permission",
-        "content_type": [
-            "auth",
-            "permission"
-        ],
-        "codename": "delete_permission"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add group",
-        "content_type": [
-            "auth",
-            "group"
-        ],
-        "codename": "add_group"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change group",
-        "content_type": [
-            "auth",
-            "group"
-        ],
-        "codename": "change_group"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete group",
-        "content_type": [
-            "auth",
-            "group"
-        ],
-        "codename": "delete_group"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add content type",
-        "content_type": [
-            "contenttypes",
-            "contenttype"
-        ],
-        "codename": "add_contenttype"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change content type",
-        "content_type": [
-            "contenttypes",
-            "contenttype"
-        ],
-        "codename": "change_contenttype"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete content type",
-        "content_type": [
-            "contenttypes",
-            "contenttype"
-        ],
-        "codename": "delete_contenttype"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add session",
-        "content_type": [
-            "sessions",
-            "session"
-        ],
-        "codename": "add_session"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change session",
-        "content_type": [
-            "sessions",
-            "session"
-        ],
-        "codename": "change_session"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete session",
-        "content_type": [
-            "sessions",
-            "session"
-        ],
-        "codename": "delete_session"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add Token",
-        "content_type": [
-            "django_rest_multitokenauth",
-            "multitoken"
-        ],
-        "codename": "add_multitoken"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change Token",
-        "content_type": [
-            "django_rest_multitokenauth",
-            "multitoken"
-        ],
-        "codename": "change_multitoken"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete Token",
-        "content_type": [
-            "django_rest_multitokenauth",
-            "multitoken"
-        ],
-        "codename": "delete_multitoken"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add extension",
-        "content_type": [
-            "snippets",
-            "extension"
-        ],
-        "codename": "add_extension"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change extension",
-        "content_type": [
-            "snippets",
-            "extension"
-        ],
-        "codename": "change_extension"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete extension",
-        "content_type": [
-            "snippets",
-            "extension"
-        ],
-        "codename": "delete_extension"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add file",
-        "content_type": [
-            "snippets",
-            "file"
-        ],
-        "codename": "add_file"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change file",
-        "content_type": [
-            "snippets",
-            "file"
-        ],
-        "codename": "change_file"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete file",
-        "content_type": [
-            "snippets",
-            "file"
-        ],
-        "codename": "delete_file"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add label",
-        "content_type": [
-            "snippets",
-            "label"
-        ],
-        "codename": "add_label"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change label",
-        "content_type": [
-            "snippets",
-            "label"
-        ],
-        "codename": "change_label"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete label",
-        "content_type": [
-            "snippets",
-            "label"
-        ],
-        "codename": "delete_label"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add language",
-        "content_type": [
-            "snippets",
-            "language"
-        ],
-        "codename": "add_language"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change language",
-        "content_type": [
-            "snippets",
-            "language"
-        ],
-        "codename": "change_language"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete language",
-        "content_type": [
-            "snippets",
-            "language"
-        ],
-        "codename": "delete_language"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add snippet",
-        "content_type": [
-            "snippets",
-            "snippet"
-        ],
-        "codename": "add_snippet"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change snippet",
-        "content_type": [
-            "snippets",
-            "snippet"
-        ],
-        "codename": "change_snippet"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete snippet",
-        "content_type": [
-            "snippets",
-            "snippet"
-        ],
-        "codename": "delete_snippet"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add snippet label",
-        "content_type": [
-            "snippets",
-            "snippetlabel"
-        ],
-        "codename": "add_snippetlabel"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change snippet label",
-        "content_type": [
-            "snippets",
-            "snippetlabel"
-        ],
-        "codename": "change_snippetlabel"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete snippet label",
-        "content_type": [
-            "snippets",
-            "snippetlabel"
-        ],
-        "codename": "delete_snippetlabel"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add team",
-        "content_type": [
-            "teams",
-            "team"
-        ],
-        "codename": "add_team"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change team",
-        "content_type": [
-            "teams",
-            "team"
-        ],
-        "codename": "change_team"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete team",
-        "content_type": [
-            "teams",
-            "team"
-        ],
-        "codename": "delete_team"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add user team",
-        "content_type": [
-            "teams",
-            "userteam"
-        ],
-        "codename": "add_userteam"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change user team",
-        "content_type": [
-            "teams",
-            "userteam"
-        ],
-        "codename": "change_userteam"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete user team",
-        "content_type": [
-            "teams",
-            "userteam"
-        ],
-        "codename": "delete_userteam"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add user",
-        "content_type": [
-            "users",
-            "user"
-        ],
-        "codename": "add_user"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change user",
-        "content_type": [
-            "users",
-            "user"
-        ],
-        "codename": "change_user"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete user",
-        "content_type": [
-            "users",
-            "user"
-        ],
-        "codename": "delete_user"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view log entry",
-        "content_type": [
-            "admin",
-            "logentry"
-        ],
-        "codename": "view_logentry"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view permission",
-        "content_type": [
-            "auth",
-            "permission"
-        ],
-        "codename": "view_permission"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view group",
-        "content_type": [
-            "auth",
-            "group"
-        ],
-        "codename": "view_group"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view content type",
-        "content_type": [
-            "contenttypes",
-            "contenttype"
-        ],
-        "codename": "view_contenttype"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view session",
-        "content_type": [
-            "sessions",
-            "session"
-        ],
-        "codename": "view_session"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view Token",
-        "content_type": [
-            "django_rest_multitokenauth",
-            "multitoken"
-        ],
-        "codename": "view_multitoken"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view extension",
-        "content_type": [
-            "snippets",
-            "extension"
-        ],
-        "codename": "view_extension"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view file",
-        "content_type": [
-            "snippets",
-            "file"
-        ],
-        "codename": "view_file"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view label",
-        "content_type": [
-            "snippets",
-            "label"
-        ],
-        "codename": "view_label"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view language",
-        "content_type": [
-            "snippets",
-            "language"
-        ],
-        "codename": "view_language"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view snippet",
-        "content_type": [
-            "snippets",
-            "snippet"
-        ],
-        "codename": "view_snippet"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view snippet label",
-        "content_type": [
-            "snippets",
-            "snippetlabel"
-        ],
-        "codename": "view_snippetlabel"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view team",
-        "content_type": [
-            "teams",
-            "team"
-        ],
-        "codename": "view_team"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view user team",
-        "content_type": [
-            "teams",
-            "userteam"
-        ],
-        "codename": "view_userteam"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view user",
-        "content_type": [
-            "users",
-            "user"
-        ],
-        "codename": "view_user"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can add Password Reset Token",
-        "content_type": [
-            "django_rest_passwordreset",
-            "resetpasswordtoken"
-        ],
-        "codename": "add_resetpasswordtoken"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can change Password Reset Token",
-        "content_type": [
-            "django_rest_passwordreset",
-            "resetpasswordtoken"
-        ],
-        "codename": "change_resetpasswordtoken"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can delete Password Reset Token",
-        "content_type": [
-            "django_rest_passwordreset",
-            "resetpasswordtoken"
-        ],
-        "codename": "delete_resetpasswordtoken"
-    }
-},
-{
-    "model": "auth.permission",
-    "fields": {
-        "name": "Can view Password Reset Token",
-        "content_type": [
-            "django_rest_passwordreset",
-            "resetpasswordtoken"
-        ],
-        "codename": "view_resetpasswordtoken"
-    }
-},
-{
-    "model": "auth.group",
-    "fields": {
-        "name": "User",
-        "permissions": [
-            [
-                "view_extension",
-                "snippets",
-                "extension"
-            ],
-            [
-                "add_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "change_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "delete_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "view_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "add_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "change_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "delete_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "view_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "view_language",
-                "snippets",
-                "language"
-            ],
-            [
-                "add_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "change_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "delete_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "view_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "add_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "change_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "delete_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "view_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "add_team",
-                "teams",
-                "team"
-            ],
-            [
-                "change_team",
-                "teams",
-                "team"
-            ],
-            [
-                "delete_team",
-                "teams",
-                "team"
-            ],
-            [
-                "view_team",
-                "teams",
-                "team"
-            ],
-            [
-                "add_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "change_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "delete_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "view_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "view_user",
-                "users",
-                "user"
-            ]
-        ]
-    }
-},
-{
-    "model": "auth.group",
-    "fields": {
-        "name": "Administrator",
-        "permissions": [
-            [
-                "view_extension",
-                "snippets",
-                "extension"
-            ],
-            [
-                "add_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "change_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "delete_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "view_file",
-                "snippets",
-                "file"
-            ],
-            [
-                "add_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "change_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "delete_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "view_label",
-                "snippets",
-                "label"
-            ],
-            [
-                "view_language",
-                "snippets",
-                "language"
-            ],
-            [
-                "add_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "change_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "delete_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "view_snippet",
-                "snippets",
-                "snippet"
-            ],
-            [
-                "add_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "change_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "delete_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "view_snippetlabel",
-                "snippets",
-                "snippetlabel"
-            ],
-            [
-                "add_team",
-                "teams",
-                "team"
-            ],
-            [
-                "change_team",
-                "teams",
-                "team"
-            ],
-            [
-                "delete_team",
-                "teams",
-                "team"
-            ],
-            [
-                "view_team",
-                "teams",
-                "team"
-            ],
-            [
-                "add_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "change_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "delete_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "view_userteam",
-                "teams",
-                "userteam"
-            ],
-            [
-                "add_user",
-                "users",
-                "user"
-            ],
-            [
-                "change_user",
-                "users",
-                "user"
-            ],
-            [
-                "delete_user",
-                "users",
-                "user"
-            ],
-            [
-                "view_user",
-                "users",
-                "user"
-            ]
-        ]
-    }
-},
-{
-    "model": "users.user",
-    "fields": {
-        "password": "pbkdf2_sha256$260000$EebAx3nXf1dexLasgavCcr$OR8BPYrSWePXDxV2SB4dDaabmnmgRzb7Zqs3/s6cSs4=",
-        "last_login": "2021-10-17T13:23:55.876Z",
-        "is_superuser": true,
-        "username": "admin",
-        "first_name": "",
-        "last_name": "",
-        "email": "",
-        "is_staff": true,
-        "is_active": true,
-        "date_joined": "2018-06-09T08:11:07.178Z",
-        "groups": [],
-        "user_permissions": []
-    }
-},
-{
-    "model": "snippets.snippet",
-    "pk": 1,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.519Z",
-        "modified_date": "2018-06-28T20:37:21.794Z",
-        "user": [
-            "admin"
-        ],
-        "team": 1,
-        "title": "Wordpress Docker Compose",
-        "description": "Easy Wordpress development with Docker and Docker Compose",
-        "visibility": "PRIVATE"
-    }
-},
-{
-    "model": "snippets.snippet",
-    "pk": 6,
-    "fields": {
-        "created_date": "2018-04-25T17:42:53.893Z",
-        "modified_date": "2018-06-28T20:37:28.976Z",
-        "user": [
-            "admin"
-        ],
-        "team": 1,
-        "title": "Docker database dumps",
-        "description": "sudo ./export.sh",
-        "visibility": "PRIVATE"
-    }
-},
-{
-    "model": "snippets.snippet",
-    "pk": 7,
-    "fields": {
-        "created_date": "2018-04-25T17:55:10.896Z",
-        "modified_date": "2018-06-13T09:29:46.610Z",
-        "user": [
-            "admin"
-        ],
-        "team": 1,
-        "title": "Markdown reference",
-        "description": "This is intended as a quick reference for markdown syntax.",
-        "visibility": "PRIVATE"
-    }
-},
-{
-    "model": "snippets.snippet",
-    "pk": 13,
-    "fields": {
-        "created_date": "2018-09-12T19:39:21.380Z",
-        "modified_date": "2019-12-30T18:45:14.495Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "title": "Code 2",
-        "description": "Test",
-        "visibility": "PRIVATE"
-    }
-},
-{
-    "model": "snippets.file",
-    "pk": 1,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.468Z",
-        "modified_date": "2018-04-22T07:34:17.882Z",
-        "snippet": 1,
-        "language": 10,
-        "name": "docker-compose.yml",
-        "content": "version: '2'\r\nservices:\r\n  wordpress:\r\n    image: wordpress:latest # https://hub.docker.com/_/wordpress/\r\n    ports:\r\n      - 127.0.0.1:80:80 # change ip if required\r\n    volumes:\r\n      - ./config/php.conf.uploads.ini:/usr/local/etc/php/conf.d/uploads.ini\r\n      - ./wp-app:/var/www/html # Full wordpress project\r\n      #- ./plugin-name/trunk/:/var/www/html/wp-content/plugins/plugin-name # Plugin development\r\n      #- ./theme-name/trunk/:/var/www/html/wp-content/themes/theme-name # Theme development\r\n    environment:\r\n      WORDPRESS_DB_HOST: db\r\n      WORDPRESS_DB_NAME: wordpress\r\n      WORDPRESS_DB_USER: root\r\n      WORDPRESS_DB_PASSWORD: password\r\n    depends_on:\r\n      - db\r\n    networks:\r\n      - wordpress-network\r\n  db:\r\n    image: mysql:latest # https://hub.docker.com/_/mysql/ - or mariadb https://hub.docker.com/_/mariadb\r\n    ports:\r\n      - 127.0.0.1:3306:3306 # change ip if required\r\n    command: [\r\n        '--default_authentication_plugin=mysql_native_password',\r\n        '--character-set-server=utf8mb4',\r\n        '--collation-server=utf8mb4_unicode_ci'\r\n    ]\r\n    volumes:\r\n      - ./wp-data:/docker-entrypoint-initdb.d\r\n    environment:\r\n      MYSQL_DATABASE: wordpress\r\n      MYSQL_ROOT_PASSWORD: password\r\n    networks:\r\n      - wordpress-network\r\nnetworks:\r\n  wordpress-network:\r\n      driver: bridge"
-    }
-},
-{
-    "model": "snippets.file",
-    "pk": 9,
-    "fields": {
-        "created_date": "2018-04-29T07:33:47.850Z",
-        "modified_date": "2018-06-10T11:44:26.779Z",
-        "snippet": 6,
-        "language": 8,
-        "name": "export.sh",
-        "content": "#!/bin/bash\r\n_os=\"`uname`\"\r\n_now=$(date +\"%m_%d_%Y\")\r\n_file=\"wp-data/data_$_now.sql\"\r\ndocker-compose exec db sh -c 'exec mysqldump \"$MYSQL_DATABASE\" -uroot -p\"$MYSQL_ROOT_PASSWORD\"' > $_file\r\nif [[ $_os == \"Darwin\"* ]] ; then\r\n  sed -i '.bak' 1,1d $_file\r\nelse\r\n  sed -i 1,1d $_file # Removes the password warning from the file\r\nfi"
-    }
-},
-{
-    "model": "snippets.file",
-    "pk": 10,
-    "fields": {
-        "created_date": "2018-04-29T07:57:04.646Z",
-        "modified_date": "2018-06-09T08:46:51.530Z",
-        "snippet": 7,
-        "language": 9,
-        "name": "docs.md",
-        "content": "# H1\r\n## H2\r\n### H3\r\n#### H4\r\n##### H5\r\n###### H6\r\n\r\nAlternatively, for H1 and H2, an underline-ish style:\r\n\r\nAlt-H1\r\n======\r\n\r\nAlt-H2\r\n------\r\n\r\nEmphasis, aka italics, with *asterisks* or _underscores_.\r\n\r\nStrong emphasis, aka bold, with **asterisks** or __underscores__.\r\n\r\nCombined emphasis with **asterisks and _underscores_**.\r\n\r\nStrikethrough uses two tildes. ~~Scratch this.~~\r\n\r\n1. First ordered list item\r\n2. Another item\r\n⋅⋅* Unordered sub-list. \r\n1. Actual numbers don't matter, just that it's a number\r\n⋅⋅1. Ordered sub-list\r\n4. And another item.\r\n\r\n⋅⋅⋅You can have properly indented paragraphs within list items. Notice the blank line above, and the leading spaces (at least one, but we'll use three here to also align the raw Markdown).\r\n\r\n⋅⋅⋅To have a line break without a paragraph, you will need to use two trailing spaces.⋅⋅\r\n⋅⋅⋅Note that this line is separate, but within the same paragraph.⋅⋅\r\n⋅⋅⋅(This is contrary to the typical GFM line break behaviour, where trailing spaces are not required.)\r\n\r\n* Unordered list can use asterisks\r\n- Or minuses\r\n+ Or pluses"
-    }
-},
-{
-    "model": "snippets.file",
-    "pk": 11,
-    "fields": {
-        "created_date": "2019-04-14T18:02:19.143Z",
-        "modified_date": "2019-04-14T18:02:19.143Z",
-        "snippet": 13,
-        "language": 11,
-        "name": "test.json",
-        "content": "{\n  \"name\": \"sny-py\",\n  \"version\": \"0.0.0\",\n  \"license\": \"MIT\",\n  \"scripts\": {\n    \"ng\": \"ng\",\n    \"start\": \"ng serve\",\n    \"build\": \"ng build --prod\",\n    \"test\": \"ng test\",\n    \"lint\": \"ng lint\",\n    \"e2e\": \"ng e2e\"\n  },\n  \"private\": true,\n  \"dependencies\": {\n    \"@angular/animations\": \"7.2.13\",\n    \"@angular/common\": \"7.2.13\",\n    \"@angular/compiler\": \"7.2.13\",\n    \"@angular/core\": \"7.2.13\",\n    \"@angular/forms\": \"7.2.13\",\n    \"@angular/http\": \"7.2.13\",\n    \"@angular/platform-browser\": \"7.2.13\",\n    \"@angular/platform-browser-dynamic\": \"7.2.13\",\n    \"@angular/router\": \"7.2.13\",\n    \"@fortawesome/angular-fontawesome\": \"0.3.0\",\n    \"@fortawesome/fontawesome-svg-core\": \"^1.2.17\",\n    \"@fortawesome/free-brands-svg-icons\": \"^5.8.1\",\n    \"@fortawesome/free-regular-svg-icons\": \"^5.8.1\",\n    \"@fortawesome/free-solid-svg-icons\": \"^5.8.1\",\n    \"@ng-bootstrap/ng-bootstrap\": \"^4.1.1\",\n    \"@ng-select/ng-select\": \"^2.17.0\",\n    \"bootstrap\": \"^4.3.1\",\n    \"core-js\": \"^2.6.5\",\n    \"monaco-editor\": \"^0.16.2\",\n    \"ngx-anx-forms\": \"^0.2.2\",\n    \"ngx-monaco-editor\": \"^7.0.0\",\n    \"ngx-perfect-scrollbar\": \"^7.2.1\",\n    \"ngx-pipes\": \"^2.4.6\",\n    \"ngx-resource-factory\": \"0.0.11\",\n    \"ngx-toastr\": \"^10.0.2\",\n    \"rxjs\": \"^6.4.0\",\n    \"rxjs-compat\": \"^6.4.0\",\n    \"zone.js\": \"^0.9.0\"\n  },\n  \"devDependencies\": {\n    \"@angular-devkit/build-angular\": \"^0.13.8\",\n    \"@angular/cli\": \"7.3.8\",\n    \"@angular/compiler-cli\": \"7.2.13\",\n    \"@angular/language-service\": \"7.2.13\",\n    \"@types/jasmine\": \"^3.3.12\",\n    \"@types/jasminewd2\": \"~2.0.6\",\n    \"@types/node\": \"^11.13.4\",\n    \"codelyzer\": \"^5.0.0\",\n    \"jasmine-core\": \"~3.4.0\",\n    \"jasmine-spec-reporter\": \"~4.2.1\",\n    \"karma\": \"^4.0.1\",\n    \"karma-chrome-launcher\": \"~2.2.0\",\n    \"karma-coverage-istanbul-reporter\": \"^2.0.5\",\n    \"karma-jasmine\": \"^2.0.1\",\n    \"karma-jasmine-html-reporter\": \"^1.4.0\",\n    \"protractor\": \"^5.4.2\",\n    \"ts-node\": \"~8.0.3\",\n    \"tslint\": \"~5.15.0\",\n    \"typescript\": \"~3.2.4\"\n  }\n}"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 1,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": null,
-        "team": null,
-        "name": "Django"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 2,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-11-17T14:25:21.870Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Angular"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 3,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Laravel"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 4,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-06-10T12:24:51.779Z",
-        "user": [
-            "admin"
-        ],
-        "team": 1,
-        "name": "Wordpress"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 5,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Drupal"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 6,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Typo3"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 7,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Symfony"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 8,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Linux"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 9,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Prestashop"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 10,
-    "fields": {
-        "created_date": "2018-04-22T07:26:49.494Z",
-        "modified_date": "2018-04-22T07:26:49.507Z",
-        "user": [
-            "admin"
-        ],
-        "team": null,
-        "name": "Magento"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 11,
-    "fields": {
-        "created_date": "2018-04-29T07:52:05.488Z",
-        "modified_date": "2018-06-10T11:38:26.919Z",
-        "user": null,
-        "team": 1,
-        "name": "Docker"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 15,
-    "fields": {
-        "created_date": "2018-06-13T20:49:22.706Z",
-        "modified_date": "2018-06-13T20:49:22.706Z",
-        "user": [
-            "admin"
-        ],
-        "team": 3,
-        "name": "Label 3"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 17,
-    "fields": {
-        "created_date": "2018-06-13T20:50:10.597Z",
-        "modified_date": "2018-06-13T20:50:10.597Z",
-        "user": [
-            "admin"
-        ],
-        "team": 3,
-        "name": "Label 4"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 18,
-    "fields": {
-        "created_date": "2018-06-28T20:38:49.912Z",
-        "modified_date": "2018-06-28T20:38:49.912Z",
-        "user": [
-            "admin"
-        ],
-        "team": 1,
-        "name": "Markdown"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 20,
-    "fields": {
-        "created_date": "2019-04-14T18:01:20.466Z",
-        "modified_date": "2019-04-14T18:01:20.466Z",
-        "user": null,
-        "team": null,
-        "name": "Label 1"
-    }
-},
-{
-    "model": "snippets.label",
-    "pk": 21,
-    "fields": {
-        "created_date": "2019-04-14T18:01:25.285Z",
-        "modified_date": "2019-04-14T18:01:25.285Z",
-        "user": null,
-        "team": null,
-        "name": "Label 2"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 1,
-    "fields": {
-        "name": "python"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 2,
-    "fields": {
-        "name": "php"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 3,
-    "fields": {
-        "name": "css"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 4,
-    "fields": {
-        "name": "html"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 5,
-    "fields": {
-        "name": "text"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 6,
-    "fields": {
-        "name": "typescript"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 7,
-    "fields": {
-        "name": "javascript"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 8,
-    "fields": {
-        "name": "sh"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 9,
-    "fields": {
-        "name": "markdown"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 10,
-    "fields": {
-        "name": "yaml"
-    }
-},
-{
-    "model": "snippets.language",
-    "pk": 11,
-    "fields": {
-        "name": "json"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 1,
-    "fields": {
-        "language": 1,
-        "name": "py"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 2,
-    "fields": {
-        "language": 2,
-        "name": "php"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 3,
-    "fields": {
-        "language": 3,
-        "name": "css"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 4,
-    "fields": {
-        "language": 4,
-        "name": "html"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 5,
-    "fields": {
-        "language": 4,
-        "name": "htm"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 6,
-    "fields": {
-        "language": 5,
-        "name": "txt"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 7,
-    "fields": {
-        "language": 10,
-        "name": "yml"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 8,
-    "fields": {
-        "language": 6,
-        "name": "ts"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 9,
-    "fields": {
-        "language": 7,
-        "name": "js"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 10,
-    "fields": {
-        "language": 8,
-        "name": "sh"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 11,
-    "fields": {
-        "language": 9,
-        "name": "md"
-    }
-},
-{
-    "model": "snippets.extension",
-    "pk": 12,
-    "fields": {
-        "language": 11,
-        "name": "json"
-    }
-},
-{
-    "model": "snippets.snippetlabel",
-    "pk": 270,
-    "fields": {
-        "snippet": 1,
-        "label": 4
-    }
-},
-{
-    "model": "snippets.snippetlabel",
-    "pk": 271,
-    "fields": {
-        "snippet": 1,
-        "label": 11
-    }
-},
-{
-    "model": "snippets.snippetlabel",
-    "pk": 272,
-    "fields": {
-        "snippet": 6,
-        "label": 11
-    }
-},
-{
-    "model": "snippets.snippetlabel",
-    "pk": 274,
-    "fields": {
-        "snippet": 7,
-        "label": 18
-    }
-},
-{
-    "model": "teams.team",
-    "pk": 1,
-    "fields": {
-        "created_date": "2018-06-09T08:23:16.598Z",
-        "modified_date": "2018-06-09T08:23:16.598Z",
-        "name": "Team 1"
-    }
-},
-{
-    "model": "teams.team",
-    "pk": 3,
-    "fields": {
-        "created_date": "2018-06-13T09:01:53.056Z",
-        "modified_date": "2018-06-13T09:01:53.056Z",
-        "name": "Team 2"
-    }
-},
-{
-    "model": "teams.team",
-    "pk": 4,
-    "fields": {
-        "created_date": "2019-12-30T18:34:25.697Z",
-        "modified_date": "2019-12-30T18:34:25.697Z",
-        "name": "Team 3"
-    }
-},
-{
-    "model": "teams.userteam",
-    "pk": 3,
-    "fields": {
-        "created_date": "2018-06-13T09:01:53.077Z",
-        "modified_date": "2020-04-08T05:32:59.734Z",
-        "user": [
-            "admin"
-        ],
-        "team": 3,
-        "role": "SUBSCRIBER"
-    }
-},
-{
-    "model": "teams.userteam",
-    "pk": 9,
-    "fields": {
-        "created_date": "2018-06-13T20:12:15.114Z",
-        "modified_date": "2018-11-12T22:44:12.362Z",
-        "user": [
-            "admin"
-        ],
-        "team": 1,
-        "role": "EDITOR"
-    }
-}
-]
-EOFSP
-}
-
-function performUpdateSnyPy()
-{
-  perform_stack_name=snypy
-  prepPerformUpdate "$1"
-  if [ $? -ne 0 ]; then return 1; fi
-  # The current version is included as a placeholder for when the next version arrives.
-  case "$perform_stack_ver" in
-    1)
-      newVer=v1
-      curImageList=postgres:15.0-bullseye,ghcr.io/snypy/snypy-backend:1.5.2,ghcr.io/snypy/snypy-static:1.5.2,ghcr.io/snypy/snypy-frontend:1.5.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/snypy/snypy-backend:1.5.2,ghcr.io/snypy/snypy-backend:1.5.2"
-      image_update_map[2]="ghcr.io/snypy/snypy-static:1.5.2,ghcr.io/snypy/snypy-static:1.5.2"
-      image_update_map[3]="ghcr.io/snypy/snypy-frontend:1.5.1,ghcr.io/snypy/snypy-frontend:1.5.1"
-    ;;
-    *)
-      is_upgrade_error=true
-      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
-      return
-    ;;
-  esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
-  perform_update_report="${perform_update_report}$stack_upgrade_report"
-}
-
 # SnippetBox
 function installSnippetBox()
 {
@@ -56409,7 +54551,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
   fi
   rm -f \$HSHQ_WRAP_SCRIPT
   mv \$HSHQ_WRAP_TMP \$HSHQ_WRAP_SCRIPT
-  chmod 755 \$HSHQ_WRAP_SCRIPT
+  chmod 544 \$HSHQ_WRAP_SCRIPT
   is_any_updated=true
   echo "Wrapper script verified and updated."
 fi
@@ -56436,6 +54578,7 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && 
     exit 8
   fi
   rm -f \$HSHQ_NEW_LIB_SCRIPT
+  chmod 644 \$HSHQ_LIB_TMP
   mv \$HSHQ_LIB_TMP \$HSHQ_NEW_LIB_SCRIPT
   echo "Lib script verified!"
 fi
@@ -58391,7 +56534,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete, so please be patient.<br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, etc. Just be patient and allow the process to run its course. If it hangs for longer than 15-20 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
