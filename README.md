@@ -34,7 +34,7 @@ wget -q4N https://homeserverhq.com/hshq.sh && bash hshq.sh
 To perform the installation directly via GitHub (in case the webserver is unavailable), run the following commands as the first non-root user (ID=1000) on a fresh Linux installation:
 ```
 cd ~
-mkdir -p hshq hshq/data hshq/data/lib
+mkdir -p hshq/data/lib
 wget -q4N https://raw.githubusercontent.com/homeserverhq/hshq/main/hshq.sh
 wget -q4 -O hshq/data/lib/hshqlib.sh https://raw.githubusercontent.com/homeserverhq/hshq/main/hshqlib.sh
 bash hshq.sh
