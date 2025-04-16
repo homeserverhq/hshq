@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=139
+HSHQ_LIB_SCRIPT_VERSION=140
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -13783,6 +13783,18 @@ function checkValidNumber()
   fi
 }
 
+function checkValidVersionNumber()
+{
+  check_number=$1
+  if [ "$(checkValidNumber $check_number)" = "false" ]; then
+    echo "false"
+  elif [ $check_number -lt 1 ] || [ $check_number -gt 10000 ]; then
+    echo "false"
+  else
+    echo "true"
+  fi
+}
+
 function checkValidIPAddress()
 {
   set +e
@@ -14219,11 +14231,14 @@ function loadDirectoryStructure()
 function getLatestVersionWrapper()
 {
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_WRAP_DEV_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_WRAP_DEV_VER_URL | head -n 1)
   elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_WRAP_TEST_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_WRAP_TEST_VER_URL | head -n 1)
   else
-    echo $(curl -L --silent $HSHQ_WRAP_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_WRAP_VER_URL | head -n 1)
+  fi
+  if [ "$(checkValidVersionNumber $vnum)" = "true" ]; then
+    echo "$vnum"
   fi
 }
 
@@ -14249,11 +14264,14 @@ function getThisVersionWrapper()
 function getLatestVersionLib()
 {
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_LIB_DEV_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_LIB_DEV_VER_URL | head -n 1)
   elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_LIB_TEST_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_LIB_TEST_VER_URL | head -n 1)
   else
-    echo $(curl -L --silent $HSHQ_LIB_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_LIB_VER_URL | head -n 1)
+  fi
+  if [ "$(checkValidVersionNumber $vnum)" = "true" ]; then
+    echo "$vnum"
   fi
 }
 
@@ -14285,12 +14303,16 @@ function getPendingVersionLib()
 
 function verifyFile()
 {
-  # Perform 3 checks:
-  # 1 - Verify the file
-  # 2 - Ensure the verification process used the correct key
-  # 3 - Ensure the output contains "Good signature" (This step is likely redundant, but whatever...)
+  # Perform 4 checks:
+  # 1 - Ensure both src and sig files exist
+  # 2 - Verify the file
+  # 3 - Ensure the verification process used the correct key
+  # 4 - Ensure the output contains "Good signature" (This step is likely redundant, but thats fine)
   src_file=$1
   sig_file=$2
+  if ! [ -f "$src_file" ] || ! [ -f "$sig_file" ]; then
+    return 4
+  fi
   gpg --verify $sig_file $src_file >/dev/null 2>/tmp/verify
   ver_res=$?
   if [ $ver_res -ne 0 ]; then
@@ -54536,10 +54558,14 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
     exit
   fi
   hshq_wrap_dl_version=\$(sed -n 2p \$HSHQ_WRAP_TMP | cut -d"=" -f2)
-  wget -q4 -O $HOME/wrap-\${hshq_wrap_dl_version}.sig \$HSHQ_SIG_BASE_URL/wrap-\${hshq_wrap_dl_version}.sig
-  verifyFile \$HSHQ_WRAP_TMP $HOME/wrap-\${hshq_wrap_dl_version}.sig
-  ver_res=\$?
-  rm -f $HOME/wrap-\${hshq_wrap_dl_version}.sig
+  if [ "\$(checkValidVersionNumber \$hshq_wrap_dl_version)" = "true" ]; then
+    wget -q4 -O $HOME/wrap-\${hshq_wrap_dl_version}.sig \$HSHQ_SIG_BASE_URL/wrap-\${hshq_wrap_dl_version}.sig
+    verifyFile \$HSHQ_WRAP_TMP $HOME/wrap-\${hshq_wrap_dl_version}.sig
+    ver_res=\$?
+    rm -f $HOME/wrap-\${hshq_wrap_dl_version}.sig
+  else
+    ver_res=5
+  fi
   if [ \$ver_res -ne 0 ]; then
     # Not verified, raise the red flag
     rm -f \$HSHQ_WRAP_TMP
@@ -54564,10 +54590,14 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && 
     exit
   fi
   hshq_lib_dl_version=\$(sed -n 2p \$HSHQ_LIB_TMP | cut -d"=" -f2)
-  wget -q4 -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
-  verifyFile \$HSHQ_LIB_TMP $HOME/lib-\${hshq_lib_dl_version}.sig
-  ver_res=\$?
-  rm -f $HOME/lib-\${hshq_lib_dl_version}.sig
+  if [ "\$(checkValidVersionNumber \$hshq_wrap_dl_version)" = "true" ]; then
+    wget -q4 -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
+    verifyFile \$HSHQ_LIB_TMP $HOME/lib-\${hshq_lib_dl_version}.sig
+    ver_res=\$?
+    rm -f $HOME/lib-\${hshq_lib_dl_version}.sig
+  else
+    ver_res=5
+  fi
   if [ \$ver_res -ne 0 ]; then
     # Not verified, raise the red flag
     rm -f \$HSHQ_LIB_TMP
@@ -60559,7 +60589,8 @@ EOFCF
       }
       redir /.well-known/webfinger https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
       redir /.well-known/host-meta https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
-      redir https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
+      redir / https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
+      respond 404
     }
   }
 }
