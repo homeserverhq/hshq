@@ -13785,8 +13785,8 @@ function checkValidNumber()
 
 function checkValidVersionNumber()
 {
-  check_number=$1
-  if [ "$(checkValidNumber $check_number)" = "false" ]; then
+  check_number="$1"
+  if [ "$(checkValidNumber "$check_number")" = "false" ]; then
     echo "false"
   elif [ $check_number -lt 1 ] || [ $check_number -gt 10000 ]; then
     echo "false"
@@ -14237,7 +14237,7 @@ function getLatestVersionWrapper()
   else
     vnum=$(curl -L --silent $HSHQ_WRAP_VER_URL | head -n 1)
   fi
-  if [ "$(checkValidVersionNumber $vnum)" = "true" ]; then
+  if [ "$(checkValidVersionNumber "$vnum")" = "true" ]; then
     echo "$vnum"
   fi
 }
@@ -14270,7 +14270,7 @@ function getLatestVersionLib()
   else
     vnum=$(curl -L --silent $HSHQ_LIB_VER_URL | head -n 1)
   fi
-  if [ "$(checkValidVersionNumber $vnum)" = "true" ]; then
+  if [ "$(checkValidVersionNumber "$vnum")" = "true" ]; then
     echo "$vnum"
   fi
 }
@@ -54559,7 +54559,7 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
     exit
   fi
   hshq_wrap_dl_version=\$(sed -n 2p \$HSHQ_WRAP_TMP | cut -d"=" -f2)
-  if [ "\$(checkValidVersionNumber \$hshq_wrap_dl_version)" = "true" ]; then
+  if [ "\$(checkValidVersionNumber "\$hshq_wrap_dl_version")" = "true" ]; then
     wget -q4 -O $HOME/wrap-\${hshq_wrap_dl_version}.sig \$HSHQ_SIG_BASE_URL/wrap-\${hshq_wrap_dl_version}.sig
     verifyFile \$HSHQ_WRAP_TMP $HOME/wrap-\${hshq_wrap_dl_version}.sig
     ver_res=\$?
@@ -54591,7 +54591,7 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && 
     exit
   fi
   hshq_lib_dl_version=\$(sed -n 2p \$HSHQ_LIB_TMP | cut -d"=" -f2)
-  if [ "\$(checkValidVersionNumber \$hshq_wrap_dl_version)" = "true" ]; then
+  if [ "\$(checkValidVersionNumber "\$hshq_wrap_dl_version")" = "true" ]; then
     wget -q4 -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
     verifyFile \$HSHQ_LIB_TMP $HOME/lib-\${hshq_lib_dl_version}.sig
     ver_res=\$?

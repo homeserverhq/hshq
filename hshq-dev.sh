@@ -416,7 +416,7 @@ function checkAnyUpdates()
     return 2
   fi
   hshq_wrap_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_WRAP_VER_URL)
-  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ] || ! [ "$(checkValidVersionNumber "$hshq_wrap_latest_version")" = "true" ]; then
     return 3
   fi
   hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
@@ -427,7 +427,7 @@ function checkAnyUpdates()
     return 0
   fi
   hshq_lib_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
-  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ] || ! [ "$(checkValidVersionNumber "$hshq_lib_latest_version")" = "true" ]; then
     return 4
   fi
   hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT  | cut -d"=" -f2)
@@ -473,7 +473,7 @@ function checkDownloadWrapper()
   fi
   echo "Checking new wrapper..."
   hshq_wrap_dl_version=$(sed -n 2p $HSHQ_WRAP_TMP | cut -d"=" -f2)
-  if ! [ "$(checkValidVersionNumber $hshq_wrap_dl_version)" = "true" ]; then
+  if ! [ "$(checkValidVersionNumber "$hshq_wrap_dl_version")" = "true" ]; then
     rm -f $HSHQ_WRAP_TMP
     if [ -f $HSHQ_LIB_SCRIPT ]; then
       showMessageBox "Download Error" "There was an error obtaining the latest wrapper version (not a number), proceeding with local version..."
@@ -531,7 +531,7 @@ function checkDownloadLib()
   if [ -f $HSHQ_LIB_SCRIPT ]; then
     if [ -z "$hshq_lib_latest_version" ]; then
       hshq_lib_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
-      if [ $? -ne 0 ] || [ -z "$hshq_lib_latest_version" ]; then
+      if [ $? -ne 0 ] || [ -z "$hshq_lib_latest_version" ] || ! [ "$(checkValidVersionNumber "$hshq_lib_latest_version")" = "true" ]; then
         return 0
       fi
     fi
@@ -553,7 +553,7 @@ function checkDownloadLib()
     return 0
   fi
   hshq_lib_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
-  if ! [ "$(checkValidVersionNumber $hshq_lib_dl_version)" = "true" ]; then
+  if ! [ "$(checkValidVersionNumber "$hshq_lib_dl_version")" = "true" ]; then
     rm -f $HSHQ_LIB_TMP
     if [ -f $HSHQ_LIB_SCRIPT ]; then
       showMessageBox "Download Error" "There was an error obtaining the latest lib version (not a number), proceeding with local version..."
@@ -806,8 +806,8 @@ function checkValidNumber()
 
 function checkValidVersionNumber()
 {
-  check_number=$1
-  if [ "$(checkValidNumber $check_number)" = "false" ]; then
+  check_number="$1"
+  if [ "$(checkValidNumber "$check_number")" = "false" ]; then
     echo "false"
   elif [ $check_number -lt 1 ] || [ $check_number -gt 10000 ]; then
     echo "false"
