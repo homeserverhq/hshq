@@ -34981,6 +34981,7 @@ function updateWazuhAgents()
   fi
   sudo apt-mark unhold wazuh-agent
   sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo systemctl daemon-reload > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
   sudo apt-mark hold wazuh-agent
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
