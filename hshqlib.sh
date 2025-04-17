@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=139
+HSHQ_LIB_SCRIPT_VERSION=140
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -3306,6 +3306,7 @@ function updateListOfStacks()
   stackListArr=($(echo "$1" | tr "," "\n"))
   stacks_need_update_list="$(getStacksToUpdate)"
   setSudoTimeoutInstall
+  getUpdateAssets
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   report_start_time=$(date)
   full_update_report=""
@@ -13783,6 +13784,18 @@ function checkValidNumber()
   fi
 }
 
+function checkValidVersionNumber()
+{
+  check_number="$1"
+  if [ "$(checkValidNumber "$check_number")" = "false" ]; then
+    echo "false"
+  elif [ $check_number -lt 1 ] || [ $check_number -gt 10000 ]; then
+    echo "false"
+  else
+    echo "true"
+  fi
+}
+
 function checkValidIPAddress()
 {
   set +e
@@ -14219,11 +14232,14 @@ function loadDirectoryStructure()
 function getLatestVersionWrapper()
 {
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_WRAP_DEV_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_WRAP_DEV_VER_URL | head -n 1)
   elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_WRAP_TEST_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_WRAP_TEST_VER_URL | head -n 1)
   else
-    echo $(curl -L --silent $HSHQ_WRAP_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_WRAP_VER_URL | head -n 1)
+  fi
+  if [ "$(checkValidVersionNumber "$vnum")" = "true" ]; then
+    echo "$vnum"
   fi
 }
 
@@ -14249,11 +14265,14 @@ function getThisVersionWrapper()
 function getLatestVersionLib()
 {
   if [ -f $HOME/hshq/$IS_HSHQ_DEV_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_LIB_DEV_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_LIB_DEV_VER_URL | head -n 1)
   elif [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then
-    echo $(curl -L --silent $HSHQ_LIB_TEST_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_LIB_TEST_VER_URL | head -n 1)
   else
-    echo $(curl -L --silent $HSHQ_LIB_VER_URL)
+    vnum=$(curl -L --silent $HSHQ_LIB_VER_URL | head -n 1)
+  fi
+  if [ "$(checkValidVersionNumber "$vnum")" = "true" ]; then
+    echo "$vnum"
   fi
 }
 
@@ -14285,12 +14304,16 @@ function getPendingVersionLib()
 
 function verifyFile()
 {
-  # Perform 3 checks:
-  # 1 - Verify the file
-  # 2 - Ensure the verification process used the correct key
-  # 3 - Ensure the output contains "Good signature" (This step is likely redundant, but whatever...)
+  # Perform 4 checks:
+  # 1 - Ensure both src and sig files exist
+  # 2 - Verify the file
+  # 3 - Ensure the verification process used the correct key
+  # 4 - Ensure the output contains "Good signature" (This step is likely redundant, but thats fine)
   src_file=$1
   sig_file=$2
+  if ! [ -f "$src_file" ] || ! [ -f "$sig_file" ]; then
+    return 4
+  fi
   gpg --verify $sig_file $src_file >/dev/null 2>/tmp/verify
   ver_res=$?
   if [ $ver_res -ne 0 ]; then
@@ -25073,7 +25096,9 @@ function loadPinnedDockerImages()
   IMG_ESPOCRM_APP=espocrm/espocrm:9.0.6-apache
   IMG_FILEBROWSER=filebrowser/filebrowser:v2.32.0
   IMG_FILEDROP=filedrop/filedrop:1
-  IMG_FIREFLY=fireflyiii/core:version-6.2.10
+  IMG_FIREFLY_APP=fireflyiii/core:version-6.2.10
+  IMG_FIREFLY_IMPORTER=fireflyiii/data-importer:version-1.6.1
+  IMG_FIREFLY_CRON=alpine:3.21.3
   IMG_FRESHRSS=freshrss/freshrss:1.26.1
   IMG_GHOST=ghost:5.115.1-alpine
   IMG_GITEA_APP=gitea/gitea:1.23.6
@@ -25244,7 +25269,7 @@ function getScriptStackVersion()
     shlink)
       echo "v6" ;;
     firefly)
-      echo "v7" ;;
+      echo "v8" ;;
     excalidraw)
       echo "v1" ;;
     drawio)
@@ -25404,7 +25429,9 @@ function pullDockerImages()
   pullImage $IMG_CODESERVER
   pullImage $IMG_SHLINK_APP
   pullImage $IMG_SHLINK_WEB
-  pullImage $IMG_FIREFLY
+  pullImage $IMG_FIREFLY_APP
+  pullImage $IMG_FIREFLY_IMPORTER
+  pullImage $IMG_FIREFLY_CRON
   pullImage $IMG_EXCALIDRAW_WEB
   pullImage $IMG_EXCALIDRAW_SERVER
   pullImage $IMG_EXCALIDRAW_STORAGE
@@ -25949,6 +25976,7 @@ FIREFLY_DATABASE_USER=
 FIREFLY_DATABASE_USER_PASSWORD=
 FIREFLY_REDIS_PASSWORD=
 FIREFLY_INITIAL_API_KEY=
+FIREFLY_STATIC_CRON_TOKEN=
 # FireflyIII (Service Details) END
 
 # Excalidraw (Service Details) BEGIN
@@ -26803,6 +26831,10 @@ function initServicesCredentials()
     FIREFLY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar FIREFLY_DATABASE_USER_PASSWORD $FIREFLY_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$FIREFLY_STATIC_CRON_TOKEN" ]; then
+    FIREFLY_STATIC_CRON_TOKEN=$(pwgen -c -n 32 1)
+    updateConfigVar FIREFLY_STATIC_CRON_TOKEN $FIREFLY_STATIC_CRON_TOKEN
+  fi
   if [ -z "$INVIDIOUS_DATABASE_NAME" ]; then
     INVIDIOUS_DATABASE_NAME=invidiousdb
     updateConfigVar INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_NAME
@@ -27428,7 +27460,9 @@ function initServiceVars()
   checkAddSvc "SVCD_FILEBROWSER=filebrowser,filebrowser,other,user,FileBrowser,filebrowser,hshq"
   checkAddSvc "SVCD_FILEDROP=filedrop,filedrop,other,user,FileDrop,filedrop,hshq"
   checkAddSvc "SVCD_FILES=files,files,other,user,Files,files,hshq"
-  checkAddSvc "SVCD_FIREFLY=firefly,firefly,home,admin,Firefly III,fireflyiii,hshq"
+  sed -i "s/SVCD_FIREFLY=/SVCD_FIREFLY_APP=/" $CONFIG_FILE
+  checkAddSvc "SVCD_FIREFLY_APP=firefly,firefly,home,admin,Firefly III,fireflyiii,hshq"
+  checkAddSvc "SVCD_FIREFLY_IMPORTER=firefly,firefly-importer,home,admin,Firefly III-Importer,fireflyiii-importer,hshq"
   checkAddSvc "SVCD_FRESHRSS=freshrss,freshrss,primary,user,FreshRSS,freshrss,le"
   checkAddSvc "SVCD_GHOST=ghost,ghost,other,user,Ghost,ghost,hshq"
   checkAddSvc "SVCD_GITEA=gitea,gitea,primary,user,Gitea,gitea,le"
@@ -27899,7 +27933,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_CODESERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOZZLE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DUPLICATI.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_FIREFLY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FIREFLY_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GHOST.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GRAFANA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GUACAMOLE.$HOMESERVER_DOMAIN\n"
@@ -28141,7 +28176,8 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_SQLPAD" $USERTYPE_SQLPAD "https://$SUB_SQLPAD.$HOMESERVER_DOMAIN" 0 "sqlpad.png"
   insertIntoHeimdallDB "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" 0 "homeassistant.png"
   insertIntoHeimdallDB "$FMLNAME_SHLINK_WEB" $USERTYPE_SHLINK_WEB "https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN" 0 "shlink.png"
-  insertIntoHeimdallDB "$FMLNAME_FIREFLY" $USERTYPE_FIREFLY "https://$SUB_FIREFLY.$HOMESERVER_DOMAIN" 0 "firefly.png"
+  insertIntoHeimdallDB "$FMLNAME_FIREFLY_APP" $USERTYPE_FIREFLY_APP "https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN" 0 "firefly.png"
+  insertIntoHeimdallDB "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" 0 "firefly-importer.png"
   insertIntoHeimdallDB "$FMLNAME_KASM_WIZARD" $USERTYPE_KASM_WIZARD "https://$SUB_KASM_WIZARD.$HOMESERVER_DOMAIN" 0 "kasm.png"
   insertIntoHeimdallDB "$FMLNAME_VAULTWARDEN Admin" $USERTYPE_PORTAINER "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin" 0 "vaultwarden.png"
   insertIntoHeimdallDB "$FMLNAME_COLLABORA Admin" $USERTYPE_PORTAINER "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/browser/dist/admin/admin.html" 0 "collabora.png"
@@ -28260,7 +28296,8 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_VAULTWARDEN" $USERTYPE_VAULTWARDEN "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_DISCOURSE" $USERTYPE_DISCOURSE "https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_SHLINK_WEB" $USERTYPE_SHLINK_WEB "https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_FIREFLY" $USERTYPE_FIREFLY "https://$SUB_FIREFLY.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_FIREFLY_APP" $USERTYPE_FIREFLY_APP "https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "${FMLNAME_EXCALIDRAW_WEB}-Server" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" 0
@@ -28613,7 +28650,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_POSTGRES
       ;;
     "firefly-app")
-      container_image=$IMG_FIREFLY
+      container_image=$IMG_FIREFLY_APP
+      ;;
+    "firefly-importer")
+      container_image=$IMG_FIREFLY_IMPORTER
+      ;;
+    "firefly-cron")
+      container_image=$IMG_FIREFLY_CRON
       ;;
     "firefly-redis")
       container_image=$IMG_REDIS
@@ -28932,6 +28975,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET="
   checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}"
   checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
+  checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
 }
 
 # Stacks Installation/Update Functions
@@ -34959,6 +35003,7 @@ function updateWazuhAgents()
   fi
   sudo apt-mark unhold wazuh-agent
   sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo systemctl daemon-reload > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
   sudo apt-mark hold wazuh-agent
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -43408,7 +43453,15 @@ function installFirefly()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_FIREFLY
+  pullImage $IMG_FIREFLY_APP
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_FIREFLY_IMPORTER
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_FIREFLY_CRON
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -43442,7 +43495,7 @@ function installFirefly()
   sleep 10
 
   inner_block=""
-  inner_block=$inner_block">>https://$SUB_FIREFLY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
@@ -43454,9 +43507,26 @@ function installFirefly()
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_FIREFLY $MANAGETLS_FIREFLY "$is_integrate_hshq" $NETDEFAULT_FIREFLY "$inner_block"
+  updateCaddyBlocks $SUB_FIREFLY_APP $MANAGETLS_FIREFLY_APP "$is_integrate_hshq" $NETDEFAULT_FIREFLY_APP "$inner_block"
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://firefly-importer:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FIREFLY_IMPORTER $MANAGETLS_FIREFLY_IMPORTER "$is_integrate_hshq" $NETDEFAULT_FIREFLY_IMPORTER "$inner_block"
+  insertSubAuthelia $SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll firefly "$FMLNAME_FIREFLY" $USERTYPE_FIREFLY "https://$SUB_FIREFLY.$HOMESERVER_DOMAIN" "firefly.png"
+    insertEnableSvcAll firefly "$FMLNAME_FIREFLY_APP" $USERTYPE_FIREFLY_APP "https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN" "firefly.png"
+    insertEnableSvcAll firefly "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" "firefly-importer.png"
     restartAllCaddyContainers
   fi
 }
@@ -43511,6 +43581,8 @@ services:
     hostname: firefly-app
     restart: unless-stopped
     env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
     depends_on:
       - firefly-db
     networks:
@@ -43524,6 +43596,51 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-firefly-data:/var/www/html/storage/upload
+
+  firefly-importer:
+    image: $(getScriptImageByContainerName firefly-importer)
+    container_name: firefly-importer
+    hostname: firefly-importer
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - firefly-app
+    networks:
+      - int-firefly-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  firefly-cron:
+    image: $(getScriptImageByContainerName firefly-cron)
+    container_name: firefly-cron
+    hostname: firefly-cron
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: sh -c "
+      echo \"0 3 * * * wget -qO- http://firefly-app:8080/api/v1/cron/$FIREFLY_STATIC_CRON_TOKEN;echo\" 
+      | crontab - 
+      && crond -f -L /dev/stdout"
+    depends_on:
+      - firefly-app
+    networks:
+      - int-firefly-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
 
   firefly-redis:
     image: $(getScriptImageByContainerName firefly-redis)
@@ -43583,8 +43700,8 @@ TZ=\${TZ}
 UID=$USERID
 GID=$GROUPID
 SITE_OWNER=$EMAIL_ADMIN_EMAIL_ADDRESS
-APP_URL=https://$SUB_FIREFLY.$HOMESERVER_DOMAIN
-TRUSTED_PROXIES=**
+APP_URL=https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN
+TRUSTED_PROXIES='*'
 APP_KEY=$FIREFLY_INITIAL_API_KEY
 DEFAULT_LANGUAGE=en_US
 DEFAULT_LOCALE=equal
@@ -43604,7 +43721,9 @@ REDIS_PASSWORD=$FIREFLY_REDIS_PASSWORD
 POSTGRES_DB=$FIREFLY_DATABASE_NAME
 POSTGRES_USER=$FIREFLY_DATABASE_USER
 POSTGRES_PASSWORD=$FIREFLY_DATABASE_USER_PASSWORD
-
+FIREFLY_III_URL=http://firefly-app:8080
+VANITY_URL=https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN
+STATIC_CRON_TOKEN=$FIREFLY_STATIC_CRON_TOKEN
 EOFFF
 
 }
@@ -43659,11 +43778,23 @@ function performUpdateFirefly()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.2.10,bitnami/redis:7.4.2
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="fireflyiii/core:version-6.2.10,fireflyiii/core:version-6.2.10"
       image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfFireflyAddImporterAndCron
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    8)
+      newVer=v8
+      curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.2.10,bitnami/redis:7.4.2,fireflyiii/data-importer:version-1.6.1,alpine:3.21.3
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="fireflyiii/core:version-6.2.10,fireflyiii/core:version-6.2.10"
+      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[3]="fireflyiii/data-importer:version-1.6.1,fireflyiii/data-importer:version-1.6.1"
+      image_update_map[4]="alpine:3.21.3,alpine:3.21.3"
     ;;
     *)
       is_upgrade_error=true
@@ -43673,6 +43804,33 @@ function performUpdateFirefly()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfFireflyAddImporterAndCron()
+{
+  pullImage $IMG_FIREFLY_IMPORTER
+  pullImage $IMG_FIREFLY_CRON
+  initServicesCredentials
+  rm -f $HOME/firefly-compose.yml
+  rm -f $HOME/firefly.env
+  outputConfigFirefly
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://firefly-importer:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FIREFLY_IMPORTER $MANAGETLS_FIREFLY_IMPORTER "$is_integrate_hshq" $NETDEFAULT_FIREFLY_IMPORTER "$inner_block"
+  insertSubAuthelia $SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertEnableSvcAll firefly "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" "firefly-importer.png"
+  restartAllCaddyContainers
 }
 
 # Excalidraw
@@ -54536,10 +54694,14 @@ if [ \$this_ver_wrapper -lt \$latest_ver_wrapper ]; then
     exit
   fi
   hshq_wrap_dl_version=\$(sed -n 2p \$HSHQ_WRAP_TMP | cut -d"=" -f2)
-  wget -q4 -O $HOME/wrap-\${hshq_wrap_dl_version}.sig \$HSHQ_SIG_BASE_URL/wrap-\${hshq_wrap_dl_version}.sig
-  verifyFile \$HSHQ_WRAP_TMP $HOME/wrap-\${hshq_wrap_dl_version}.sig
-  ver_res=\$?
-  rm -f $HOME/wrap-\${hshq_wrap_dl_version}.sig
+  if [ "\$(checkValidVersionNumber "\$hshq_wrap_dl_version")" = "true" ]; then
+    wget -q4 -O $HOME/wrap-\${hshq_wrap_dl_version}.sig \$HSHQ_SIG_BASE_URL/wrap-\${hshq_wrap_dl_version}.sig
+    verifyFile \$HSHQ_WRAP_TMP $HOME/wrap-\${hshq_wrap_dl_version}.sig
+    ver_res=\$?
+    rm -f $HOME/wrap-\${hshq_wrap_dl_version}.sig
+  else
+    ver_res=5
+  fi
   if [ \$ver_res -ne 0 ]; then
     # Not verified, raise the red flag
     rm -f \$HSHQ_WRAP_TMP
@@ -54564,10 +54726,14 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && 
     exit
   fi
   hshq_lib_dl_version=\$(sed -n 2p \$HSHQ_LIB_TMP | cut -d"=" -f2)
-  wget -q4 -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
-  verifyFile \$HSHQ_LIB_TMP $HOME/lib-\${hshq_lib_dl_version}.sig
-  ver_res=\$?
-  rm -f $HOME/lib-\${hshq_lib_dl_version}.sig
+  if [ "\$(checkValidVersionNumber "\$hshq_wrap_dl_version")" = "true" ]; then
+    wget -q4 -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
+    verifyFile \$HSHQ_LIB_TMP $HOME/lib-\${hshq_lib_dl_version}.sig
+    ver_res=\$?
+    rm -f $HOME/lib-\${hshq_lib_dl_version}.sig
+  else
+    ver_res=5
+  fi
   if [ \$ver_res -ne 0 ]; then
     # Not verified, raise the red flag
     rm -f \$HSHQ_LIB_TMP
@@ -60559,7 +60725,8 @@ EOFCF
       }
       redir /.well-known/webfinger https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
       redir /.well-known/host-meta https://$SUB_MASTODON.$HOMESERVER_DOMAIN{uri} permanent
-      redir https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
+      redir / https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
+      respond 404
     }
   }
 }

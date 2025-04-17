@@ -43627,8 +43627,7 @@ services:
     security_opt:
       - no-new-privileges:true
     command: sh -c "
-      apk add tzdata
-      | echo \"0 3 * * * wget -qO- http://firefly-app:8080/api/v1/cron/$FIREFLY_STATIC_CRON_TOKEN;echo\" 
+      echo \"0 3 * * * wget -qO- http://firefly-app:8080/api/v1/cron/$FIREFLY_STATIC_CRON_TOKEN;echo\" 
       | crontab - 
       && crond -f -L /dev/stdout"
     depends_on:
@@ -43636,7 +43635,6 @@ services:
     networks:
       - int-firefly-net
       - dock-internalmail-net
-      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -43686,9 +43684,6 @@ networks:
     external: true
   dock-dbs-net:
     name: dock-dbs
-    external: true
-  dock-ext-net:
-    name: dock-ext
     external: true
   dock-internalmail-net:
     name: dock-internalmail

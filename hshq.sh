@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=20
+HSHQ_WRAPPER_SCRIPT_VERSION=21
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -416,7 +416,7 @@ function checkAnyUpdates()
     return 2
   fi
   hshq_wrap_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_WRAP_VER_URL)
-  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ] || ! [ "$(checkValidVersionNumber "$hshq_wrap_latest_version")" = "true" ]; then
     return 3
   fi
   hshq_wrap_local_version=$(sed -n 2p $HSHQ_WRAP_SCRIPT | cut -d"=" -f2)
@@ -427,7 +427,7 @@ function checkAnyUpdates()
     return 0
   fi
   hshq_lib_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
-  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ]; then
+  if [ $? -ne 0 ] || [ -z "$hshq_wrap_latest_version" ] || ! [ "$(checkValidVersionNumber "$hshq_lib_latest_version")" = "true" ]; then
     return 4
   fi
   hshq_lib_local_version=$(sed -n 2p $HSHQ_LIB_SCRIPT  | cut -d"=" -f2)
@@ -473,6 +473,16 @@ function checkDownloadWrapper()
   fi
   echo "Checking new wrapper..."
   hshq_wrap_dl_version=$(sed -n 2p $HSHQ_WRAP_TMP | cut -d"=" -f2)
+  if ! [ "$(checkValidVersionNumber "$hshq_wrap_dl_version")" = "true" ]; then
+    rm -f $HSHQ_WRAP_TMP
+    if [ -f $HSHQ_LIB_SCRIPT ]; then
+      showMessageBox "Download Error" "There was an error obtaining the latest wrapper version (not a number), proceeding with local version..."
+    else
+      showMessageBox "Download Error" "There was an error with the indicated wrapper version - not a number. Please try again later."
+      exit 5
+    fi
+    return 0
+  fi
   echo "Obtained Wrapper Version $hshq_wrap_dl_version"
   wget -q4 -O $HOME/wrap-${hshq_wrap_dl_version}.sig $HSHQ_SIG_BASE_URL/wrap-${hshq_wrap_dl_version}.sig
   if [ $? -eq 0 ]; then
@@ -521,7 +531,7 @@ function checkDownloadLib()
   if [ -f $HSHQ_LIB_SCRIPT ]; then
     if [ -z "$hshq_lib_latest_version" ]; then
       hshq_lib_latest_version=$(curl -L --connect-timeout 5 --silent $HSHQ_LIB_VER_URL)
-      if [ $? -ne 0 ] || [ -z "$hshq_lib_latest_version" ]; then
+      if [ $? -ne 0 ] || [ -z "$hshq_lib_latest_version" ] || ! [ "$(checkValidVersionNumber "$hshq_lib_latest_version")" = "true" ]; then
         return 0
       fi
     fi
@@ -543,6 +553,16 @@ function checkDownloadLib()
     return 0
   fi
   hshq_lib_dl_version=$(sed -n 2p $HSHQ_LIB_TMP | cut -d"=" -f2)
+  if ! [ "$(checkValidVersionNumber "$hshq_lib_dl_version")" = "true" ]; then
+    rm -f $HSHQ_LIB_TMP
+    if [ -f $HSHQ_LIB_SCRIPT ]; then
+      showMessageBox "Download Error" "There was an error obtaining the latest lib version (not a number), proceeding with local version..."
+    else
+      showMessageBox "Download Error" "There was an error with the indicated lib version - not a number. Please try again later."
+      exit 5
+    fi
+    return 0
+  fi
   echo "Obtained Library Version $hshq_lib_dl_version"
   wget -q4 -O $HOME/lib-${hshq_lib_dl_version}.sig $HSHQ_SIG_BASE_URL/lib-${hshq_lib_dl_version}.sig
   if [ $? -ne 0 ]; then
@@ -589,12 +609,16 @@ function checkDownloadLib()
 
 function verifyFile()
 {
-  # Perform 3 checks:
-  # 1 - Verify the file
-  # 2 - Ensure the verification process used the correct key
-  # 3 - Ensure the output contains "Good signature" (This step is likely redundant, but whatever...)
+  # Perform 4 checks:
+  # 1 - Ensure both src and sig files exist
+  # 2 - Verify the file
+  # 3 - Ensure the verification process used the correct key
+  # 4 - Ensure the output contains "Good signature" (This step is likely redundant, but thats fine)
   src_file=$1
   sig_file=$2
+  if ! [ -f "$src_file" ] || ! [ -f "$sig_file" ]; then
+    return 4
+  fi
   gpg --verify $sig_file $src_file >/dev/null 2>/tmp/verify
   ver_res=$?
   if [ $ver_res -ne 0 ]; then
@@ -770,4 +794,25 @@ function checkValidPassword()
   fi
 }
 
+function checkValidNumber()
+{
+  check_string=$1
+  if [[ $check_string =~ ^[0-9]+$ ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
+function checkValidVersionNumber()
+{
+  check_number="$1"
+  if [ "$(checkValidNumber "$check_number")" = "false" ]; then
+    echo "false"
+  elif [ $check_number -lt 1 ] || [ $check_number -gt 10000 ]; then
+    echo "false"
+  else
+    echo "true"
+  fi
+}
 main "$@"
