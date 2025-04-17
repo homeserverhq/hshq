@@ -27460,7 +27460,7 @@ function initServiceVars()
   checkAddSvc "SVCD_FILEBROWSER=filebrowser,filebrowser,other,user,FileBrowser,filebrowser,hshq"
   checkAddSvc "SVCD_FILEDROP=filedrop,filedrop,other,user,FileDrop,filedrop,hshq"
   checkAddSvc "SVCD_FILES=files,files,other,user,Files,files,hshq"
-  sed -i '/SVCD_FIREFLY=/d' $CONFIG_FILE
+  sed -i "s/SVCD_FIREFLY=/SVCD_FIREFLY_APP=/" $CONFIG_FILE
   checkAddSvc "SVCD_FIREFLY_APP=firefly,firefly,home,admin,Firefly III,fireflyiii,hshq"
   checkAddSvc "SVCD_FIREFLY_IMPORTER=firefly,firefly-importer,home,admin,Firefly III-Importer,fireflyiii-importer,hshq"
   checkAddSvc "SVCD_FRESHRSS=freshrss,freshrss,primary,user,FreshRSS,freshrss,le"
@@ -43707,7 +43707,7 @@ UID=$USERID
 GID=$GROUPID
 SITE_OWNER=$EMAIL_ADMIN_EMAIL_ADDRESS
 APP_URL=https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN
-TRUSTED_PROXIES=**
+TRUSTED_PROXIES='*'
 APP_KEY=$FIREFLY_INITIAL_API_KEY
 DEFAULT_LANGUAGE=en_US
 DEFAULT_LOCALE=equal
