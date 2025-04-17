@@ -43628,7 +43628,6 @@ services:
       - no-new-privileges:true
     command: sh -c "
       apk add tzdata
-      && ln -s /usr/share/zoneinfo/\${TZ} /etc/localtime
       | echo \"0 3 * * * wget -qO- http://firefly-app:8080/api/v1/cron/$FIREFLY_STATIC_CRON_TOKEN;echo\" 
       | crontab - 
       && crond -f -L /dev/stdout"
