@@ -63,7 +63,7 @@ Ubuntu 24 Oliver* | Ubuntu 24.04 | <a href="https://links.homeserverhq.com/ubunt
 
 *An Oliver build contains ALL 5 desktop environments (GNOME, Cinnamon, KDE Plasma, XFCE, MATE), plus 1 more! (Budgie)
 
-Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute installation - start to finish. If you are unsure of which one to get, just get Oliver!
+Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. If you are unsure of which one to get, just get Oliver!
 
 To create a bootable USB:
   1) Download and run <a href="https://etcher.balena.io/#download-etcher" target="_blank">Balena Etcher</a>
