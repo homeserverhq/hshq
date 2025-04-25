@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=140
+HSHQ_LIB_SCRIPT_VERSION=141
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -23,7 +23,7 @@ function init()
 {
   # Version 74 Update
   # Changing to the home directory fixes issues with docker compose (v2)
-  # since the command 'stat .' (inside of docker compose) results in a 
+  # since the command 'stat .' (inside of docker compose) results in a
   # permission denied error when running script from root as another user,
   # i.e. 'sudo -u <USER> bash hshq.sh'
   # Basically, docker compose is dependent on which directory it is
@@ -11843,7 +11843,7 @@ function getGatewayOfInterface()
 
 function getIPFromHostname()
 {
-  echo $(dig $1 A +short | grep '^[.0-9]*$' | head -n 1)
+  echo $(timeout 5 dig $1 A +short | grep '^[.0-9]*$' | head -n 1)
 }
 
 function getAllowedPublicIPs()
@@ -23248,7 +23248,6 @@ function checkAllHSHQNetworking()
   #       unless the previous attempt at obtaining a lock
   #       resulted in an error
   #
-
   set +e
   funRetVal=0
   # This is for NetworkManager-dispatcher function calls.
@@ -23299,14 +23298,24 @@ function checkAllHSHQNetworking()
     startStopStack adguard stop
     sleep 1
     startStopStack adguard start
+    logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) - Adguard restarted..."
   fi
+  logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - checkUpdateDockerPrivateIP (before)"
   checkUpdateDockerPrivateIP
+  logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - checkUpdateDockerPrivateIP (after)"
+  logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - updateEndpointIPs (before)"
   updateEndpointIPs
+  logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - updateEndpointIPs (after)"
+  logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - checkNonLockedUnencrytpedConfig (before)"
   checkNonLockedUnencrytpedConfig "$cahn_callerName"
   funRetVal=$(($funRetVal + $?))
+  logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - checkNonLockedUnencrytpedConfig (after)"
   if [ "$isLockError" = "false" ]; then
+    logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - updateLastNetworkCheck (before)"
     updateLastNetworkCheck
+	logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - updateLastNetworkCheck (after)"
   fi
+  logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - Debug END"
   if ! [ "$cahn_callerName" = "cron" ]; then
     logHSHQEvent info "checkAllHSHQNetworking ($cahn_callerName) END"
   fi
@@ -23330,39 +23339,47 @@ function checkNonLockedUnencrytpedConfig()
 function updateEndpointIPs()
 {
   set +e
+  logHSHQEvent debug "updateEndpointIPs - Begin"
   ping_timeout=5
   conn_list=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType in ('homeserver_vpn','homeserver_internet') and NetworkType in ('other','primary');"))
   for cur_id in "${conn_list[@]}"
   do
+    logHSHQEvent debug "updateEndpointIPs - Checking ID: $cur_id"
     is_int=$(sqlite3 $HSHQ_DB "select IsInternet from connections where ID='$cur_id';")
     iname=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID='$cur_id';")
     cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_id;")
     if [ "$(checkIPByID $cur_id)" = "true" ]; then
       logHSHQEvent info "updateEndpointIPs - IP changed, restarting $cname..."
       if [ $is_int = 0 ]; then
-        sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
+        timeout 10 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
       else
         sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${iname}.conf restart > /dev/null 2>&1
       fi
     fi
+	set +e
     if [ $is_int = 0 ]; then
+	  logHSHQEvent debug "updateEndpointIPs - Checking health: $cur_id"
       # Also need to check health of connection and reset if issues
       rs_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$cur_id;")
       if ! [ -z "$rs_ip" ]; then
+	    logHSHQEvent debug "updateEndpointIPs - Pinging $rs_ip"
         timeout $ping_timeout ping -c 1 $rs_ip > /dev/null 2>&1
         if [ $? -ne 0 ]; then
-          logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname..."
-          sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
+          logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname ($iname)..."
+          timeout 10 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
+		  logHSHQEvent error "updateEndpointIPs - Connection Error, restart complete(HSVPN) $cname ($iname)..."
         fi
       fi
     fi
   done
   set +e
+  logHSHQEvent debug "updateEndpointIPs - Check/fix ClientDNS"
   # Check/fix ClientDNS
   cdns_id=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
   for cur_cdns in "${cdns_id[@]}"
   do
     cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_cdns;")
+	logHSHQEvent debug "updateEndpointIPs - Checking clientDNS: $cname ($cdns_id)"
     # First, check if container is actually running
     docker ps | grep ${cname}-wireguard > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -23374,17 +23391,22 @@ function updateEndpointIPs()
     fi
   done
   set +e
+  logHSHQEvent debug "updateEndpointIPs - Check/fix tunnelled WireGuard internet connections"
   # Check/fix tunnelled WireGuard internet connections
   for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
   do
     if ! sudo test -f "$conf"; then continue; fi
+	logHSHQEvent debug "updateEndpointIPs - Checking wgDockInternet: $conf"
     resOut=$(sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
     retVal=$?
+	logHSHQEvent debug "updateEndpointIPs - wgDockInternet got status: $conf"
     if [ $retVal -ne 0 ]; then
       logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
       sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
+	  logHSHQEvent debug "updateEndpointIPs - Connection Error, restart complete(HSInternet)[$retVal - $resOut] $conf..."
     fi
   done
+  logHSHQEvent debug "updateEndpointIPs - End"
 }
 
 function checkIPByID()
@@ -23576,7 +23598,7 @@ function restart()
 function status()
 {
   if ! [ "\$(checkValidIPAddress \$EXT_DOMAIN)" = "true" ]; then
-    edip=\$(dig \$EXT_DOMAIN +short | grep '^[0-9]')
+    edip=\$(timeout 5 dig \$EXT_DOMAIN +short | grep '^[0-9]')
     if [ \$? -ne 0 ]; then
       # Cannot resolve hostname, this happens in boot process during networkd-dispatcher startup
       echo "Cannot resolve hostname, returning..."
@@ -24267,7 +24289,7 @@ function checkHostAllInterfaceIPChanges()
   if [ -z "$$callerName" ]; then
     callerName=checkHostAllInterfaceIPChanges
   fi
-  tgLock=""
+  tgLock="true"
   if ! [ "$isBypassHSHQStatus" = "true" ]; then
     tgLock="$(tryGetLock hshqopen $callerName)"
   fi
