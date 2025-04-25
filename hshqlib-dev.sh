@@ -23313,7 +23313,7 @@ function checkAllHSHQNetworking()
   if [ "$isLockError" = "false" ]; then
     logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - updateLastNetworkCheck (before)"
     updateLastNetworkCheck
-	logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - updateLastNetworkCheck (after)"
+    logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - updateLastNetworkCheck (after)"
   fi
   logHSHQEvent debug "checkAllHSHQNetworking ($cahn_callerName) - Debug END"
   if ! [ "$cahn_callerName" = "cron" ]; then
@@ -23358,7 +23358,7 @@ function updateEndpointIPs()
     fi
 	set +e
     if [ $is_int = 0 ]; then
-	  logHSHQEvent debug "updateEndpointIPs - Checking health: $cur_id"
+      logHSHQEvent debug "updateEndpointIPs - Checking health: $cur_id"
       # Also need to check health of connection and reset if issues
       rs_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$cur_id;")
       if ! [ -z "$rs_ip" ]; then
@@ -23367,7 +23367,7 @@ function updateEndpointIPs()
         if [ $? -ne 0 ]; then
           logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname ($iname)..."
           timeout 10 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
-		  logHSHQEvent error "updateEndpointIPs - Connection Error, restart complete(HSVPN) $cname ($iname)..."
+          logHSHQEvent error "updateEndpointIPs - Connection Error, restart complete(HSVPN) $cname ($iname)..."
         fi
       fi
     fi
@@ -23379,7 +23379,7 @@ function updateEndpointIPs()
   for cur_cdns in "${cdns_id[@]}"
   do
     cname=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$cur_cdns;")
-	logHSHQEvent debug "updateEndpointIPs - Checking clientDNS: $cname ($cdns_id)"
+    logHSHQEvent debug "updateEndpointIPs - Checking clientDNS: $cname ($cdns_id)"
     # First, check if container is actually running
     docker ps | grep ${cname}-wireguard > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -23396,14 +23396,14 @@ function updateEndpointIPs()
   for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf
   do
     if ! sudo test -f "$conf"; then continue; fi
-	logHSHQEvent debug "updateEndpointIPs - Checking wgDockInternet: $conf"
+    logHSHQEvent debug "updateEndpointIPs - Checking wgDockInternet: $conf"
     resOut=$(sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf status)
     retVal=$?
-	logHSHQEvent debug "updateEndpointIPs - wgDockInternet got status: $conf"
+    logHSHQEvent debug "updateEndpointIPs - wgDockInternet got status: $conf"
     if [ $retVal -ne 0 ]; then
       logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSInternet)[$retVal - $resOut] $conf..."
       sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf restart > /dev/null 2>&1
-	  logHSHQEvent debug "updateEndpointIPs - Connection Error, restart complete(HSInternet)[$retVal - $resOut] $conf..."
+      logHSHQEvent debug "updateEndpointIPs - Connection Error, restart complete(HSInternet)[$retVal - $resOut] $conf..."
     fi
   done
   logHSHQEvent debug "updateEndpointIPs - End"
