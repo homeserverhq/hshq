@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=141
+HSHQ_LIB_SCRIPT_VERSION=142
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -55628,10 +55628,9 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 configname=\$(getArgumentValue configname "\$@")
-applycnf=\$(getArgumentValue applycnf "\$@")
 
 set +e
-echo "\$applycnf" > \$HOME/apply_hsv.cnf
+echo "\$myappcnf" > \$HOME/apply_hsv.cnf
 performNetworkInvite "\$HOME/apply_hsv.cnf" "\$configname"
 retVal=\$?
 rm -f \$HOME/apply_hsv.cnf
@@ -55689,14 +55688,13 @@ EOFSC
     {
       "name": "Enter the application",
       "required": true,
-      "param": "-applycnf=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "myappcnf"
     }
   ]
 }
@@ -56032,11 +56030,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-remreason=\$(getArgumentValue remreason "\$@")
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-removeMyNetworkHomeServerVPNConnection \$rem_id "\$remreason"
+removeMyNetworkHomeServerVPNConnection \$rem_id "\$myremreason"
 set -e
 performExitFunctions false
 
@@ -56096,14 +56093,13 @@ EOFSC
     {
       "name": "Enter a reason for removal",
       "required": true,
-      "param": "-remreason=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "myremreason"
     }
   ]
 }
@@ -56120,11 +56116,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-remreason=\$(getArgumentValue remreason "\$@")
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-removeMyNetworkHomeServerInternetConnection "\$rem_id" "\$remreason"
+removeMyNetworkHomeServerInternetConnection "\$rem_id" "\$myremreason"
 set -e
 performExitFunctions false
 
@@ -56184,14 +56179,13 @@ EOFSC
     {
       "name": "Enter a reason for removal",
       "required": true,
-      "param": "-remreason=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "myremreason"
     }
   ]
 }
@@ -56208,11 +56202,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-remreason=\$(getArgumentValue remreason "\$@")
 
 set +e
 rem_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-removeMyNetworkUserConnection "\$rem_id" "\$remreason"
+removeMyNetworkUserConnection "\$rem_id" "\$myremreason"
 set -e
 performExitFunctions false
 
@@ -56272,14 +56265,13 @@ EOFSC
     {
       "name": "Enter a reason for removal",
       "required": true,
-      "param": "-remreason=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "myremreason"
     }
   ]
 }
@@ -56457,11 +56449,9 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
-bcastmsg=\$(getArgumentValue bcastmsg "\$@")
-
 set +e
 echo "Emailing broadcast message..."
-sendEmailMyNetworkBroadcast "\$bcastmsg"
+sendEmailMyNetworkBroadcast "\$mybcastmsg"
 set -e
 performExitFunctions false
 
@@ -56502,8 +56492,6 @@ EOFSC
     {
       "name": "Enter the message",
       "required": true,
-      "param": "-bcastmsg=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2,
@@ -56512,7 +56500,8 @@ EOFSC
         }
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "mybcastmsg"
     }
   ]
 }
@@ -56914,7 +56903,6 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 
-disreason=\$(getArgumentValue disreason "\$@")
 echo "Obtaining networkchecks lock..."
 tgLock="\$(tryGetLock networkchecks Script-server-removePrimaryVPNConnection)"
 if ! [ "\$tgLock" = "true" ]; then
@@ -56927,7 +56915,7 @@ fi
 setSystemState $SS_REMOVING
 decryptConfigFileAndLoadEnvNoPrompts
 set +e
-removeMyNetworkPrimaryVPN "\$disreason"
+removeMyNetworkPrimaryVPN "\$mydisreason"
 set -e
 performExitFunctions false
 setSystemState $SS_RUNNING
@@ -56969,8 +56957,6 @@ EOFSC
     {
       "name": "Enter a reason for disconnect/removal",
       "required": true,
-      "param": "-disreason=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2,
@@ -56979,7 +56965,8 @@ EOFSC
         }
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "mydisreason"
     }
   ]
 }
@@ -57358,8 +57345,7 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-joincnf=\$(getArgumentValue joincnf "\$@")
-echo "\$joincnf" > \$HOME/join_hsv.cnf
+echo "\$myjoincnf" > \$HOME/join_hsv.cnf
 performNetworkJoin true \$HOME/join_hsv.cnf
 rm -f \$HOME/join_hsv.cnf
 
@@ -57403,8 +57389,6 @@ EOFSC
     {
       "name": "Enter the invitation",
       "required": true,
-      "param": "-joincnf=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2,
@@ -57413,7 +57397,8 @@ EOFSC
         }
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "myjoincnf"
     }
   ]
 }
@@ -57430,11 +57415,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-disreason=\$(getArgumentValue disreason "\$@")
 
 set +e
 dis_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-disconnectOtherNetworkHomeServerVPNConnection \$dis_id "\$disreason"
+disconnectOtherNetworkHomeServerVPNConnection \$dis_id "\$mydisreason"
 set -e
 performExitFunctions false
 
@@ -57494,14 +57478,13 @@ EOFSC
     {
       "name": "Enter a reason for disconnecting",
       "required": true,
-      "param": "-disreason=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "mydisreason"
     }
   ]
 }
@@ -57518,11 +57501,10 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 selconnection=\$(getArgumentValue selconnection "\$@")
-disreason=\$(getArgumentValue disreason "\$@")
 
 set +e
 dis_id="\$(echo \$selconnection | cut -d ')' -f1 | sed 's/(//g' | sed 's/ //g')"
-disconnectOtherNetworkHomeServerInternetConnection "\$dis_id" "\$disreason"
+disconnectOtherNetworkHomeServerInternetConnection "\$dis_id" "\$mydisreason"
 set -e
 performExitFunctions false
 
@@ -57582,14 +57564,13 @@ EOFSC
     {
       "name": "Enter a reason for disconnecting",
       "required": true,
-      "param": "-disreason=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "mydisreason"
     }
   ]
 }
@@ -57605,11 +57586,9 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
-dnsconfig=\$(getArgumentValue dnsconfig "\$@")
-
 set +e
 echo "Updating HomeServer DNS..."
-echo "\$dnsconfig" > \$HOME/dns.tmp
+echo "\$mydnsconf" > \$HOME/dns.tmp
 updateHomeServerDNS \$HOME/dns.tmp
 rm -f \$HOME/dns.tmp
 set -e
@@ -57652,8 +57631,6 @@ EOFSC
     {
       "name": "Enter DNS config",
       "required": true,
-      "param": "-dnsconfig=",
-      "same_arg_param": true,
       "type": "multiline_text",
       "ui": {
         "width_weight": 2,
@@ -57662,7 +57639,8 @@ EOFSC
         }
       },
       "secure": false,
-      "pass_as": "argument"
+      "pass_as": "env_variable",
+      "env_var": "mydnsconf"
     }
   ]
 }
