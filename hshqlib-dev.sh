@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=143
+HSHQ_LIB_SCRIPT_VERSION=144
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -787,7 +787,7 @@ EOF
       fi
     done
   done
-  IFS=$OIFS
+  IFS=$OLDIFS
 
   if [ $curListNum -le 1 ]; then
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
@@ -2609,7 +2609,7 @@ function showConfigureSimpleBackupMenu()
     showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
     return
   fi
-  chkfstab=$(sudo findmnt --verify)
+  chkfstab=$(sudo findmnt --verify 2> /dev/null)
   if [ $? -ne 0 ]; then
     showMessageBox "ERROR" "There is an error with /etc/fstab: ${chkfstab}\nPlease fix this issue and retry."
     return
@@ -2653,7 +2653,7 @@ EOF
     scsbm_menu_items+=( "off" )
     ((curListNum++))
   done
-  IFS=$OIFS
+  IFS=$OLDIFS
   if [ $curListNum -le 1 ]; then
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
     return
@@ -2944,7 +2944,7 @@ EOF
       fi
     done
   done
-  IFS=$OIFS
+  IFS=$OLDIFS
 
   if [ $curListNum -le 1 ]; then
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
@@ -5228,7 +5228,7 @@ function pullImage()
 
 function pullDockerImages()
 {
-  OIFS=\$IFS
+  OLDIFS=\$IFS
   IFS=\$(echo -en "\n\b")
   img_arr=(\$(sudo grep -r "image: " \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose))
   for cur_item in "\${img_arr[@]}"
@@ -5237,7 +5237,7 @@ function pullDockerImages()
     if [[ "\$cur_img" =~ ^hshq ]]; then continue; fi
     pullImage \$cur_img
   done
-  IFS=\$OIFS
+  IFS=\$OLDIFS
 
   mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build
   sudo rm -fr \$RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay
@@ -5646,10 +5646,10 @@ function checkValidIPAddress()
   ip=\$(echo \$1 | cut -d "/" -f1)
   stat=1
   if [[ \$ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\$ ]]; then
-    OIFS=\$IFS
+    OLDIFS=\$IFS
     IFS='./'
     ip=(\$ip)
-    IFS=\$OIFS
+    IFS=\$OLDIFS
     [[ \${ip[0]} -le 255 && \${ip[1]} -le 255 && \${ip[2]} -le 255 && \${ip[3]} -le 255 ]]
     stat=\$?
   fi
@@ -12546,7 +12546,7 @@ function isNetworkIntersectOurNetworks()
     echo "ERROR: Invalid IP address/subnet."
     return
   fi
-  OIFS=$IFS
+  OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   vpn_arr=($(sqlite3 $HSHQ_DB "select connections.Network_Subnet,hsvpn_connections.HomeServerName from connections join hsvpn_connections on connections.ID = hsvpn_connections.ID where connections.Network_Subnet is not null;"))
   for curvpncheck in "${vpn_arr[@]}"
@@ -12555,7 +12555,7 @@ function isNetworkIntersectOurNetworks()
     curhsname=$(echo "$curvpncheck" | cut -d "|" -f2)
     if [ "$(checkNetworkIntersect $curvpn $checkNetwork)" = "true" ]; then
       echo "The requested subnet ($checkNetwork) collides with ${curhsname} VPN subnet ($curvpn)"
-      IFS=$OIFS
+      IFS=$OLDIFS
       return
     fi
   done
@@ -12570,7 +12570,7 @@ function isNetworkIntersectOurNetworks()
       fi
       if [ "$(checkNetworkIntersect $curhsnet $checkNetwork)" = "true" ]; then
         echo "The requested subnet ($checkNetwork) collides with a HomeServer host interface subnet ($curhsname - $curhsnet)"
-        IFS=$OIFS
+        IFS=$OLDIFS
         return
       fi
     done
@@ -12588,11 +12588,11 @@ function isNetworkIntersectOurNetworks()
     curconname=$(echo "$curipcheck" | cut -d "|" -f2)
     if [ "$(checkNetworkIntersect ${curip}/32 $checkNetwork)" = "true" ]; then
       echo "The requested subnet ($checkNetwork) collides with connection ${curconname} ($curip)"
-      IFS=$OIFS
+      IFS=$OLDIFS
       return
     fi
   done
-  IFS=$OIFS
+  IFS=$OLDIFS
   echo ""
 }
 
@@ -12652,10 +12652,10 @@ function sortCSVList()
     return
   fi
   inCSVArr=($(echo $inCSVList | tr "," "\n"))
-  OIFS=$IFS
+  OLDIFS=$IFS
   IFS=$'\n'
   sortedCSVArr=($(sort <<< "${inCSVArr[*]}"))
-  IFS=$OIFS
+  IFS=$OLDIFS
   sortedCSVList=""
   for curItem in "${sortedCSVArr[@]}"
   do
@@ -13809,10 +13809,10 @@ function checkValidIPAddress()
   ip=$(echo $1 | cut -d "/" -f1)
   stat=1
   if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-    OIFS=$IFS
+    OLDIFS=$IFS
     IFS='./'
     ip=($ip)
-    IFS=$OIFS
+    IFS=$OLDIFS
     [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
     stat=$?
   fi
@@ -13873,20 +13873,19 @@ function checkValidPortsList()
     for curPort in "${portListArr[@]}"
     do
       port_no=$(echo "$curPort" | cut -d"/" -f1 | xargs)
-      unset port_prot
       port_prot=""
       if [[ $curPort =~ "/" ]]; then
         port_prot=$(echo "$curPort" | cut -d"/" -f2- | xargs)
       fi
       if ! [[ $port_no =~ ^[0-9:]+$ ]]; then
-        echo "One of the port numbers in the list is invalid. It must consist of 0-9, and/or colons(:) with no spaces."
+        echo "One of the port numbers in the list is invalid ($port_no). It must consist of 0-9, and/or colons(:) with no spaces. Full string: $check_string"
         return 2
       fi
       if [[ $port_no =~ ":" ]]; then
         port_begin=$(echo "$port_no" | cut -d":" -f1 | xargs)
         port_end=$(echo "$port_no" | cut -d":" -f2- | xargs)
         if ! [[ $port_begin =~ ^[0-9]+$ ]] || ! [[ $port_end =~ ^[0-9]+$ ]]; then
-          echo "One of the port numbers in the list is invalid. It must consist of 0-9, and/or colons(:) with no spaces."
+          echo "One of the port numbers in the list is invalid [$port_begin:$port_end]. It must consist of 0-9, and/or colons(:) with no spaces."
           return 3
         fi
       fi
@@ -15454,7 +15453,7 @@ function updateHomeServerDNS()
 {
   dns_file=$1
   removeSpecialChars "$dns_file"
-  OIFS=$IFS
+  OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   lines=$(cat $dns_file)
   curdt=$(getCurrentDate)
@@ -15554,7 +15553,7 @@ function updateHomeServerDNS()
       sudo sqlite3 $HSHQ_DB "insert into hsvpn_dns(HostDomain,PeerDomain,PeerDomainExtPrefix,IPAddress,DateAdded,IsActive) values('$curHostDomain','$curPeerDomain','$curExtPrefix','$curIP','$curdt',$is_active);"
     fi
   done
-  IFS=$OIFS
+  IFS=$OLDIFS
   if [ "$is_error" = "true" ]; then
     email_subj="ERROR - HomeServer DNS Update"
     email_body="There was an error detected with the most recent HomeServer DNS Update: \n\n"
@@ -16191,7 +16190,7 @@ function checkPortForwardingIntersect()
   pfProto=$1
   pfStartPort=$2
   pfEndPort=$3
-  OIFS=$IFS
+  OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   pfRows=($(sqlite3 $HSHQ_DB "select Name,PFType,ExtStart,ExtEnd,Protocol,LastUpdated from portforwarding where Protocol in ('$pfProto','both');"))
   for curPF in "${pfRows[@]}"
@@ -16213,11 +16212,11 @@ function checkPortForwardingIntersect()
       else
         echo "The range $pfStartPort-$pfEndPort intersects with an existing (Unknown Type) entry - Name: $curPFName, PortRange: $curPFExtStart-$curPFExtEnd, Protocol: $curPFProto, LastUpdated: $curPFLastUpdated"
       fi
-      IFS=$OIFS
+      IFS=$OLDIFS
       return
     fi
   done
-  IFS=$OIFS
+  IFS=$OLDIFS
 }
 
 # Desktop Functions
@@ -21015,7 +21014,7 @@ function fixAutheliaConfig()
     return
   fi
   outres=""
-  OIFS=$IFS
+  OLDIFS=$IFS
   IFS=$(echo -en "\n\r")
   readarray -t inputArr < $inputfile
   curnum=0
@@ -21108,7 +21107,7 @@ function fixAutheliaConfig()
     done
   
   done
-  IFS=$OIFS
+  IFS=$OLDIFS
   
   echo -e "$outres" > $inputfile
   docker container restart authelia > /dev/null 2>&1
@@ -22395,7 +22394,7 @@ function appendINPUTBySubnetAndPortsList()
   fi
   checkValidPortsList "$portList"
   if [ $? -ne 0 ]; then
-    strMsg="There was an error with the ports list: portList"
+    strMsg="There was an error with the ports list: $portList"
     logHSHQEvent error "appendINPUTBySubnetAndPortsList ($netstate) (appendINPUTBySubnetAndPortsList) - $strMsg"
     echo "ERROR: $strMsg"
     return
@@ -22435,7 +22434,7 @@ function addDOCKERUSERBySubnetAndPortsList()
   fi
   checkValidPortsList "$portList"
   if [ $? -ne 0 ]; then
-    strMsg="There was an error with the ports list: portList"
+    strMsg="There was an error with the ports list: $portList"
     logHSHQEvent error "addDOCKERUSERBySubnetAndPortsList ($netstate) (addDOCKERUSERBySubnetAndPortsList) - $strMsg"
     echo "ERROR: $strMsg"
     return
@@ -23666,10 +23665,10 @@ function checkValidIPAddress()
   ip=\$(echo \$1 | cut -d "/" -f1)
   stat=1
   if [[ \$ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\$ ]]; then
-    OIFS=\$IFS
+    OLDIFS=\$IFS
     IFS='./'
     ip=(\$ip)
-    IFS=\$OIFS
+    IFS=\$OLDIFS
     [[ \${ip[0]} -le 255 && \${ip[1]} -le 255 && \${ip[2]} -le 255 && \${ip[3]} -le 255 ]]
     stat=\$?
   fi
@@ -60625,7 +60624,7 @@ function insertIntoHeimdallDB()
 function bulkImportHomeServerLinksHeimdall()
 {
   domainList=$1
-  OIFS=$IFS
+  OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   lines=$(cat $domainList)
   for curLine in $lines
