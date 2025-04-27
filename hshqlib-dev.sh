@@ -247,6 +247,7 @@ function main()
   if [ "$IS_PERFORM_UPDATE" = "true" ]; then
     setSystemState $SS_UPDATING
     checkUpdateVersion
+    moveScriptServerPerformUpdate
     setSystemState $SS_RUNNING
     return
   fi
@@ -54841,13 +54842,13 @@ releaseAllLocks false
 
 # Check if this got replaced by itself, and replace it if so
 if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh ]; then
-  mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+  moveScriptServerPerformUpdate
 fi
 }
 EOFSC
 
   if [ "$isReplaceUpdateScript" = "true" ]; then
-    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+    moveScriptServerPerformUpdate
   fi
 
   cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/performUpdateHSHQ.json
@@ -59495,6 +59496,13 @@ EOFSC
   # Set permissions
   chmod 700 $HSHQ_STACKS_DIR/script-server/conf/scripts/*
   chmod 600 $HSHQ_STACKS_DIR/script-server/conf/runners/*
+}
+
+function moveScriptServerPerformUpdate
+{
+  if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh ]; then
+    mv $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ.sh
+  fi
 }
 
 function cleanupScriptServerLogs()
