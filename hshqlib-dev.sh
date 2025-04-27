@@ -54753,7 +54753,7 @@ if [ \$this_ver_lib -lt \$latest_ver_lib ] || ( ! [ -z "\$pending_ver_lib" ] && 
     exit
   fi
   hshq_lib_dl_version=\$(sed -n 2p \$HSHQ_LIB_TMP | cut -d"=" -f2)
-  if [ "\$(checkValidVersionNumber "\$hshq_wrap_dl_version")" = "true" ]; then
+  if [ "\$(checkValidVersionNumber "\$hshq_lib_dl_version")" = "true" ]; then
     wget -q4 -O $HOME/lib-\${hshq_lib_dl_version}.sig \$HSHQ_SIG_BASE_URL/lib-\${hshq_lib_dl_version}.sig
     verifyFile \$HSHQ_LIB_TMP $HOME/lib-\${hshq_lib_dl_version}.sig
     ver_res=\$?
