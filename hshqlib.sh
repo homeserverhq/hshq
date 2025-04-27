@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=142
+HSHQ_LIB_SCRIPT_VERSION=143
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -2603,9 +2603,14 @@ function showConfigureSimpleBackupMenu()
     showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR in /etc/fstab. Please unmount this filesystem and remove it from /etc/fstab, returning..."
     return
   fi
-  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  sudo findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
+    return
+  fi
+  chkfstab=$(sudo findmnt --verify)
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "There is an error with /etc/fstab: ${chkfstab}\nPlease fix this issue and retry."
     return
   fi
   if ! [ -f $HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite ]; then
@@ -2764,8 +2769,8 @@ EOF
   sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    sudo mv /etc/fstab.old /etc/fstab
     showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup disk will not be auto-mounted after a reboot."
+    sudo mv /etc/fstab.old /etc/fstab
   else
     sudo rm -f /etc/fstab.old
   fi
