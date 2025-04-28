@@ -2151,38 +2151,38 @@ function initInstallation()
   fi
   clear
   strInstallConfig=""
-  strInstallConfig="${strInstallConfig}#######################################################\n"
-  strInstallConfig="${strInstallConfig}===================== General Info ====================\n"
+  strInstallConfig="${strInstallConfig}################################################################\n"
+  strInstallConfig="${strInstallConfig}========================= General Info =========================\n"
   strInstallConfig="${strInstallConfig}- Root CA URL: http://$SUB_FILES.$HOMESERVER_DOMAIN/ca.crt\n"
   strInstallConfig="${strInstallConfig}- Home Page: https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN\n"
   strInstallConfig="${strInstallConfig}- Email Admin Username: $EMAIL_ADMIN_EMAIL_ADDRESS\n"
   strInstallConfig="${strInstallConfig}- Email Admin Password: $EMAIL_ADMIN_PASSWORD\n"
   strInstallConfig="${strInstallConfig}- HomeServer Current SSH Port: $CURRENT_SSH_PORT\n"
   strInstallConfig="${strInstallConfig}- HomeServer New SSH Port: $SSH_PORT\n"
-  strInstallConfig="${strInstallConfig}- HomeServer Portainer IP URL: https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT\n"
-  strInstallConfig="${strInstallConfig}- HomeServer Portainer Username: $PORTAINER_ADMIN_USERNAME\n"
-  strInstallConfig="${strInstallConfig}- HomeServer Portainer Password: $PORTAINER_ADMIN_PASSWORD\n"
+  strInstallConfig="${strInstallConfig}- Portainer IP URL: https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT\n"
+  strInstallConfig="${strInstallConfig}- Portainer Username: $PORTAINER_ADMIN_USERNAME\n"
+  strInstallConfig="${strInstallConfig}- Portainer Password: $PORTAINER_ADMIN_PASSWORD\n"
   strInstallConfig="${strInstallConfig}- Script-server IP URL: https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT\n"
   strInstallConfig="${strInstallConfig}- Script-server Username: $SCRIPTSERVER_ADMIN_USERNAME\n"
   strInstallConfig="${strInstallConfig}- Script-server Password: $SCRIPTSERVER_ADMIN_PASSWORD\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strInstallConfig="${strInstallConfig}- RelayServer IP Address: $RELAYSERVER_SERVER_IP\n"
-    strInstallConfig="${strInstallConfig}- RelayServer Host Current SSH Port: $RELAYSERVER_CURRENT_SSH_PORT\n"
-    strInstallConfig="${strInstallConfig}- RelayServer Host New SSH Port: $RELAYSERVER_SSH_PORT\n"
-    strInstallConfig="${strInstallConfig}- RelayServer Host Username: $RELAYSERVER_REMOTE_USERNAME\n"
+    strInstallConfig="${strInstallConfig}- RelayServer Current SSH Port: $RELAYSERVER_CURRENT_SSH_PORT\n"
+    strInstallConfig="${strInstallConfig}- RelayServer New SSH Port: $RELAYSERVER_SSH_PORT\n"
+    strInstallConfig="${strInstallConfig}- RelayServer Linux Username: $RELAYSERVER_REMOTE_USERNAME\n"
   fi
-  strInstallConfig="${strInstallConfig}=======================================================\n\n"
+  strInstallConfig="${strInstallConfig}================================================================\n\n"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     strInstallConfig="${strInstallConfig}$(getDNSRecordsInfo $HOMESERVER_DOMAIN)\n\n"
   fi
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    strInstallConfig="${strInstallConfig}============= User WireGuard Configuration ============\n"
+    strInstallConfig="${strInstallConfig}================= User WireGuard Configuration =================\n"
     strInstallConfig="${strInstallConfig}""""$rs_wg_user_conf""""\n"
-    strInstallConfig="${strInstallConfig}=======================================================\n\n"
+    strInstallConfig="${strInstallConfig}================================================================\n\n"
   fi
-  #strInstallConfig="${strInstallConfig}======================= Root CA =======================\n"
+  #strInstallConfig="${strInstallConfig}=========================== Root CA ============================\n"
   #strInstallConfig="${strInstallConfig}""""$(cat "$HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt")""""\n"
-  #strInstallConfig="${strInstallConfig}=======================================================\n"
+  #strInstallConfig="${strInstallConfig}================================================================\n"
   strInstallConfig="${strInstallConfig}                      INSTRUCTIONS                     \n"
   strInstallConfig="${strInstallConfig}The system is prepped for installation. It will take around\n"
   strInstallConfig="${strInstallConfig}10-15 minutes to perform the base installation, depending on\n"
@@ -2208,7 +2208,7 @@ function initInstallation()
     strInstallConfig="${strInstallConfig}as user ($RELAYSERVER_REMOTE_USERNAME) to monitor the progress of the installation,\n"
     strInstallConfig="${strInstallConfig}by entering the command 'screen -r hshqInstall'.\n\n"
   fi
-  strInstallConfig="${strInstallConfig}#######################################################\n\n"
+  strInstallConfig="${strInstallConfig}################################################################\n\n"
   echo -e "${strInstallConfig}"
   while true;
   do
@@ -2229,10 +2229,10 @@ function initInstallation()
       final_prompt="After reading the above section, enter 'install' or 'exit': "
       rm -f "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "\n" > "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
-      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
-      echo -e "@@@@@   You should permanently delete this file   @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
-      echo -e "@@@@@     as soon as you are finished with it     @@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
-      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@     You should permanently delete this file    @@@@@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@       as soon as you are finished with it      @@@@@@@@" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
+      echo -e "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n\n" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       echo -e "${strInstallConfig}" >> "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       chmod 0400 "$hdir/$HSHQ_INSTALL_NOTES_FILENAME"
       break
