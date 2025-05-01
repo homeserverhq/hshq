@@ -51788,6 +51788,9 @@ function installHomarr()
   sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update search_engine set icon_url='https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/brave.svg', name='Brave', short='b', description='Search the web with Brave', url_template='https://search.brave.com/search?q=%s' where name='Google';"
   sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update serverSetting set value='{\"json\":{\"enableGeneral\":false,\"enableWidgetData\":false,\"enableIntegrationData\":false,\"enableUserData\":false}}' where setting_key='analytics';"
   sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update serverSetting set value='{\"json\":{\"defaultColorScheme\":\"dark\"}}' where setting_key='appearance';"
+  searchEngID=$(sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "select id from 'search_engine' where name='Brave';")
+  # Change the default search engine since the homarr docs search is broken
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update serverSetting set value='{\"json\":{\"defaultSearchEngineId\":\"$searchEngID\"}}' where setting_key='search';"
   sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update onboarding set step='finish', previous_step='settings';"
   sleep 1
   startStopStack homarr stop

@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=144
+HSHQ_LIB_SCRIPT_VERSION=145
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -750,7 +750,7 @@ function buildCustomImages()
 
 function showRestoreMountDriveMenu()
 {
-  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  findmnt | grep $HSHQ_BACKUP_DIR > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
     return
@@ -769,7 +769,7 @@ EOF
   do
     curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
     curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
-    findmnt | grep $curDiskID  > /dev/null 2>&1
+    findmnt | grep $curDiskID > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       continue
     fi
@@ -810,7 +810,7 @@ EOF
     showMessageBox "ERROR" "Invalid directory name, returning..."
     return
   fi
-  findmnt | grep "$mountDir"  > /dev/null 2>&1
+  findmnt | grep "$mountDir" > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     showMessageBox "ERROR" "There is already a disk mounted to this directory, returning..."
     return
@@ -2604,7 +2604,7 @@ function showConfigureSimpleBackupMenu()
     showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR in /etc/fstab. Please unmount this filesystem and remove it from /etc/fstab, returning..."
     return
   fi
-  sudo findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  sudo findmnt | grep $HSHQ_BACKUP_DIR > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
     return
@@ -2642,7 +2642,7 @@ EOF
   do
     curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
     curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
-    findmnt | grep $curDiskID  > /dev/null 2>&1
+    findmnt | grep $curDiskID > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       continue
     fi
@@ -2896,7 +2896,7 @@ function getDuplicatiToken()
 
 function showMountBackupDriveMenu()
 {
-  findmnt | grep $HSHQ_BACKUP_DIR  > /dev/null 2>&1
+  findmnt | grep $HSHQ_BACKUP_DIR > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     showMessageBox "ERROR" "There is already a filesystem mounted to $HSHQ_BACKUP_DIR. Please unmount this filesystem first, returning..."
     return
@@ -2926,7 +2926,7 @@ EOF
   do
     curDiskID=$(echo "$curDisk" | xargs | cut -d" " -f1)
     curDiskName=$(echo "$curDisk" | xargs | cut -d" " -f2-)
-    findmnt | grep $curDiskID  > /dev/null 2>&1
+    findmnt | grep $curDiskID > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       continue
     fi
@@ -13007,7 +13007,7 @@ function getPasswordWithSymbol()
   pw_length=$((pw_length-1))
   rand_pw=$(pwgen -c -n $pw_length 1)
   rand_pos=$(( ( RANDOM % $pw_length )  + 1 ))
-  echo ${rand_pw:0:rand_pos}"_"${rand_pw:rand_pos}
+  echo ${rand_pw:0:rand_pos}"@"${rand_pw:rand_pos}
 }
 
 function performExitFunctions()
@@ -16348,6 +16348,8 @@ user_pref("browser.urlbar.suggest.topsites", false);
 user_pref("identity.fxaccounts.enabled", false);
 user_pref("browser.startup.couldRestoreSession.count", 1);
 user_pref("browser.startup.page", 3);
+user_pref("browser.urlbar.placeholderName", "DuckDuckGo");
+user_pref("browser.urlbar.placeholderName.private", "DuckDuckGo");
 
 // Always dark mode:)
 user_pref("layout.css.prefers-color-scheme.content-override", 0);
@@ -25135,7 +25137,7 @@ function loadPinnedDockerImages()
   IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.5
   IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.5
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
-  IMG_HOMARR_APP=ghcr.io/ajnart/homarr:0.15.10
+  IMG_HOMARR_APP=ghcr.io/homarr-labs/homarr:v1.18.1
   IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2025.4.0
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
   IMG_HOMEASSISTANT_NODERED=nodered/node-red:4.0.9-22
@@ -25360,7 +25362,7 @@ function getScriptStackVersion()
     immich)
       echo "v2" ;;
     homarr)
-      echo "v2" ;;
+      echo "v3" ;;
     matomo)
       echo "v1" ;;
     pastefy)
@@ -26234,6 +26236,7 @@ IMMICH_OIDC_CLIENT_SECRET=
 # Homarr (Service Details) BEGIN
 HOMARR_INIT_ENV=true
 HOMARR_ADMIN_USERNAME=
+HOMARR_ADMIN_EMAIL_ADDRESS=
 HOMARR_ADMIN_PASSWORD=
 HOMARR_OIDC_CLIENT_SECRET=
 # Homarr (Service Details) END
@@ -27310,8 +27313,12 @@ function initServicesCredentials()
     HOMARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_homarr"
     updateConfigVar HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_USERNAME
   fi
+  if [ -z "$HOMARR_ADMIN_EMAIL_ADDRESS" ]; then
+    HOMARR_ADMIN_EMAIL_ADDRESS=$HOMARR_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar HOMARR_ADMIN_EMAIL_ADDRESS $HOMARR_ADMIN_EMAIL_ADDRESS
+  fi
   if [ -z "$HOMARR_ADMIN_PASSWORD" ]; then
-    HOMARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    HOMARR_ADMIN_PASSWORD=$(getPasswordWithSymbol 32)
     updateConfigVar HOMARR_ADMIN_PASSWORD $HOMARR_ADMIN_PASSWORD
   fi
   if [ -z "$HOMARR_OIDC_CLIENT_SECRET" ]; then
@@ -28979,7 +28986,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
   checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET="
+  checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_EMAIL_ADDRESS=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET="
   checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
 
@@ -29003,6 +29010,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}"
   checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
   checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
+  checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
 }
 
 # Stacks Installation/Update Functions
@@ -34584,6 +34592,20 @@ EOFWZ
     <feed-update-interval>60m</feed-update-interval>
   </vulnerability-detection>
 
+  <indexer>
+    <enabled>yes</enabled>
+    <hosts>
+      <host>https://wazuh.indexer:9200</host>
+    </hosts>
+    <ssl>
+      <certificate_authorities>
+        <ca>/etc/ssl/root-ca.pem</ca>
+      </certificate_authorities>
+      <certificate>/etc/ssl/filebeat.pem</certificate>
+      <key>/etc/ssl/filebeat.key</key>
+    </ssl>
+  </indexer>
+
   <!-- File integrity monitoring -->
   <syscheck>
     <disabled>no</disabled>
@@ -34880,7 +34902,7 @@ EOFWZ
 
   cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-dashboard/wazuh.yml
 hosts:
-  - 1513629884013:
+  - default:
       url: "https://wazuh.manager"
       port: $WAZUH_PORT_4
       username: $WAZUH_API_USERNAME
@@ -34976,7 +34998,8 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.11.2,wazuh/wazuh-indexer:4.11.2"
       image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+      # Don't forget to test version412WazuhUpdate
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" version412WazuhUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -35122,6 +35145,36 @@ EOFRU
   set +e
   if ! [ -z "$vnwu_curE" ]; then
     set -e
+  fi
+}
+
+function version412WazuhUpdate()
+{
+  set +e
+  grep "<indexer>" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    wazblock=$(
+    cat <<EOFWZ
+</vulnerability-detection>
+
+  <indexer>
+    <enabled>yes</enabled>
+    <hosts>
+      <host>https://wazuh.indexer:9200</host>
+    </hosts>
+    <ssl>
+      <certificate_authorities>
+        <ca>/etc/ssl/root-ca.pem</ca>
+      </certificate_authorities>
+      <certificate>/etc/ssl/filebeat.pem</certificate>
+      <key>/etc/ssl/filebeat.key</key>
+    </ssl>
+  </indexer>
+EOFWZ
+    )
+    all_text="$(cat $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf)"
+    block_match="</vulnerability-detection>"
+    echo -e "${all_text%%$block_match*}${wazblock}${all_text##*$block_match}" | sudo tee $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
   fi
 }
 
@@ -51703,31 +51756,45 @@ function installHomarr()
   fi
 
   mkdir $HSHQ_STACKS_DIR/homarr
-  mkdir $HSHQ_STACKS_DIR/homarr/configs
-  mkdir $HSHQ_STACKS_DIR/homarr/icons
   mkdir $HSHQ_STACKS_DIR/homarr/data
   initServicesCredentials
   set +e
-
+  docker exec mailu-admin flask mailu alias-delete $HOMARR_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $HOMARR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   HOMARR_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $HOMARR_OIDC_CLIENT_SECRET | tr -d ':\n')
   HOMARR_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
+  HOMARR_SECRET_ENCRYPTION_KEY=$(openssl rand -hex 32)
   outputConfigHomarr
   oidcBlock=$(cat $HOME/homarr.oidc)
   rm -f $HOME/homarr.oidc
   insertOIDCClientAuthelia homarr "$oidcBlock"
   set +e
-  installStack homarr homarr-app "Listening on port" $HOME/homarr.env 3
+  installStack homarr homarr-app "Ready to accept connections" $HOME/homarr.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-  rand_uid=$(pwgen -c -n -A 8 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 4 1)"-"$(pwgen -c -n -A 12 1)
-  HOMARR_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $HOMARR_ADMIN_PASSWORD | tr -d ':\n')
-  HOMARR_PASSWORD_SALT_HASH=$(htpasswd -bnBC 10 "" $(pwgen -c -n 32 1) | tr -d ':\n')
-  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db.sqlite "insert into user(id,name,password,salt,is_admin,is_owner) values('$rand_uid', '$HOMARR_ADMIN_USERNAME','$HOMARR_ADMIN_PASSWORD_HASH','$HOMARR_PASSWORD_SALT_HASH',1,1);"
+  rand_uid=$(pwgen -c -n -A 24 1)
+  HOMARR_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $HOMARR_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/')
+  HOMARR_PASSWORD_SALT_HASH=$(htpasswd -bnBC 10 "" $(pwgen -c -n 32 1) | tr -d ':\n' | sed 's/\$2y/\$2a/')
+  rand_groupid=$(pwgen -c -n -A 24 1)
+  everyone_gid=$(sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "select id from 'group' where name='everyone';")
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "insert into user(id,name,email,password,salt) values('$rand_uid', '$HOMARR_ADMIN_USERNAME','$HOMARR_ADMIN_EMAIL_ADDRESS','$HOMARR_ADMIN_PASSWORD_HASH','$HOMARR_PASSWORD_SALT_HASH');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "insert into 'group'(id,name,owner_id,position) values('$rand_groupid','$LDAP_ADMIN_USER_GROUP_NAME','$rand_uid',1);"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "insert into groupMember(group_id,user_id) values('$everyone_gid','$rand_uid');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "insert into groupMember(group_id,user_id) values('$rand_groupid','$rand_uid');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "insert into groupPermission(group_id,permission) values('$rand_groupid','admin');"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update search_engine set icon_url='https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/brave.svg', name='Brave', short='b', description='Search the web with Brave', url_template='https://search.brave.com/search?q=%s' where name='Google';"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update serverSetting set value='{\"json\":{\"enableGeneral\":false,\"enableWidgetData\":false,\"enableIntegrationData\":false,\"enableUserData\":false}}' where setting_key='analytics';"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update serverSetting set value='{\"json\":{\"defaultColorScheme\":\"dark\"}}' where setting_key='appearance';"
+  searchEngID=$(sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "select id from 'search_engine' where name='Brave';")
+  # Change the default search engine since the homarr docs search is broken
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update serverSetting set value='{\"json\":{\"defaultSearchEngineId\":\"$searchEngID\"}}' where setting_key='search';"
+  sudo sqlite3 $HSHQ_STACKS_DIR/homarr/data/db/db.sqlite "update onboarding set step='finish', previous_step='settings';"
   sleep 1
   startStopStack homarr stop
-  sleep 3
+  sleep 1
   startStopStack homarr start
   set +e
   inner_block=""
@@ -51775,9 +51842,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/homarr/configs:/app/data/configs
-      - \${HSHQ_STACKS_DIR}/homarr/icons:/app/public/icons
-      - \${HSHQ_STACKS_DIR}/homarr/data:/data
+      - \${HSHQ_STACKS_DIR}/homarr/data:/appdata
 
 networks:
   dock-proxy-net:
@@ -51793,17 +51858,24 @@ EOFPI
 TZ=\${TZ}
 AUTH_TRUST_HOST=true
 NEXTAUTH_SECRET=$HOMARR_NEXTAUTH_SECRET
+SECRET_ENCRYPTION_KEY=$HOMARR_SECRET_ENCRYPTION_KEY
 NEXT_PUBLIC_DISABLE_ANALYTICS=true
 DEFAULT_COLOR_SCHEME=dark
-AUTH_PROVIDER=oidc
-AUTH_OIDC_URI=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
-AUTH_OIDC_CLIENT_SECRET=$HOMARR_OIDC_CLIENT_SECRET
+NEXTAUTH_URL=https://$SUB_HOMARR.$HOMESERVER_DOMAIN
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+NODE_TLS_REJECT_UNAUTHORIZED=0
+AUTH_PROVIDERS=credentials,oidc
+AUTH_OIDC_ISSUER=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
 AUTH_OIDC_CLIENT_ID=homarr
+AUTH_OIDC_CLIENT_SECRET=$HOMARR_OIDC_CLIENT_SECRET
 AUTH_OIDC_CLIENT_NAME=Authelia
 AUTH_OIDC_ADMIN_GROUP=${LDAP_ADMIN_USER_GROUP_NAME}
 AUTH_OIDC_OWNER_GROUP=${LDAP_PRIMARY_USER_GROUP_NAME}
-NEXTAUTH_URL=https://$SUB_HOMARR.$HOMESERVER_DOMAIN
-NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+AUTH_OIDC_AUTO_LOGIN=false
+AUTH_OIDC_SCOPE_OVERWRITE=openid email profile groups
+AUTH_OIDC_GROUPS_ATTRIBUTE=groups
+AUTH_OIDC_FORCE_USERINFO=true
+AUTH_LOGOUT_REDIRECT_URL=https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN
 EOFPI
 
   cat <<EOFIM > $HOME/homarr.oidc
@@ -51843,6 +51915,14 @@ function performUpdateHomarr()
       newVer=v2
       curImageList=ghcr.io/ajnart/homarr:0.15.10
       image_update_map[0]="ghcr.io/ajnart/homarr:0.15.10,ghcr.io/ajnart/homarr:0.15.10"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Homarr cannot be upgraded to the next version. You must export your data from this instance, uninstall and reinstall the homarr stack, then import your data into the new instance. See https://homarr.dev/blog/2025/01/19/migration-guide-1.0/ for migration instructions."
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=ghcr.io/homarr-labs/homarr:v1.18.1
+      image_update_map[0]="ghcr.io/homarr-labs/homarr:v1.18.1,ghcr.io/homarr-labs/homarr:v1.18.1"
     ;;
     *)
       is_upgrade_error=true
@@ -54989,6 +55069,7 @@ EOFSC
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 confirm=\$(getArgumentValue confirm "\$@")
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkConfirm.sh "\$confirm"
+source $HSHQ_LIB_SCRIPT lib
 
 echo "Downloading all docker images..."
 pullDockerImages
