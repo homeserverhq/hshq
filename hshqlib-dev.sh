@@ -38,6 +38,7 @@ function init()
     IS_DESKTOP_ENV=true
   fi
   IS_CONSOLE_ENV=false
+  IS_RESTART_SCRIPTSERVER=false
   LOCK_UTILS_FILENAME=lockUtils.sh
   LOCKHOLDER_FILENAME=lastCaller
   ALL_LOCKS="hshqopen networkchecks"
@@ -248,6 +249,10 @@ function main()
     setSystemState $SS_UPDATING
     checkUpdateVersion
     moveScriptServerPerformUpdate
+    if [ "$IS_RESTART_SCRIPTSERVER" = "true" ]; then
+      sudo systemctl daemon-reload
+      sudo systemctl restart runScriptServer.service
+    fi
     setSystemState $SS_RUNNING
     return
   fi
@@ -20560,8 +20565,7 @@ function version138Update()
 function version146Update()
 {
   outputScriptServerConfigFile
-  sudo systemctl daemon-reload
-  sudo systemctl restart runScriptServer.service
+  IS_RESTART_SCRIPTSERVER=true
 }
 
 function updateRelayServerWithScript()
@@ -54945,6 +54949,13 @@ releaseAllLocks false
 if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh ]; then
   moveScriptServerPerformUpdate
 fi
+
+# Restart Script-server if necessary
+if [ "\$IS_RESTART_SCRIPTSERVER" = "true" ]; then
+  sudo systemctl daemon-reload
+  sudo systemctl restart runScriptServer.service
+fi
+
 }
 EOFSC
 
