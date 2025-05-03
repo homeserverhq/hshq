@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=146
+HSHQ_LIB_SCRIPT_VERSION=147
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -34918,16 +34918,7 @@ snapshotrestore:
 EOFWZ
 
   outputWazuhDashboardConfig
-
-  cat <<EOFWZ > $HSHQ_STACKS_DIR/wazuh/wazuh-dashboard/wazuh.yml
-hosts:
-  - default:
-      url: "https://wazuh.manager"
-      port: $WAZUH_PORT_4
-      username: $WAZUH_API_USERNAME
-      password: "$WAZUH_API_PASSWORD"
-      run_as: false
-EOFWZ
+  touch $HSHQ_STACKS_DIR/wazuh/wazuh-dashboard/wazuh.yml
 }
 
 function outputWazuhDashboardConfig()
