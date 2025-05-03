@@ -38,7 +38,9 @@ function init()
     IS_DESKTOP_ENV=true
   fi
   IS_CONSOLE_ENV=false
-  IS_RESTART_SCRIPTSERVER=false
+  # Leave this set to true for a bit, to allow for users to update.
+  # Eventually, we'll turn it back off and only restart as needed.
+  IS_RESTART_SCRIPTSERVER=true
   LOCK_UTILS_FILENAME=lockUtils.sh
   LOCKHOLDER_FILENAME=lastCaller
   ALL_LOCKS="hshqopen networkchecks"
