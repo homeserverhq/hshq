@@ -72,7 +72,7 @@ Ubuntu 24 [KDE Plasma](https://wiki.homeserverhq.com/foss-projects/kde-plasma) |
 Ubuntu 24 [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce) | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-xfce-hshq.iso" target="_blank">Download (4.2 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-xfce-hshq.sha256" target="_blank">sha256</a> ]
 Ubuntu 24 Oliver* | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.iso" target="_blank">Download (5.4 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.sha256" target="_blank">sha256</a> ]
 
-*An Oliver build contains ALL 5 desktop environments (GNOME, Cinnamon, KDE Plasma, XFCE, MATE), plus 1 more! ([Budgie](https://wiki.homeserverhq.com/foss-projects/budgie))
+*An Oliver build contains ALL 5 desktop environments ([GNOME](https://wiki.homeserverhq.com/foss-projects/gnome), [Cinnamon](https://wiki.homeserverhq.com/foss-projects/cinnamon), [KDE Plasma](https://wiki.homeserverhq.com/foss-projects/kde-plasma), [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce), [MATE](https://wiki.homeserverhq.com/foss-projects/mate)), plus 1 more - [Budgie](https://wiki.homeserverhq.com/foss-projects/budgie)
 
 Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. If you are unsure of which one to get, just get Oliver!
 
