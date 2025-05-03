@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=145
+HSHQ_LIB_SCRIPT_VERSION=146
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -38,6 +38,9 @@ function init()
     IS_DESKTOP_ENV=true
   fi
   IS_CONSOLE_ENV=false
+  # Leave this set to true for a bit, to allow for users to update.
+  # Eventually, we'll turn it back off and only restart as needed.
+  IS_RESTART_SCRIPTSERVER=true
   LOCK_UTILS_FILENAME=lockUtils.sh
   LOCKHOLDER_FILENAME=lastCaller
   ALL_LOCKS="hshqopen networkchecks"
@@ -248,6 +251,10 @@ function main()
     setSystemState $SS_UPDATING
     checkUpdateVersion
     moveScriptServerPerformUpdate
+    if [ "$IS_RESTART_SCRIPTSERVER" = "true" ]; then
+      sudo systemctl daemon-reload
+      sudo systemctl restart runScriptServer.service
+    fi
     setSystemState $SS_RUNNING
     return
   fi
@@ -18125,6 +18132,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=138
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 146 ]; then
+    echo "Updating to Version 146..."
+    version146Update
+    HSHQ_VERSION=146
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20549,6 +20562,12 @@ function version138Update()
 {
   outputPerformNetworkingChecks
   updateSysctl true
+}
+
+function version146Update()
+{
+  outputScriptServerConfigFile
+  IS_RESTART_SCRIPTSERVER=true
 }
 
 function updateRelayServerWithScript()
@@ -42066,7 +42085,6 @@ puma['worker_processes'] = 2
 puma['max_threads'] = 4
 sidekiq['concurrency'] = 2
 sidekiq['max_concurrency'] = 5
-grafana['enable'] = false
 prometheus_monitoring['enable'] = false
 nginx['redirect_http_to_https'] = true
 nginx['ssl_certificate'] = '/certs/gitlab-app.crt'
@@ -48539,7 +48557,9 @@ PAPERLESS_EMAIL_PORT=$SMTP_HOSTPORT
 PAPERLESS_EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
 PAPERLESS_EMAIL_USE_TLS=true
 PAPERLESS_APPS=allauth.socialaccount.providers.openid_connect
-PAPERLESS_SOCIALACCOUNT_PROVIDERS={\"openid_connect\":{\"SCOPE\":[\"openid\",\"profile\",\"email\"],\"OAUTH_PKCE_ENABLED\":true,\"APPS\":[{\"provider_id\":\"authelia\",\"name\":\"Authelia\",\"client_id\":\"paperless\",\"secret\":\"$PAPERLESS_OIDC_CLIENT_SECRET\",\"settings\":{\"server_url\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\",\"token_auth_method\":\"client_secret_basic\"}}]}}
+PAPERLESS_SOCIAL_ACCOUNT_SYNC_GROUPS=true
+PAPERLESS_SOCIAL_AUTO_SIGNUP=true
+PAPERLESS_SOCIALACCOUNT_PROVIDERS={"openid_connect":{"SCOPE":["openid","profile","email","groups"],"OAUTH_PKCE_ENABLED":true,"APPS":[{"provider_id":"authelia","name":"Authelia","client_id":"paperless","secret":"$PAPERLESS_OIDC_CLIENT_SECRET","settings":{"server_url":"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN","token_auth_method":"client_secret_basic"}}]}}
 PYTHON_VER=python3.12
 EOFJT
   rm -f $HOME/paperless.oidc
@@ -52923,6 +52943,15 @@ User=$USERNAME
 [Install]
 WantedBy=multi-user.target
 EOFHS
+  outputScriptServerConfigFile
+  outputScriptServerTheme
+  outputAllScriptServerScripts true true
+  outputStackListsScriptServer
+}
+
+function outputScriptServerConfigFile()
+{
+  rm -f $HSHQ_STACKS_DIR/script-server/conf/conf.json
   cat <<EOFHS > $HSHQ_STACKS_DIR/script-server/conf/conf.json
 {
   "port": $SCRIPTSERVER_LOCALHOST_PORT,
@@ -52946,8 +52975,10 @@ EOFHS
         "type": "email",
         "from": "Script-server $(getAdminEmailName)<$EMAIL_SMTP_EMAIL_ADDRESS>",
         "to": "$EMAIL_ADMIN_EMAIL_ADDRESS",
-        "server": "$SUB_POSTFIX.$HOMESERVER_DOMAIN",
-        "auth_enabled": false,
+        "server": "$SUB_POSTFIX.$HOMESERVER_DOMAIN:$MAILU_PORT_5",
+        "auth_enabled": true,
+        "login": "$EMAIL_SMTP_EMAIL_ADDRESS",
+        "password": "$EMAIL_SMTP_PASSWORD",
         "tls": true,
         "url": "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/test_alerts"
       }
@@ -52955,9 +52986,6 @@ EOFHS
   }
 }
 EOFHS
-  outputScriptServerTheme
-  outputAllScriptServerScripts true true
-  outputStackListsScriptServer
 }
 
 function outputScriptServerTheme()
@@ -54923,6 +54951,13 @@ releaseAllLocks false
 if [ -f $HSHQ_STACKS_DIR/script-server/conf/scripts/performUpdateHSHQ-New.sh ]; then
   moveScriptServerPerformUpdate
 fi
+
+# Restart Script-server if necessary
+if [ "\$IS_RESTART_SCRIPTSERVER" = "true" ]; then
+  sudo systemctl daemon-reload
+  sudo systemctl restart runScriptServer.service
+fi
+
 }
 EOFSC
 
