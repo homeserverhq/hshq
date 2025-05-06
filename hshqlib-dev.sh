@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=147
+HSHQ_LIB_SCRIPT_VERSION=148
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -25120,6 +25120,12 @@ function doNothing()
 function loadPinnedDockerImages()
 {
   IMG_ADGUARD=adguard/adguardhome:v0.107.59
+  IMG_AISTACK_MINDSDB_APP=mindsdb/mindsdb:v25.4.5.0
+  IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v1
+  IMG_AISTACK_OPENTELEMETRY=otel/opentelemetry-collector-contrib:0.116.1
+  IMG_AISTACK_LANGFUSE=langfuse/langfuse:2.87.0
+  IMG_AISTACK_OLLAMA_SERVER=ollama/ollama:0.6.8
+  IMG_AISTACK_OPENWEBUI=ghcr.io/open-webui/open-webui:git-aa37482
   IMG_AUTHELIA=authelia/authelia:4.39.1
   IMG_BARASSISTANT_APP=barassistant/server:5.2.0
   IMG_BARASSISTANT_SALTRIM=barassistant/salt-rim:4.1.0
@@ -25388,6 +25394,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     snippetbox)
       echo "v1" ;;
+    aistack)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -25525,6 +25533,11 @@ function pullDockerImages()
   pullImage $IMG_MATOMO_APP
   pullImage $IMG_PASTEFY
   pullImage $IMG_SNIPPETBOX
+  pullImage $IMG_AISTACK_MINDSDB_APP
+  pullImage $IMG_AISTACK_OPENTELEMETRY
+  pullImage $IMG_AISTACK_LANGFUSE
+  pullImage $IMG_AISTACK_OLLAMA_SERVER
+  pullImage $IMG_AISTACK_OPENWEBUI
 }
 
 function pullImagesUpdatePB()
@@ -26281,6 +26294,25 @@ PASTEFY_DATABASE_ROOT_PASSWORD=
 PASTEFY_DATABASE_USER=
 PASTEFY_DATABASE_USER_PASSWORD=
 # Pastefy (Service Details) END
+
+# AIStack (Service Details) BEGIN
+AISTACK_INIT_ENV=true
+AISTACK_MINDSDB_ADMIN_USERNAME=
+AISTACK_MINDSDB_ADMIN_PASSWORD=
+AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=
+AISTACK_MINDSDB_DATABASE_NAME=
+AISTACK_MINDSDB_DATABASE_USER=
+AISTACK_MINDSDB_DATABASE_USER_PASSWORD=
+AISTACK_LANGFUSE_ADMIN_USERNAME=
+AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=
+AISTACK_LANGFUSE_ADMIN_PASSWORD=
+AISTACK_LANGFUSE_DATABASE_NAME=
+AISTACK_OPENWEBUI_ADMIN_USERNAME=
+AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=
+AISTACK_OPENWEBUI_ADMIN_PASSWORD=
+AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=
+AISTACK_REDIS_PASSWORD=
+# AIStack (Service Details) END
 
 # Service Details END
 EOFCF
@@ -27400,6 +27432,70 @@ function initServicesCredentials()
     PASTEFY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar PASTEFY_DATABASE_USER_PASSWORD $PASTEFY_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$AISTACK_MINDSDB_ADMIN_USERNAME" ]; then
+    AISTACK_MINDSDB_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_aistack_mindsdb"
+    updateConfigVar AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_USERNAME
+  fi
+  if [ -z "$AISTACK_MINDSDB_ADMIN_PASSWORD" ]; then
+    AISTACK_MINDSDB_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AISTACK_MINDSDB_ADMIN_PASSWORD $AISTACK_MINDSDB_ADMIN_PASSWORD
+  fi
+  if [ -z "$AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS" ]; then
+    AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=$AISTACK_MINDSDB_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS $AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$AISTACK_MINDSDB_DATABASE_NAME" ]; then
+    AISTACK_MINDSDB_DATABASE_NAME=mindsdb
+    updateConfigVar AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_NAME
+  fi
+  if [ -z "$AISTACK_MINDSDB_DATABASE_USER" ]; then
+    AISTACK_MINDSDB_DATABASE_USER=mindsdb-user
+    updateConfigVar AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER
+  fi
+  if [ -z "$AISTACK_MINDSDB_DATABASE_USER_PASSWORD" ]; then
+    AISTACK_MINDSDB_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AISTACK_MINDSDB_DATABASE_USER_PASSWORD $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$AISTACK_LANGFUSE_ADMIN_USERNAME" ]; then
+    AISTACK_LANGFUSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_aistack_langfuse"
+    updateConfigVar AISTACK_LANGFUSE_ADMIN_USERNAME $AISTACK_LANGFUSE_ADMIN_USERNAME
+  fi
+  if [ -z "$AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS" ]; then
+    AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=$AISTACK_LANGFUSE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$AISTACK_LANGFUSE_ADMIN_PASSWORD" ]; then
+    AISTACK_LANGFUSE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AISTACK_LANGFUSE_ADMIN_PASSWORD $AISTACK_LANGFUSE_ADMIN_PASSWORD
+  fi
+  if [ -z "$AISTACK_LANGFUSE_DATABASE_NAME" ]; then
+    AISTACK_LANGFUSE_DATABASE_NAME=langfuse
+    updateConfigVar AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_LANGFUSE_DATABASE_NAME
+  fi
+  if [ -z "$AISTACK_OPENWEBUI_ADMIN_USERNAME" ]; then
+    AISTACK_OPENWEBUI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_aistack_openwebui"
+    updateConfigVar AISTACK_OPENWEBUI_ADMIN_USERNAME $AISTACK_OPENWEBUI_ADMIN_USERNAME
+  fi
+  if [ -z "$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS" ]; then
+    AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=$AISTACK_OPENWEBUI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$AISTACK_OPENWEBUI_ADMIN_PASSWORD" ]; then
+    AISTACK_OPENWEBUI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AISTACK_OPENWEBUI_ADMIN_PASSWORD $AISTACK_OPENWEBUI_ADMIN_PASSWORD
+  fi
+  if [ -z "$AISTACK_OPENWEBUI_OIDC_CLIENT_ID" ]; then
+    AISTACK_OPENWEBUI_OIDC_CLIENT_ID=aistack-openwebui
+    updateConfigVar AISTACK_OPENWEBUI_OIDC_CLIENT_ID $AISTACK_OPENWEBUI_OIDC_CLIENT_ID
+  fi
+  if [ -z "$AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET" ]; then
+    AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET $AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$AISTACK_REDIS_PASSWORD" ]; then
+    AISTACK_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AISTACK_REDIS_PASSWORD $AISTACK_REDIS_PASSWORD
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -27455,6 +27551,8 @@ function checkCreateNonbackupDirs()
   mkdir -p $HSHQ_NONBACKUP_DIR/immich
   mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
   mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
+  mkdir -p $HSHQ_NONBACKUP_DIR/aistack
+  mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
 }
 
 function installBaseStacks()
@@ -27490,6 +27588,9 @@ function initServiceVars()
 {
   set +e
   checkAddSvc "SVCD_ADGUARD=adguard,adguard,primary,admin,AdguardHome,adguard,hshq"
+  checkAddSvc "SVCD_AISTACK_MINDSDB_APP=aistack,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
+  checkAddSvc "SVCD_AISTACK_LANGFUSE=aistack,langfuse,primary,admin,Langfuse,langfuse,hshq"
+  checkAddSvc "SVCD_AISTACK_OPENWEBUI=aistack,openwebui,primary,user,OpenWebUI,openwebui,hshq"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
   checkAddSvc "SVCD_BARASSISTANT=bar-assistant,bar-assistant,primary,user,Bar Assistant,bar-assistant,hshq"
   checkAddSvc "SVCD_BIND_IP=bind-ip,bind-ip,other,user,BindIP,bind-ip,hshq"
@@ -27594,7 +27695,6 @@ function installStackByName()
 {
   stack_name=$1
   is_integrate=$2
-  
   case "$stack_name" in
     adguard)
       installAdGuard $is_integrate ;;
@@ -27724,6 +27824,8 @@ function installStackByName()
       installPastefy $is_integrate ;;
     snippetbox)
       installSnippetBox $is_integrate ;;
+    aistack)
+      installAIStack $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -27880,6 +27982,8 @@ function performUpdateStackByName()
       performUpdatePastefy "$portainerToken" ;;
     snippetbox)
       performUpdateSnippetBox "$portainerToken" ;;
+    aistack)
+      performUpdateAIStack "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -27906,6 +28010,8 @@ function getAutheliaBlock()
   retval="${retval}    - domain:\n"
   retval="${retval}# Authelia bypass BEGIN\n"
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN\n"
@@ -27962,6 +28068,7 @@ function getAutheliaBlock()
   retval="${retval}        - \"group:$LDAP_BASIC_USER_GROUP_NAME\"\n"
   retval="${retval}    - domain:\n"
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} BEGIN\n"
+  retval="${retval}        - $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
@@ -28084,6 +28191,9 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -28186,6 +28296,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -28242,7 +28355,9 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0 "jupyter.png"
   insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
   insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
-  insertIntoHeimdallDB "$FMLNAME_MATOMO" $USERTYPE_HOMARR "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0 "matomo.png"
+  insertIntoHeimdallDB "$FMLNAME_MATOMO" $USERTYPE_MATOMO "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0 "matomo.png"
+  insertIntoHeimdallDB "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" 0 "mindsdb.png"
+  insertIntoHeimdallDB "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" 0 "langfuse.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # Users Tab
   insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png"
@@ -28289,6 +28404,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0 "homarr.png"
   insertIntoHeimdallDB "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0 "pastefy.png"
   insertIntoHeimdallDB "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0 "snippetbox.png"
+  insertIntoHeimdallDB "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0 "openwebui.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -28385,6 +28501,9 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_MATOMO" $USERTYPE_HOMARR "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
 
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -28405,13 +28524,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot
-  DS_MEM_HIGH=netdata,photoprism
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack
+  DS_MEM_HIGH=netdata,photoprism,aistack
 }
 
 function getScriptImageByContainerName()
@@ -28963,6 +29082,30 @@ function getScriptImageByContainerName()
     "snippetbox")
       container_image=$IMG_SNIPPETBOX
       ;;
+    "aistack-mindsdb-app")
+      container_image=$IMG_AISTACK_MINDSDB_APP
+      ;;
+    "aistack-mindsdb-mod-app")
+      container_image=$IMG_AISTACK_MINDSDB_MOD_APP
+      ;;
+    "aistack-mindsdb-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "aistack-otel")
+      container_image=$IMG_AISTACK_OPENTELEMETRY
+      ;;
+    "aistack-langfuse")
+      container_image=$IMG_AISTACK_LANGFUSE
+      ;;
+    "aistack-ollama-server")
+      container_image=$IMG_AISTACK_OLLAMA_SERVER
+      ;;
+    "aistack-openwebui")
+      container_image=$IMG_AISTACK_OPENWEBUI
+      ;;
+    "aistack-redis")
+      container_image=$IMG_REDIS
+      ;;
     *)
       ;;
   esac
@@ -29008,6 +29151,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_EMAIL_ADDRESS=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET="
   checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
+  checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD="
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
@@ -29030,6 +29174,13 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
   checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
   checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
+}
+
+function importDBs()
+{
+  # This function is just here as a reminder to add any
+  # DB connection info to SQLPad and/or the AIStack
+  return
 }
 
 # Stacks Installation/Update Functions
@@ -35031,7 +35182,7 @@ function mfUpdateWazuhStackJavaMem()
 function installWazuhAgent()
 {
   if [ -z "$SUB_WAZUH" ] || [ -z "$HOMESERVER_DOMAIN" ] || [ -z "$WAZUH_AGENT_VERSION" ] || [ -z "$WAZUH_MANAGER_AUTH_PASSWORD" ]; then
-    echo "Fatal error: SUB_WAZUH: $SUB_WAZUH, HOMESERVER_DOMAIN: $HOMESERVER_DOMAIN, WAZUH_AGENT_VERSION: $WAZUH_AGENT_VERSION, WAZUH_MANAGER_AUTH_PASSWORD: $WAZUH_MANAGER_AUTH_PASSWORD"
+    echo "Fatal error: SUB_WAZUH: $SUB_WAZUH, HOMESERVER_DOMAIN: $HOMESERVER_DOMAIN, WAZUH_AGENT_VERSION: $WAZUH_AGENT_VERSION"
     exit 2
   fi
   curl -s https://packages.wazuh.com/key/GPG-KEY-WAZUH | sudo gpg --no-default-keyring --keyring gnupg-ring:/usr/share/keyrings/wazuh.gpg --import && sudo chmod 644 /usr/share/keyrings/wazuh.gpg
@@ -35090,6 +35241,7 @@ EOFLO
 function removeWazuhAgent()
 {
   echo "Removing any prior wazuh agent installation..."
+  sudo systemctl daemon-reload > /dev/null 2>&1
   sudo systemctl stop wazuh-agent > /dev/null 2>&1
   sudo systemctl disable wazuh-agent > /dev/null 2>&1
   sudo DEBIAN_FRONTEND=noninteractive apt remove --purge wazuh-agent -y --allow-change-held-packages > /dev/null 2>&1
@@ -39810,7 +39962,8 @@ function installGuacamole()
   if [ $isFound == "F" ]; then
     echo "Guacamole did not start up correctly..."
     docker compose -f $HOME/guacamole-compose-tmp.yml down -v
-    exit 1
+    rm -f $HOME/guacamole-compose-tmp.yml
+    return 1
   fi
   sleep 5
 
@@ -42973,7 +43126,8 @@ function installCodeServer()
   if [ $isFound == "F" ]; then
     echo "CodeServer did not start up correctly..."
     docker compose -f $HOME/codeserver-compose-tmp.yml down -v
-    exit 1
+    rm -f $HOME/codeserver-compose-tmp.yml
+    return 1
   fi
   echo "Codeserver installed, sleeping 10 seconds..."
   sleep 10
@@ -46643,7 +46797,7 @@ function installLinkwarden()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad linkwarden "$FMLNAME_LINKWARDEN" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
+    checkAddDBConnection true linkwarden "$FMLNAME_LINKWARDEN" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -47422,7 +47576,7 @@ function installFreshRSS()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad freshrss "$FMLNAME_FRESHRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
+    checkAddDBConnection true freshrss "$FMLNAME_FRESHRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -47699,7 +47853,7 @@ function installKeila()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad keila "$FMLNAME_KEILA" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
+    checkAddDBConnection true keila "$FMLNAME_KEILA" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -47952,7 +48106,7 @@ function installWallabag()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad wallabag "$FMLNAME_WALLABAG" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
+    checkAddDBConnection true wallabag "$FMLNAME_WALLABAG" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -48361,7 +48515,7 @@ function installPaperless()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad paperless "$FMLNAME_PAPERLESS" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
+    checkAddDBConnection true paperless "$FMLNAME_PAPERLESS" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -48719,7 +48873,7 @@ function installSpeedtestTrackerLocal()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+    checkAddDBConnection true speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -48981,7 +49135,7 @@ function installSpeedtestTrackerVPN()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+    checkAddDBConnection true speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -49462,7 +49616,7 @@ function installHuginn()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad huginn "$FMLNAME_HUGINN" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
+    checkAddDBConnection true huginn "$FMLNAME_HUGINN" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -50009,7 +50163,7 @@ function installPiped()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
+    checkAddDBConnection true piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -50716,7 +50870,7 @@ function installPenpot()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll penpot "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" "penpot.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad penpot "$FMLNAME_PENPOT" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
+    checkAddDBConnection true penpot "$FMLNAME_PENPOT" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
   fi
   docker image rm $IMG_TOMCAT > /dev/null 2>&1
 }
@@ -51041,7 +51195,7 @@ function installEspoCRM()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll espocrm "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" "espocrm.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad espocrm "$FMLNAME_ESPOCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
+    checkAddDBConnection true espocrm "$FMLNAME_ESPOCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -51344,7 +51498,7 @@ function installImmich()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll immich "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" "immich.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad immich "$FMLNAME_IMMICH" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
+    checkAddDBConnection true immich "$FMLNAME_IMMICH" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -51675,7 +51829,7 @@ EOFPI
   "notifications": {
     "smtp": {
       "enabled": true,
-      "from": "$HSHQ_ADMIN_NAME Immich <$EMAIL_ADMIN_EMAIL_ADDRESS>",
+      "from": "$(getAdminEmailName) Immich <$EMAIL_ADMIN_EMAIL_ADDRESS>",
       "replyTo": "$EMAIL_ADMIN_EMAIL_ADDRESS",
       "transport": {
         "ignoreCert": false,
@@ -51714,7 +51868,7 @@ EOFIM
 
   curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
   cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
-insert into users(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$HSHQ_ADMIN_NAME Immich',NULL,0,'active','$curdt');
+insert into users(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
 EOFIM
 }
 
@@ -51966,6 +52120,7 @@ function installMatomo()
   mkdir $HSHQ_STACKS_DIR/matomo/db
   mkdir $HSHQ_STACKS_DIR/matomo/dbexport
   mkdir $HSHQ_STACKS_DIR/matomo/web
+  chmod 777 $HSHQ_STACKS_DIR/matomo/dbexport
   initServicesCredentials
   set +e
   docker exec mailu-admin flask mailu alias-delete $MATOMO_ADMIN_EMAIL_ADDRESS
@@ -52005,7 +52160,7 @@ function installMatomo()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll matomo "$FMLNAME_MATOMO" $USERTYPE_MATOMO "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" "matomo.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad matomo "$FMLNAME_MATOMO" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
+    checkAddDBConnection true matomo "$FMLNAME_MATOMO" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -52255,6 +52410,7 @@ function installPastefy()
   mkdir $HSHQ_STACKS_DIR/pastefy
   mkdir $HSHQ_STACKS_DIR/pastefy/db
   mkdir $HSHQ_STACKS_DIR/pastefy/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/pastefy/dbexport
   initServicesCredentials
   set +e
   docker exec mailu-admin flask mailu alias-delete $PASTEFY_ADMIN_EMAIL_ADDRESS
@@ -52293,7 +52449,7 @@ function installPastefy()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll pastefy "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" "pastefy.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad pastefy "$FMLNAME_PASTEFY" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
+    checkAddDBConnection true pastefy "$FMLNAME_PASTEFY" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -52538,6 +52694,858 @@ function performUpdateSnippetBox()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# AIStack
+# This stack is still a work-in-progress
+function installAIStack()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory aistack "AIStack"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName aistack-mindsdb-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName aistack-otel)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName aistack-langfuse)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName aistack-ollama-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName aistack-openwebui)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/aistack
+  mkdir $HSHQ_STACKS_DIR/aistack/mindsdb
+  mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/app
+  mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/db
+  mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
+  mkdir $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport
+  mkdir $HSHQ_STACKS_DIR/aistack/otel
+  mkdir $HSHQ_STACKS_DIR/aistack/ollama
+  mkdir $HSHQ_STACKS_DIR/aistack/ollama/code
+  mkdir $HSHQ_STACKS_DIR/aistack/ollama/root
+  mkdir $HSHQ_STACKS_DIR/aistack/openwebui
+  mkdir $HSHQ_NONBACKUP_DIR/aistack
+  mkdir $HSHQ_NONBACKUP_DIR/aistack/redis
+  chmod 777 $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS
+  sleep 2
+  addUserMailu alias $AISTACK_MINDSDB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  docker exec mailu-admin flask mailu alias-delete $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS
+  sleep 2
+  addUserMailu alias $AISTACK_LANGFUSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  docker exec mailu-admin flask mailu alias-delete $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS
+  sleep 2
+  addUserMailu alias $AISTACK_OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigAIStack
+  oidcBlock=$(cat $HOME/openwebui.oidc)
+  rm -f $HOME/openwebui.oidc
+  insertOIDCClientAuthelia aistack-openwebui "$oidcBlock"
+  cd ~
+  docker compose -f $HOME/aistack-compose-tmp.yml up -d
+  echo "Waiting at least 5 seconds before continuing..."
+  sleep 5
+  search="mindsdb: http API: started on 47334"
+  isFound="F"
+  i=0
+  set +e
+  while [ $i -le 300 ]
+  do
+    findtext=$(docker logs aistack-mindsdb-app 2>&1 | grep "$search")
+    if ! [ -z "$findtext" ]; then
+      isFound="T"
+      break
+    fi
+    echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
+    sleep 5
+    i=$((i+5))
+  done
+  if [ $isFound == "F" ]; then
+    echo "MindsDB did not start up correctly..."
+    docker compose -f $HOME/aistack-compose-tmp.yml down -v
+    rm -f $HOME/aistack-compose-tmp.yml
+    rm -f $HOME/aistack.env
+    return 1
+  fi
+  sleep 5
+  echo "Installing polars-lts-cpu, please be patient, this might take a few minutes..."
+  docker exec aistack-mindsdb-app pip install polars-lts-cpu
+  docker image rm $IMG_AISTACK_MINDSDB_MOD_APP > /dev/null 2>&1
+  docker commit aistack-mindsdb-app $IMG_AISTACK_MINDSDB_MOD_APP
+  importDBConnectionsAIStack
+  docker exec aistack-mindsdb-db bash /dbimport/insertAdmin.sh
+  rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
+  sleep 5
+  docker compose -f $HOME/aistack-compose-tmp.yml down -v
+  rm -f $HOME/aistack-compose-tmp.yml
+  rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport/init-dbs.sh
+  installStack aistack aistack-mindsdb-app "mindsdb: http API: started on 47334" $HOME/aistack.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$AISTACK_INIT_ENV" = "true" ]; then
+    sendEmail -s "AIStack Login Info" -b "MindsDB Admin Username: $AISTACK_MINDSDB_ADMIN_USERNAME\nMindsDB Admin Password: $AISTACK_MINDSDB_ADMIN_PASSWORD\nLangfuse Admin Username: $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS\nLangfuse Admin Password: $AISTACK_LANGFUSE_ADMIN_PASSWORD\nOpenWebUI Admin Username: $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS\nOpenWebUI Admin Password: $AISTACK_OPENWEBUI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    AISTACK_INIT_ENV=true
+    updateConfigVar AISTACK_INIT_ENV $AISTACK_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://aistack-mindsdb-app:47334 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AISTACK_MINDSDB_APP $MANAGETLS_AISTACK_MINDSDB_APP "$is_integrate_hshq" $NETDEFAULT_AISTACK_MINDSDB_APP "$inner_block"
+  insertSubAuthelia $SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://aistack-langfuse:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AISTACK_LANGFUSE $MANAGETLS_AISTACK_LANGFUSE "$is_integrate_hshq" $NETDEFAULT_AISTACK_LANGFUSE "$inner_block"
+  insertSubAuthelia $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://aistack-openwebui:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AISTACK_OPENWEBUI $MANAGETLS_AISTACK_OPENWEBUI "$is_integrate_hshq" $NETDEFAULT_AISTACK_OPENWEBUI "$inner_block"
+  insertSubAuthelia $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll aistack "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" "mindsdb.png"
+    insertEnableSvcAll aistack "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" "langfuse.png"
+    insertEnableSvcAll aistack "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" "openwebui.png"
+    restartAllCaddyContainers
+    checkAddDBConnection false aistack-mindsdb "$FMLNAME_AISTACK_MINDSDB_APP" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+    checkAddDBConnection false aistack-langfuse "$FMLNAME_AISTACK_LANGFUSE" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigAIStack()
+{
+  AISTACK_LANGFUSE_PUBKEY=$(pwgen -c -n 32 1)
+  AISTACK_LANGFUSE_SECRETKEY=$(pwgen -c -n 32 1)
+  AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET | tr -d ':\n')
+  randuid=$(uuidgen)
+  cat <<EOFMT > $HOME/aistack-compose-tmp.yml
+$STACK_VERSION_PREFIX aistack $(getScriptStackVersion aistack)
+
+services:
+  aistack-mindsdb-db:
+    image: $(getScriptImageByContainerName aistack-mindsdb-db)
+    container_name: aistack-mindsdb-db
+    hostname: aistack-mindsdb-db
+    user: "${USERID}:${GROUPID}"
+    restart: unless-stopped
+    env_file: aistack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-aistack-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ${HSHQ_STACKS_DIR}/aistack/mindsdb/db:/var/lib/postgresql/data
+      - ${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - ${HSHQ_STACKS_DIR}/aistack/mindsdb/dbexport:/dbexport
+      - ${HSHQ_STACKS_DIR}/aistack/mindsdb/dbimport:/dbimport
+      - ${HSHQ_STACKS_DIR}/aistack/mindsdb/dbexport/init-dbs.sh:/docker-entrypoint-initdb.d/init-dbs.sh
+
+  aistack-mindsdb-app:
+    image: $(getScriptImageByContainerName aistack-mindsdb-app)
+    container_name: aistack-mindsdb-app
+    hostname: aistack-mindsdb-app
+    restart: unless-stopped
+    env_file: aistack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - aistack-mindsdb-db
+    networks:
+      - int-aistack-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-aistack-mindsdb-app:/mindsdb
+
+  aistack-otel:
+    image: $(getScriptImageByContainerName aistack-otel)
+    container_name: aistack-otel
+    hostname: aistack-otel
+    restart: unless-stopped
+    env_file: aistack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-aistack-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/aistack/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+
+  aistack-langfuse:
+    image: $(getScriptImageByContainerName aistack-langfuse)
+    container_name: aistack-langfuse
+    hostname: aistack-langfuse
+    restart: unless-stopped
+    env_file: aistack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - aistack-mindsdb-db
+    networks:
+      - int-aistack-net
+      - dock-proxy-net
+      - dock-ext-net
+    environment:
+      - HOSTNAME=0.0.0.0
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  aistack-ollama-server:
+    image: $(getScriptImageByContainerName aistack-ollama-server)
+    container_name: aistack-ollama-server
+    hostname: aistack-ollama-server
+    restart: unless-stopped
+    env_file: aistack.env
+    tty: true
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - aistack-mindsdb-db
+    networks:
+      - int-aistack-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/aistack/ollama/code:/code
+      - ${HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
+
+  aistack-openwebui:
+    image: $(getScriptImageByContainerName aistack-openwebui)
+    container_name: aistack-openwebui
+    hostname: aistack-openwebui
+    restart: unless-stopped
+    env_file: aistack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - aistack-mindsdb-db
+      - aistack-ollama-server
+    networks:
+      - int-aistack-net
+      - dock-ext-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - ${HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
+
+  aistack-redis:
+    image: $(getScriptImageByContainerName aistack-redis)
+    container_name: aistack-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-aistack-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-aistack-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$AISTACK_REDIS_PASSWORD
+
+volumes:
+  v-aistack-mindsdb-app:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HSHQ_STACKS_DIR}/aistack/mindsdb/app
+  v-aistack-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HSHQ_NONBACKUP_DIR}/aistack/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-aistack-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFDB > $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport/init-dbs.sh
+#!/bin/bash
+set -e
+
+# Create additional databases
+psql -v ON_ERROR_STOP=1 --username "$AISTACK_MINDSDB_DATABASE_USER" --dbname "$AISTACK_MINDSDB_DATABASE_NAME" <<-EOSQL
+  CREATE DATABASE langfuse;
+EOSQL
+EOFDB
+  chmod 755 $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport/init-dbs.sh
+  cat <<EOFMT > $HOME/aistack-compose.yml
+$STACK_VERSION_PREFIX aistack $(getScriptStackVersion aistack)
+
+services:
+  aistack-mindsdb-db:
+    image: $(getScriptImageByContainerName aistack-mindsdb-db)
+    container_name: aistack-mindsdb-db
+    hostname: aistack-mindsdb-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-aistack-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/aistack/mindsdb/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/aistack/mindsdb/dbexport:/dbexport
+      - \${HSHQ_STACKS_DIR}/aistack/mindsdb/dbimport:/dbimport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.aistack-mindsdb-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.aistack-mindsdb-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.aistack-mindsdb-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.aistack-mindsdb-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.aistack-mindsdb-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.aistack-mindsdb-hourly-db.email-from=AIStack MindsDB Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.aistack-mindsdb-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.aistack-mindsdb-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.aistack-mindsdb-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.aistack-mindsdb-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.aistack-mindsdb-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.aistack-mindsdb-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.aistack-mindsdb-monthly-db.email-from=AIStack MindsDB Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.aistack-mindsdb-monthly-db.mail-only-on-error=false"
+
+  aistack-mindsdb-app:
+    image: $(getScriptImageByContainerName aistack-mindsdb-mod-app)
+    container_name: aistack-mindsdb-app
+    hostname: aistack-mindsdb-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - aistack-mindsdb-db
+    networks:
+      - int-aistack-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-aistack-mindsdb-app:/mindsdb
+
+  aistack-otel:
+    image: $(getScriptImageByContainerName aistack-otel)
+    container_name: aistack-otel
+    hostname: aistack-otel
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-aistack-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/aistack/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+
+  aistack-langfuse:
+    image: $(getScriptImageByContainerName aistack-langfuse)
+    container_name: aistack-langfuse
+    hostname: aistack-langfuse
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - aistack-mindsdb-db
+    networks:
+      - int-aistack-net
+      - dock-proxy-net
+      - dock-ext-net
+    environment:
+      - HOSTNAME=0.0.0.0
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  aistack-ollama-server:
+    image: $(getScriptImageByContainerName aistack-ollama-server)
+    container_name: aistack-ollama-server
+    hostname: aistack-ollama-server
+    restart: unless-stopped
+    env_file: stack.env
+    tty: true
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-aistack-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/aistack/ollama/code:/code
+      - \${HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
+
+  aistack-openwebui:
+    image: $(getScriptImageByContainerName aistack-openwebui)
+    container_name: aistack-openwebui
+    hostname: aistack-openwebui
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - aistack-ollama-server
+    networks:
+      - int-aistack-net
+      - dock-ext-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - \${HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
+
+  aistack-redis:
+    image: $(getScriptImageByContainerName aistack-redis)
+    container_name: aistack-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-aistack-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-aistack-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$AISTACK_REDIS_PASSWORD
+
+volumes:
+  v-aistack-mindsdb-app:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/aistack/mindsdb/app
+  v-aistack-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/aistack/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-aistack-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/aistack.env
+TZ=${TZ}
+MINDSDB_DB_CON=postgresql://$AISTACK_MINDSDB_DATABASE_USER:$AISTACK_MINDSDB_DATABASE_USER_PASSWORD@aistack-mindsdb-db:5432/$AISTACK_MINDSDB_DATABASE_NAME
+MINDSDB_DOCKER_ENV=True
+MINDSDB_STORAGE_DIR=/mindsdb/var
+MINDSDB_USERNAME=$AISTACK_MINDSDB_ADMIN_USERNAME
+MINDSDB_PASSWORD=$AISTACK_MINDSDB_ADMIN_PASSWORD
+SENTRY_IO_DSN=
+SENTRY_IO_ENVIRONMENT=local
+LANGFUSE_HOST=http://aistack-langfuse:3000
+LANGFUSE_PUBLIC_KEY=$AISTACK_LANGFUSE_PUBKEY
+LANGFUSE_SECRET_KEY=$AISTACK_LANGFUSE_SECRETKEY
+LANGFUSE_ENVIRONMENT=local
+LANGFUSE_RELEASE=local
+LANGFUSE_TIMEOUT=10
+LANGFUSE_SAMPLE_RATE=1.0
+OTEL_EXPORTER_TYPE=otlp
+OTEL_EXPORTER_PROTOCOL=grpc
+OTEL_OTLP_ENDPOINT=http://aistack-otel:4317
+OTEL_SERVICE_NAME=aistack
+OTEL_SERVICE_INSTANCE_ID=aistack-instance
+OTEL_SERVICE_ENVIRONMENT=local
+OTEL_SERVICE_RELEASE=local
+OTEL_TRACE_SAMPLE_RATE=1.0
+OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
+DATABASE_URL=postgresql://$AISTACK_MINDSDB_DATABASE_USER:$AISTACK_MINDSDB_DATABASE_USER_PASSWORD@aistack-mindsdb-db:5432/$AISTACK_LANGFUSE_DATABASE_NAME
+NEXTAUTH_SECRET=$(openssl rand -base64 32)
+SALT=$(openssl rand -base64 32)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
+NEXTAUTH_URL=https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN
+LANGFUSE_INIT_ORG_ID=aistack
+LANGFUSE_INIT_ORG_NAME=AIStack
+LANGFUSE_INIT_PROJECT_ID=$(uuidgen)
+LANGFUSE_INIT_PROJECT_NAME=AIStack
+LANGFUSE_INIT_PROJECT_PUBLIC_KEY=$AISTACK_LANGFUSE_PUBKEY
+LANGFUSE_INIT_PROJECT_SECRET_KEY=$AISTACK_LANGFUSE_SECRETKEY
+LANGFUSE_INIT_USER_EMAIL=$AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS
+LANGFUSE_INIT_USER_NAME=$AISTACK_LANGFUSE_ADMIN_USERNAME
+LANGFUSE_INIT_USER_PASSWORD=$AISTACK_LANGFUSE_ADMIN_PASSWORD
+POSTGRES_USER=$AISTACK_MINDSDB_DATABASE_USER
+POSTGRES_PASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+POSTGRES_DB=$AISTACK_MINDSDB_DATABASE_NAME
+OLLAMA_BASE_URL=http://aistack-ollama-server:11434
+OLLAMA_HOST=0.0.0.0
+WEBUI_AUTH=True
+ENABLE_SIGNUP=False
+ENABLE_LOGIN_FORM=True
+DEFAULT_USER_ROLE=user
+WEBUI_URL=https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN
+WEBUI_SECRET_KEY=$(pwgen -c -n 32 1)
+ENABLE_OAUTH_SIGNUP=true
+ADMIN_EMAIL=$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS
+ENV=prod
+OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true
+OAUTH_PROVIDER_NAME=Authelia
+OPENID_PROVIDER_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration
+OAUTH_CLIENT_ID=$AISTACK_OPENWEBUI_OIDC_CLIENT_ID
+OAUTH_CLIENT_SECRET=$AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET
+OAUTH_SCOPES=openid groups email profile
+OPENID_REDIRECT_URI=https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/oauth/oidc/callback
+REDIS_HOST=aistack-redis
+REDIS_PORT=6379
+REDIS_PASSWORD=$AISTACK_REDIS_PASSWORD
+REDIS_CONNECTION_STRING=redis://:$AISTACK_REDIS_PASSWORD@aistack-redis:6379/0
+PYTHON_VER=python3.11
+EOFMT
+  cat <<EOFIM > $HOME/openwebui.oidc
+# Authelia OIDC Client aistack-openwebui BEGIN
+      - client_id: $AISTACK_OPENWEBUI_OIDC_CLIENT_ID
+        client_name: OpenWebUI
+        client_secret: '$AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        redirect_uris:
+          - https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/oauth/oidc/callback
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client aistack-openwebui END
+EOFIM
+  cat <<EOFOT > $HSHQ_STACKS_DIR/aistack/otel/otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: normal
+
+processors:
+  batch:
+
+extensions:
+  health_check:
+  pprof:
+  zpages:
+
+service:
+  extensions: [health_check, pprof, zpages]
+  telemetry:
+    logs:
+      level: "debug"
+      encoding: "console"
+    metrics:
+      level: "detailed"
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [debug]
+EOFOT
+  cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+"MindsDB" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+"Langfuse" postgres aistack-langfuse-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_LANGFUSE_DATABASE_USER $AISTACK_LANGFUSE_DATABASE_USER_PASSWORD
+"Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
+"EspoCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
+"Firefly" postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD
+"FreshRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
+"Ghost" mysql ghost-db $GHOST_DATABASE_NAME $GHOST_DATABASE_USER $GHOST_DATABASE_USER_PASSWORD
+"Gitea" postgres gitea-db $GITEA_DATABASE_NAME $GITEA_DATABASE_USER $GITEA_DATABASE_USER_PASSWORD
+"Gitlab" postgres gitlab-db $GITLAB_DATABASE_NAME $GITLAB_DATABASE_USER $GITLAB_DATABASE_USER_PASSWORD
+"Guacamole" mysql guacamole-db $GUACAMOLE_DATABASE_NAME $GUACAMOLE_DATABASE_USER $GUACAMOLE_DATABASE_USER_PASSWORD
+"HomeAssistant" postgres homeassistant-db $HOMEASSISTANT_DATABASE_NAME $HOMEASSISTANT_DATABASE_USER $HOMEASSISTANT_DATABASE_USER_PASSWORD
+"Huginn" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
+"Immich" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
+"Invidious" postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_USER $INVIDIOUS_DATABASE_USER_PASSWORD
+"Keila" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
+"Linkwarden" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
+"Mastodon" postgres mastodon-db $MASTODON_DATABASE_NAME $MASTODON_DATABASE_USER $MASTODON_DATABASE_USER_PASSWORD
+"Matomo" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
+"Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD
+"Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
+"Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
+"Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
+"Pastefy" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
+"PeerTube" postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER_PASSWORD
+"Penpot" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
+"PhotoPrism" mysql photoprism-db $PHOTOPRISM_DATABASE_NAME $PHOTOPRISM_DATABASE_USER $PHOTOPRISM_DATABASE_USER_PASSWORD
+"Piped" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
+"Shlink" postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_USER $SHLINK_DATABASE_USER_PASSWORD
+"$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+"$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+"Vaultwarden" postgres vaultwarden-db $VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_USER $VAULTWARDEN_DATABASE_USER_PASSWORD
+"Wallabag" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
+"Wikijs" postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD
+"WordPress" mysql wordpress-db $WORDPRESS_DATABASE_NAME $WORDPRESS_DATABASE_USER $WORDPRESS_DATABASE_USER_PASSWORD
+EOFAS
+  cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
+#!/bin/bash
+
+AISTACK_MINDSDB_DATABASE_NAME=$AISTACK_MINDSDB_DATABASE_NAME
+AISTACK_MINDSDB_DATABASE_USER=$AISTACK_MINDSDB_DATABASE_USER
+PGPASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+curdt=\$(date '+%Y-%m-%d %H:%M:%S.%3N')
+
+function main()
+{
+  if ! [ -f /dbimport/connectionsToImport.txt ]; then
+    return
+  fi
+  while read curLine; do
+    if [ -z "\$curLine" ]; then
+      continue
+    fi
+    connName=\$(echo "\$curLine" | cut -d" " -f1 | sed 's/"//g')
+    connType=\$(echo "\$curLine" | cut -d" " -f2)
+    connHost=\$(echo "\$curLine" | cut -d" " -f3)
+    connDatabase=\$(echo "\$curLine" | cut -d" " -f4)
+    connUser=\$(echo "\$curLine" | cut -d" " -f5)
+    connPassword=\$(echo "\$curLine" | cut -d" " -f6)
+    case "\$connType" in
+      "postgres")
+        connPort=5432
+      ;;
+      "mysql")
+        connPort=3306
+      ;;
+      *)
+        continue
+      ;;
+    esac
+    sqlcmd="select count(*) from integration where name='\$connName';"
+    checkExist=\$(echo "\$sqlcmd" | psql -t -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_MINDSDB_DATABASE_NAME | xargs)
+    if [ -z "\$checkExist" ]; then
+      echo "ERROR: There was a problem adding this DB Connection to MindsDB - \$connName"
+      continue
+    fi
+    if [ \$checkExist -eq 0 ]; then
+      sqlcmd="insert into integration(updated_at, created_at, name, data, engine) values ('\$curdt', '\$curdt', '\$connName','{"database": "\$connDatabase", "host": "\$connHost", "password": "\$connPassword", "port": "\$connPort", "user": "\$connUser"}','\$connType');"
+      echo "\$sqlcmd" | psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_MINDSDB_DATABASE_NAME > /dev/null 2>&1
+    else
+      echo "INFO: DB Connection already exists in MindsDB - \$connName"
+    fi
+  done </dbimport/connectionsToImport.txt
+}
+
+main
+EOFIM
+  chmod 755 $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
+  cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
+#!/bin/bash
+
+AISTACK_LANGFUSE_DATABASE_NAME=$AISTACK_LANGFUSE_DATABASE_NAME
+AISTACK_MINDSDB_DATABASE_USER=$AISTACK_MINDSDB_DATABASE_USER
+PGPASSWORD=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+curdt=\$(date '+%s')
+AISTACK_OPENWEBUI_ADMIN_PASSWORD_HASH="$(htpasswd -bnBC 10 "" $AISTACK_OPENWEBUI_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')"
+function main()
+{
+  sqlcmd="insert into \"user\"(id,name,email,role,profile_image_url,created_at,updated_at,last_active_at) values ('$randuid', '$(getAdminEmailName) OpenWebUI', '$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS', 'admin','data:image/png;base64,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', \$curdt, \$curdt, \$curdt);"
+  echo "\$sqlcmd" | psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_LANGFUSE_DATABASE_NAME > /dev/null 2>&1
+
+  psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_LANGFUSE_DATABASE_NAME -c "insert into auth(id,email,password,active) values('$randuid','$AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS','\$AISTACK_OPENWEBUI_ADMIN_PASSWORD_HASH',true);" > /dev/null 2>&1
+}
+
+main
+EOFIM
+  chmod 755 $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
+}
+
+function importDBConnectionsAIStack()
+{
+  # This function assumes the file, $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+  # exists and has been populated with the connection info
+  # that will be imported into the MindsDB database.
+  set +e
+  if ! [ -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt ]; then
+    echo "connectionsToImport.txt does not exist, returning..."
+    return
+  fi
+  docker ps | grep aistack-mindsdb-db > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "aistack-mindsdb-db container does not exist, returning..."
+    return
+  fi
+  docker exec aistack-mindsdb-db bash /dbimport/importConnections.sh
+  rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+}
+
+function performUpdateAIStack()
+{
+  perform_stack_name=mindsdb
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -52573,7 +53581,7 @@ function installExampleService()
     return $retVal
   fi
   if ! [ "$EXAMPLESERVICE_INIT_ENV" = "true" ]; then
-    sendEmail -s "ExampleService Admin Login Info" -b "ExampleService Admin Username: $EXAMPLESERVICE_ADMIN_PASSWORD\nExampleService Admin Password: $EXAMPLESERVICE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "ExampleService Admin Login Info" -b "ExampleService Admin Username: $EXAMPLESERVICE_ADMIN_USERNAME\nExampleService Admin Password: $EXAMPLESERVICE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     EXAMPLESERVICE_INIT_ENV=true
     updateConfigVar EXAMPLESERVICE_INIT_ENV $EXAMPLESERVICE_INIT_ENV
   fi
@@ -52598,7 +53606,7 @@ function installExampleService()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE" $USERTYPE_EXAMPLESERVICE "https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN" "exampleservice.png"
     restartAllCaddyContainers
-    checkAddDBSqlPad exampleservice "$FMLNAME_EXAMPLESERVICE" mysql exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
+    checkAddDBConnection true exampleservice "$FMLNAME_EXAMPLESERVICE" mysql exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -54030,7 +55038,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "while read filename; do if ! [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/optionalStackList.txt",
+        "script": "while read filename; do if ! [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME",
         "shell": true
       },
       "pass_as": "argument"
@@ -54315,7 +55323,7 @@ EOFSC
         }
       },
       "values": {
-        "script": "while read filename; do if [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/optionalStackList.txt",
+        "script": "while read filename; do if [ -d ~/hshq/data/stacks/\$filename ]; then echo \"\$filename\"; fi; done < conf/$SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME",
         "shell": true
       },
       "pass_as": "argument"
@@ -59728,6 +60736,22 @@ SQLPAD_EDITOR_WORD_WRAP=false
 SQLPAD_HTTPS_CERT_PATH=/certs/sqlpad.crt
 SQLPAD_HTTPS_KEY_PATH=/certs/sqlpad.key
 SQLPAD_PASSPHRASE=$SQLPAD_PASSPHRASE
+SQLPAD_CONNECTIONS__aistack-mindsdb__name=MindsDB
+SQLPAD_CONNECTIONS__aistack-mindsdb__driver=postgres
+SQLPAD_CONNECTIONS__aistack-mindsdb__host=aistack-mindsdb-db
+SQLPAD_CONNECTIONS__aistack-mindsdb__database=$AISTACK_MINDSDB_DATABASE_NAME
+SQLPAD_CONNECTIONS__aistack-mindsdb__username=$AISTACK_MINDSDB_DATABASE_USER
+SQLPAD_CONNECTIONS__aistack-mindsdb__password=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__aistack-mindsdb__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__aistack-mindsdb__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__aistack-langfuse__name=Langfuse
+SQLPAD_CONNECTIONS__aistack-langfuse__driver=postgres
+SQLPAD_CONNECTIONS__aistack-langfuse__host=aistack-langfuse-db
+SQLPAD_CONNECTIONS__aistack-langfuse__database=$AISTACK_LANGFUSE_DATABASE_NAME
+SQLPAD_CONNECTIONS__aistack-langfuse__username=$AISTACK_LANGFUSE_DATABASE_USER
+SQLPAD_CONNECTIONS__aistack-langfuse__password=$AISTACK_LANGFUSE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__aistack-langfuse__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__aistack-langfuse__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__discourse__name=Discourse
 SQLPAD_CONNECTIONS__discourse__driver=postgres
 SQLPAD_CONNECTIONS__discourse__host=discourse-db
@@ -59848,6 +60872,14 @@ SQLPAD_CONNECTIONS__mastodon__username=$MASTODON_DATABASE_USER
 SQLPAD_CONNECTIONS__mastodon__password=$MASTODON_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__mastodon__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__mastodon__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__matomo__name=Matomo
+SQLPAD_CONNECTIONS__matomo__driver=mysql
+SQLPAD_CONNECTIONS__matomo__host=matomo-db
+SQLPAD_CONNECTIONS__matomo__database=$MATOMO_DATABASE_NAME
+SQLPAD_CONNECTIONS__matomo__username=$MATOMO_DATABASE_USER
+SQLPAD_CONNECTIONS__matomo__password=$MATOMO_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__matomo__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__matomo__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__matrix__name=Matrix
 SQLPAD_CONNECTIONS__matrix__driver=postgres
 SQLPAD_CONNECTIONS__matrix__host=matrix-db
@@ -59864,14 +60896,6 @@ SQLPAD_CONNECTIONS__mealie__username=$MEALIE_DATABASE_USER
 SQLPAD_CONNECTIONS__mealie__password=$MEALIE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__mealie__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__mealie__idleTimeoutSeconds=900
-SQLPAD_CONNECTIONS__matomo__name=Matomo
-SQLPAD_CONNECTIONS__matomo__driver=mysql
-SQLPAD_CONNECTIONS__matomo__host=matomo-db
-SQLPAD_CONNECTIONS__matomo__database=$MATOMO_DATABASE_NAME
-SQLPAD_CONNECTIONS__matomo__username=$MATOMO_DATABASE_USER
-SQLPAD_CONNECTIONS__matomo__password=$MATOMO_DATABASE_USER_PASSWORD
-SQLPAD_CONNECTIONS__matomo__multiStatementTransactionEnabled='false'
-SQLPAD_CONNECTIONS__matomo__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
@@ -59920,6 +60944,14 @@ SQLPAD_CONNECTIONS__photoprism__username=$PHOTOPRISM_DATABASE_USER
 SQLPAD_CONNECTIONS__photoprism__password=$PHOTOPRISM_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__photoprism__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__photoprism__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__piped__name=Piped
+SQLPAD_CONNECTIONS__piped__driver=postgres
+SQLPAD_CONNECTIONS__piped__host=piped-db
+SQLPAD_CONNECTIONS__piped__database=$PIPED_DATABASE_NAME
+SQLPAD_CONNECTIONS__piped__username=$PIPED_DATABASE_USER
+SQLPAD_CONNECTIONS__piped__password=$PIPED_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__piped__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__piped__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__shlink__name=Shlink
 SQLPAD_CONNECTIONS__shlink__driver=postgres
 SQLPAD_CONNECTIONS__shlink__host=shlink-db
@@ -60048,24 +61080,32 @@ function modFunUpdateSQLPad()
   echo "SQLPAD_CONNECTIONS__${sdb_name}__idleTimeoutSeconds=900" >> $HOME/${updateStackName}.env
 }
 
-function checkAddDBSqlPad()
+function checkAddDBConnection()
 {
-  sdb_name=$1
-  sdb_formal=$2
-  sdb_driver=$3
-  sdb_host=$4
-  sdb_database=$5
-  sdb_username=$6
-  sdb_password=$7
+  isImportAIStack="$1"
+  sdb_name="$2"
+  sdb_formal="$3"
+  sdb_driver="$4"
+  sdb_host="$5"
+  sdb_database="$6"
+  sdb_username="$7"
+  sdb_password="$8"
   set +e
   updateStackEnv sqlpad modFunUpdateSQLPad > /dev/null 2>&1
   usRetVal=$?
   if [ $usRetVal -eq 2 ]; then
     echo "WARNING: Could not find SQLPad stack, it may not be installed."
   elif [ $usRetVal -eq 3 ]; then
-    echo "INFO: Already added to SQLPad"
+    echo "INFO: Already added to SQLPad - $sdb_formal"
   elif [ $usRetVal -ne 0 ]; then
     echo "ERROR: There was an unknown error with SQLPad"
+  fi
+  if [ "$isImportAIStack" = "true" ]; then
+    rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+    cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+"$sdb_formal" $sdb_driver $sdb_host $sdb_database $sdb_username $sdb_password
+EOFAS
+    importDBConnectionsAIStack
   fi
 }
 
