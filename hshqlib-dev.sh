@@ -8818,8 +8818,8 @@ function connectVPN()
     CLIENTDNS_USER1_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_clientdns"
     CLIENTDNS_USER1_ADMIN_PASSWORD="$(pwgen -c -n 32 1)"
     installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP "$CLIENTDNS_USER1_ADMIN_USERNAME" "$CLIENTDNS_USER1_ADMIN_PASSWORD"
-    echo "Disconnect Internet for testing, sleeping for 10 seconds..."
-    sleep 10
+    echo "Sleeping for 5 seconds..."
+    sleep 5
     loadSSHKey
     # Setup syncthing link
     echo "Setting up Syncthing..."
@@ -25265,7 +25265,9 @@ function loadPinnedDockerImages()
   IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v1.131.3
   IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v1.131.3
   IMG_INFLUXDB=influxdb:2.7.11-alpine
-  IMG_INVIDIOUS=quay.io/invidious/invidious:latest
+  IMG_INVIDIOUS_WEB=quay.io/invidious/invidious:master
+  IMG_INVIDIOUS_COMPANION=quay.io/invidious/invidious-companion:latest
+  IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=jellyfin/jellyfin:10.10.6
   IMG_JITSI_WEB=jitsi/web:stable-10133-1
@@ -25422,7 +25424,7 @@ function getScriptStackVersion()
     drawio)
       echo "v6" ;;
     invidious)
-      echo "v1" ;;
+      echo "v2" ;;
     ittools)
       echo "v1" ;;
     gitea)
@@ -25584,7 +25586,8 @@ function pullDockerImages()
   pullImage $IMG_EXCALIDRAW_WEB
   pullImage $IMG_EXCALIDRAW_SERVER
   pullImage $IMG_EXCALIDRAW_STORAGE
-  pullImage $IMG_INVIDIOUS
+  pullImage $IMG_INVIDIOUS_WEB
+  pullImage $IMG_INVIDIOUS_COMPANION
   pullImage $IMG_GITEA_APP
   pullImage $IMG_MEALIE
   pullImage $IMG_KASM
@@ -28952,7 +28955,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_POSTGRES
       ;;
     "invidious-web")
-      container_image=$IMG_INVIDIOUS
+      container_image=$IMG_INVIDIOUS_WEB
+      ;;
+    "invidious-companion")
+      container_image=$IMG_INVIDIOUS_COMPANION
       ;;
     "gitea-db")
       container_image=$IMG_POSTGRES
@@ -44612,21 +44618,31 @@ function installInvidious()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_INVIDIOUS
+  pullImage $IMG_INVIDIOUS_WEB
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_INVIDIOUS_COMPANION
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $IMG_INVIDIOUS_SESSIONGEN
   if [ $? -ne 0 ]; then
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/invidious
   mkdir $HSHQ_STACKS_DIR/invidious/db
   mkdir $HSHQ_STACKS_DIR/invidious/dbexport
+  mkdir $HSHQ_STACKS_DIR/invidious/companion
   mkdir $HSHQ_STACKS_DIR/invidious/init
   chmod 777 $HSHQ_STACKS_DIR/invidious/dbexport
-
   initServicesCredentials
-  INVIDIOUS_HMAC_KEY=$(pwgen -c -n 32 1)
-
+  set +e
+  docker run --rm $IMG_INVIDIOUS_SESSIONGEN > $HOME/invidious-session.txt
+  visitorData="$(grep visitor_data $HOME/invidious-session.txt | cut -d":" -f2 | xargs)"
+  poToken="$(grep po_token $HOME/invidious-session.txt | cut -d":" -f2 | xargs)"
+  rm -f $HOME/invidious-session.txt
   outputConfigInvidious
   installStack invidious invidious-web "Invidious is ready to lead at" $HOME/invidious.env
   retval=$?
@@ -44658,103 +44674,7 @@ function installInvidious()
 
 function outputConfigInvidious()
 {
-  cat <<EOFIV > $HOME/invidious-compose.yml
-$STACK_VERSION_PREFIX invidious $(getScriptStackVersion invidious)
-
-services:
-  invidious-db:
-    image: $(getScriptImageByContainerName invidious-db)
-    container_name: invidious-db
-    hostname: invidious-db
-    user: "\${UID}:\${GID}"
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    shm_size: 256mb
-    networks:
-      - int-invidious-net
-      - dock-dbs-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/invidious/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/invidious/dbexport:/dbexport
-      - \${HSHQ_STACKS_DIR}/invidious/init:/docker-entrypoint-initdb.d
-    environment:
-      - POSTGRES_DB=$INVIDIOUS_DATABASE_NAME
-      - POSTGRES_USER=$INVIDIOUS_DATABASE_USER
-      - POSTGRES_PASSWORD=$INVIDIOUS_DATABASE_USER_PASSWORD
-    labels:
-      - "ofelia.enabled=true"
-      - "ofelia.job-exec.invidious-hourly-db.schedule=@every 1h"
-      - "ofelia.job-exec.invidious-hourly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.invidious-hourly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.invidious-hourly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.invidious-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.invidious-hourly-db.email-from=Invidious Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-      - "ofelia.job-exec.invidious-hourly-db.mail-only-on-error=true"
-      - "ofelia.job-exec.invidious-monthly-db.schedule=0 0 8 1 * *"
-      - "ofelia.job-exec.invidious-monthly-db.command=/exportDB.sh"
-      - "ofelia.job-exec.invidious-monthly-db.smtp-host=$SMTP_HOSTNAME"
-      - "ofelia.job-exec.invidious-monthly-db.smtp-port=$SMTP_HOSTPORT"
-      - "ofelia.job-exec.invidious-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
-      - "ofelia.job-exec.invidious-monthly-db.email-from=Invidious Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
-
-  invidious-web:
-    image: $(getScriptImageByContainerName invidious-web)
-    container_name: invidious-web
-    hostname: invidious-web
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - invidious-db
-    networks:
-      - int-invidious-net
-      - dock-proxy-net
-      - dock-ext-net
-    environment:
-      INVIDIOUS_CONFIG: |
-        db:
-          dbname: $INVIDIOUS_DATABASE_NAME
-          user: $INVIDIOUS_DATABASE_USER
-          password: $INVIDIOUS_DATABASE_USER_PASSWORD
-          host: invidious-db
-          port: 5432
-        check_tables: true
-        https_only: true
-        statistics_enabled: false
-        domain: $SUB_INVIDIOUS.$HOMESERVER_DOMAIN
-        hmac_key: "$INVIDIOUS_HMAC_KEY"
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-ext-net:
-    name: dock-ext
-    external: true
-  dock-dbs-net:
-    name: dock-dbs
-    external: true
-  int-invidious-net:
-    driver: bridge
-    internal: true
-    ipam:
-      driver: default
-
-EOFIV
-
-  cat <<EOFIV > $HOME/invidious.env
-TZ=\${TZ}
-UID=$USERID
-GID=$GROUPID
-POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
-EOFIV
-
+  outputComposeEnvInvidious
   cat <<EOFIV > $HSHQ_STACKS_DIR/invidious/init/init.sql
 -- Table: public.channels
 
@@ -44975,6 +44895,141 @@ GRANT ALL ON TABLE public.playlist_videos TO current_user;
 EOFIV
 }
 
+function outputComposeEnvInvidious()
+{
+  INVIDIOUS_HMAC_KEY=$(pwgen -n 16 1)
+  INVIDIOUS_COMPANION_KEY=$(pwgen -n 16 1)
+  cat <<EOFIV > $HOME/invidious-compose.yml
+$STACK_VERSION_PREFIX invidious $(getScriptStackVersion invidious)
+
+services:
+  invidious-db:
+    image: $(getScriptImageByContainerName invidious-db)
+    container_name: invidious-db
+    hostname: invidious-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-invidious-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/invidious/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/invidious/dbexport:/dbexport
+      - \${HSHQ_STACKS_DIR}/invidious/init:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_DB=$INVIDIOUS_DATABASE_NAME
+      - POSTGRES_USER=$INVIDIOUS_DATABASE_USER
+      - POSTGRES_PASSWORD=$INVIDIOUS_DATABASE_USER_PASSWORD
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.invidious-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.invidious-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invidious-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invidious-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invidious-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invidious-hourly-db.email-from=Invidious Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invidious-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.invidious-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.invidious-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invidious-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invidious-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invidious-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invidious-monthly-db.email-from=Invidious Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+
+  invidious-web:
+    image: $(getScriptImageByContainerName invidious-web)
+    container_name: invidious-web
+    hostname: invidious-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invidious-db
+    networks:
+      - int-invidious-net
+      - dock-proxy-net
+      - dock-ext-net
+    environment:
+      INVIDIOUS_CONFIG: |
+        db:
+          dbname: $INVIDIOUS_DATABASE_NAME
+          user: $INVIDIOUS_DATABASE_USER
+          password: $INVIDIOUS_DATABASE_USER_PASSWORD
+          host: invidious-db
+          port: 5432
+        check_tables: true
+        https_only: true
+        statistics_enabled: false
+        domain: $SUB_INVIDIOUS.$HOMESERVER_DOMAIN
+        visitor_data: '$visitorData'
+        po_token: '$poToken'
+        hmac_key: "$INVIDIOUS_HMAC_KEY"
+        invidious_companion_key: "$INVIDIOUS_COMPANION_KEY"
+        invidious_companion:
+        - private_url: "http://invidious-companion:8282"
+          public_url: "https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN"
+
+  invidious-companion:
+    image: $(getScriptImageByContainerName invidious-companion)
+    container_name: invidious-companion
+    hostname: invidious-companion
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invidious-db
+    networks:
+      - int-invidious-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - v-invidious-companion:/var/tmp/youtubei.js:rw
+    environment:
+      - SERVER_SECRET_KEY=$INVIDIOUS_COMPANION_KEY
+
+volumes:
+  v-invidious-companion:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/invidious/companion
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-invidious-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFIV
+  cat <<EOFIV > $HOME/invidious.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
+SERVER_SECRET_KEY=$INVIDIOUS_COMPANION_KEY
+RUST_LOG=info
+EOFIV
+}
+
 function performUpdateInvidious()
 {
   perform_stack_name=invidious
@@ -44983,10 +45038,20 @@ function performUpdateInvidious()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=postgres:15.0-bullseye,quay.io/invidious/invidious
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,quay.io/invidious/invidious:latest
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="quay.io/invidious/invidious,quay.io/invidious/invidious"
+      image_update_map[1]="quay.io/invidious/invidious:latest,quay.io/invidious/invidious:latest"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfInvidiousAddCompanion
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,quay.io/invidious/invidious:master,quay.io/invidious/invidious-companion:latest
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="quay.io/invidious/invidious:master,quay.io/invidious/invidious:master"
+      image_update_map[2]="quay.io/invidious/invidious-companion:latest,quay.io/invidious/invidious-companion:latest"
     ;;
     *)
       is_upgrade_error=true
@@ -44996,6 +45061,12 @@ function performUpdateInvidious()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfInvidiousAddCompanion()
+{
+  mkdir -p $HSHQ_STACKS_DIR/invidious/companion
+  outputComposeEnvInvidious
 }
 
 # Gitea
