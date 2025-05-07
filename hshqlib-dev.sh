@@ -8804,9 +8804,7 @@ function connectVPN()
       restartAllCaddyContainers
     fi
   fi
-
   updatePortainerJitsiIPChanges
-
   # Add new Caddy container.
   installCaddy $ifaceName $primary_string $ifaceName $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
@@ -8819,6 +8817,7 @@ function connectVPN()
     CLIENTDNS_USER1_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_clientdns"
     CLIENTDNS_USER1_ADMIN_PASSWORD="$(pwgen -c -n 32 1)"
     installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP "$CLIENTDNS_USER1_ADMIN_USERNAME" "$CLIENTDNS_USER1_ADMIN_PASSWORD"
+    echo "Disconnect Internet for testing, sleeping for 10 seconds..."
     sleep 10
     loadSSHKey
     # Setup syncthing link
@@ -8826,23 +8825,116 @@ function connectVPN()
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
     updateConfigVar SYNCTHING_DEVICE_ID $SYNCTHING_DEVICE_ID
     # Remote Syncthing
-    RELAYSERVER_SYNCTHING_DEVICE_ID=$(ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID'")
+    echo "Getting RelayServer syncthing device ID..."
+    runCommandOnRelayServer true "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID'"
+    if [ $? -ne 0 ]; then
+      echo "There was an error obtaining the remote RelayServer Synchthing device ID. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
+      set -e
+      unloadSSHKey
+      updateHeimdallUptimeKumaRelayServer
+      return
+    fi
+    RELAYSERVER_SYNCTHING_DEVICE_ID="$rsCaptureResults"
     updateConfigVar RELAYSERVER_SYNCTHING_DEVICE_ID $RELAYSERVER_SYNCTHING_DEVICE_ID
     jsonbody="{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\", \\\"name\\\": \\\"$HOMESERVER_NAME HomeServer\\\",\\\"addresses\\\": [\\\"tcp://$SUB_SYNCTHING.$HOMESERVER_DOMAIN:$SYNCTHING_SYNC_PORT\\\"], \\\"compression\\\": \\\"metadata\\\", \\\"certName\\\": \\\"\\\", \\\"skipIntroductionRemovals\\\": false,\\\"introducedBy\\\": \\\"\\\",\\\"paused\\\": false,\\\"allowedNetworks\\\": [],\\\"autoAcceptFolders\\\": false,\\\"maxSendKbps\\\": 0,\\\"maxRecvKbps\\\": 0,\\\"ignoredFolders\\\": [],\\\"maxRequestKiB\\\": 0,\\\"untrusted\\\": false,\\\"remoteGUIPort\\\": 0}"
-    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
+    echo "Adding HomeServer device to RelayServer syncthing..."
+    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
+    if [ $? -ne 0 ]; then
+      echo "There was an error setting up Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
+      set -e
+      unloadSSHKey
+      updateHeimdallUptimeKumaRelayServer
+      return
+    fi
     jsonbody="{\\\"id\\\": \\\"$RELAYSERVER_SYNCTHING_FOLDER_ID\\\", \\\"label\\\": \\\"RelayServer Backup\\\",\\\"filesystemType\\\": \\\"basic\\\", \\\"path\\\": \\\"/relayserver/\\\", \\\"type\\\": \\\"sendonly\\\",\\\"devices\\\": [{\\\"deviceID\\\": \\\"$RELAYSERVER_SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"},{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"}], \\\"rescanIntervalS\\\": 3600,\\\"fsWatcherEnabled\\\": true,\\\"fsWatcherDelayS\\\": 10,\\\"ignorePerms\\\": false,\\\"autoNormalize\\\": true,\\\"minDiskFree\\\": {\\\"value\\\": 1,\\\"unit\\\": \\\"%\\\"},\\\"versioning\\\": {\\\"type\\\": \\\"\\\",\\\"params\\\": {},\\\"cleanupIntervalS\\\": 3600,\\\"fsPath\\\": \\\"\\\",\\\"fsType\\\": \\\"basic\\\"},\\\"copiers\\\": 0,\\\"pullerMaxPendingKiB\\\": 0,\\\"hashers\\\": 0,\\\"order\\\": \\\"random\\\",\\\"ignoreDelete\\\": false,\\\"scanProgressIntervalS\\\": 0,\\\"pullerPauseS\\\": 0,\\\"maxConflicts\\\": 10,\\\"disableSparseFiles\\\": false,\\\"disableTempIndexes\\\": false,\\\"paused\\\": false,\\\"weakHashThresholdPct\\\": 25,\\\"markerName\\\": \\\".stfolder\\\",\\\"copyOwnershipFromParent\\\": false,\\\"modTimeWindowS\\\": 0,\\\"maxConcurrentWrites\\\": 2,\\\"disableFsync\\\": false,\\\"blockPullOrder\\\": \\\"standard\\\",\\\"copyRangeMethod\\\": \\\"standard\\\",\\\"caseSensitiveFS\\\": false,\\\"junctionsAsDirs\\\": false,\\\"syncOwnership\\\": false,\\\"sendOwnership\\\": true,\\\"syncXattrs\\\": false,\\\"sendXattrs\\\": false,\\\"xattrFilter\\\": {\\\"entries\\\": [],\\\"maxSingleEntrySize\\\": 1024,\\\"maxTotalSize\\\": 4096}}"
-    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
+    echo "Setting up backup directory on RelayServer syncthing..."
+    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
+    if [ $? -ne 0 ]; then
+      echo "There was an error configuring Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
+      set -e
+      unloadSSHKey
+      updateHeimdallUptimeKumaRelayServer
+      return
+    fi
     # Local Syncthing
     jsonbody="{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\", \"name\": \"$RELAYSERVER_NAME\",\"addresses\": [\"tcp://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$SYNCTHING_SYNC_PORT\"], \"compression\": \"metadata\", \"certName\": \"\", \"skipIntroductionRemovals\": false,\"introducedBy\": \"\",\"paused\": false,\"allowedNetworks\": [],\"autoAcceptFolders\": false,\"maxSendKbps\": 0,\"maxRecvKbps\": 0,\"ignoredFolders\": [],\"maxRequestKiB\": 0,\"untrusted\": false,\"remoteGUIPort\": 0}"
+    echo "Setting up RelayServer device on HomeServer syncthing..."
+    if [ "$LOG_LEVEL" = "debug" ]; then
+      echo -e "Running this command on HomeServer:"
+      echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
+      echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+    fi
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices
     jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
+    echo "Setting up backup directory on HomeServer syncthing..."
+    if [ "$LOG_LEVEL" = "debug" ]; then
+      echo -e "Running this command on HomeServer:"
+      echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
+      echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+    fi
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/folders
-    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker container restart caddy"
+    echo "Restarting caddy instance on RelayServer..."
+    runCommandOnRelayServer false "docker container restart caddy"
+    if [ $? -ne 0 ]; then
+      echo "There was an error restarting caddy on the remote RelayServer instance. This is likely due to an issue with your internet connection. This is not a breaking issue, it will likely resolve itself automatically."
+      set -e
+      unloadSSHKey
+      updateHeimdallUptimeKumaRelayServer
+      return
+    fi
+    echo "Finished setting up syncthing..."
     set -e
     unloadSSHKey
     curdt=$(getCurrentDate)
     sudo sqlite3 $HSHQ_DB "update connections set LastUpdated='$curdt' where ID=$db_id;"
     updateHeimdallUptimeKumaRelayServer
+  fi
+}
+
+function runCommandOnRelayServer()
+{
+  set +e
+  isCaptureResult="$1"
+  rsCommand="$2"
+  maxRSRetries="$3"
+  rsInterval="$4"
+  if [ -z "$maxRSRetries" ]; then
+    maxRSRetries=30
+  fi
+  if [ -z "$rsInterval" ]; then
+    rsInterval=10
+  fi
+  total_attempts=1
+  isRSSuccess=false
+  rsCaptureResults=""
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo -e "Running this command on RelayServer:"
+    echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+    echo "$rsCommand"
+    echo -e "\n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+  fi
+  while [ $total_attempts -le $maxRSRetries ]
+  do
+    rsCaptureResults=""
+    if [ "$isCaptureResult" = "true" ]; then
+      rsCaptureResults=$(timeout $rsInterval ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$rsCommand")
+    else
+      timeout $rsInterval ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$rsCommand"
+    fi
+    if [ $? -eq 0 ]; then
+      isRSSuccess=true
+      break
+    fi
+    echo "($total_attempts of $maxRSRetries), retrying in 5 seconds..."
+    sudo -v
+    sleep 5
+    total_attempts=$((total_attempts + 1))
+  done
+  if ! [ "$isRSSuccess" = "true" ]; then
+    rsCaptureResults=""
+    return 10
   fi
 }
 
@@ -53517,11 +53609,11 @@ function importDBConnectionsAIStack()
     return
   fi
   docker ps | grep aistack-mindsdb-db > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
+  if [ $? -eq 0 ]; then
+    docker exec aistack-mindsdb-db bash /dbimport/importConnections.sh
+  else
     echo "aistack-mindsdb-db container does not exist, returning..."
-    return
   fi
-  docker exec aistack-mindsdb-db bash /dbimport/importConnections.sh
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
 }
 
@@ -61101,7 +61193,7 @@ function checkAddDBConnection()
   elif [ $usRetVal -ne 0 ]; then
     echo "ERROR: There was an unknown error with SQLPad"
   fi
-  if [ "$isImportAIStack" = "true" ]; then
+  if [ "$isImportAIStack" = "true" ] && [ -d $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport ]; then
     rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
     cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
 "$sdb_formal" $sdb_driver $sdb_host $sdb_database $sdb_username $sdb_password
