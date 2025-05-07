@@ -62,6 +62,7 @@ function init()
   SCRIPTSERVER_OPTIONAL_STACKLIST_FILENAME=optionalStackList.txt
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
+  MINDSDB_IMPORT_FILENAME=DBCImport.txt
   DOCKER_VERSION_UBUNTU_2204=5:25.0.5-1~ubuntu.22.04~jammy
   DOCKER_VERSION_UBUNTU_2404=5:27.4.0-1~ubuntu.24.04~noble
   DOCKER_VERSION_DEBIAN_12=5:27.4.0-1~debian.12~bookworm
@@ -52879,7 +52880,8 @@ function installAIStack()
   docker exec aistack-mindsdb-app pip install polars-lts-cpu
   docker image rm $IMG_AISTACK_MINDSDB_MOD_APP > /dev/null 2>&1
   docker commit aistack-mindsdb-app $IMG_AISTACK_MINDSDB_MOD_APP
-  importDBConnectionsAIStack
+  # See the code at the end of this function, as it informs the user regarding the import
+  #importDBConnectionsAIStack
   docker exec aistack-mindsdb-db bash /dbimport/insertAdmin.sh
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
   sleep 5
@@ -52954,6 +52956,19 @@ function installAIStack()
     checkAddDBConnection false aistack-mindsdb "$FMLNAME_AISTACK_MINDSDB_APP" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
     checkAddDBConnection false aistack-langfuse "$FMLNAME_AISTACK_LANGFUSE" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
   fi
+  echo -e "================================================================================"
+  echo -e "================================================================================\n"
+  echo -e "  For your convenience, the DB connections for all of your services"
+  echo -e "  have been prepped and output to the following file on your host: \n"
+  echo -e "  $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME\n"
+  echo -e "  If you wish to perform a batch import on these connections into"
+  echo -e "  MindsDB, then enter the following command in a terminal: \n"
+  echo -e "  docker exec aistack-mindsdb-db bash /dbimport/importConnections.sh\n"
+  echo -e "  You can remove unwanted connections from this list before running"
+  echo -e "  the above command. Ensure to delete this file by running the command:\n"
+  echo -e "  rm $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME\n"
+  echo -e "================================================================================"
+  echo -e "================================================================================"
 }
 
 function outputConfigAIStack()
@@ -53489,7 +53504,7 @@ service:
       processors: [batch]
       exporters: [debug]
 EOFOT
-  cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+  cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
 "MindsDB" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Langfuse" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
@@ -53535,7 +53550,7 @@ curdt=\$(date '+%Y-%m-%d %H:%M:%S.%3N')
 
 function main()
 {
-  if ! [ -f /dbimport/connectionsToImport.txt ]; then
+  if ! [ -f /dbimport/$MINDSDB_IMPORT_FILENAME ]; then
     return
   fi
   while read curLine; do
@@ -53571,7 +53586,7 @@ function main()
     else
       echo "INFO: DB Connection already exists in MindsDB - \$connName"
     fi
-  done </dbimport/connectionsToImport.txt
+  done </dbimport/$MINDSDB_IMPORT_FILENAME
 }
 
 main
@@ -53600,12 +53615,16 @@ EOFIM
 
 function importDBConnectionsAIStack()
 {
-  # This function assumes the file, $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+  # Let's not automatically add DB connections to the MindsDB as it may pose a security risk
+  # See https://github.com/mindsdb/mindsdb/issues/10803 and https://cybernews.com/security/aws-cloud-storage-bucket-ransomware-attacks/
+  rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
+  if true; then return; fi
+  # This function assumes the file, ~/hshq/data/stacks/aistack/mindsdb/dbimport/DBCImport.txt
   # exists and has been populated with the connection info
   # that will be imported into the MindsDB database.
   set +e
-  if ! [ -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt ]; then
-    echo "connectionsToImport.txt does not exist, returning..."
+  if ! [ -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME ]; then
+    echo "$MINDSDB_IMPORT_FILENAME does not exist, returning..."
     return
   fi
   docker ps | grep aistack-mindsdb-db > /dev/null 2>&1
@@ -53614,7 +53633,7 @@ function importDBConnectionsAIStack()
   else
     echo "aistack-mindsdb-db container does not exist, returning..."
   fi
-  rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+  rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
 }
 
 function performUpdateAIStack()
@@ -61193,9 +61212,11 @@ function checkAddDBConnection()
   elif [ $usRetVal -ne 0 ]; then
     echo "ERROR: There was an unknown error with SQLPad"
   fi
-  if [ "$isImportAIStack" = "true" ] && [ -d $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport ]; then
-    rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
-    cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
+  # See the importDBConnectionsAIStack() function for more details
+  # This is dead code for now, but it may be revisited in some form or fashion later
+  if false && [ "$isImportAIStack" = "true" ] && [ -d $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport ]; then
+    rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
+    cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
 "$sdb_formal" $sdb_driver $sdb_host $sdb_database $sdb_username $sdb_password
 EOFAS
     importDBConnectionsAIStack
