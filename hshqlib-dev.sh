@@ -53491,7 +53491,7 @@ service:
 EOFOT
   cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/connectionsToImport.txt
 "MindsDB" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-"Langfuse" postgres aistack-langfuse-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_LANGFUSE_DATABASE_USER $AISTACK_LANGFUSE_DATABASE_USER_PASSWORD
+"Langfuse" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
 "EspoCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
 "Firefly" postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD
@@ -60839,10 +60839,10 @@ SQLPAD_CONNECTIONS__aistack-mindsdb__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__aistack-mindsdb__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__aistack-langfuse__name=Langfuse
 SQLPAD_CONNECTIONS__aistack-langfuse__driver=postgres
-SQLPAD_CONNECTIONS__aistack-langfuse__host=aistack-langfuse-db
+SQLPAD_CONNECTIONS__aistack-langfuse__host=aistack-mindsdb-db
 SQLPAD_CONNECTIONS__aistack-langfuse__database=$AISTACK_LANGFUSE_DATABASE_NAME
-SQLPAD_CONNECTIONS__aistack-langfuse__username=$AISTACK_LANGFUSE_DATABASE_USER
-SQLPAD_CONNECTIONS__aistack-langfuse__password=$AISTACK_LANGFUSE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__aistack-langfuse__username=$AISTACK_MINDSDB_DATABASE_USER
+SQLPAD_CONNECTIONS__aistack-langfuse__password=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__aistack-langfuse__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__aistack-langfuse__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__discourse__name=Discourse
