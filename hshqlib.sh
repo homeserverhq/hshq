@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=148
+HSHQ_LIB_SCRIPT_VERSION=149
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -25326,6 +25326,8 @@ function loadPinnedDockerImages()
   IMG_PIPED_PROXY=1337kavin/piped-proxy:latest
   IMG_PIPED_API=1337kavin/piped:latest
   IMG_PIPED_CRON=barrypiccinni/psql-curl
+  IMG_PIXELFED_APP=ghcr.io/jippi/docker-pixelfed:v0.12.5-docker1-apache-8.4-bookworm
+  IMG_PIXELFED_MOD_APP=hshq/pixelfed:v1
   IMG_PORTAINER=portainer/portainer-ce:2.21.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
   IMG_PROMETHEUS=prom/prometheus:v3.2.1
@@ -25491,6 +25493,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     aistack)
       echo "v1" ;;
+    pixelfed)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -25634,6 +25638,7 @@ function pullDockerImages()
   pullImage $IMG_AISTACK_LANGFUSE
   pullImage $IMG_AISTACK_OLLAMA_SERVER
   pullImage $IMG_AISTACK_OPENWEBUI
+  pullImage $IMG_PIXELFED_APP
 }
 
 function pullImagesUpdatePB()
@@ -26410,6 +26415,16 @@ AISTACK_OPENWEBUI_OIDC_CLIENT_ID=
 AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=
 AISTACK_REDIS_PASSWORD=
 # AIStack (Service Details) END
+
+# Pixelfed (Service Details) BEGIN
+PIXELFED_INIT_ENV=true
+PIXELFED_DATABASE_NAME=
+PIXELFED_DATABASE_ROOT_PASSWORD=
+PIXELFED_DATABASE_USER=
+PIXELFED_DATABASE_USER_PASSWORD=
+PIXELFED_REDIS_PASSWORD=
+PIXELFED_APP_KEY=
+# Pixelfed (Service Details) END
 
 # Service Details END
 EOFCF
@@ -27593,63 +27608,65 @@ function initServicesCredentials()
     AISTACK_REDIS_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar AISTACK_REDIS_PASSWORD $AISTACK_REDIS_PASSWORD
   fi
+  if [ -z "$PIXELFED_DATABASE_NAME" ]; then
+    PIXELFED_DATABASE_NAME=pixelfeddb
+    updateConfigVar PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_NAME
+  fi
+  if [ -z "$PIXELFED_DATABASE_ROOT_PASSWORD" ]; then
+    PIXELFED_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PIXELFED_DATABASE_ROOT_PASSWORD $PIXELFED_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$PIXELFED_DATABASE_USER" ]; then
+    PIXELFED_DATABASE_USER=pixelfed-user
+    updateConfigVar PIXELFED_DATABASE_USER $PIXELFED_DATABASE_USER
+  fi
+  if [ -z "$PIXELFED_DATABASE_USER_PASSWORD" ]; then
+    PIXELFED_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PIXELFED_DATABASE_USER_PASSWORD $PIXELFED_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$PIXELFED_REDIS_PASSWORD" ]; then
+    PIXELFED_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PIXELFED_REDIS_PASSWORD $PIXELFED_REDIS_PASSWORD
+  fi
+  if [ -z "$PIXELFED_APP_KEY" ]; then
+    PIXELFED_APP_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar PIXELFED_APP_KEY $PIXELFED_APP_KEY
+  fi
 }
 
 function checkCreateNonbackupDirs()
 {
   mkdir -p $HSHQ_NONBACKUP_DIR
   mkdir -p $HSHQ_BUILD_DIR
-  mkdir -p $HSHQ_NONBACKUP_DIR/adguard
   mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
-  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils
   mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh
   mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
   mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
   mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
   mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
-  mkdir -p $HSHQ_NONBACKUP_DIR/duplicati
   mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
-  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon
   mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
   mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
-  mkdir -p $HSHQ_NONBACKUP_DIR/searxng
   mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/peertube
   mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
   mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab
   mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab
-  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/discourse
   mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/shlink
   mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/firefly
   mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/kasm
   mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
-  mkdir -p $HSHQ_NONBACKUP_DIR/netdata
   mkdir -p $HSHQ_NONBACKUP_DIR/netdata/cache
-  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf
   mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
   mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
-  mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant
   mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/wallabag
   mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/paperless
   mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/piped
   mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
-  mkdir -p $HSHQ_NONBACKUP_DIR/penpot
   mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/immich
   mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
   mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
-  mkdir -p $HSHQ_NONBACKUP_DIR/aistack
   mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
 }
 
 function installBaseStacks()
@@ -27763,6 +27780,7 @@ function initServiceVars()
   checkAddSvc "SVCD_PIPED_FRONTEND=piped,piped,primary,user,Piped,piped,hshq"
   checkAddSvc "SVCD_PIPED_PROXY=piped,piped-proxy,primary,user,Piped,piped-proxy,hshq"
   checkAddSvc "SVCD_PIPED_API=piped,piped-api,primary,user,Piped,piped-api,hshq"
+  checkAddSvc "SVCD_PIXELFED=pixelfed,pixelfed,other,user,Pixelfed,pixelfed,hshq"
   checkAddSvc "SVCD_PORTAINER=portainer,portainer,primary,admin,Portainer,portainer,hshq"
   checkAddSvc "SVCD_POSTFIX=mail-relay,mail,primary,admin,Mail,mail,hshq"
   checkAddSvc "SVCD_PROMETHEUS=sysutils,prometheus,primary,admin,Prometheus,prometheus,hshq"
@@ -27923,6 +27941,8 @@ function installStackByName()
       installSnippetBox $is_integrate ;;
     aistack)
       installAIStack $is_integrate ;;
+    pixelfed)
+      installPixelfed $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -28081,6 +28101,8 @@ function performUpdateStackByName()
       performUpdateSnippetBox "$portainerToken" ;;
     aistack)
       performUpdateAIStack "$portainerToken" ;;
+    pixelfed)
+      performUpdatePixelfed "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -28148,6 +28170,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PENPOT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_API.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_PIXELFED.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
@@ -28291,6 +28314,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -28316,8 +28340,9 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "All LDAP-Based Services" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Email" "\"https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
   strInstructions="Vaultwarden User Import Instructions:\n\n"
   strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager. An additional entry, Penpot has been added. It uses LDAP as well, but requires the email address to be entered rather than the ldap username, so it requires a separate entry."
@@ -28396,6 +28421,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -28502,6 +28528,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0 "pastefy.png"
   insertIntoHeimdallDB "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0 "snippetbox.png"
   insertIntoHeimdallDB "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0 "openwebui.png"
+  insertIntoHeimdallDB "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" 0 "pixelfed.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -28601,6 +28628,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
 
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -28621,10 +28649,10 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed
   DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack
   DS_MEM_HIGH=netdata,photoprism,aistack
@@ -29206,6 +29234,18 @@ function getScriptImageByContainerName()
     "aistack-redis")
       container_image=$IMG_REDIS
       ;;
+    "pixelfed-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "pixelfed-app")
+      container_image=$IMG_PIXELFED_MOD_APP
+      ;;
+    "pixelfed-worker")
+      container_image=$IMG_PIXELFED_MOD_APP
+      ;;
+    "pixelfed-redis")
+      container_image=$IMG_REDIS
+      ;;
     *)
       ;;
   esac
@@ -29252,7 +29292,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD="
-
+  checkAddServiceToConfig "Pixelfed" "PIXELFED_INIT_ENV=false,PIXELFED_DATABASE_NAME=,PIXELFED_DATABASE_ROOT_PASSWORD=,PIXELFED_DATABASE_USER=,PIXELFED_DATABASE_USER_PASSWORD=,PIXELFED_REDIS_PASSWORD=,PIXELFED_APP_KEY="
+  
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
@@ -33333,7 +33374,7 @@ uidNumber: 2002
 gidNumber: 2001
 loginShell: /sbin/nologin
 homeDirectory: /home/${LDAP_PRIMARY_USER_USERNAME}
-cn:: $(echo -n "${LDAP_PRIMARY_USER_USERNAME^} " | base64)
+cn:: $(echo -n "${LDAP_PRIMARY_USER_FULLNAME}" | base64)
 userPassword: {CRYPT}${LDAP_PRIMARY_USER_PASSWORD_HASH}
 
 # Last UID
@@ -51994,7 +52035,7 @@ EOFPI
   "notifications": {
     "smtp": {
       "enabled": true,
-      "from": "$(getAdminEmailName) Immich <$EMAIL_ADMIN_EMAIL_ADDRESS>",
+      "from": "Immich $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>",
       "replyTo": "$EMAIL_ADMIN_EMAIL_ADDRESS",
       "transport": {
         "ignoreCert": false,
@@ -53603,6 +53644,7 @@ EOFOT
 "Penpot" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
 "PhotoPrism" mysql photoprism-db $PHOTOPRISM_DATABASE_NAME $PHOTOPRISM_DATABASE_USER $PHOTOPRISM_DATABASE_USER_PASSWORD
 "Piped" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
+"Pixelfed" mysql pixelfed-db $PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_USER $PIXELFED_DATABASE_USER_PASSWORD
 "Shlink" postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_USER $SHLINK_DATABASE_USER_PASSWORD
 "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
 "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
@@ -53729,6 +53771,1450 @@ function performUpdateAIStack()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Pixelfed
+function installPixelfed()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory pixelfed "Pixelfed"
+  cdRes=$?
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildImagePixelfed
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/pixelfed
+  mkdir $HSHQ_STACKS_DIR/pixelfed/config
+  mkdir $HSHQ_STACKS_DIR/pixelfed/db
+  mkdir $HSHQ_STACKS_DIR/pixelfed/dbexport
+  mkdir $HSHQ_STACKS_DIR/pixelfed/appstorage
+  mkdir $HSHQ_STACKS_DIR/pixelfed/appbootstrapcache
+  mkdir $HSHQ_NONBACKUP_DIR/pixelfed
+  mkdir $HSHQ_NONBACKUP_DIR/pixelfed/redis
+  chmod 777 $HSHQ_STACKS_DIR/pixelfed/dbexport
+  initServicesCredentials
+  set +e
+  generateCert pixelfed-app pixelfed-app
+  set +e
+  outputConfigPixelfed
+  installStack pixelfed pixelfed-app "ready to handle connections" $HOME/pixelfed.env 10
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$PIXELFED_INIT_ENV" = "true" ]; then
+    sendEmail -s "Pixelfed Admin Login Info" -b "Pixelfed Admin Username: $EMAIL_ADMIN_EMAIL_ADDRESS\nPixelfed Admin Password: $LDAP_ADMIN_USER_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    PIXELFED_INIT_ENV=true
+    updateConfigVar PIXELFED_INIT_ENV $PIXELFED_INIT_ENV
+  fi
+  set +e
+  sleep 3
+  docker exec pixelfed-app bash -c "php artisan ldap:import users --filter \"(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)\" -n -q" >/dev/null
+  docker exec pixelfed-app bash -c "yes | php artisan user:admin $LDAP_ADMIN_USER_USERNAME" >/dev/null
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_PIXELFED.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://pixelfed-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_PIXELFED $MANAGETLS_PIXELFED "$is_integrate_hshq" $NETDEFAULT_PIXELFED "$inner_block"
+  insertSubAuthelia $SUB_PIXELFED.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll pixelfed "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" "pixelfed.png"
+    restartAllCaddyContainers
+    checkAddDBConnection true pixelfed "$FMLNAME_PIXELFED" mysql pixelfed-db $PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_USER $PIXELFED_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigPixelfed()
+{
+  cat <<EOFMT > $HOME/pixelfed-compose.yml
+$STACK_VERSION_PREFIX pixelfed $(getScriptStackVersion pixelfed)
+
+services:
+  pixelfed-db:
+    image: $(getScriptImageByContainerName pixelfed-db)
+    container_name: pixelfed-db
+    hostname: pixelfed-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --default-authentication-plugin=mysql_native_password --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-pixelfed-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-pixelfed-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/pixelfed/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.pixelfed-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.pixelfed-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.pixelfed-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.pixelfed-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.pixelfed-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.pixelfed-hourly-db.email-from=Pixelfed Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.pixelfed-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.pixelfed-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.pixelfed-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.pixelfed-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.pixelfed-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.pixelfed-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.pixelfed-monthly-db.email-from=Pixelfed Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.pixelfed-monthly-db.mail-only-on-error=false"
+
+  pixelfed-app:
+    image: $(getScriptImageByContainerName pixelfed-app)
+    container_name: pixelfed-app
+    hostname: pixelfed-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - pixelfed-db
+      - pixelfed-redis
+    networks:
+      - int-pixelfed-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/pixelfed/ldap.conf:/etc/ldap/ldap.conf
+      - \${HSHQ_SSL_DIR}/pixelfed-app.crt:/ldapcerts/pixelfed-app.crt
+      - \${HSHQ_SSL_DIR}/pixelfed-app.key:/ldapcerts/pixelfed-app.key
+      - v-pixelfed-appstorage:/var/www/storage
+      - v-pixelfed-appbootstrapcache:/var/www/bootstrap/cache
+      - \${HSHQ_STACKS_DIR}/pixelfed/docker.env:/var/www/.env
+
+  pixelfed-worker:
+    image: $(getScriptImageByContainerName pixelfed-worker)
+    container_name: pixelfed-worker
+    hostname: pixelfed-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: gosu www-data php artisan horizon
+    depends_on:
+      - pixelfed-app
+      - pixelfed-db
+      - pixelfed-redis
+    networks:
+      - int-pixelfed-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/pixelfed/ldap.conf:/etc/ldap/ldap.conf
+      - \${HSHQ_SSL_DIR}/pixelfed-app.crt:/ldapcerts/pixelfed-app.crt
+      - \${HSHQ_SSL_DIR}/pixelfed-app.key:/ldapcerts/pixelfed-app.key
+      - v-pixelfed-appstorage:/var/www/storage
+      - v-pixelfed-appbootstrapcache:/var/www/bootstrap/cache
+      - \${HSHQ_STACKS_DIR}/pixelfed/docker.env:/var/www/.env
+
+  pixelfed-redis:
+    image: $(getScriptImageByContainerName pixelfed-redis)
+    container_name: pixelfed-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-pixelfed-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-pixelfed-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$PIXELFED_REDIS_PASSWORD
+
+volumes:
+  v-pixelfed-appstorage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/pixelfed/appstorage
+  v-pixelfed-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/pixelfed/db
+  v-pixelfed-appbootstrapcache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/pixelfed/appbootstrapcache
+  v-pixelfed-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/pixelfed/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-pixelfed-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMT
+  cat <<EOFMT > $HOME/pixelfed.env
+TZ=\${TZ}
+UID=${USERID}
+GID=${GROUPID}
+MYSQL_DATABASE=$PIXELFED_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$PIXELFED_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$PIXELFED_DATABASE_USER
+MYSQL_PASSWORD=$PIXELFED_DATABASE_USER_PASSWORD
+REDIS_PASSWORD=$PIXELFED_REDIS_PASSWORD
+EOFMT
+  cat <<EOFPF > $HSHQ_STACKS_DIR/pixelfed/docker.env
+APP_NAME="Pixelfed"
+APP_ENV="production"
+APP_KEY=
+APP_DEBUG="false"
+OPEN_REGISTRATION="false"
+ENFORCE_EMAIL_VERIFICATION="false"
+PF_MAX_USERS="1000"
+OAUTH_ENABLED="true"
+ENABLE_CONFIG_CACHE=true
+INSTANCE_DISCOVER_PUBLIC="true"
+PF_OPTIMIZE_IMAGES="true"
+IMAGE_QUALITY="80"
+MAX_PHOTO_SIZE="15000"
+MAX_CAPTION_LENGTH="500"
+MAX_ALBUM_LENGTH="4"
+APP_URL="https://$SUB_PIXELFED.$HOMESERVER_DOMAIN"
+APP_DOMAIN="$SUB_PIXELFED.$HOMESERVER_DOMAIN"
+ADMIN_DOMAIN="$SUB_PIXELFED.$HOMESERVER_DOMAIN"
+SESSION_DOMAIN="$SUB_PIXELFED.$HOMESERVER_DOMAIN"
+TRUST_PROXIES="*"
+DB_CONNECTION="mysql"
+DB_HOST="pixelfed-db"
+DB_PORT="3306"
+DOCKER_DB_HOST_PORT="3306"
+DB_DATABASE="$PIXELFED_DATABASE_NAME"
+DB_USERNAME="$PIXELFED_DATABASE_USER"
+DB_PASSWORD="$PIXELFED_DATABASE_USER_PASSWORD"
+REDIS_CLIENT="predis"
+REDIS_SCHEME="tcp"
+REDIS_HOST="pixelfed-redis"
+REDIS_PASSWORD="$PIXELFED_REDIS_PASSWORD"
+REDIS_PORT="6379"
+SESSION_DRIVER="database"
+CACHE_DRIVER="redis"
+QUEUE_DRIVER="redis"
+BROADCAST_DRIVER="log"
+LOG_CHANNEL="stack"
+HORIZON_PREFIX="horizon-"
+ACTIVITY_PUB="true"
+AP_REMOTE_FOLLOW="true"
+AP_INBOX="false"
+AP_OUTBOX="false"
+AP_SHAREDINBOX="false"
+EXP_EMC="true"
+MAIL_DRIVER=smtp
+MAIL_HOST=$SMTP_HOSTNAME
+MAIL_PORT=$SMTP_HOSTPORT
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_ENCRYPTION=tls
+MAIL_FROM_ADDRESS="$EMAIL_ADMIN_EMAIL_ADDRESS"
+MAIL_FROM_NAME="Pixelfed $(getAdminEmailName)"
+INSTANCE_CONTACT_EMAIL="$EMAIL_ADMIN_EMAIL_ADDRESS"
+PF_ENABLE_CLOUD=false
+FILESYSTEM_CLOUD=s3
+LDAP_LOGGING=false
+LDAP_CONNECTION=default
+LDAP_CONNECTIONS=default
+LDAP_DEFAULT_HOSTS=ldapserver
+LDAP_DEFAULT_PORT=389
+LDAP_DEFAULT_USERNAME="$LDAP_READONLY_USER_BIND_DN"
+LDAP_DEFAULT_PASSWORD="$LDAP_READONLY_USER_PASSWORD"
+LDAP_DEFAULT_BASE_DN="$LDAP_BASE_DN"
+LDAP_DEFAULT_TIMEOUT=5
+LDAP_DEFAULT_SSL=false
+LDAP_DEFAULT_TLS=true
+LDAP_GROUPFILTER="cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN"
+DOCKER_PROXY_PROFILE="disabled"
+DOCKER_APP_PHP_VERSION="8.3"
+DOCKER_APP_RUNTIME="fpm"
+DOCKER_APP_DEBIAN_RELEASE="bookworm"
+DOCKER_APP_BASE_TYPE="fpm"
+EOFPF
+  cat <<EOFPF > $HSHQ_STACKS_DIR/pixelfed/ldap.conf
+TLS_CERT /ldapcerts/pixelfed-app.crt
+TLS_KEY /ldapcerts/pixelfed-app.key
+TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+TLS_REQCERT never
+TLS_REQSAN never
+EOFPF
+}
+
+function buildImagePixelfed()
+{
+  img_ver=v0.12.5.tar.gz
+  cd $HSHQ_BUILD_DIR
+  sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
+  wget -q4 -O $HSHQ_BUILD_DIR/pixelfed.tar.gz https://github.com/pixelfed/pixelfed/archive/refs/tags/$img_ver
+  tar xvzf ./pixelfed.tar.gz >/dev/null
+  rm -f ./pixelfed.tar.gz
+  cd pixelfed*
+  rm -f app/Http/Controllers/Auth/LoginController.php
+  cat <<EOFPF > app/Http/Controllers/Auth/LoginController.php
+<?php
+
+namespace App\Http\Controllers\Auth;
+
+use App\AccountLog;
+use App\Http\Controllers\Controller;
+use App\User;
+use Illuminate\Foundation\Auth\AuthenticatesUsers;
+use App\Services\BouncerService;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
+class LoginController extends Controller
+{
+    /*
+    |--------------------------------------------------------------------------
+    | Login Controller
+    |--------------------------------------------------------------------------
+    |
+    | This controller handles authenticating users for the application and
+    | redirecting them to your home screen. The controller uses a trait
+    | to conveniently provide its functionality to your applications.
+    |
+    */
+
+    use AuthenticatesUsers;
+
+    /**
+     * Where to redirect users after login.
+     *
+     * @var string
+     */
+    protected \$redirectTo = '/i/web';
+
+    protected \$maxAttempts = 5;
+    protected \$decayMinutes = 60;
+
+    /**
+     * Create a new controller instance.
+     *
+     * @return void
+     */
+    public function __construct()
+    {
+        \$this->middleware('guest')->except('logout');
+    }
+
+    public function showLoginForm()
+    {
+                if(config('pixelfed.bouncer.cloud_ips.ban_logins')) {
+                        abort_if(BouncerService::checkIp(request()->ip()), 404);
+                }
+
+        return view('auth.login');
+    }
+
+    protected function credentials(Request \$request)
+    {
+        return [
+            'mail' => \$request->email,
+            'password' => \$request->password,
+        ];
+    }
+
+    /**
+     * Validate the user login request.
+     *
+     * @param \Illuminate\Http\Request \$request
+     *
+     * @return void
+     */
+    public function validateLogin(\$request)
+    {
+        if(config('pixelfed.bouncer.cloud_ips.ban_logins')) {
+                        abort_if(BouncerService::checkIp(\$request->ip()), 404);
+                }
+
+        \$rules = [
+            \$this->username() => 'required|email',
+            'password'        => 'required|string|min:6',
+        ];
+        \$messages = [];
+
+        if(
+                (bool) config_cache('captcha.enabled') &&
+                (bool) config_cache('captcha.active.login') ||
+                (
+                                (bool) config_cache('captcha.triggers.login.enabled') &&
+                                request()->session()->has('login_attempts') &&
+                                request()->session()->get('login_attempts') >= config('captcha.triggers.login.attempts')
+                        )
+        ) {
+            \$rules['h-captcha-response'] = 'required|filled|captcha|min:5';
+            \$messages['h-captcha-response.required'] = 'The captcha must be filled';
+        }
+        \$request->validate(\$rules, \$messages);
+    }
+
+    /**
+     * The user has been authenticated.
+     *
+     * @param \Illuminate\Http\Request \$request
+     * @param mixed                    \$user
+     *
+     * @return mixed
+     */
+    protected function authenticated(\$request, \$user)
+    {
+        if(\$user->status == 'deleted') {
+            return;
+        }
+
+        \$log = new AccountLog();
+        \$log->user_id = \$user->id;
+        \$log->item_id = \$user->id;
+        \$log->item_type = 'App\User';
+        \$log->action = 'auth.login';
+        \$log->message = 'Account Login';
+        \$log->link = null;
+        \$log->ip_address = \$request->ip();
+        \$log->user_agent = \$request->userAgent();
+        \$log->save();
+    }
+
+    /**
+     * Get the failed login response instance.
+     *
+     * @param  \Illuminate\Http\Request  \$request
+     * @return \Symfony\Component\HttpFoundation\Response
+     *
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    protected function sendFailedLoginResponse(Request \$request)
+    {
+        if(config('captcha.triggers.login.enabled')) {
+                        if (\$request->session()->has('login_attempts')) {
+                                \$ct = \$request->session()->get('login_attempts');
+                                \$request->session()->put('login_attempts', \$ct + 1);
+                        } else {
+                                \$request->session()->put('login_attempts', 1);
+                        }
+        }
+
+        throw ValidationException::withMessages([
+            \$this->username() => [trans('auth.failed')],
+        ]);
+    }
+}
+EOFPF
+  mkdir -p app/Ldap/Rules
+  rm -f app/Ldap/Rules/OnlyPixelfedUsers.php
+  cat <<EOFPF > app/Ldap/Rules/OnlyPixelfedUsers.php
+<?php
+
+namespace App\Ldap\Rules;
+
+use Illuminate\Database\Eloquent\Model as Eloquent;
+use LdapRecord\Laravel\Auth\Rule;
+use LdapRecord\Models\Model as LdapRecord;
+use LdapRecord\Models\OpenLDAP\Group;
+
+class OnlyPixelfedUsers implements Rule
+{
+    /**
+     * Check if the rule passes validation.
+     *
+     * @return bool
+     */
+    public function passes(LdapRecord \$user, Eloquent \$model = null): bool
+    {
+        \$groupSearch = \config('ldap.groupfilter');
+        return \$user->groups()->exists(
+            Group::findOrFail(\$groupSearch)
+        );
+    }
+}
+EOFPF
+  rm -f app/User.php
+  cat <<EOFPF > app/User.php
+<?php
+
+namespace App;
+
+use App\Services\AvatarService;
+use LdapRecord\Laravel\Auth\LdapAuthenticatable;
+use LdapRecord\Laravel\Auth\AuthenticatesWithLdap;
+use App\Util\RateLimit\User as UserRateLimit;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Passport\HasApiTokens;
+use NotificationChannels\WebPush\HasPushSubscriptions;
+
+class User extends Authenticatable implements LdapAuthenticatable
+{
+    use HasApiTokens, HasFactory, HasPushSubscriptions, Notifiable, SoftDeletes, UserRateLimit, AuthenticatesWithLdap;
+
+    /**
+     * The attributes that should be mutated to dates.
+     *
+     * @var array
+     */
+    protected function casts(): array
+    {
+        return [
+            'deleted_at' => 'datetime',
+            'email_verified_at' => 'datetime',
+            '2fa_setup_at' => 'datetime',
+            'last_active_at' => 'datetime',
+        ];
+    }
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array
+     */
+    protected \$fillable = [
+        'name',
+        'username',
+        'email',
+        'password',
+        'app_register_ip',
+        'email_verified_at',
+        'last_active_at',
+        'register_source',
+        'expo_token',
+        'notify_enabled',
+        'notify_like',
+        'notify_follow',
+        'notify_mention',
+        'notify_comment',
+    ];
+
+    /**
+     * The attributes that should be hidden for arrays.
+     *
+     * @var array
+     */
+    protected \$hidden = [
+        'email', 'password', 'is_admin', 'remember_token',
+        'email_verified_at', '2fa_enabled', '2fa_secret',
+        '2fa_backup_codes', '2fa_setup_at', 'deleted_at',
+        'updated_at',
+    ];
+
+    public function profile()
+    {
+        return \$this->hasOne(Profile::class);
+    }
+
+    public function url()
+    {
+        return url(config('app.url').'/'.\$this->username);
+    }
+
+    public function settings()
+    {
+        return \$this->hasOne(UserSetting::class);
+    }
+
+    public function statuses()
+    {
+        return \$this->hasManyThrough(
+            Status::class,
+            Profile::class
+        );
+    }
+
+    public function filters()
+    {
+        return \$this->hasMany(UserFilter::class, 'user_id', 'profile_id');
+    }
+
+    public function receivesBroadcastNotificationsOn()
+    {
+        return 'App.User.'.\$this->id;
+    }
+
+    public function devices()
+    {
+        return \$this->hasMany(UserDevice::class);
+    }
+
+    public function storageUsedKey()
+    {
+        return 'profile:storage:used:'.\$this->id;
+    }
+
+    public function accountLog()
+    {
+        return \$this->hasMany(AccountLog::class);
+    }
+
+    public function interstitials()
+    {
+        return \$this->hasMany(AccountInterstitial::class);
+    }
+
+    public function avatarUrl()
+    {
+        if (! \$this->profile_id || \$this->status) {
+            return config('app.url').'/storage/avatars/default.jpg';
+        }
+
+        return AvatarService::get(\$this->profile_id);
+    }
+
+    public function routeNotificationForExpo()
+    {
+        return \$this->expo_token;
+    }
+}
+EOFPF
+  rm -f config/auth.php
+  cat <<EOFPF > config/auth.php
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Defaults
+    |--------------------------------------------------------------------------
+    |
+    | This option controls the default authentication "guard" and password
+    | reset options for your application. You may change these defaults
+    | as required, but they're a perfect start for most applications.
+    |
+    */
+
+    'defaults' => [
+        'guard'     => 'web',
+        'passwords' => 'users',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authentication Guards
+    |--------------------------------------------------------------------------
+    |
+    | Next, you may define every authentication guard for your application.
+    | Of course, a great default configuration has been defined for you
+    | here which uses session storage and the Eloquent user provider.
+    |
+    | All authentication drivers have a user provider. This defines how the
+    | users are actually retrieved out of your database or other storage
+    | mechanisms used by this application to persist your user's data.
+    |
+    | Supported: "session", "token"
+    |
+    */
+
+    'guards' => [
+        'web' => [
+            'driver'   => 'session',
+            'provider' => 'users',
+        ],
+
+        'api' => [
+            'driver'   => 'passport',
+            'provider' => 'users',
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | User Providers
+    |--------------------------------------------------------------------------
+    |
+    | All authentication drivers have a user provider. This defines how the
+    | users are actually retrieved out of your database or other storage
+    | mechanisms used by this application to persist your user's data.
+    |
+    | If you have multiple user tables or models you may configure multiple
+    | sources which represent each model / table. These sources may then
+    | be assigned to any extra authentication guards you have defined.
+    |
+    | Supported: "database", "eloquent"
+    |
+    */
+
+    'providers' => [
+        'users' => [
+            'driver' => 'ldap',
+            'model' => LdapRecord\Models\OpenLDAP\User::class,
+            'rules' => [
+                App\Ldap\Rules\OnlyPixelfedUsers::class,
+            ],
+            'database' => [
+                'model' => App\User::class,
+                'sync_passwords' => true,
+                'sync_attributes' => [
+                    'username' => 'uid',
+                    'name' => 'cn',
+                    'email' => 'mail',
+                ],
+            ],
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Resetting Passwords
+    |--------------------------------------------------------------------------
+    |
+    | You may specify multiple password reset configurations if you have more
+    | than one user table or model in the application and you want to have
+    | separate password reset settings based on the specific user types.
+    |
+    | The expire time is the number of minutes that the reset token should be
+    | considered valid. This security feature keeps tokens short-lived so
+    | they have less time to be guessed. You may change this as needed.
+    |
+    */
+
+    'passwords' => [
+        'users' => [
+            'provider' => 'users',
+            'table'    => 'password_resets',
+            'expire'   => 60,
+            'throttle' => 60,
+        ],
+    ],
+
+    'in_app_registration' => (bool) env('APP_REGISTER', true),
+];
+EOFPF
+  rm -f config/ldap.php
+  cat <<EOFPF > config/ldap.php
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Default LDAP Connection Name
+    |--------------------------------------------------------------------------
+    |
+    | Here you may specify which of the LDAP connections below you wish
+    | to use as your default connection for all LDAP operations. Of
+    | course you may add as many connections you'd like below.
+    |
+    */
+
+    'default' => env('LDAP_CONNECTION', 'default'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | LDAP Connections
+    |--------------------------------------------------------------------------
+    |
+    | Below you may configure each LDAP connection your application requires
+    | access to. Be sure to include a valid base DN - otherwise you may
+    | not receive any results when performing LDAP search operations.
+    |
+    */
+
+    'connections' => [
+
+        'default' => [
+            'hosts' => [env('LDAP_HOST', '127.0.0.1')],
+            'username' => env('LDAP_USERNAME', 'cn=user,dc=local,dc=com'),
+            'password' => env('LDAP_PASSWORD', 'secret'),
+            'port' => env('LDAP_PORT', 389),
+            'base_dn' => env('LDAP_BASE_DN', 'dc=local,dc=com'),
+            'timeout' => env('LDAP_TIMEOUT', 5),
+            'use_ssl' => env('LDAP_SSL', false),
+            'use_tls' => env('LDAP_TLS', false),
+        ],
+
+    ],
+
+    'groupfilter' => env('LDAP_GROUPFILTER', 'everyone'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | LDAP Logging
+    |--------------------------------------------------------------------------
+    |
+    | When LDAP logging is enabled, all LDAP search and authentication
+    | operations are logged using the default application logging
+    | driver. This can assist in debugging issues and more.
+    |
+    */
+
+    'logging' => env('LDAP_LOGGING', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | LDAP Cache
+    |--------------------------------------------------------------------------
+    |
+    | LDAP caching enables the ability of caching search results using the
+    | query builder. This is great for running expensive operations that
+    | may take many seconds to complete, such as a pagination request.
+    |
+    */
+
+    'cache' => [
+        'enabled' => env('LDAP_CACHE', false),
+        'driver' => env('CACHE_DRIVER', 'file'),
+    ],
+
+];
+EOFPF
+  rm -f Dockerfile
+  cat <<EOFPF > Dockerfile
+# syntax=docker/dockerfile:1
+# See https://hub.docker.com/r/docker/dockerfile
+
+#######################################################
+# Configuration
+#######################################################
+
+# See: https://github.com/mlocati/docker-php-extension-installer
+ARG DOCKER_PHP_EXTENSION_INSTALLER_VERSION="2.1.80"
+
+# See: https://github.com/composer/composer
+ARG COMPOSER_VERSION="2.6"
+
+# See: https://nginx.org/
+ARG NGINX_VERSION="1.25.3"
+
+# See: https://github.com/ddollar/forego
+ARG FOREGO_VERSION="0.17.2"
+
+# See: https://github.com/hairyhenderson/gomplate
+ARG GOMPLATE_VERSION="v3.11.6"
+
+# See: https://github.com/jippi/dottie
+ARG DOTTIE_VERSION="v0.9.5"
+
+ARG APT_PACKAGES_EXTRA="nano libldb-dev libldap2-dev libpq-dev"
+###
+# PHP base configuration
+###
+
+# See: https://hub.docker.com/_/php/tags
+ARG PHP_VERSION="8.3"
+
+# See: https://github.com/docker-library/docs/blob/master/php/README.md#image-variants
+ARG PHP_BASE_TYPE="fpm"
+ARG PHP_DEBIAN_RELEASE="bookworm"
+
+ARG RUNTIME_UID=33 # often called 'www-data'
+ARG RUNTIME_GID=33 # often called 'www-data'
+
+# APT extra packages
+ARG APT_PACKAGES_EXTRA=
+
+# Extensions installed via [pecl install]
+# ! NOTE: imagick is installed from [master] branch on GitHub due to 8.3 bug on ARM that haven't
+# ! been released yet (after +10 months)!
+# ! See: https://github.com/Imagick/imagick/pull/641
+ARG PHP_PECL_EXTENSIONS="redis https://codeload.github.com/Imagick/imagick/tar.gz/28f27044e435a2b203e32675e942eb8de620ee58"
+ARG PHP_PECL_EXTENSIONS_EXTRA=
+
+# Extensions installed via [docker-php-ext-install]
+ARG PHP_EXTENSIONS="intl bcmath zip pcntl exif curl gd ldap"
+ARG PHP_EXTENSIONS_EXTRA=""
+ARG PHP_EXTENSIONS_DATABASE="pdo_pgsql pdo_mysql pdo_sqlite"
+
+# GPG key for nginx apt repository
+ARG NGINX_GPGKEY="573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62"
+
+# GPP key path for nginx apt repository
+ARG NGINX_GPGKEY_PATH="/usr/share/keyrings/nginx-archive-keyring.gpg"
+
+#######################################################
+# Docker "copy from" images
+#######################################################
+
+# Composer docker image from Docker Hub
+#
+# NOTE: Docker will *not* pull this image unless it's referenced (via build target)
+FROM composer:\${COMPOSER_VERSION} AS composer-image
+
+# php-extension-installer image from Docker Hub
+#
+# NOTE: Docker will *not* pull this image unless it's referenced (via build target)
+FROM mlocati/php-extension-installer:\${DOCKER_PHP_EXTENSION_INSTALLER_VERSION} AS php-extension-installer
+
+# nginx webserver from Docker Hub.
+# Used to copy some docker-entrypoint files for [nginx-runtime]
+#
+# NOTE: Docker will *not* pull this image unless it's referenced (via build target)
+FROM nginx:\${NGINX_VERSION} AS nginx-image
+
+# Forego is a Procfile "runner" that makes it trival to run multiple
+# processes under a simple init / PID 1 process.
+#
+# NOTE: Docker will *not* pull this image unless it's referenced (via build target)
+#
+# See: https://github.com/nginx-proxy/forego
+FROM nginxproxy/forego:\${FOREGO_VERSION}-debian AS forego-image
+
+# Dottie makes working with .env files easier and safer
+#
+# NOTE: Docker will *not* pull this image unless it's referenced (via build target)
+#
+# See: https://github.com/jippi/dottie
+FROM ghcr.io/jippi/dottie:\${DOTTIE_VERSION} AS dottie-image
+
+# gomplate-image grabs the gomplate binary from GitHub releases
+#
+# It's in its own layer so it can be fetched in parallel with other build steps
+FROM php:\${PHP_VERSION}-\${PHP_BASE_TYPE}-\${PHP_DEBIAN_RELEASE} AS gomplate-image
+
+ARG TARGETARCH
+ARG TARGETOS
+ARG GOMPLATE_VERSION
+
+RUN set -ex \
+    && curl \
+        --silent \
+        --show-error \
+        --location \
+        --output /usr/local/bin/gomplate \
+        https://github.com/hairyhenderson/gomplate/releases/download/\${GOMPLATE_VERSION}/gomplate_\${TARGETOS}-\${TARGETARCH} \
+    && chmod +x /usr/local/bin/gomplate \
+    && /usr/local/bin/gomplate --version
+
+#######################################################
+# Base image
+#######################################################
+
+FROM php:\${PHP_VERSION}-\${PHP_BASE_TYPE}-\${PHP_DEBIAN_RELEASE} AS base
+
+ARG BUILDKIT_SBOM_SCAN_STAGE="true"
+
+ARG APT_PACKAGES_EXTRA
+ARG PHP_DEBIAN_RELEASE
+ARG PHP_VERSION
+ARG RUNTIME_GID
+ARG RUNTIME_UID
+ARG TARGETPLATFORM
+
+ENV DEBIAN_FRONTEND="noninteractive"
+
+# Ensure we run all scripts through 'bash' rather than 'sh'
+SHELL ["/bin/bash", "-c"]
+
+# Set www-data to be RUNTIME_UID/RUNTIME_GID
+RUN groupmod --gid \${RUNTIME_GID} www-data \
+    && usermod --uid \${RUNTIME_UID} --gid \${RUNTIME_GID} www-data
+
+RUN set -ex \
+    && mkdir -pv /var/www/ \
+    && chown -R \${RUNTIME_UID}:\${RUNTIME_GID} /var/www
+
+WORKDIR /var/www/
+
+ENV APT_PACKAGES_EXTRA=\${APT_PACKAGES_EXTRA}
+
+# Install and configure base layer
+COPY docker/shared/root/docker/install/base.sh /docker/install/base.sh
+
+RUN --mount=type=cache,id=pixelfed-apt-\${PHP_VERSION}-\${PHP_DEBIAN_RELEASE}-\${TARGETPLATFORM},sharing=locked,target=/var/lib/apt \
+    --mount=type=cache,id=pixelfed-apt-cache-\${PHP_VERSION}-\${PHP_DEBIAN_RELEASE}-\${TARGETPLATFORM},sharing=locked,target=/var/cache/apt \
+    /docker/install/base.sh
+
+#######################################################
+# PHP: extensions
+#######################################################
+
+FROM base AS php-extensions
+
+ARG PHP_DEBIAN_RELEASE
+ARG PHP_EXTENSIONS
+ARG PHP_EXTENSIONS_DATABASE
+ARG PHP_EXTENSIONS_EXTRA
+ARG PHP_PECL_EXTENSIONS
+ARG PHP_PECL_EXTENSIONS_EXTRA
+ARG PHP_VERSION
+ARG TARGETPLATFORM
+
+COPY --from=php-extension-installer /usr/bin/install-php-extensions /usr/local/bin/
+
+COPY docker/shared/root/docker/install/php-extensions.sh /docker/install/php-extensions.sh
+
+RUN --mount=type=cache,id=pixelfed-pear-\${PHP_VERSION}-\${PHP_DEBIAN_RELEASE}-\${TARGETPLATFORM},sharing=locked,target=/tmp/pear  \
+    --mount=type=cache,id=pixelfed-apt-\${PHP_VERSION}-\${PHP_DEBIAN_RELEASE}-\${TARGETPLATFORM},sharing=locked,target=/var/lib/apt \
+    --mount=type=cache,id=pixelfed-apt-cache-\${PHP_VERSION}-\${PHP_DEBIAN_RELEASE}-\${TARGETPLATFORM},sharing=locked,target=/var/cache/apt \
+    PHP_EXTENSIONS=\${PHP_EXTENSIONS} \
+    PHP_EXTENSIONS_DATABASE=\${PHP_EXTENSIONS_DATABASE} \
+    PHP_EXTENSIONS_EXTRA=\${PHP_EXTENSIONS_EXTRA} \
+    PHP_PECL_EXTENSIONS=\${PHP_PECL_EXTENSIONS} \
+    PHP_PECL_EXTENSIONS_EXTRA=\${PHP_PECL_EXTENSIONS_EXTRA} \
+    /docker/install/php-extensions.sh
+
+#######################################################
+# Node: Build frontend
+#######################################################
+
+# NOTE: Since the nodejs build is CPU architecture agnostic,
+# we only want to build once and cache it for other architectures.
+# We force the (CPU) [--platform] here to be architecture
+# of the "builder"/"server" and not the *target* CPU architecture
+# (e.g.) building the ARM version of Pixelfed on AMD64.
+FROM --platform=\${BUILDARCH} node:lts AS frontend-build
+
+ARG BUILDARCH
+ARG BUILD_FRONTEND=0
+ARG RUNTIME_UID
+ARG RUNTIME_GID
+
+ARG NODE_ENV=production
+ENV NODE_ENV=\$NODE_ENV
+
+WORKDIR /var/www/
+
+SHELL [ "/usr/bin/bash", "-c" ]
+
+# Install NPM dependencies
+RUN --mount=type=cache,id=pixelfed-node-\${BUILDARCH},sharing=locked,target=/tmp/cache \
+    --mount=type=bind,source=package.json,target=/var/www/package.json \
+    --mount=type=bind,source=package-lock.json,target=/var/www/package-lock.json \
+<<EOF
+    if [[ \$BUILD_FRONTEND -eq 1 ]];
+    then
+        npm install --cache /tmp/cache --no-save --dev
+    else
+        echo "Skipping [npm install] as --build-arg [BUILD_FRONTEND] is not set to '1'"
+    fi
+EOF
+
+# Copy the frontend source into the image before building
+COPY --chown=\${RUNTIME_UID}:\${RUNTIME_GID} . /var/www
+
+# Build the frontend with "mix" (See package.json)
+RUN \
+<<EOF
+    if [[ \$BUILD_FRONTEND -eq 1 ]];
+    then
+        npm run production
+    else
+        echo "Skipping [npm run production] as --build-arg [BUILD_FRONTEND] is not set to '1'"
+    fi
+EOF
+
+#######################################################
+# PHP: composer and source code
+#######################################################
+
+FROM php-extensions AS composer-and-src
+
+ARG PHP_VERSION
+ARG PHP_DEBIAN_RELEASE
+ARG RUNTIME_UID
+ARG RUNTIME_GID
+ARG TARGETPLATFORM
+
+# Make sure composer cache is targeting our cache mount later
+ENV COMPOSER_CACHE_DIR="/cache/composer"
+
+# Don't enforce any memory limits for composer
+ENV COMPOSER_MEMORY_LIMIT=-1
+
+# Disable interactvitity from composer
+ENV COMPOSER_NO_INTERACTION=1
+
+# Copy composer from https://hub.docker.com/_/composer
+COPY --link --from=composer-image /usr/bin/composer /usr/bin/composer
+
+#! Changing user to runtime user
+USER \${RUNTIME_UID}:\${RUNTIME_GID}
+
+
+# Install composer dependencies
+# NOTE: we skip the autoloader generation here since we don't have all files avaliable (yet)
+RUN --mount=type=cache,id=pixelfed-composer-\${PHP_VERSION},sharing=locked,uid=\${RUNTIME_UID},gid=\${RUNTIME_GID},target=/cache/composer \
+    --mount=type=bind,source=composer.json,target=/var/www/composer.json \
+    --mount=type=bind,source=composer.lock,target=/var/www/composer.lock \
+    set -ex \
+    && composer install --prefer-dist --no-autoloader --ignore-platform-reqs --no-scripts
+
+# Copy all other files over
+COPY --chown=\${RUNTIME_UID}:\${RUNTIME_GID} . /var/www/
+
+RUN composer require directorytree/ldaprecord-laravel
+
+# Generate optimized autoloader now that we have all files around
+RUN set -ex \
+    && ENABLE_CONFIG_CACHE=false composer dump-autoload --optimize
+
+# Now we can run the post-install scripts
+RUN set -ex \
+    && composer run-script post-update-cmd
+
+#######################################################
+# Runtime: base
+#######################################################
+
+FROM php-extensions AS shared-runtime
+
+ARG RUNTIME_GID
+ARG RUNTIME_UID
+
+ENV RUNTIME_UID=\${RUNTIME_UID}
+ENV RUNTIME_GID=\${RUNTIME_GID}
+
+COPY --link --from=forego-image /usr/local/bin/forego /usr/local/bin/forego
+COPY --link --from=dottie-image /dottie /usr/local/bin/dottie
+COPY --link --from=gomplate-image /usr/local/bin/gomplate /usr/local/bin/gomplate
+COPY --link --from=composer-image /usr/bin/composer /usr/bin/composer
+COPY --link --from=composer-and-src --chown=\${RUNTIME_UID}:\${RUNTIME_GID} /var/www /var/www
+COPY --link --from=frontend-build --chown=\${RUNTIME_UID}:\${RUNTIME_GID} /var/www/public /var/www/public
+
+USER root
+
+# for detail why storage is copied this way, pls refer to https://github.com/pixelfed/pixelfed/pull/2137#discussion_r434468862
+RUN set -ex \
+    && cp --recursive --link --preserve=all storage storage.skel \
+    && rm -rf html && ln -s public html
+
+COPY docker/shared/root /
+
+ENTRYPOINT ["/docker/entrypoint.sh"]
+
+#######################################################
+# Runtime: apache
+#######################################################
+
+FROM shared-runtime AS apache-runtime
+
+COPY docker/apache/root /
+
+RUN set -ex \
+    && a2enmod rewrite remoteip proxy proxy_http \
+    && a2enconf remoteip
+
+CMD ["apache2-foreground"]
+
+#######################################################
+# Runtime: fpm
+#######################################################
+
+FROM shared-runtime AS fpm-runtime
+
+COPY docker/fpm/root /
+
+CMD ["php-fpm"]
+
+#######################################################
+# Runtime: nginx
+#######################################################
+
+FROM shared-runtime AS nginx-runtime
+
+ARG NGINX_GPGKEY
+ARG NGINX_GPGKEY_PATH
+ARG NGINX_VERSION
+ARG PHP_DEBIAN_RELEASE
+ARG PHP_VERSION
+ARG TARGETPLATFORM
+
+# Install nginx dependencies
+RUN --mount=type=cache,id=pixelfed-apt-lists-\${PHP_VERSION}-\${PHP_DEBIAN_RELEASE}-\${TARGETPLATFORM},sharing=locked,target=/var/lib/apt/lists \
+    --mount=type=cache,id=pixelfed-apt-cache-\${PHP_VERSION}-\${PHP_DEBIAN_RELEASE}-\${TARGETPLATFORM},sharing=locked,target=/var/cache/apt \
+    set -ex \
+    && gpg1 --keyserver "hkp://keyserver.ubuntu.com:80" --keyserver-options timeout=10 --recv-keys "\${NGINX_GPGKEY}" \
+    && gpg1 --export "\$NGINX_GPGKEY" > "\$NGINX_GPGKEY_PATH" \
+    && echo "deb [signed-by=\${NGINX_GPGKEY_PATH}] https://nginx.org/packages/mainline/debian/ \${PHP_DEBIAN_RELEASE} nginx" >> /etc/apt/sources.list.d/nginx.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nginx=\${NGINX_VERSION}*
+
+# copy docker entrypoints from the *real* nginx image directly
+COPY --link --from=nginx-image /docker-entrypoint.d /docker/entrypoint.d/
+COPY docker/nginx/root /
+COPY docker/nginx/Procfile .
+
+STOPSIGNAL SIGQUIT
+
+CMD ["forego", "start", "-r"]
+EOFPF
+  rm -f resources/views/settings/home.blade.php
+  cat <<EOFPF > resources/views/settings/home.blade.php
+@extends('settings.template')
+
+@section('section')
+
+        <div class="title">
+                <h3 class="font-weight-bold">{{__('settings.home.account_settings')}}</h3>
+        </div>
+        <hr>
+        <div class="form-group row">
+                <div class="col-sm-3">
+                        <img src="{{Auth::user()->profile->avatarUrl()}}" width="38px" height="38px" class="rounded-circle float-right" draggable="false" onerror="this.src='/storage/avatars/default.jpg?v=0';this.onerror=null;">
+                </div>
+                <div class="col-sm-9">
+                        <p class="lead font-weight-bold mb-0">{{Auth::user()->username}}</p>
+                        <p class="">
+                                <a href="#" class="font-weight-bold change-profile-photo" data-toggle="collapse" data-target="#avatarCollapse" aria-expanded="false" aria-controls="avatarCollapse">{{__('settings.home.change_profile_photo')}}</a>
+                        </p>
+                        <div class="collapse" id="avatarCollapse">
+                                <form method="post" action="/settings/avatar" enctype="multipart/form-data">
+                                @csrf
+                                <div class="card card-body">
+                                        <div class="custom-file mb-1">
+                                                <input type="file" name="avatar" class="custom-file-input" id="avatarInput">
+                                                <label class="custom-file-label" for="avatarInput">{{__('settings.home.select_a_profile_photo')}}</label>
+                                        </div>
+                                        <p><span class="small font-weight-bold">{{__('settings.home.must_be_a_jpeg_or_png_max_avatar_size')}} <span id="maxAvatarSize"></span></span></p>
+                                        <div id="previewAvatar"></div>
+                                        <p class="mb-0"><button type="submit" class="btn btn-primary px-4 py-0 font-weight-bold">{{__('settings.home.upload')}}</button></p>
+                                </div>
+                                </form>
+                        </div>
+                        <p class="">
+                                <a class="font-weight-bold text-muted delete-profile-photo" href="#">{{__('settings.home.delete_profile_photo')}}</a>
+                        </p>
+                </div>
+        </div>
+        <form method="post">
+                @csrf
+                <div class="form-group row">
+                        <label for="name" class="col-sm-3 col-form-label font-weight-bold">{{__('settings.home.name')}}</label>                        <div class="col-sm-9">
+                                <input type="text" class="form-control" id="name" name="name" placeholder="{{__('settings.home.your_name')}}" maxlength="30" value="{{Auth::user()->profile->name}}" v-pre>
+                        </div>
+                </div>
+                <div class="form-group row">
+                        <label for="website" class="col-sm-3 col-form-label font-weight-bold">{{__('settings.home.website')}}</label>
+                        <div class="col-sm-9">
+                                <input type="text" class="form-control" id="website" name="website" placeholder="{{__('settings.home.website')}}" value="{{Auth::user()->profile->website}}" v-pre>
+                        </div>
+                </div>
+                <div class="form-group row">
+                        <label for="bio" class="col-sm-3 col-form-label font-weight-bold">{{__('settings.home.bio')}}</label>
+                        <div class="col-sm-9">
+                                <textarea
+                                        class="form-control"
+                                        id="bio"
+                                        name="bio"
+                                        placeholder="{{__('settings.home.add_a_bio_here')}}"
+                                        rows="2"
+                                        data-max-length="{{config('pixelfed.max_bio_length')}}"
+                                        maxlength="{{config('pixelfed.max_bio_length')}}"
+                                        v-pre>{{strip_tags(Auth::user()->profile->bio)}}</textarea>
+                                <p class="form-text">
+                                        <span class="bio-counter float-right small text-muted">0/{{config('pixelfed.max_bio_length')}}</span>
+                                </p>
+                        </div>
+                </div>
+                <div class="form-group row">
+                        <label for="language" class="col-sm-3 col-form-label font-weight-bold">{{__('settings.home.language')}}</label>
+                        <div class="col-sm-9">
+                                <select class="form-control" name="language">
+                                @foreach(App\Util\Localization\Localization::languages() as \$lang)
+                                        <option value="{{\$lang}}" {{(Auth::user()->language ?? 'en') == \$lang ? 'selected':''}}>{{locale_get_display_language(\$lang, 'en')}} - {{locale_get_display_language(\$lang, \$lang)}}</option>
+                                @endforeach
+                                </select>
+                        </div>
+                </div>
+        @if((bool) config_cache('federation.activitypub.enabled'))
+        <div class="form-group row">
+            <label for="aliases" class="col-sm-3 col-form-label font-weight-bold">{{__('settings.home.account_aliases')}}</label>
+            <div class="col-sm-9" id="aliases">
+                <a class="font-weight-bold" href="/settings/account/aliases/manage">{{__('settings.home.manage_account_alias')}}</a>
+                <p class="help-text text-muted small">{{__('settings.home.to_move_from_another_account_to_this_one_first_etc')}}</p>
+            </div>
+        </div>
+
+        @if((bool) config_cache('federation.migration'))
+        <div class="form-group row">
+            <label for="aliases" class="col-sm-3 col-form-label font-weight-bold">{{__('settings.home.account_migrate')}}</label>
+            <div class="col-sm-9" id="aliases">
+                <a class="font-weight-bold" href="/settings/account/migration/manage">{{__('settings.home.migrate_to_another_account')}}</a>
+                <p class="help-text text-muted small">{{__('settings.home.to_redirect_this_account_to_a_different_one_etc')}}</p>
+            </div>
+        </div>
+        @endif
+        @endif
+                @if(config_cache('pixelfed.enforce_account_limit'))
+                <div class="pt-3">
+                        <p class="font-weight-bold text-muted text-center">{{__('settings.home.storage_usage')}}</p>
+                </div>
+                <div class="form-group row">
+                        <label class="col-sm-3 col-form-label font-weight-bold">{{__('settings.home.storage_used')}}</label>
+                        <div class="col-sm-9">
+                                <div class="progress mt-2">
+                                        <div class="progress-bar" role="progressbar" style="width: {{\$storage['percentUsed']}}%"  aria-valuenow="{{\$storage['percentUsed']}}" aria-valuemin="0" aria-valuemax="100"></div>
+                                </div>
+                                <div class="help-text">
+                                        <span class="small text-muted">
+                                                {{\$storage['percentUsed']}}% used
+                                        </span>
+                                        <span class="small text-muted float-right">
+                                                {{\$storage['usedPretty']}} / {{\$storage['limitPretty']}}
+                                        </span>
+                                </div>
+                        </div>
+                </div>
+                @endif
+                <hr>
+                <div class="form-group row">
+                        <div class="col-12 text-right">
+                                <button type="submit" class="btn btn-primary font-weight-bold py-0 px-5">{{__('settings.submit')}}</button>
+                        </div>
+                </div>
+        </form>
+
+@endsection
+
+@push('scripts')
+<script type="text/javascript">
+
+\$(document).ready(function() {
+                let el = \$('#bio');
+                let len = el.val().length;
+                let limit = el.data('max-length');
+
+                if(len > 100) {
+                        el.attr('rows', '4');
+                }
+
+                let val = len + ' / ' + limit;
+
+                if(len > limit) {
+                        let diff = len - limit;
+                        val = '<span class="text-danger">-' + diff + '</span> / ' + limit;
+                }
+
+                \$('.bio-counter').html(val);
+
+                \$('#bio').on('change keyup paste', function(e) {
+                        let el = \$(this);
+                        let len = el.val().length;
+                        let limit = el.data('max-length');
+
+                        if(len > 100) {
+                                el.attr('rows', '4');
+                        }
+
+                        let val = len + ' / ' + limit;
+
+                        if(len > limit) {
+                                let diff = len - limit;
+                                val = '<span class="text-danger">-' + diff + '</span> / ' + limit;
+                        }
+
+                        \$('.bio-counter').html(val);
+                });
+
+                \$(document).on('click', '.modal-close', function(e) {
+                        swal.close();
+                });
+
+                \$('#maxAvatarSize').text(filesize({{config('pixelfed.max_avatar_size') * 1024}}, {round: 0}));
+
+                \$('#avatarInput').on('change', function(e) {
+                                var file = document.getElementById('avatarInput').files[0];
+                                var reader = new FileReader();
+
+                                reader.addEventListener("load", function() {
+                                                \$('#previewAvatar').html('<img src="' + reader.result + '" class="rounded-circle box-shadow mb-3" width="100%" height="100%"/>');
+                                }, false);
+
+                                if (file) {
+                                                reader.readAsDataURL(file);
+                                }
+                });
+
+                \$('.delete-profile-photo').on('click', function(e) {
+                        e.preventDefault();
+                        if(window.confirm('{{__('settings.home.are_you_sure_you_want_to_delete_your_profile_photo')}}') == false) {
+                                return;
+                        }
+                        axios.delete('/settings/avatar').then(res => {
+                                window.location.href = window.location.href;
+                        }).catch(err => {
+                                swal('{{__('settings.error')}}', '{{__('settings.home.an_error_occured_please_try_again_later')}}', 'error');
+                        });
+                });
+})
+
+</script>
+@endpush
+EOFPF
+  DOCKER_BUILDKIT=1 docker build -t $IMG_PIXELFED_MOD_APP .
+  buildRetVal=$?
+  sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
+  return $buildRetVal
+}
+
+function performUpdatePixelfed()
+{
+  perform_stack_name=pixelfed
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -53750,6 +55236,7 @@ function installExampleService()
   mkdir $HSHQ_STACKS_DIR/exampleservice/db
   mkdir $HSHQ_STACKS_DIR/exampleservice/dbexport
   mkdir $HSHQ_STACKS_DIR/exampleservice/web
+  chmod 777 $HSHQ_STACKS_DIR/exampleservice/dbexport
   initServicesCredentials
   set +e
   docker exec mailu-admin flask mailu alias-delete $EXAMPLESERVICE_ADMIN_EMAIL_ADDRESS
@@ -61135,6 +62622,14 @@ SQLPAD_CONNECTIONS__piped__username=$PIPED_DATABASE_USER
 SQLPAD_CONNECTIONS__piped__password=$PIPED_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__piped__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__piped__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__pixelfed__name=Pixelfed
+SQLPAD_CONNECTIONS__pixelfed__driver=mysql
+SQLPAD_CONNECTIONS__pixelfed__host=pixelfed-db
+SQLPAD_CONNECTIONS__pixelfed__database=$PIXELFED_DATABASE_NAME
+SQLPAD_CONNECTIONS__pixelfed__username=$PIXELFED_DATABASE_USER
+SQLPAD_CONNECTIONS__pixelfed__password=$PIXELFED_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__pixelfed__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__pixelfed__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__shlink__name=Shlink
 SQLPAD_CONNECTIONS__shlink__driver=postgres
 SQLPAD_CONNECTIONS__shlink__host=shlink-db
