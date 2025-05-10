@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=149
+HSHQ_LIB_SCRIPT_VERSION=150
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -13773,6 +13773,7 @@ function insertOIDCClientAuthelia()
     replaceTextBlockInFile "# Authelia OIDC Clients END" "# Authelia OIDC Clients END" "$oidcBlock" $HSHQ_STACKS_DIR/authelia/config/configuration.yml false
   fi
   sed -i '/^$/{:a;N;s/\n$//;ta}' $HSHQ_STACKS_DIR/authelia/config/configuration.yml
+  set +e
   docker container restart authelia > /dev/null 2>&1
   docker ps | grep codeserver > /dev/null 2>&1
   if [ $? -eq 0 ]; then
