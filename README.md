@@ -52,7 +52,7 @@ bash hshq.sh
 5. Open up the HSHQ Web Utility, go to 06 My Network -> 14 Set Up Hosted VPN, to set up your RelayServer
 6. Add/edit your DNS records with your domain name provider - [link](https://wiki.homeserverhq.com/getting-started/installation#h-1-setup-dns) and [link](https://wiki.homeserverhq.com/getting-started/installation#h-5-setup-email-dns-records)
 7. Open up the HSHQ Web Utility, go to 02 Services -> 02 Install All Available Services - [link](https://wiki.homeserverhq.com/getting-started/post-installation)
-8. Profit
+8. Profit - [link](https://rickrolled.com/)
 
 ## Custom ISOs
 Description | Underlying Distro | Custom ISO |
