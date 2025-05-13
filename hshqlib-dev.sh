@@ -1856,7 +1856,7 @@ function initConfig()
       ip_addr=$(getIPAddressOfInterface $add_interface)
       is_private=$(checkIsIPPrivate "$ip_addr")
       chk_subnet=$(getSubnetOfInterface "$add_interface" "$ip_addr" "$is_private")
-      if [ "$(checkNetworkIntersect $chk_subnet 10.0.0.0/8)" = "true" ] && [ $(echo "$chk_subnet" | cut -d"/" -f2) -eq 8 ]; then
+      if ! [ -z "$chk_subnet" ] && [ "$(checkNetworkIntersect $chk_subnet 10.0.0.0/8)" = "true" ] && [ $(echo "$chk_subnet" | cut -d"/" -f2) -eq 8 ]; then
         showMessageBox "Default Interface Error" "You are using the ENTIRE 10.0.0.0/8 network for your home network - a terribly poor design choice. You will not be able to host a VPN or network with anyone. If you want to bypass these safeguards and proceed, then change your settings in /etc/netplan to a static IP and a smaller network and restart the installation."
         exit 6
       else
