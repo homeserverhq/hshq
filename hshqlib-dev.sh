@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=150
+HSHQ_LIB_SCRIPT_VERSION=151
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -1853,7 +1853,15 @@ function initConfig()
     addHSInterface $add_interface true
     retVal=$?
     if [ $retVal -ne 0 ] && [ $retVal -ne 1 ]; then
-      showMessageBox "Default Interface Error" "There was an error with the default interface"
+      ip_addr=$(getIPAddressOfInterface $add_interface)
+      is_private=$(checkIsIPPrivate "$ip_addr")
+      chk_subnet=$(getSubnetOfInterface "$add_interface" "$ip_addr" "$is_private")
+      if [ "$(checkNetworkIntersect $chk_subnet 10.0.0.0/8)" = "true" ] && [ $(echo "$chk_subnet" | cut -d"/" -f2) -eq 8 ]; then
+        showMessageBox "Default Interface Error" "You are using the ENTIRE 10.0.0.0/8 network for your home network - a terribly poor design choice. You will not be able to host a VPN or network with anyone. If you want to bypass these safeguards and proceed, then change your settings in /etc/netplan to a static IP and a smaller network and restart the installation."
+        exit 6
+      else
+        showMessageBox "Default Interface Error" "There was an error with the default interface"
+      fi
       add_interface=""
       is_add_error=true
     fi
