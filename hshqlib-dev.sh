@@ -1276,10 +1276,10 @@ function checkSupportedHostOS()
     echo "@                                                                      @"
     echo "@ This installation only supports the following Linux distribution(s): @"
     echo "@                                                                      @"
-    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
-    echo "@  - Ubuntu 24.04 (Noble Numbat)        [Stable]                       @"
-    echo "@  - Debian 12 (Bookworm)               [Stable]                       @"
-    echo "@  - Mint 22 (Wilma)                    [Stable]                       @"
+    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+    echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
+    echo "@  - Debian 12 (Bookworm)                                              @"
+    echo "@  - Mint 22 (Wilma)                                                   @"
     echo "@                                                                      @"
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   fi
@@ -2259,7 +2259,6 @@ function initInstallation()
       echo "Unknown response, please try again."
     fi
   done
-  isRelayInstallInit=false
   while true;
   do
     echo -e "\n\n________________________________________________________________________\n"
@@ -2280,8 +2279,6 @@ function initInstallation()
     loadSSHKey
     ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -d" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
-    unset USER_RELAY_SUDO_PW
-    USER_RELAY_SUDO_PW=""
   fi
   set -e
   sudo -v
@@ -5443,6 +5440,7 @@ RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 RELAYSERVER_HSHQ_SECRETS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/secrets
 RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/stacks
 RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
+TMP_RS_CHECKDIR=/tmp/rscheckdir
 
 function main()
 {
@@ -5464,7 +5462,9 @@ function main()
   done
   shift "\$((\$OPTIND -1))"
   set +e
+  rm -fr \$TMP_RS_CHECKDIR
   if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
+    mkdir -p \$TMP_RS_CHECKDIR
     read -s -t 10 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
@@ -5481,7 +5481,7 @@ function main()
         continue
       fi
     done
-    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    rm -fr \$TMP_RS_CHECKDIR
     if [ "\$IS_GET_SUPER" = "true" ]; then
       exit
     fi
@@ -5531,8 +5531,6 @@ function main()
       screen -r "\$scName"
     fi
   fi
-  unset USER_RELAY_SUDO_PW
-  USER_RELAY_SUDO_PW=""
 }
 
 function initScreen()
@@ -5563,7 +5561,19 @@ function initScreen()
       continue
     fi
     screen -S \$screenName -X stuff "bash \$0 -p\n"
+    curCheckCount=0
+    while ! [ -d \$TMP_RS_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
     screen -S \$screenName -X stuff "\$USER_RELAY_SUDO_PW\n"
+    curCheckCount=0
+    while [ -d \$TMP_RS_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
     screen -S \$screenName -X stuff "mkdir \$dirtest2\n"
     curCheckCount=0
     while ! [ -d \$dirtest2 ] && [ \$curCheckCount -lt 5 ]
@@ -5704,10 +5714,10 @@ function checkSupportedHostOS()
   echo "@                                                                      @"
   echo "@ This installation only supports the following Linux distribution(s): @"
   echo "@                                                                      @"
-  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
-  echo "@  - Ubuntu 24.04 (Noble Numbat)        [Stable]                       @"
-  echo "@  - Debian 12 (Bookworm)               [Stable]                       @"
-  echo "@  - Mint 22 (Wilma)                    [Stable]                       @"
+  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
+  echo "@  - Debian 12 (Bookworm)                                              @"
+  echo "@  - Mint 22 (Wilma)                                                   @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   rm -fr /tmp/hshqopen
@@ -5717,10 +5727,10 @@ function checkSupportedHostOS()
 function install()
 {
   checkSupportedHostOS
-  echo "The installation process is ready to initiate."
-  echo "You can safely exit the screen after it starts"
-  echo "by pressing CTRL-a, then release, then press d"
-  echo "to detach. Enter your password to start."
+  #echo "The installation process is ready to initiate."
+  #echo "You can safely exit the screen after it starts"
+  #echo "by pressing CTRL-a, then release, then press d"
+  #echo "to detach. Enter your password to start."
   sudo -v
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   set -e
@@ -18257,8 +18267,6 @@ function checkUpdateVersion()
     resumeCronService
     set -e
   fi
-  unset USER_RELAY_SUDO_PW
-  USER_RELAY_SUDO_PW=""
 }
 
 function performPreUpdateCheck()
@@ -20684,6 +20692,7 @@ function version152Update()
     outputCoturnConf
     updateCoturnAllowedIPs
   fi
+  echo "Updating adguard env..."
   updateStackEnv adguard modFunAdguardFixMSS
 }
 
