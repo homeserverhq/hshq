@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=151
+HSHQ_LIB_SCRIPT_VERSION=152
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -4141,7 +4141,7 @@ function prepSvcsHostedVPN()
 {
   set +e
   echo "Updating Portainer and Jitsi..."
-  updatePortainerJitsiIPChanges
+  updateSvcsIPChanges
   set +e
   echo "Updating IP tables..."
   checkUpdateAllIPTables prepSvcsHostedVPN
@@ -6046,7 +6046,7 @@ EOFBS
   iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -A INPUT -f -j DROP
 
   # Drop SYN packets with suspicious MSS value
-  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -j DROP > /dev/null 2>&1 || iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -j DROP
 
   # Configure loopback
   iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
@@ -6113,7 +6113,7 @@ fi
   done
 
   iptables -D INPUT -f -j DROP > /dev/null 2>&1
-  iptables -D INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -j DROP > /dev/null 2>&1
   iptables -D INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1
   iptables -D INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1
   iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1
@@ -6847,7 +6847,7 @@ networks:
 EOFAC
 
   cat <<EOFAC > \$HOME/adguard.env
-NOTHING=NOTHING
+GODEBUG=tlskyber=0
 EOFAC
 
   cat <<EOFAD > \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
@@ -8813,7 +8813,7 @@ function connectVPN()
       restartAllCaddyContainers
     fi
   fi
-  updatePortainerJitsiIPChanges
+  updateSvcsIPChanges
   # Add new Caddy container.
   installCaddy $ifaceName $primary_string $ifaceName $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
@@ -11096,7 +11096,7 @@ function removeMyNetworkPrimaryVPN()
   RELAYSERVER_IS_INIT=false
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
-  updatePortainerJitsiIPChanges
+  updateSvcsIPChanges
   checkUpdateAllIPTables removeMyNetworkPrimaryVPN
   resetRelayServerData
 }
@@ -11255,7 +11255,7 @@ function disconnectOtherNetworkHomeServerVPNConnection()
       removeRevertDNS $curPeerDomain $curPeerDomainExtPrefix
     fi
   done
-  updatePortainerJitsiIPChanges
+  updateSvcsIPChanges
   checkUpdateAllIPTables disconnectOtherNetworkHomeServerVPNConnection
   # Notify host that you have disconnected.
   email_subj="HomeServer VPN Disconnect Notice from $HOMESERVER_NAME"
@@ -13374,26 +13374,25 @@ function installStack()
   fi
   sleep 1
   search=$stack_search_string
-  isFound="F"
+  isFound=false
   i=0
   while [ $i -le $max_interval ]
   do
     findtext=$(docker logs $container_name 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping $sleep_interval second(s), total wait=$i seconds..."
     sleep $sleep_interval
     ((i=$i+$sleep_interval))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "$stack_name did not start up correctly..."
     return 1
   fi
   set -e
   sleep 1
-
   rm -f $HOME/$stack_name-json.tmp
   rm -f $HOME/$stack_name-compose.yml
   rm -f $envfile
@@ -18240,6 +18239,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=146
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 152 ]; then
+    echo "Updating to Version 152..."
+    version152Update
+    HSHQ_VERSION=152
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20672,6 +20677,16 @@ function version146Update()
   IS_RESTART_SCRIPTSERVER=true
 }
 
+function version152Update()
+{
+  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    echo "Fixing allowed IPs on coturn stack..."
+    outputCoturnConf
+    updateCoturnAllowedIPs
+  fi
+  updateStackEnv adguard modFunAdguardFixMSS
+}
+
 function updateRelayServerWithScript()
 {
   # This function assumes that a script file
@@ -22276,7 +22291,7 @@ function checkUpdateAllIPTables()
   checkAddRule "$comment" 'sudo iptables -I INPUT -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$comment" -j ACCEPT'
   # Drop SYN packets with suspicious MSS value
   comment="HSHQ_BEGIN INPUT suspicious MSS HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -m comment --comment "$comment" -j DROP'
+  checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -m comment --comment "$comment" -j DROP'
   # Drop invalid packets
   comment="HSHQ_BEGIN INPUT --ctstate INVALID HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -I INPUT -m conntrack --ctstate INVALID -m comment --comment "$comment" -j DROP'
@@ -24290,7 +24305,7 @@ function checkUpdateHostInterface()
   case $iface_operation in
     add|remove|setisprimary|update)
       logHSHQEvent debug "checkUpdateHostInterface Update 6"
-      updatePortainerJitsiIPChanges
+      updateSvcsIPChanges
       logHSHQEvent debug "checkUpdateHostInterface Update 7"
       ;;
   esac
@@ -24373,14 +24388,19 @@ function removeFirewallSubnet()
   checkUpdateAllIPTables removeFirewallSubnet
 }
 
-function updatePortainerJitsiIPChanges()
+function updateSvcsIPChanges()
 {
   if [ "$IS_INSTALLED" = "false" ]; then
     return
   fi
   updatePortainerEnv
-  startStopStack jitsi stop > /dev/null 2>&1
-  startStopStack jitsi start > /dev/null 2>&1
+  set +e
+  docker ps | grep jitsi-web > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    startStopStack jitsi stop > /dev/null 2>&1
+    startStopStack jitsi start > /dev/null 2>&1
+  fi
+  updateCoturnAllowedIPs
 }
 
 function checkHostInterfacesIsChanged()
@@ -25315,6 +25335,7 @@ function loadPinnedDockerImages()
   IMG_NETDATA=netdata/netdata:v2.3.2
   IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
+  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250512_082954
   IMG_NGINX=nginx:1.27.4-alpine
   IMG_NTFY=binwiederhier/ntfy:v2.11.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.9.1
@@ -25383,7 +25404,7 @@ function getScriptStackVersion()
     collabora)
       echo "v7" ;;
     nextcloud)
-      echo "v8" ;;
+      echo "v9" ;;
     jitsi)
       echo "v7" ;;
     matrix)
@@ -25554,6 +25575,7 @@ function pullDockerImages()
   pullImage $IMG_NETDATA
   pullImage $IMG_NEXTCLOUD_APP
   pullImage $IMG_NEXTCLOUD_IMAGINARY
+  pullImage $IMG_NEXTCLOUD_TALKHPB
   pullImage $IMG_JITSI_WEB
   pullImage $IMG_JITSI_PROSODY
   pullImage $IMG_JITSI_JICOFO
@@ -25978,6 +26000,8 @@ NEXTCLOUD_EMAIL_FROM_ADDRESS=
 DEFAULT_PHONE_REGION=US
 NEXTCLOUD_IMAGINARY_PORT=7557
 NEXTCLOUD_PUSH_PORT=7867
+NEXTCLOUD_TALKHPB_SIGNALING_SECRET=
+NEXTCLOUD_TALKHPB_INTERNAL_SECRET=
 # Nextcloud (Service Details) END
 
 # Matrix (Service Details) BEGIN
@@ -26736,6 +26760,14 @@ function initServicesCredentials()
   if [ -z "$NEXTCLOUD_DATABASE_USER_PASSWORD" ]; then
     NEXTCLOUD_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar NEXTCLOUD_DATABASE_USER_PASSWORD $NEXTCLOUD_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$NEXTCLOUD_TALKHPB_SIGNALING_SECRET" ]; then
+    NEXTCLOUD_TALKHPB_SIGNALING_SECRET=$(openssl rand --hex 32)
+    updateConfigVar NEXTCLOUD_TALKHPB_SIGNALING_SECRET $NEXTCLOUD_TALKHPB_SIGNALING_SECRET
+  fi
+  if [ -z "$NEXTCLOUD_TALKHPB_INTERNAL_SECRET" ]; then
+    NEXTCLOUD_TALKHPB_INTERNAL_SECRET=$(openssl rand --hex 32)
+    updateConfigVar NEXTCLOUD_TALKHPB_INTERNAL_SECRET $NEXTCLOUD_TALKHPB_INTERNAL_SECRET
   fi
   if [ -z "$MATRIX_DATABASE_NAME" ]; then
     MATRIX_DATABASE_NAME="matrixdb"
@@ -27778,6 +27810,7 @@ function initServiceVars()
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
+  checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
@@ -28173,6 +28206,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MEALIE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
@@ -28769,6 +28803,9 @@ function getScriptImageByContainerName()
     "nextcloud-web")
       container_image=$IMG_NGINX
       ;;
+    "nextcloud-talkhpb")
+      container_image=$IMG_NEXTCLOUD_TALKHPB
+      ;;
     "jitsi-web")
       container_image=$IMG_JITSI_WEB
       ;;
@@ -29324,6 +29361,8 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
   checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
   checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET="
+
 }
 
 function importDBs()
@@ -29500,7 +29539,7 @@ GID=$GROUPID
 EOFPC
   chmod 600 $HSHQ_STACKS_DIR/portainer/portainer.env
   echo "HOMESERVER_HOST_PRIMARY_INTERFACE_IP=${HOMESERVER_HOST_PRIMARY_INTERFACE_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-  ALL_INTERFACE_IPS=""
+  ALL_INTERFACE_IPS="$(getAllInterfaceIPs)"
   ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
   for curID in "${ifListDBID[@]}"
   do
@@ -29512,27 +29551,39 @@ EOFPC
     if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
       echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
       echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-      if ! [ "$curIF_IP" = "127.0.0.1" ]; then
-        if [ -z "$ALL_INTERFACE_IPS" ]; then
-          ALL_INTERFACE_IPS="${curIF_IP}"
-        else
-          ALL_INTERFACE_IPS="$ALL_INTERFACE_IPS","${curIF_IP}"
-        fi
-      fi
-    fi
-  done
-
-  ipListArr=($(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
-  for curIP in "${ipListArr[@]}"
-  do
-    if [ -z "$ALL_INTERFACE_IPS" ]; then
-      ALL_INTERFACE_IPS="${curIP}"
-    else
-      ALL_INTERFACE_IPS="$ALL_INTERFACE_IPS,${curIP}"
     fi
   done
   echo "ALL_INTERFACE_IPS=${ALL_INTERFACE_IPS}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
   chown $USERID:$GROUPID $HSHQ_STACKS_DIR/portainer/portainer.env
+}
+
+function getAllInterfaceIPs()
+{
+  all_iface_ips=""
+  ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
+  for curID in "${ifListDBID[@]}"
+  do
+    curIF_IP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID = $curID;")
+    if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+      if ! [ "$curIF_IP" = "127.0.0.1" ]; then
+        if [ -z "$all_iface_ips" ]; then
+          all_iface_ips="${curIF_IP}"
+        else
+          all_iface_ips="$all_iface_ips","${curIF_IP}"
+        fi
+      fi
+    fi
+  done
+  ipListArr=($(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
+  for curIP in "${ipListArr[@]}"
+  do
+    if [ -z "$all_iface_ips" ]; then
+      all_iface_ips="${curIP}"
+    else
+      all_iface_ips="$all_iface_ips,${curIP}"
+    fi
+  done
+  echo "$all_iface_ips"
 }
 
 function performUpdatePortainer()
@@ -29723,8 +29774,7 @@ EOFAC
 
   cat <<EOFAD > $HOME/adguard.env
 NET_EXTERNAL_SUBNET_PREFIX=$NET_EXTERNAL_SUBNET_PREFIX
-UID=$USERID
-GID=$GROUPID
+GODEBUG=tlskyber=0
 EOFAD
 
   cat <<EOFAD > $HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
@@ -29957,6 +30007,17 @@ os:
   rlimit_nofile: 0
 schema_version: 27
 EOFAD
+}
+
+function modFunAdguardFixMSS()
+{
+  set +e
+  grep "GODEBUG=tlskyber" $HOME/adguard.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "GODEBUG=tlskyber=0" >> $HOME/adguard.env
+  else
+    return 2
+  fi
 }
 
 function performUpdateAdGuard()
@@ -35659,6 +35720,10 @@ function installNextcloud()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   if ! [ -d $HSHQ_STACKS_DIR/coturn ]; then
     echo "Missing coturn, installing..."
     installCoturn
@@ -35823,6 +35888,8 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi jitsi_server_url --value="https://$SUB_JITSI.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]"
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}"
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install richdocuments
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments wopi_allowlist --value="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8"
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments public_wopi_url --value="https://$SUB_COLLABORA.$HOMESERVER_DOMAIN"
@@ -35932,6 +35999,26 @@ function installNextcloud()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NEXTCLOUD $MANAGETLS_NEXTCLOUD "$is_integrate_hshq" $NETDEFAULT_NEXTCLOUD "$inner_block"
 
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
+  inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-talkhpb:8081 {\n"
+  inner_block=$inner_block">>>>>>>>>>import trusted-proxy-list\n"
+  inner_block=$inner_block">>>>>>>>>>header_up X-Real-IP {remote_host}\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
+  insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
+
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll nextcloud "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" "nextcloud.png"
     restartAllCaddyContainers
@@ -35994,7 +36081,6 @@ TLS_REQSAN demand
 EOFLC
 
   cat <<EOFNC > $HOME/nextcloud-compose-tmp.yml
-
 services:
   nextcloud-db:
     image: $(getScriptImageByContainerName nextcloud-db)
@@ -36150,6 +36236,31 @@ services:
     environment:
       - PORT=$NEXTCLOUD_IMAGINARY_PORT
 
+  nextcloud-talkhpb:
+    image: $(getScriptImageByContainerName nextcloud-talkhpb)
+    container_name: nextcloud-talkhpb
+    hostname: nextcloud-talkhpb
+    restart: unless-stopped
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
+      - TALK_PORT=$COTURN_PRIMARY_PORT
+      - TURN_SECRET=$COTURN_STATIC_SECRET
+      - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
   nextcloud-web:
     image: $(getScriptImageByContainerName nextcloud-web)
     container_name: nextcloud-web
@@ -36204,6 +36315,20 @@ networks:
 
 EOFNC
 
+  outputComposeNextcloud
+
+  cat <<EOFNC > $HOME/nextcloud.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+REDIS_TLS_ENABLED=no
+EOFNC
+}
+
+function outputComposeNextcloud()
+{
+  rm -f $HOME/nextcloud-compose.yml
   cat <<EOFNC > $HOME/nextcloud-compose.yml
 $STACK_VERSION_PREFIX nextcloud $(getScriptStackVersion nextcloud)
 
@@ -36373,6 +36498,31 @@ services:
     environment:
       - PORT=$NEXTCLOUD_IMAGINARY_PORT
 
+  nextcloud-talkhpb:
+    image: $(getScriptImageByContainerName nextcloud-talkhpb)
+    container_name: nextcloud-talkhpb
+    hostname: nextcloud-talkhpb
+    restart: unless-stopped
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
+      - TALK_PORT=$COTURN_PRIMARY_PORT
+      - TURN_SECRET=$COTURN_STATIC_SECRET
+      - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
   nextcloud-web:
     image: $(getScriptImageByContainerName nextcloud-web)
     container_name: nextcloud-web
@@ -36429,13 +36579,6 @@ networks:
 
 EOFNC
 
-  cat <<EOFNC > $HOME/nextcloud.env
-TZ=\${TZ}
-UID=$USERID
-GID=$GROUPID
-REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-REDIS_TLS_ENABLED=no
-EOFNC
 }
 
 function outputNGINXConfigNextcloud()
@@ -36740,13 +36883,29 @@ function performUpdateNextcloud()
       return
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
       image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudAddTalkHPB
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}"
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      performMaintenanceNextcloud
+      return
+    ;;
+    9)
+      newVer=v9
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine,ghcr.io/nextcloud-releases/aio-talk:20250512_082954
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
+      image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250512_082954"
     ;;
     *)
       is_upgrade_error=true
@@ -36773,6 +36932,33 @@ function performMaintenanceNextcloud()
 function mfNextcloudUpdateNGINXConfig()
 {
   outputNGINXConfigNextcloud
+}
+
+function mfNextcloudAddTalkHPB()
+{
+  set +e
+  initServicesCredentials
+  pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
+  outputComposeNextcloud
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
+  inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-talkhpb:8081 {\n"
+  inner_block=$inner_block">>>>>>>>>>import trusted-proxy-list\n"
+  inner_block=$inner_block">>>>>>>>>>header_up X-Real-IP {remote_host}\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
+  insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
 }
 
 # Jitsi
@@ -50081,11 +50267,16 @@ networks:
     external: true
 
 EOFOF
-
   cat <<EOFRM > $HOME/coturn.env
 TZ=\${TZ}
 EOFRM
+  outputCoturnConf
+  checkAddIPsCoturn
+}
 
+function outputCoturnConf()
+{
+  sudo rm -f $HSHQ_STACKS_DIR/coturn/turnserver.conf
   cat <<EOFRM > $HSHQ_STACKS_DIR/coturn/turnserver.conf
 listening-port=$COTURN_PRIMARY_PORT
 tls-listening-port=$COTURN_SECONDARY_PORT
@@ -50100,13 +50291,78 @@ bps-capacity=0
 stale-nonce=600
 cert=/usr/local/etc/cert.pem
 pkey=/usr/local/etc/key.pem
-no-multicast-peers
 no-rfc5780
 no-stun-backward-compatibility
 response-origin-only-with-rfc5780
 no-cli
+no-multicast-peers
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.0.0.0-192.0.0.255
+denied-peer-ip=192.0.2.0-192.0.2.255
+denied-peer-ip=192.88.99.0-192.88.99.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+denied-peer-ip=198.51.100.0-198.51.100.255
+denied-peer-ip=203.0.113.0-203.0.113.255
+denied-peer-ip=240.0.0.0-255.255.255.255
+denied-peer-ip=::1
+denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+denied-peer-ip=100::-100::ffff:ffff:ffff:ffff
+denied-peer-ip=2001::-2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 EOFRM
+}
 
+function checkAddIPsCoturn()
+{
+  set +e
+  is_any_changed=false
+  ifaceIPsArr=($(echo "$(getAllInterfaceIPs)" | tr "," "\n"))
+  for curIP in "${ifaceIPsArr[@]}"
+  do
+    if [ -z "$curIP" ]; then
+      continue
+    fi
+    grep "allowed-peer-ip=$curIP" $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      is_any_changed=true
+    fi
+  done
+  sed -i "/allowed-peer-ip=.*/d" $HSHQ_STACKS_DIR/coturn/turnserver.conf
+  for curIP in "${ifaceIPsArr[@]}"
+  do
+    if [ -z "$curIP" ]; then
+      continue
+    fi
+    echo "allowed-peer-ip=$curIP" >> $HSHQ_STACKS_DIR/coturn/turnserver.conf
+  done
+  if [ "$is_any_changed" = "true" ]; then
+    return 1
+  fi
+}
+
+function updateCoturnAllowedIPs()
+{
+  set +e
+  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    checkAddIPsCoturn
+    if [ $? -eq 1 ]; then
+      docker ps | grep coturn > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        startStopStack coturn stop > /dev/null 2>&1
+        sleep 1
+        startStopStack coturn start > /dev/null 2>&1
+      fi
+    fi
+  fi
 }
 
 function performUpdateCoturn()
