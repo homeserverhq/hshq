@@ -6897,8 +6897,7 @@ dns:
     - 149.112.112.10
     - 94.140.14.14
     - 94.140.15.15
-  all_servers: false
-  fastest_addr: false
+  upstream_mode: parallel
   fastest_timeout: 1s
   allowed_clients:
     - 127.0.0.0/8
@@ -6975,35 +6974,35 @@ filters:
     url: https://adaway.org/hosts.txt
     name: AdAway Default Blocklist
     id: 2
-  - enabled: true
+  - enabled: false
     url: https://someonewhocares.org/hosts/zero/hosts
     name: Dan Pollock's List
     id: 1657273139
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV-AGH.txt
     name: Perflyst and Dandelion Sprout's Smart-TV Blocklist
     id: 1657273140
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt
     name: WindowsSpyBlocker - Hosts spy rules
     id: 1657273141
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/DandelionSprout/adfilt/master/Alternate%20versions%20Anti-Malware%20List/AntiMalwareAdGuardHome.txt
     name: Dandelion Sprout's Anti-Malware List
     id: 1657273142
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt
     name: NoCoin Filter List
     id: 1657273143
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/durablenapkin/scamblocklist/master/adguard.txt
     name: Scam Blocklist by DurableNapkin
     id: 1657273144
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/mitchellkrogza/The-Big-List-of-Hacked-Malware-Web-Sites/master/hosts
     name: The Big List of Hacked Malware Web Sites
     id: 1657273145
-  - enabled: true
+  - enabled: false
     url: https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh-online.txt
     name: Online Malicious URL Blocklist
     id: 1657273146
@@ -7067,7 +7066,7 @@ filtering:
   blocked_response_ttl: 10
   filtering_enabled: true
   parental_enabled: false
-  safebrowsing_enabled: true
+  safebrowsing_enabled: false
   protection_enabled: true
 clients:
   runtime_sources:
@@ -20699,6 +20698,7 @@ function version152Update()
   fi
   echo "Updating adguard env..."
   updateStackEnv adguard modFunAdguardFixMSS
+  checkUpdateAllIPTables versionUpdate
 }
 
 function updateRelayServerWithScript()
@@ -22338,6 +22338,18 @@ function checkUpdateAllIPTables()
   # Allow NTP for Docker networks
   comment="HSHQ_BEGIN INPUT -s $DOCKER_NETWORK_RESERVED_RANGE -p udp --dport 123 HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -A INPUT -s $DOCKER_NETWORK_RESERVED_RANGE -p udp --dport 123 -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Primary TCP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Primary UDP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Secondary TCP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Secondary UDP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT -m comment --comment "$comment" -j ACCEPT'
 
   if ! [ -z "$IS_INSTALLED" ] && [ "$IS_INSTALLED" = "false" ] && ! [ -z "$CURRENT_SSH_PORT" ] && ! [ "$CURRENT_SSH_PORT" = "$SSH_PORT" ]; then
     comment="HSHQ_BEGIN Temp allow SSH port $CURRENT_SSH_PORT HSHQ_END"
@@ -25350,6 +25362,7 @@ function loadPinnedDockerImages()
   IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
   IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250512_082954
+  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
   IMG_NGINX=nginx:1.27.4-alpine
   IMG_NTFY=binwiederhier/ntfy:v2.11.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.9.1
@@ -25590,6 +25603,7 @@ function pullDockerImages()
   pullImage $IMG_NEXTCLOUD_APP
   pullImage $IMG_NEXTCLOUD_IMAGINARY
   pullImage $IMG_NEXTCLOUD_TALKHPB
+  pullImage $IMG_NEXTCLOUD_TALKRECORD
   pullImage $IMG_JITSI_WEB
   pullImage $IMG_JITSI_PROSODY
   pullImage $IMG_JITSI_JICOFO
@@ -26016,6 +26030,7 @@ NEXTCLOUD_IMAGINARY_PORT=7557
 NEXTCLOUD_PUSH_PORT=7867
 NEXTCLOUD_TALKHPB_SIGNALING_SECRET=
 NEXTCLOUD_TALKHPB_INTERNAL_SECRET=
+NEXTCLOUD_TALKHPB_RECORDING_SECRET=
 # Nextcloud (Service Details) END
 
 # Matrix (Service Details) BEGIN
@@ -26782,6 +26797,10 @@ function initServicesCredentials()
   if [ -z "$NEXTCLOUD_TALKHPB_INTERNAL_SECRET" ]; then
     NEXTCLOUD_TALKHPB_INTERNAL_SECRET=$(openssl rand --hex 32)
     updateConfigVar NEXTCLOUD_TALKHPB_INTERNAL_SECRET $NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+  fi
+  if [ -z "$NEXTCLOUD_TALKHPB_RECORDING_SECRET" ]; then
+    NEXTCLOUD_TALKHPB_RECORDING_SECRET=$(openssl rand --hex 32)
+    updateConfigVar NEXTCLOUD_TALKHPB_RECORDING_SECRET $NEXTCLOUD_TALKHPB_RECORDING_SECRET
   fi
   if [ -z "$MATRIX_DATABASE_NAME" ]; then
     MATRIX_DATABASE_NAME="matrixdb"
@@ -27825,6 +27844,7 @@ function initServiceVars()
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
   checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
+  checkAddSvc "SVCD_NCTALKRECORD=nextcloud,nctalk-record,other,user,Nextcloud Talk Recording,nctalk-record,hshq"
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
@@ -28221,6 +28241,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MEALIE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
@@ -28820,6 +28841,9 @@ function getScriptImageByContainerName()
     "nextcloud-talkhpb")
       container_image=$IMG_NEXTCLOUD_TALKHPB
       ;;
+    "nextcloud-talkrecord")
+      container_image=$IMG_NEXTCLOUD_TALKRECORD
+      ;;
     "jitsi-web")
       container_image=$IMG_JITSI_WEB
       ;;
@@ -29375,7 +29399,7 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
   checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
   checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
-  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET="
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET="
 
 }
 
@@ -29828,8 +29852,7 @@ dns:
     - 149.112.112.10
     - 94.140.14.14
     - 94.140.15.15
-  all_servers: false
-  fastest_addr: false
+  upstream_mode: parallel
   fastest_timeout: 1s
   allowed_clients:
     - 127.0.0.0/8
@@ -29906,35 +29929,35 @@ filters:
     url: https://adaway.org/hosts.txt
     name: AdAway Default Blocklist
     id: 2
-  - enabled: true
+  - enabled: false
     url: https://someonewhocares.org/hosts/zero/hosts
     name: Dan Pollock's List
     id: 1657273139
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV-AGH.txt
     name: Perflyst and Dandelion Sprout's Smart-TV Blocklist
     id: 1657273140
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt
     name: WindowsSpyBlocker - Hosts spy rules
     id: 1657273141
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/DandelionSprout/adfilt/master/Alternate%20versions%20Anti-Malware%20List/AntiMalwareAdGuardHome.txt
     name: Dandelion Sprout's Anti-Malware List
     id: 1657273142
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt
     name: NoCoin Filter List
     id: 1657273143
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/durablenapkin/scamblocklist/master/adguard.txt
     name: Scam Blocklist by DurableNapkin
     id: 1657273144
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/mitchellkrogza/The-Big-List-of-Hacked-Malware-Web-Sites/master/hosts
     name: The Big List of Hacked Malware Web Sites
     id: 1657273145
-  - enabled: true
+  - enabled: false
     url: https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh-online.txt
     name: Online Malicious URL Blocklist
     id: 1657273146
@@ -29997,7 +30020,7 @@ filtering:
   blocked_response_ttl: 10
   filtering_enabled: true
   parental_enabled: false
-  safebrowsing_enabled: true
+  safebrowsing_enabled: false
   protection_enabled: true
 clients:
   runtime_sources:
@@ -35722,6 +35745,10 @@ function installNextcloud()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName nextcloud-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   pullImage $(getScriptImageByContainerName nextcloud-web)
   if [ $? -ne 0 ]; then
     return 1
@@ -35735,6 +35762,10 @@ function installNextcloud()
     return 1
   fi
   pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nextcloud-talkrecord)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -35772,6 +35803,7 @@ function installNextcloud()
     mkdir $HSHQ_STACKS_DIR/nextcloud/dbexport
     mkdir $HSHQ_STACKS_DIR/nextcloud/web
     mkdir $HSHQ_STACKS_DIR/nextcloud/ssl
+    mkdir $HSHQ_STACKS_DIR/nextcloud/record
     chmod 777 $HSHQ_STACKS_DIR/nextcloud/dbexport
     outputConfigNextcloud
     docker compose -f $HOME/nextcloud-compose-tmp.yml up -d
@@ -35901,8 +35933,9 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi display_join_using_the_jitsi_app --value=1
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi jitsi_server_url --value="https://$SUB_JITSI.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi enabled --value="yes"
-  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]"
-  docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}"
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install richdocuments
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments wopi_allowlist --value="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8"
@@ -35913,7 +35946,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_mindmap
   docker exec -u www-data nextcloud-app php occ ldap:create-empty-config
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapAgentName "$LDAP_ADMIN_BIND_DN"
-  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapAgentPassword "$LDAP_ADMIN_BIND_PASSWORD"
+  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapAgentPassword "$LDAP_ADMIN_BIND_PASSWORD" > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapBase "$LDAP_BASE_DN"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapBaseGroups "$LDAP_BASE_DN"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapBaseUsers "$LDAP_BASE_DN"
@@ -36018,7 +36051,8 @@ function installNextcloud()
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
@@ -36032,6 +36066,23 @@ function installNextcloud()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
   insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://nextcloud-talkrecord:1234 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
+  insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll nextcloud "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" "nextcloud.png"
@@ -36056,6 +36107,7 @@ function performNextcloudInstallFailCleanup()
 
 function outputConfigNextcloud()
 {
+  NCTALKRECORD_PYTHON_VER=python3.13
   outputNGINXConfigNextcloud
   cat <<EOFNC > $HSHQ_STACKS_DIR/nextcloud/www.conf
 [www]
@@ -36255,6 +36307,8 @@ services:
     container_name: nextcloud-talkhpb
     hostname: nextcloud-talkhpb
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     networks:
       - int-nextcloud-net
       - dock-proxy-net
@@ -36264,7 +36318,7 @@ services:
     environment:
       - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
       - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
-      - TALK_PORT=$COTURN_PRIMARY_PORT
+      - TALK_PORT=$COTURN_SECONDARY_PORT
       - TURN_SECRET=$COTURN_STATIC_SECRET
       - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
       - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
@@ -36274,6 +36328,41 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  nextcloud-talkrecord:
+    image: $(getScriptImageByContainerName nextcloud-talkrecord)
+    container_name: nextcloud-talkrecord
+    hostname: nextcloud-talkrecord
+    user: "122"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TZ=$TZ
+      - RECORDING_SECRET=$NEXTCLOUD_TALKHPB_RECORDING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+      - SKIP_VERIFY=true
+      - HPB_DOMAIN=$SUB_NCTALKHPB.$HOMESERVER_DOMAIN
+    shm_size: 1073741824
+    read_only: true
+    tmpfs:
+      - /conf
+    cap_drop:
+      - NET_RAW
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/$NCTALKRECORD_PYTHON_VER/site-packages/certifi/cacert.pem:ro
+      - v-nextcloud-record:/tmp:rw
 
   nextcloud-web:
     image: $(getScriptImageByContainerName nextcloud-web)
@@ -36307,6 +36396,12 @@ volumes:
       type: none
       o: bind
       device: $HSHQ_STACKS_DIR/nextcloud/app
+  v-nextcloud-record:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: $HSHQ_STACKS_DIR/nextcloud/record
 
 networks:
   dock-proxy-net:
@@ -36337,6 +36432,7 @@ UID=$USERID
 GID=$GROUPID
 REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
 REDIS_TLS_ENABLED=no
+PYTHON_VER=python3.13
 EOFNC
 }
 
@@ -36517,6 +36613,8 @@ services:
     container_name: nextcloud-talkhpb
     hostname: nextcloud-talkhpb
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     networks:
       - int-nextcloud-net
       - dock-proxy-net
@@ -36526,7 +36624,7 @@ services:
     environment:
       - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
       - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
-      - TALK_PORT=$COTURN_PRIMARY_PORT
+      - TALK_PORT=$COTURN_SECONDARY_PORT
       - TURN_SECRET=$COTURN_STATIC_SECRET
       - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
       - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
@@ -36536,6 +36634,41 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  nextcloud-talkrecord:
+    image: $(getScriptImageByContainerName nextcloud-talkrecord)
+    container_name: nextcloud-talkrecord
+    hostname: nextcloud-talkrecord
+    user: "122"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TZ=\${TZ}
+      - RECORDING_SECRET=$NEXTCLOUD_TALKHPB_RECORDING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+      - SKIP_VERIFY=true
+      - HPB_DOMAIN=$SUB_NCTALKHPB.$HOMESERVER_DOMAIN
+    shm_size: 1073741824
+    read_only: true
+    tmpfs:
+      - /conf
+    cap_drop:
+      - NET_RAW
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - v-nextcloud-record:/tmp:rw
 
   nextcloud-web:
     image: $(getScriptImageByContainerName nextcloud-web)
@@ -36568,6 +36701,12 @@ volumes:
       type: none
       o: bind
       device: \${HSHQ_STACKS_DIR}/nextcloud/app
+  v-nextcloud-record:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/nextcloud/record
 
 networks:
   dock-proxy-net:
@@ -36905,7 +37044,8 @@ function performUpdateNextcloud()
       image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudAddTalkHPB
-      docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}"
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
@@ -36954,12 +37094,18 @@ function mfNextcloudAddTalkHPB()
   initServicesCredentials
   pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
   outputComposeNextcloud
+  grep "PYTHON_VER=" $HOME/nextcloud.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "PYTHON_VER=python3.13" >> $HOME/nextcloud.env
+  fi
+  mkdir -p $HSHQ_STACKS_DIR/nextcloud/record
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
   inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
@@ -36973,6 +37119,23 @@ function mfNextcloudAddTalkHPB()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
   insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://nextcloud-talkrecord:1234 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
+  insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
 }
 
 # Jitsi
@@ -50358,6 +50521,9 @@ function checkAddIPsCoturn()
     fi
     echo "allowed-peer-ip=$curIP" >> $HSHQ_STACKS_DIR/coturn/turnserver.conf
   done
+  ext_subnet_startIP=$(sipcalc $NET_EXTERNAL_SUBNET | grep "^Network range" | rev | cut -d"-" -f2- | xargs | cut -d" " -f1 | rev)
+  ext_subnet_endIP=$(sipcalc $NET_EXTERNAL_SUBNET | grep "^Network range" | rev | cut -d" " -f1 | rev)
+  echo "allowed-peer-ip=${ext_subnet_startIP}-${ext_subnet_endIP}" >> $HSHQ_STACKS_DIR/coturn/turnserver.conf
   if [ "$is_any_changed" = "true" ]; then
     return 1
   fi
@@ -50366,7 +50532,7 @@ function checkAddIPsCoturn()
 function updateCoturnAllowedIPs()
 {
   set +e
-  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+  if [ -f $HSHQ_STACKS_DIR/coturn/turnserver.conf ]; then
     checkAddIPsCoturn
     if [ $? -eq 1 ]; then
       docker ps | grep coturn > /dev/null 2>&1
@@ -50505,7 +50671,7 @@ WS_APP_NAME=$HOMESERVER_NAME FileDrop
 WS_ABUSE_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
 WS_REQUIRE_CRYPTO=1
 TURN_MODE=hmac
-TURN_SERVER=turn:$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT
+TURN_SERVER=turns:$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT
 TURN_USERNAME=filedrop
 TURN_SECRET=$COTURN_STATIC_SECRET
 STUN_SERVER=
