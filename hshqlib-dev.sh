@@ -6056,7 +6056,7 @@ EOFBS
   iptables -C INPUT -f -j DROP > /dev/null 2>&1 || iptables -A INPUT -f -j DROP
 
   # Drop SYN packets with suspicious MSS value
-  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -j DROP > /dev/null 2>&1 || iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -j DROP
+  iptables -C INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1 || iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP
 
   # Configure loopback
   iptables -C INPUT -i lo -j ACCEPT > /dev/null 2>&1 || iptables -A INPUT -i lo -j ACCEPT
@@ -6123,7 +6123,7 @@ fi
   done
 
   iptables -D INPUT -f -j DROP > /dev/null 2>&1
-  iptables -D INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -j DROP > /dev/null 2>&1
+  iptables -D INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -j DROP > /dev/null 2>&1
   iptables -D INPUT -p tcp -m connlimit --connlimit-above 50 -j REJECT --reject-with tcp-reset > /dev/null 2>&1
   iptables -D INPUT -m conntrack --ctstate INVALID -j DROP > /dev/null 2>&1
   iptables -D INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT > /dev/null 2>&1
@@ -8553,7 +8553,7 @@ function uploadVPNInstallScripts()
       pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
       pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
-      SSHPASS="$remote_pw" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
+      SSHPASS="$remote_pw" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && (getent group docker >/dev/null || sudo groupadd docker >/dev/null 2>&1 || true) && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
         showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
@@ -8636,7 +8636,10 @@ EOF
       errmenu=$(cat << EOF
 
 $(getLogo)
-There is a problem logging into the RelayServer host. Press Retry or Cancel.
+
+There is a problem logging into the RelayServer host.
+
+Press Retry or Cancel.
 
 EOF
   )
@@ -8969,6 +8972,7 @@ function resetRelayServerData()
 {
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/backup/*
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/scripts/*
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
 }
 
 function createOrJoinPrimaryVPN()
@@ -11106,10 +11110,10 @@ function removeMyNetworkPrimaryVPN()
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
   RELAYSERVER_IS_INIT=false
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
-  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
+  resetRelayServerData
   updateSvcsIPChanges
   checkUpdateAllIPTables removeMyNetworkPrimaryVPN
-  resetRelayServerData
+
 }
 
 function removeMyNetworkHomeServerVPNConnection()
@@ -22301,7 +22305,7 @@ function checkUpdateAllIPTables()
   checkAddRule "$comment" 'sudo iptables -I INPUT -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$comment" -j ACCEPT'
   # Drop SYN packets with suspicious MSS value
   comment="HSHQ_BEGIN INPUT suspicious MSS HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 2047:65535 -m comment --comment "$comment" -j DROP'
+  checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp -m conntrack --ctstate NEW -m tcpmss ! --mss 536:65535 -m comment --comment "$comment" -j DROP'
   # Drop invalid packets
   comment="HSHQ_BEGIN INPUT --ctstate INVALID HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -I INPUT -m conntrack --ctstate INVALID -m comment --comment "$comment" -j DROP'
