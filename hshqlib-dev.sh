@@ -8563,13 +8563,14 @@ function uploadVPNInstallScripts()
       loadSSHKey
       set +e
       ssh -q -o ConnectTimeout=10 -o "BatchMode=yes" -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP exit
-      if [ $? -ne 0 ]; then
+      is_err=$?
+      if [ $is_err -ne 0 ]; then
         # Key not present
         echo "Adding key to RelayServer..."
         SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
+        is_err=$?
       fi
       unloadSSHKey
-      is_err=$?
       if [ $is_err -eq 0 ]; then
         echo "Logging into RelayServer..."
         loadSSHKey
