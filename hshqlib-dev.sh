@@ -2553,10 +2553,10 @@ EOFHP
   initCronJobs
   encryptConfigFile
   destroy_scroll_area
-  echo -e "\n\n\n\n########################################\n\n"
-  echo "HomeServer Installation Complete!"
-  echo "The system will automatically reboot in 60 seconds..."
-  echo -e "\n\n########################################\n\n"
+  echo -e "\n\n\n\n################################################################\n"
+  echo "               HomeServer Installation Complete!"
+  echo "     The system will automatically reboot in 60 seconds..."
+  echo -e "\n################################################################\n\n"
   sleep 60
   logHSHQEvent info "postInstallation - Rebooting"
   releaseLock hshqopen "postInstallation" false
@@ -36268,7 +36268,7 @@ services:
       - "TRUSTED_PROXIES=$TRUSTED_PROXIES"
       - NEXTCLOUD_DATA_DIR=/var/www/html/data
       - OVERWRITEHOST=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
-      - OVERWRITECLIURL=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITECLIURL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
       - OVERWRITEPROTOCOL=https
 
   nextcloud-cron:
@@ -36567,7 +36567,7 @@ services:
       - nextcloud-redis
     environment:
       - OVERWRITEHOST=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
-      - OVERWRITECLIURL=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITECLIURL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
       - OVERWRITEPROTOCOL=https
 
   nextcloud-cron:
