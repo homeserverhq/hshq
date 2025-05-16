@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=151
+HSHQ_LIB_SCRIPT_VERSION=152
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -1276,10 +1276,10 @@ function checkSupportedHostOS()
     echo "@                                                                      @"
     echo "@ This installation only supports the following Linux distribution(s): @"
     echo "@                                                                      @"
-    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
-    echo "@  - Ubuntu 24.04 (Noble Numbat)        [Stable]                       @"
-    echo "@  - Debian 12 (Bookworm)               [Stable]                       @"
-    echo "@  - Mint 22 (Wilma)                    [Stable]                       @"
+    echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+    echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
+    echo "@  - Debian 12 (Bookworm)                                              @"
+    echo "@  - Mint 22 (Wilma)                                                   @"
     echo "@                                                                      @"
     echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   fi
@@ -2259,7 +2259,6 @@ function initInstallation()
       echo "Unknown response, please try again."
     fi
   done
-  isRelayInstallInit=false
   while true;
   do
     echo -e "\n\n________________________________________________________________________\n"
@@ -2280,8 +2279,6 @@ function initInstallation()
     loadSSHKey
     ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -d" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
-    unset USER_RELAY_SUDO_PW
-    USER_RELAY_SUDO_PW=""
   fi
   set -e
   sudo -v
@@ -2556,10 +2553,10 @@ EOFHP
   initCronJobs
   encryptConfigFile
   destroy_scroll_area
-  echo -e "\n\n\n\n########################################\n\n"
-  echo "HomeServer Installation Complete!"
-  echo "The system will automatically reboot in 60 seconds..."
-  echo -e "\n\n########################################\n\n"
+  echo -e "\n\n\n\n################################################################\n"
+  echo "               HomeServer Installation Complete!"
+  echo "     The system will automatically reboot in 60 seconds..."
+  echo -e "\n################################################################\n\n"
   sleep 60
   logHSHQEvent info "postInstallation - Rebooting"
   releaseLock hshqopen "postInstallation" false
@@ -4141,7 +4138,7 @@ function prepSvcsHostedVPN()
 {
   set +e
   echo "Updating Portainer and Jitsi..."
-  updatePortainerJitsiIPChanges
+  updateSvcsIPChanges
   set +e
   echo "Updating IP tables..."
   checkUpdateAllIPTables prepSvcsHostedVPN
@@ -5443,6 +5440,7 @@ RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 RELAYSERVER_HSHQ_SECRETS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/secrets
 RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/stacks
 RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
+TMP_RS_CHECKDIR=/tmp/rscheckdir
 
 function main()
 {
@@ -5464,7 +5462,9 @@ function main()
   done
   shift "\$((\$OPTIND -1))"
   set +e
+  rm -fr \$TMP_RS_CHECKDIR
   if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
+    mkdir -p \$TMP_RS_CHECKDIR
     read -s -t 10 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
@@ -5481,7 +5481,7 @@ function main()
         continue
       fi
     done
-    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    rm -fr \$TMP_RS_CHECKDIR
     if [ "\$IS_GET_SUPER" = "true" ]; then
       exit
     fi
@@ -5531,8 +5531,6 @@ function main()
       screen -r "\$scName"
     fi
   fi
-  unset USER_RELAY_SUDO_PW
-  USER_RELAY_SUDO_PW=""
 }
 
 function initScreen()
@@ -5563,7 +5561,19 @@ function initScreen()
       continue
     fi
     screen -S \$screenName -X stuff "bash \$0 -p\n"
+    curCheckCount=0
+    while ! [ -d \$TMP_RS_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
     screen -S \$screenName -X stuff "\$USER_RELAY_SUDO_PW\n"
+    curCheckCount=0
+    while [ -d \$TMP_RS_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
     screen -S \$screenName -X stuff "mkdir \$dirtest2\n"
     curCheckCount=0
     while ! [ -d \$dirtest2 ] && [ \$curCheckCount -lt 5 ]
@@ -5704,10 +5714,10 @@ function checkSupportedHostOS()
   echo "@                                                                      @"
   echo "@ This installation only supports the following Linux distribution(s): @"
   echo "@                                                                      @"
-  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)     [Stable]                       @"
-  echo "@  - Ubuntu 24.04 (Noble Numbat)        [Stable]                       @"
-  echo "@  - Debian 12 (Bookworm)               [Stable]                       @"
-  echo "@  - Mint 22 (Wilma)                    [Stable]                       @"
+  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
+  echo "@  - Debian 12 (Bookworm)                                              @"
+  echo "@  - Mint 22 (Wilma)                                                   @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   rm -fr /tmp/hshqopen
@@ -5717,10 +5727,10 @@ function checkSupportedHostOS()
 function install()
 {
   checkSupportedHostOS
-  echo "The installation process is ready to initiate."
-  echo "You can safely exit the screen after it starts"
-  echo "by pressing CTRL-a, then release, then press d"
-  echo "to detach. Enter your password to start."
+  #echo "The installation process is ready to initiate."
+  #echo "You can safely exit the screen after it starts"
+  #echo "by pressing CTRL-a, then release, then press d"
+  #echo "to detach. Enter your password to start."
   sudo -v
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   set -e
@@ -6611,14 +6621,14 @@ function installStack()
   echo "\$(createStackJson \$stack_name \$HOME/\$stack_name-compose.yml "\$envfile")" > \$HOME/\$stack_name-json.tmp
   http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" endpointId==1 @\$HOME/\$stack_name-json.tmp > /dev/null
   search=\$stack_search_string
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ \$i -le 300 ]
   do
     findtext=\$(docker logs \$container_name 2>&1 | grep "\$search")
     if ! [ -z "\$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
@@ -6626,7 +6636,7 @@ function installStack()
     i=\$((i+1))
   done
   set -e
-  if [ \$isFound == "F" ]; then
+  if ! [ "\$isFound" = "true" ]; then
     echo "\$stack_name did not start up correctly..."
     exit 1
   fi
@@ -6682,14 +6692,14 @@ function installPortainer()
 
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ \$i -le 300 ]
   do
     findtext=\$(docker logs portainer 2>&1 | grep "\$search")
     if ! [ -z "\$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
@@ -6697,7 +6707,7 @@ function installPortainer()
     i=\$((i+1))
   done
   set -e
-  if [ \$isFound == "F" ]; then
+  if ! [ "\$isFound" = "true" ]; then
     echo "Portainer did not start up correctly..."
     exit 1
   fi
@@ -6847,7 +6857,7 @@ networks:
 EOFAC
 
   cat <<EOFAC > \$HOME/adguard.env
-NOTHING=NOTHING
+GODEBUG=tlskyber=0
 EOFAC
 
   cat <<EOFAD > \$RELAYSERVER_HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
@@ -6871,6 +6881,8 @@ dns:
   port: 53
   anonymize_client_ip: false
   ratelimit: 0
+  ratelimit_subnet_len_ipv4: 24
+  ratelimit_subnet_len_ipv6: 56
   ratelimit_whitelist: []
   refuse_any: true
   upstream_dns:
@@ -6887,8 +6899,7 @@ dns:
     - 149.112.112.10
     - 94.140.14.14
     - 94.140.15.15
-  all_servers: false
-  fastest_addr: false
+  upstream_mode: parallel
   fastest_timeout: 1s
   allowed_clients:
     - 127.0.0.0/8
@@ -6927,6 +6938,8 @@ dns:
   dns64_prefixes: []
   serve_http3: false
   use_http3_upstreams: false
+  serve_plain_dns: true
+  hostsfile_enabled: true
 tls:
   enabled: true
   server_name: adguard
@@ -6943,6 +6956,7 @@ tls:
   private_key_path: /opt/adguardhome/conf/key.pem
   strict_sni_check: false
 querylog:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -6951,6 +6965,7 @@ querylog:
   enabled: true
   file_enabled: true
 statistics:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -6965,35 +6980,35 @@ filters:
     url: https://adaway.org/hosts.txt
     name: AdAway Default Blocklist
     id: 2
-  - enabled: true
+  - enabled: false
     url: https://someonewhocares.org/hosts/zero/hosts
     name: Dan Pollock's List
     id: 1657273139
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV-AGH.txt
     name: Perflyst and Dandelion Sprout's Smart-TV Blocklist
     id: 1657273140
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt
     name: WindowsSpyBlocker - Hosts spy rules
     id: 1657273141
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/DandelionSprout/adfilt/master/Alternate%20versions%20Anti-Malware%20List/AntiMalwareAdGuardHome.txt
     name: Dandelion Sprout's Anti-Malware List
     id: 1657273142
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt
     name: NoCoin Filter List
     id: 1657273143
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/durablenapkin/scamblocklist/master/adguard.txt
     name: Scam Blocklist by DurableNapkin
     id: 1657273144
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/mitchellkrogza/The-Big-List-of-Hacked-Malware-Web-Sites/master/hosts
     name: The Big List of Hacked Malware Web Sites
     id: 1657273145
-  - enabled: true
+  - enabled: false
     url: https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh-online.txt
     name: Online Malicious URL Blocklist
     id: 1657273146
@@ -7028,6 +7043,19 @@ filtering:
     schedule:
       time_zone: Local
     ids: []
+  protection_disabled_until: null
+  safe_search:
+    enabled: false
+    bing: true
+    duckduckgo: true
+    ecosia: true
+    google: true
+    pixabay: true
+    yandex: true
+    youtube: true
+  blocking_mode: default
+  parental_block_host: family-block.dns.adguard.com
+  safebrowsing_block_host: standard-block.dns.adguard.com
   rewrites:
     - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
       answer: $RELAYSERVER_SERVER_IP
@@ -7037,18 +7065,8 @@ filtering:
       answer: $RELAYSERVER_WG_HS_IP
     - domain: '*.$HOMESERVER_DOMAIN'
       answer: $RELAYSERVER_WG_HS_IP
-  protection_disabled_until: null
-  safe_search:
-    enabled: false
-    bing: true
-    duckduckgo: true
-    google: true
-    pixabay: true
-    yandex: true
-    youtube: true
-  blocking_mode: default
-  parental_block_host: family-block.dns.adguard.com
-  safebrowsing_block_host: standard-block.dns.adguard.com
+  safe_fs_patterns:
+    - /opt/adguardhome/work/data/userfilters/*
   safebrowsing_cache_size: 10485760
   safesearch_cache_size: 10485760
   parental_cache_size: 10485760
@@ -7057,7 +7075,7 @@ filtering:
   blocked_response_ttl: 10
   filtering_enabled: true
   parental_enabled: false
-  safebrowsing_enabled: true
+  safebrowsing_enabled: false
   protection_enabled: true
 clients:
   runtime_sources:
@@ -7068,6 +7086,7 @@ clients:
     hosts: true
   persistent: []
 log:
+  enabled: true
   file: ""
   max_backups: 0
   max_size: 100
@@ -7079,7 +7098,7 @@ os:
   group: ""
   user: ""
   rlimit_nofile: 0
-schema_version: 27
+schema_version: 29
 EOFAD
 }
 
@@ -8543,7 +8562,7 @@ function uploadVPNInstallScripts()
       pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
       pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
       remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
-      SSHPASS="$remote_pw" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && getent group docker >/dev/null || sudo groupadd docker && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
+      SSHPASS="$remote_pw" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && (getent group docker >/dev/null || sudo groupadd docker >/dev/null 2>&1 || true) && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
       is_err=$?
       if [ $is_err -eq 0 ]; then
         showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
@@ -8553,13 +8572,14 @@ function uploadVPNInstallScripts()
       loadSSHKey
       set +e
       ssh -q -o ConnectTimeout=10 -o "BatchMode=yes" -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP exit
-      if [ $? -ne 0 ]; then
+      is_err=$?
+      if [ $is_err -ne 0 ]; then
         # Key not present
         echo "Adding key to RelayServer..."
         SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
+        is_err=$?
       fi
       unloadSSHKey
-      is_err=$?
       if [ $is_err -eq 0 ]; then
         echo "Logging into RelayServer..."
         loadSSHKey
@@ -8625,7 +8645,10 @@ EOF
       errmenu=$(cat << EOF
 
 $(getLogo)
-There is a problem logging into the RelayServer host. Press Retry or Cancel.
+
+There is a problem logging into the RelayServer host.
+
+Press Retry or Cancel.
 
 EOF
   )
@@ -8813,7 +8836,7 @@ function connectVPN()
       restartAllCaddyContainers
     fi
   fi
-  updatePortainerJitsiIPChanges
+  updateSvcsIPChanges
   # Add new Caddy container.
   installCaddy $ifaceName $primary_string $ifaceName $client_ip $ca_abbrev $ca_url $ca_subdomain $ca_ip
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
@@ -8958,6 +8981,7 @@ function resetRelayServerData()
 {
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/backup/*
   sudo rm -fr $HSHQ_RELAYSERVER_DIR/scripts/*
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
 }
 
 function createOrJoinPrimaryVPN()
@@ -11095,10 +11119,10 @@ function removeMyNetworkPrimaryVPN()
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
   RELAYSERVER_IS_INIT=false
   updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
-  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where NetworkType in ('relayserver','primary','mynetwork');"
-  updatePortainerJitsiIPChanges
-  checkUpdateAllIPTables removeMyNetworkPrimaryVPN
   resetRelayServerData
+  updateSvcsIPChanges
+  checkUpdateAllIPTables removeMyNetworkPrimaryVPN
+
 }
 
 function removeMyNetworkHomeServerVPNConnection()
@@ -11255,7 +11279,7 @@ function disconnectOtherNetworkHomeServerVPNConnection()
       removeRevertDNS $curPeerDomain $curPeerDomainExtPrefix
     fi
   done
-  updatePortainerJitsiIPChanges
+  updateSvcsIPChanges
   checkUpdateAllIPTables disconnectOtherNetworkHomeServerVPNConnection
   # Notify host that you have disconnected.
   email_subj="HomeServer VPN Disconnect Notice from $HOMESERVER_NAME"
@@ -13374,26 +13398,25 @@ function installStack()
   fi
   sleep 1
   search=$stack_search_string
-  isFound="F"
+  isFound=false
   i=0
   while [ $i -le $max_interval ]
   do
     findtext=$(docker logs $container_name 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping $sleep_interval second(s), total wait=$i seconds..."
     sleep $sleep_interval
     ((i=$i+$sleep_interval))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "$stack_name did not start up correctly..."
     return 1
   fi
   set -e
   sleep 1
-
   rm -f $HOME/$stack_name-json.tmp
   rm -f $HOME/$stack_name-compose.yml
   rm -f $envfile
@@ -18240,6 +18263,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=146
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 152 ]; then
+    echo "Updating to Version 152..."
+    version152Update
+    HSHQ_VERSION=152
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -18252,8 +18281,6 @@ function checkUpdateVersion()
     resumeCronService
     set -e
   fi
-  unset USER_RELAY_SUDO_PW
-  USER_RELAY_SUDO_PW=""
 }
 
 function performPreUpdateCheck()
@@ -20672,6 +20699,18 @@ function version146Update()
   IS_RESTART_SCRIPTSERVER=true
 }
 
+function version152Update()
+{
+  if [ -d $HSHQ_STACKS_DIR/coturn ]; then
+    echo "Fixing allowed IPs on coturn stack..."
+    outputCoturnConf
+    updateCoturnAllowedIPs
+  fi
+  echo "Updating adguard env..."
+  updateStackEnv adguard modFunAdguardFixMSS
+  checkUpdateAllIPTables versionUpdate
+}
+
 function updateRelayServerWithScript()
 {
   # This function assumes that a script file
@@ -22309,6 +22348,18 @@ function checkUpdateAllIPTables()
   # Allow NTP for Docker networks
   comment="HSHQ_BEGIN INPUT -s $DOCKER_NETWORK_RESERVED_RANGE -p udp --dport 123 HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -A INPUT -s $DOCKER_NETWORK_RESERVED_RANGE -p udp --dport 123 -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Primary TCP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Primary UDP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_PRIMARY_PORT -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Secondary TCP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p tcp -m tcp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT -m comment --comment "$comment" -j ACCEPT'
+  # Allow Coturn Secondary UDP for Docker networks
+  comment="HSHQ_BEGIN INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -A INPUT -p udp -m udp -s $DOCKER_NETWORK_RESERVED_RANGE --dport $COTURN_SECONDARY_PORT -m comment --comment "$comment" -j ACCEPT'
 
   if ! [ -z "$IS_INSTALLED" ] && [ "$IS_INSTALLED" = "false" ] && ! [ -z "$CURRENT_SSH_PORT" ] && ! [ "$CURRENT_SSH_PORT" = "$SSH_PORT" ]; then
     comment="HSHQ_BEGIN Temp allow SSH port $CURRENT_SSH_PORT HSHQ_END"
@@ -24290,7 +24341,7 @@ function checkUpdateHostInterface()
   case $iface_operation in
     add|remove|setisprimary|update)
       logHSHQEvent debug "checkUpdateHostInterface Update 6"
-      updatePortainerJitsiIPChanges
+      updateSvcsIPChanges
       logHSHQEvent debug "checkUpdateHostInterface Update 7"
       ;;
   esac
@@ -24373,14 +24424,19 @@ function removeFirewallSubnet()
   checkUpdateAllIPTables removeFirewallSubnet
 }
 
-function updatePortainerJitsiIPChanges()
+function updateSvcsIPChanges()
 {
   if [ "$IS_INSTALLED" = "false" ]; then
     return
   fi
   updatePortainerEnv
-  startStopStack jitsi stop > /dev/null 2>&1
-  startStopStack jitsi start > /dev/null 2>&1
+  set +e
+  docker ps | grep jitsi-web > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    startStopStack jitsi stop > /dev/null 2>&1
+    startStopStack jitsi start > /dev/null 2>&1
+  fi
+  updateCoturnAllowedIPs
 }
 
 function checkHostInterfacesIsChanged()
@@ -25315,6 +25371,8 @@ function loadPinnedDockerImages()
   IMG_NETDATA=netdata/netdata:v2.3.2
   IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
+  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250512_082954
+  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
   IMG_NGINX=nginx:1.27.4-alpine
   IMG_NTFY=binwiederhier/ntfy:v2.11.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.9.1
@@ -25383,7 +25441,7 @@ function getScriptStackVersion()
     collabora)
       echo "v7" ;;
     nextcloud)
-      echo "v8" ;;
+      echo "v9" ;;
     jitsi)
       echo "v7" ;;
     matrix)
@@ -25554,6 +25612,8 @@ function pullDockerImages()
   pullImage $IMG_NETDATA
   pullImage $IMG_NEXTCLOUD_APP
   pullImage $IMG_NEXTCLOUD_IMAGINARY
+  pullImage $IMG_NEXTCLOUD_TALKHPB
+  pullImage $IMG_NEXTCLOUD_TALKRECORD
   pullImage $IMG_JITSI_WEB
   pullImage $IMG_JITSI_PROSODY
   pullImage $IMG_JITSI_JICOFO
@@ -25978,6 +26038,9 @@ NEXTCLOUD_EMAIL_FROM_ADDRESS=
 DEFAULT_PHONE_REGION=US
 NEXTCLOUD_IMAGINARY_PORT=7557
 NEXTCLOUD_PUSH_PORT=7867
+NEXTCLOUD_TALKHPB_SIGNALING_SECRET=
+NEXTCLOUD_TALKHPB_INTERNAL_SECRET=
+NEXTCLOUD_TALKHPB_RECORDING_SECRET=
 # Nextcloud (Service Details) END
 
 # Matrix (Service Details) BEGIN
@@ -26736,6 +26799,18 @@ function initServicesCredentials()
   if [ -z "$NEXTCLOUD_DATABASE_USER_PASSWORD" ]; then
     NEXTCLOUD_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar NEXTCLOUD_DATABASE_USER_PASSWORD $NEXTCLOUD_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$NEXTCLOUD_TALKHPB_SIGNALING_SECRET" ]; then
+    NEXTCLOUD_TALKHPB_SIGNALING_SECRET=$(openssl rand --hex 32)
+    updateConfigVar NEXTCLOUD_TALKHPB_SIGNALING_SECRET $NEXTCLOUD_TALKHPB_SIGNALING_SECRET
+  fi
+  if [ -z "$NEXTCLOUD_TALKHPB_INTERNAL_SECRET" ]; then
+    NEXTCLOUD_TALKHPB_INTERNAL_SECRET=$(openssl rand --hex 32)
+    updateConfigVar NEXTCLOUD_TALKHPB_INTERNAL_SECRET $NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+  fi
+  if [ -z "$NEXTCLOUD_TALKHPB_RECORDING_SECRET" ]; then
+    NEXTCLOUD_TALKHPB_RECORDING_SECRET=$(openssl rand --hex 32)
+    updateConfigVar NEXTCLOUD_TALKHPB_RECORDING_SECRET $NEXTCLOUD_TALKHPB_RECORDING_SECRET
   fi
   if [ -z "$MATRIX_DATABASE_NAME" ]; then
     MATRIX_DATABASE_NAME="matrixdb"
@@ -27778,6 +27853,8 @@ function initServiceVars()
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
+  checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
+  checkAddSvc "SVCD_NCTALKRECORD=nextcloud,nctalk-record,other,user,Nextcloud Talk Recording,nctalk-record,hshq"
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
@@ -28173,6 +28250,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MEALIE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
@@ -28769,6 +28848,12 @@ function getScriptImageByContainerName()
     "nextcloud-web")
       container_image=$IMG_NGINX
       ;;
+    "nextcloud-talkhpb")
+      container_image=$IMG_NEXTCLOUD_TALKHPB
+      ;;
+    "nextcloud-talkrecord")
+      container_image=$IMG_NEXTCLOUD_TALKRECORD
+      ;;
     "jitsi-web")
       container_image=$IMG_JITSI_WEB
       ;;
@@ -29324,6 +29409,8 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
   checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
   checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET="
+
 }
 
 function importDBs()
@@ -29372,14 +29459,14 @@ function installPortainer()
   # Version 74 Update - see note at very top inside of init() function.
   sudo docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs portainer 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
@@ -29387,7 +29474,7 @@ function installPortainer()
     i=$((i+1))
   done
   set -e
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "Portainer did not start up correctly..."
     exit 1
   fi
@@ -29500,7 +29587,7 @@ GID=$GROUPID
 EOFPC
   chmod 600 $HSHQ_STACKS_DIR/portainer/portainer.env
   echo "HOMESERVER_HOST_PRIMARY_INTERFACE_IP=${HOMESERVER_HOST_PRIMARY_INTERFACE_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-  ALL_INTERFACE_IPS=""
+  ALL_INTERFACE_IPS="$(getAllInterfaceIPs)"
   ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
   for curID in "${ifListDBID[@]}"
   do
@@ -29512,27 +29599,39 @@ EOFPC
     if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
       echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
       echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-      if ! [ "$curIF_IP" = "127.0.0.1" ]; then
-        if [ -z "$ALL_INTERFACE_IPS" ]; then
-          ALL_INTERFACE_IPS="${curIF_IP}"
-        else
-          ALL_INTERFACE_IPS="$ALL_INTERFACE_IPS","${curIF_IP}"
-        fi
-      fi
-    fi
-  done
-
-  ipListArr=($(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
-  for curIP in "${ipListArr[@]}"
-  do
-    if [ -z "$ALL_INTERFACE_IPS" ]; then
-      ALL_INTERFACE_IPS="${curIP}"
-    else
-      ALL_INTERFACE_IPS="$ALL_INTERFACE_IPS,${curIP}"
     fi
   done
   echo "ALL_INTERFACE_IPS=${ALL_INTERFACE_IPS}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
   chown $USERID:$GROUPID $HSHQ_STACKS_DIR/portainer/portainer.env
+}
+
+function getAllInterfaceIPs()
+{
+  all_iface_ips=""
+  ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
+  for curID in "${ifListDBID[@]}"
+  do
+    curIF_IP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID = $curID;")
+    if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
+      if ! [ "$curIF_IP" = "127.0.0.1" ]; then
+        if [ -z "$all_iface_ips" ]; then
+          all_iface_ips="${curIF_IP}"
+        else
+          all_iface_ips="$all_iface_ips","${curIF_IP}"
+        fi
+      fi
+    fi
+  done
+  ipListArr=($(sqlite3 $HSHQ_DB "select IPAddress from connections where ConnectionType='homeserver_vpn' and NetworkType in ('primary','other');"))
+  for curIP in "${ipListArr[@]}"
+  do
+    if [ -z "$all_iface_ips" ]; then
+      all_iface_ips="${curIP}"
+    else
+      all_iface_ips="$all_iface_ips,${curIP}"
+    fi
+  done
+  echo "$all_iface_ips"
 }
 
 function performUpdatePortainer()
@@ -29647,20 +29746,34 @@ function installAdGuard()
   mkdir $HSHQ_STACKS_DIR/adguard/conf
   mkdir $HSHQ_NONBACKUP_DIR/adguard
   mkdir $HSHQ_NONBACKUP_DIR/adguard/work
-
   initServicesCredentials
   outputConfigAdGuard
   generateCert adguard adguard
-
   prepAdguardInstallation
-
   installStack adguard adguard "entering listener loop proto=tls" $HOME/adguard.env
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing AdGuard"
     exit $retval
   fi
-
+  isSuccess=false
+  i=0
+  set +e
+  while [ $i -le 300 ]
+  do
+    checkDNS=$(dig +short api.ipify.org | head -n 1)
+    if ! [ -z "$checkDNS" ] && [ "$(checkValidIPAddress $checkDNS)" = "true" ]; then
+      isSuccess=true
+      break
+    fi
+    echo "Adguard not ready, sleeping 3 seconds, total wait=$i seconds..."
+    sleep 3
+    i=$((i+3))
+  done
+  if ! [ "$isSuccess" = "true" ]; then
+    echo "Adguard did not install correctly, exiting..."
+    exit 1
+  fi
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -29723,8 +29836,7 @@ EOFAC
 
   cat <<EOFAD > $HOME/adguard.env
 NET_EXTERNAL_SUBNET_PREFIX=$NET_EXTERNAL_SUBNET_PREFIX
-UID=$USERID
-GID=$GROUPID
+GODEBUG=tlskyber=0
 EOFAD
 
   cat <<EOFAD > $HSHQ_STACKS_DIR/adguard/conf/AdGuardHome.yaml
@@ -29748,6 +29860,8 @@ dns:
   port: $ADGUARD_DNS_PORT
   anonymize_client_ip: false
   ratelimit: 0
+  ratelimit_subnet_len_ipv4: 24
+  ratelimit_subnet_len_ipv6: 56
   ratelimit_whitelist: []
   refuse_any: true
   upstream_dns:
@@ -29764,8 +29878,7 @@ dns:
     - 149.112.112.10
     - 94.140.14.14
     - 94.140.15.15
-  all_servers: false
-  fastest_addr: false
+  upstream_mode: parallel
   fastest_timeout: 1s
   allowed_clients:
     - 127.0.0.0/8
@@ -29804,6 +29917,8 @@ dns:
   dns64_prefixes: []
   serve_http3: false
   use_http3_upstreams: false
+  serve_plain_dns: true
+  hostsfile_enabled: true
 tls:
   enabled: true
   server_name: adguard
@@ -29820,6 +29935,7 @@ tls:
   private_key_path: /opt/adguardhome/conf/key.pem
   strict_sni_check: false
 querylog:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -29828,6 +29944,7 @@ querylog:
   enabled: true
   file_enabled: true
 statistics:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -29842,35 +29959,35 @@ filters:
     url: https://adaway.org/hosts.txt
     name: AdAway Default Blocklist
     id: 2
-  - enabled: true
+  - enabled: false
     url: https://someonewhocares.org/hosts/zero/hosts
     name: Dan Pollock's List
     id: 1657273139
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/Perflyst/PiHoleBlocklist/master/SmartTV-AGH.txt
     name: Perflyst and Dandelion Sprout's Smart-TV Blocklist
     id: 1657273140
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt
     name: WindowsSpyBlocker - Hosts spy rules
     id: 1657273141
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/DandelionSprout/adfilt/master/Alternate%20versions%20Anti-Malware%20List/AntiMalwareAdGuardHome.txt
     name: Dandelion Sprout's Anti-Malware List
     id: 1657273142
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/hoshsadiq/adblock-nocoin-list/master/hosts.txt
     name: NoCoin Filter List
     id: 1657273143
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/durablenapkin/scamblocklist/master/adguard.txt
     name: Scam Blocklist by DurableNapkin
     id: 1657273144
-  - enabled: true
+  - enabled: false
     url: https://raw.githubusercontent.com/mitchellkrogza/The-Big-List-of-Hacked-Malware-Web-Sites/master/hosts
     name: The Big List of Hacked Malware Web Sites
     id: 1657273145
-  - enabled: true
+  - enabled: false
     url: https://malware-filter.gitlab.io/malware-filter/urlhaus-filter-agh-online.txt
     name: Online Malicious URL Blocklist
     id: 1657273146
@@ -29906,18 +30023,12 @@ filtering:
     schedule:
       time_zone: Local
     ids: []
-  rewrites:
-    - domain: '$HOMESERVER_DOMAIN'
-      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
-    - domain: '*.$HOMESERVER_DOMAIN'
-      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
-    - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
-      answer: $RELAYSERVER_SERVER_IP
   protection_disabled_until: null
   safe_search:
     enabled: false
     bing: true
     duckduckgo: true
+    ecosia: true
     google: true
     pixabay: true
     yandex: true
@@ -29925,6 +30036,15 @@ filtering:
   blocking_mode: default
   parental_block_host: family-block.dns.adguard.com
   safebrowsing_block_host: standard-block.dns.adguard.com
+  rewrites:
+    - domain: '$HOMESERVER_DOMAIN'
+      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
+    - domain: '*.$HOMESERVER_DOMAIN'
+      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
+    - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
+      answer: $RELAYSERVER_SERVER_IP
+  safe_fs_patterns:
+    - /opt/adguardhome/work/data/userfilters/*
   safebrowsing_cache_size: 10485760
   safesearch_cache_size: 10485760
   parental_cache_size: 10485760
@@ -29933,7 +30053,7 @@ filtering:
   blocked_response_ttl: 10
   filtering_enabled: true
   parental_enabled: false
-  safebrowsing_enabled: true
+  safebrowsing_enabled: false
   protection_enabled: true
 clients:
   runtime_sources:
@@ -29944,6 +30064,7 @@ clients:
     hosts: true
   persistent: []
 log:
+  enabled: true
   file: ""
   max_backups: 0
   max_size: 100
@@ -29955,8 +30076,19 @@ os:
   group: ""
   user: ""
   rlimit_nofile: 0
-schema_version: 27
+schema_version: 29
 EOFAD
+}
+
+function modFunAdguardFixMSS()
+{
+  set +e
+  grep "GODEBUG=tlskyber" $HOME/adguard.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "GODEBUG=tlskyber=0" >> $HOME/adguard.env
+  else
+    return 2
+  fi
 }
 
 function performUpdateAdGuard()
@@ -30069,50 +30201,47 @@ function installSysUtils()
   mkdir $HSHQ_STACKS_DIR/sysutils/prometheus
   mkdir $HSHQ_NONBACKUP_DIR/sysutils
   mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
-
   initServicesCredentials
   generateCert influxdb influxdb
   gf_dataset_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
   outputConfigSysUtils
   docker compose -f $HOME/sysutils-compose-tmp.yml up -d
-
   search="HTTP Server Listen"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 120 ]
   do
     findtext=$(docker logs grafana 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "System Utils did not start up correctly..."
     docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
-
   search="service=tcp-listener transport=https"
-  isFound="F"
+  isFound=false
   i=0
   while [ $i -le 60 ]
   do
     findtext=$(docker logs influxdb 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
     sleep 1
     i=$((i+1))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "System Utils did not start up correctly..."
     docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
@@ -35647,6 +35776,10 @@ function installNextcloud()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName nextcloud-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   pullImage $(getScriptImageByContainerName nextcloud-web)
   if [ $? -ne 0 ]; then
     return 1
@@ -35656,6 +35789,14 @@ function installNextcloud()
     return 1
   fi
   pullImage $(getScriptImageByContainerName nextcloud-push)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName nextcloud-talkrecord)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -35693,13 +35834,14 @@ function installNextcloud()
     mkdir $HSHQ_STACKS_DIR/nextcloud/dbexport
     mkdir $HSHQ_STACKS_DIR/nextcloud/web
     mkdir $HSHQ_STACKS_DIR/nextcloud/ssl
+    mkdir $HSHQ_STACKS_DIR/nextcloud/record
     chmod 777 $HSHQ_STACKS_DIR/nextcloud/dbexport
     outputConfigNextcloud
     docker compose -f $HOME/nextcloud-compose-tmp.yml up -d
     search="ready to handle connections"
     error_text="rsync error"
-    isFound="F"
-    isError="F"
+    isFound=false
+    isError=false
     i=0
     set +e
     while [ $i -le 300 ]
@@ -35707,28 +35849,28 @@ function installNextcloud()
       findtext=$(docker logs nextcloud-app 2>&1 | grep "$search")
       finderror=$(docker logs nextcloud-app 2>&1 | grep "$error_text")
       if ! [ -z "$finderror" ]; then
-        isError="T"
+        isError=true
         break
       fi
       if ! [ -z "$findtext" ]; then
-        isFound="T"
+        isFound=true
         break
       fi
       echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
       sleep 5
       i=$((i+5))
     done
-    if [ $isFound == "T" ] && [ $isError == "F" ]; then
+    if [ "$isFound" = "true" ] && [ "$isError" = "false" ]; then
       break
     fi
-    if [ $isError == "T" ]; then
+    if [ "$isError" = "true" ]; then
       echo "(Attempt $curTries of $numTries) Error starting Nextcloud stack, restarting..."
     fi
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
     ((curTries++))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     performNextcloudInstallFailCleanup
     echo "ERROR: Nextcloud unknown installation error, exiting..."
@@ -35822,7 +35964,10 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi display_join_using_the_jitsi_app --value=1
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi jitsi_server_url --value="https://$SUB_JITSI.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi enabled --value="yes"
-  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]"
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turn\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_PRIMARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install richdocuments
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments wopi_allowlist --value="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 127.0.0.0/8"
   docker exec -u www-data nextcloud-app php occ config:app:set richdocuments public_wopi_url --value="https://$SUB_COLLABORA.$HOMESERVER_DOMAIN"
@@ -35832,7 +35977,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_mindmap
   docker exec -u www-data nextcloud-app php occ ldap:create-empty-config
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapAgentName "$LDAP_ADMIN_BIND_DN"
-  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapAgentPassword "$LDAP_ADMIN_BIND_PASSWORD"
+  docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapAgentPassword "$LDAP_ADMIN_BIND_PASSWORD" > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapBase "$LDAP_BASE_DN"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapBaseGroups "$LDAP_BASE_DN"
   docker exec -u www-data nextcloud-app php occ ldap:set-config s01 ldapBaseUsers "$LDAP_BASE_DN"
@@ -35892,7 +36037,7 @@ function installNextcloud()
   echo "memory_limit=2G" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
   echo "max_input_time=3600" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
   echo "max_execution_time=3600" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
-
+  #sudo sed -i "s/'overwrite.cli.url'.*/'overwrite.cli.url' => 'https:\/\/$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN',/" $HSHQ_STACKS_DIR/nextcloud/app/config/config.php
   installStack nextcloud nextcloud-app "ready to handle connections" $HOME/nextcloud.env
   if [ $? -ne 0 ]; then
     nc_arr=($(docker ps --filter name=nextcloud --format "{{.Names}}"))
@@ -35932,6 +36077,44 @@ function installNextcloud()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NEXTCLOUD $MANAGETLS_NEXTCLOUD "$is_integrate_hshq" $NETDEFAULT_NEXTCLOUD "$inner_block"
 
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
+  inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-talkhpb:8081 {\n"
+  inner_block=$inner_block">>>>>>>>>>import trusted-proxy-list\n"
+  inner_block=$inner_block">>>>>>>>>>header_up X-Real-IP {remote_host}\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
+  insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://nextcloud-talkrecord:1234 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
+  insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
+
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll nextcloud "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" "nextcloud.png"
     restartAllCaddyContainers
@@ -35955,6 +36138,7 @@ function performNextcloudInstallFailCleanup()
 
 function outputConfigNextcloud()
 {
+  NCTALKRECORD_PYTHON_VER=python3.13
   outputNGINXConfigNextcloud
   cat <<EOFNC > $HSHQ_STACKS_DIR/nextcloud/www.conf
 [www]
@@ -35994,7 +36178,6 @@ TLS_REQSAN demand
 EOFLC
 
   cat <<EOFNC > $HOME/nextcloud-compose-tmp.yml
-
 services:
   nextcloud-db:
     image: $(getScriptImageByContainerName nextcloud-db)
@@ -36084,6 +36267,9 @@ services:
       - "NEXTCLOUD_TRUSTED_DOMAINS=nextcloud-web"
       - "TRUSTED_PROXIES=$TRUSTED_PROXIES"
       - NEXTCLOUD_DATA_DIR=/var/www/html/data
+      - OVERWRITEHOST=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITECLIURL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITEPROTOCOL=https
 
   nextcloud-cron:
     image: $(getScriptImageByContainerName nextcloud-cron)
@@ -36150,6 +36336,69 @@ services:
     environment:
       - PORT=$NEXTCLOUD_IMAGINARY_PORT
 
+  nextcloud-talkhpb:
+    image: $(getScriptImageByContainerName nextcloud-talkhpb)
+    container_name: nextcloud-talkhpb
+    hostname: nextcloud-talkhpb
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
+      - TALK_PORT=$COTURN_PRIMARY_PORT
+      - TURN_SECRET=$COTURN_STATIC_SECRET
+      - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  nextcloud-talkrecord:
+    image: $(getScriptImageByContainerName nextcloud-talkrecord)
+    container_name: nextcloud-talkrecord
+    hostname: nextcloud-talkrecord
+    user: "122"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TZ=$TZ
+      - RECORDING_SECRET=$NEXTCLOUD_TALKHPB_RECORDING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+      - SKIP_VERIFY=true
+      - HPB_DOMAIN=$SUB_NCTALKHPB.$HOMESERVER_DOMAIN
+    shm_size: 1073741824
+    read_only: true
+    tmpfs:
+      - /conf
+    cap_drop:
+      - NET_RAW
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/$NCTALKRECORD_PYTHON_VER/site-packages/certifi/cacert.pem:ro
+      - v-nextcloud-record:/tmp:rw
+
   nextcloud-web:
     image: $(getScriptImageByContainerName nextcloud-web)
     container_name: nextcloud-web
@@ -36182,6 +36431,12 @@ volumes:
       type: none
       o: bind
       device: $HSHQ_STACKS_DIR/nextcloud/app
+  v-nextcloud-record:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: $HSHQ_STACKS_DIR/nextcloud/record
 
 networks:
   dock-proxy-net:
@@ -36204,6 +36459,21 @@ networks:
 
 EOFNC
 
+  outputComposeNextcloud
+
+  cat <<EOFNC > $HOME/nextcloud.env
+TZ=\${TZ}
+UID=$USERID
+GID=$GROUPID
+REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
+REDIS_TLS_ENABLED=no
+PYTHON_VER=python3.13
+EOFNC
+}
+
+function outputComposeNextcloud()
+{
+  rm -f $HOME/nextcloud-compose.yml
   cat <<EOFNC > $HOME/nextcloud-compose.yml
 $STACK_VERSION_PREFIX nextcloud $(getScriptStackVersion nextcloud)
 
@@ -36295,6 +36565,10 @@ services:
     depends_on:
       - nextcloud-db
       - nextcloud-redis
+    environment:
+      - OVERWRITEHOST=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITECLIURL=https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITEPROTOCOL=https
 
   nextcloud-cron:
     image: $(getScriptImageByContainerName nextcloud-cron)
@@ -36373,6 +36647,69 @@ services:
     environment:
       - PORT=$NEXTCLOUD_IMAGINARY_PORT
 
+  nextcloud-talkhpb:
+    image: $(getScriptImageByContainerName nextcloud-talkhpb)
+    container_name: nextcloud-talkhpb
+    hostname: nextcloud-talkhpb
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
+      - TALK_PORT=$COTURN_PRIMARY_PORT
+      - TURN_SECRET=$COTURN_STATIC_SECRET
+      - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  nextcloud-talkrecord:
+    image: $(getScriptImageByContainerName nextcloud-talkrecord)
+    container_name: nextcloud-talkrecord
+    hostname: nextcloud-talkrecord
+    user: "122"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-nextcloud-net
+      - dock-proxy-net
+      - dock-ext-net
+    depends_on:
+      - nextcloud-app
+    environment:
+      - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - TZ=\${TZ}
+      - RECORDING_SECRET=$NEXTCLOUD_TALKHPB_RECORDING_SECRET
+      - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
+      - SKIP_VERIFY=true
+      - HPB_DOMAIN=$SUB_NCTALKHPB.$HOMESERVER_DOMAIN
+    shm_size: 1073741824
+    read_only: true
+    tmpfs:
+      - /conf
+    cap_drop:
+      - NET_RAW
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+      - v-nextcloud-record:/tmp:rw
+
   nextcloud-web:
     image: $(getScriptImageByContainerName nextcloud-web)
     container_name: nextcloud-web
@@ -36404,6 +36741,12 @@ volumes:
       type: none
       o: bind
       device: \${HSHQ_STACKS_DIR}/nextcloud/app
+  v-nextcloud-record:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/nextcloud/record
 
 networks:
   dock-proxy-net:
@@ -36429,13 +36772,6 @@ networks:
 
 EOFNC
 
-  cat <<EOFNC > $HOME/nextcloud.env
-TZ=\${TZ}
-UID=$USERID
-GID=$GROUPID
-REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-REDIS_TLS_ENABLED=no
-EOFNC
 }
 
 function outputNGINXConfigNextcloud()
@@ -36740,13 +37076,32 @@ function performUpdateNextcloud()
       return
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
       image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudAddTalkHPB
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turn\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_PRIMARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      performMaintenanceNextcloud
+      return
+    ;;
+    9)
+      newVer=v9
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine,ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
+      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
+      image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250512_082954"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954"
     ;;
     *)
       is_upgrade_error=true
@@ -36773,6 +37128,57 @@ function performMaintenanceNextcloud()
 function mfNextcloudUpdateNGINXConfig()
 {
   outputNGINXConfigNextcloud
+}
+
+function mfNextcloudAddTalkHPB()
+{
+  set +e
+  initServicesCredentials
+  pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
+  pullImage $(getScriptImageByContainerName nextcloud-talkrecord)
+  outputComposeNextcloud
+  grep "PYTHON_VER=" $HOME/nextcloud.env > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo "PYTHON_VER=python3.13" >> $HOME/nextcloud.env
+  fi
+  mkdir -p $HSHQ_STACKS_DIR/nextcloud/record
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>route /standalone-signaling/* {\n"
+  inner_block=$inner_block">>>>>>>>uri strip_prefix /standalone-signaling\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://nextcloud-talkhpb:8081 {\n"
+  inner_block=$inner_block">>>>>>>>>>import trusted-proxy-list\n"
+  inner_block=$inner_block">>>>>>>>>>header_up X-Real-IP {remote_host}\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
+  insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERCORS https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://nextcloud-talkrecord:1234 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
+  insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
+  restartAllCaddyContainers
 }
 
 # Jitsi
@@ -39733,21 +40139,21 @@ function installPhotoPrism()
   echo "Starting PhotoPrism. Please be patient, this process takes a few minutes..."
   docker compose -f $HOME/photoprism-compose-tmp.yml up -d
   search="listening on 0.0.0.0:2342"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 600 ]
   do
     findtext=$(docker logs photoprism-app 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 10 seconds, total wait=$i seconds..."
     sleep 10
     i=$((i+10))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     docker compose -f $HOME/photoprism-compose-tmp.yml down -v
     echo "ERROR: PhotoPrism did not start up correctly..."
     return 1
@@ -40095,21 +40501,21 @@ function installGuacamole()
   echo "Waiting at least 15 seconds before continuing..."
   sleep 15
   search="ready for connections"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs guacamole-db 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "Guacamole did not start up correctly..."
     docker compose -f $HOME/guacamole-compose-tmp.yml down -v
     rm -f $HOME/guacamole-compose-tmp.yml
@@ -43259,21 +43665,21 @@ function installCodeServer()
   docker compose -f $HOME/codeserver-compose-tmp.yml up -d
 
   search="HTTPS server listening on https"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs codeserver 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "CodeServer did not start up correctly..."
     docker compose -f $HOME/codeserver-compose-tmp.yml down -v
     rm -f $HOME/codeserver-compose-tmp.yml
@@ -50081,11 +50487,16 @@ networks:
     external: true
 
 EOFOF
-
   cat <<EOFRM > $HOME/coturn.env
 TZ=\${TZ}
 EOFRM
+  outputCoturnConf
+  checkAddIPsCoturn
+}
 
+function outputCoturnConf()
+{
+  sudo rm -f $HSHQ_STACKS_DIR/coturn/turnserver.conf
   cat <<EOFRM > $HSHQ_STACKS_DIR/coturn/turnserver.conf
 listening-port=$COTURN_PRIMARY_PORT
 tls-listening-port=$COTURN_SECONDARY_PORT
@@ -50100,13 +50511,81 @@ bps-capacity=0
 stale-nonce=600
 cert=/usr/local/etc/cert.pem
 pkey=/usr/local/etc/key.pem
-no-multicast-peers
 no-rfc5780
 no-stun-backward-compatibility
 response-origin-only-with-rfc5780
 no-cli
+no-multicast-peers
+denied-peer-ip=0.0.0.0-0.255.255.255
+denied-peer-ip=10.0.0.0-10.255.255.255
+denied-peer-ip=100.64.0.0-100.127.255.255
+denied-peer-ip=127.0.0.0-127.255.255.255
+denied-peer-ip=169.254.0.0-169.254.255.255
+denied-peer-ip=172.16.0.0-172.31.255.255
+denied-peer-ip=192.0.0.0-192.0.0.255
+denied-peer-ip=192.0.2.0-192.0.2.255
+denied-peer-ip=192.88.99.0-192.88.99.255
+denied-peer-ip=192.168.0.0-192.168.255.255
+denied-peer-ip=198.18.0.0-198.19.255.255
+denied-peer-ip=198.51.100.0-198.51.100.255
+denied-peer-ip=203.0.113.0-203.0.113.255
+denied-peer-ip=240.0.0.0-255.255.255.255
+denied-peer-ip=::1
+denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+denied-peer-ip=100::-100::ffff:ffff:ffff:ffff
+denied-peer-ip=2001::-2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
 EOFRM
+}
 
+function checkAddIPsCoturn()
+{
+  set +e
+  is_any_changed=false
+  ifaceIPsArr=($(echo "$(getAllInterfaceIPs)" | tr "," "\n"))
+  for curIP in "${ifaceIPsArr[@]}"
+  do
+    if [ -z "$curIP" ]; then
+      continue
+    fi
+    grep "allowed-peer-ip=$curIP" $HSHQ_STACKS_DIR/coturn/turnserver.conf > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      is_any_changed=true
+    fi
+  done
+  sed -i "/allowed-peer-ip=.*/d" $HSHQ_STACKS_DIR/coturn/turnserver.conf
+  for curIP in "${ifaceIPsArr[@]}"
+  do
+    if [ -z "$curIP" ]; then
+      continue
+    fi
+    echo "allowed-peer-ip=$curIP" >> $HSHQ_STACKS_DIR/coturn/turnserver.conf
+  done
+  ext_subnet_startIP=$(sipcalc $NET_EXTERNAL_SUBNET | grep "^Network range" | rev | cut -d"-" -f2- | xargs | cut -d" " -f1 | rev)
+  ext_subnet_endIP=$(sipcalc $NET_EXTERNAL_SUBNET | grep "^Network range" | rev | cut -d" " -f1 | rev)
+  echo "allowed-peer-ip=${ext_subnet_startIP}-${ext_subnet_endIP}" >> $HSHQ_STACKS_DIR/coturn/turnserver.conf
+  if [ "$is_any_changed" = "true" ]; then
+    return 1
+  fi
+}
+
+function updateCoturnAllowedIPs()
+{
+  set +e
+  if [ -f $HSHQ_STACKS_DIR/coturn/turnserver.conf ]; then
+    checkAddIPsCoturn
+    if [ $? -eq 1 ]; then
+      docker ps | grep coturn > /dev/null 2>&1
+      if [ $? -eq 0 ]; then
+        startStopStack coturn stop > /dev/null 2>&1
+        sleep 1
+        startStopStack coturn start > /dev/null 2>&1
+      fi
+    fi
+  fi
 }
 
 function performUpdateCoturn()
@@ -50235,7 +50714,7 @@ WS_APP_NAME=$HOMESERVER_NAME FileDrop
 WS_ABUSE_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
 WS_REQUIRE_CRYPTO=1
 TURN_MODE=hmac
-TURN_SERVER=turn:$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT
+TURN_SERVER=turns:$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT
 TURN_USERNAME=filedrop
 TURN_SECRET=$COTURN_STATIC_SECRET
 STUN_SERVER=
@@ -52975,21 +53454,21 @@ function installAIStack()
   echo "Waiting at least 5 seconds before continuing..."
   sleep 5
   search="mindsdb: http API: started on 47334"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs aistack-mindsdb-app 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "MindsDB did not start up correctly..."
     docker compose -f $HOME/aistack-compose-tmp.yml down -v
     rm -f $HOME/aistack-compose-tmp.yml
@@ -62833,21 +63312,21 @@ function installHeimdall()
 
   stack_loaded_text="service 99-ci-service-check successfully started"
   search="$stack_loaded_text"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs heimdall 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 3 seconds, total wait=$i seconds..."
     sleep 3
     i=$((i+3))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "Heimdall did not start up correctly..."
     sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
     exit 1
