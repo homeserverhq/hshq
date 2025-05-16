@@ -6621,14 +6621,14 @@ function installStack()
   echo "\$(createStackJson \$stack_name \$HOME/\$stack_name-compose.yml "\$envfile")" > \$HOME/\$stack_name-json.tmp
   http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" endpointId==1 @\$HOME/\$stack_name-json.tmp > /dev/null
   search=\$stack_search_string
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ \$i -le 300 ]
   do
     findtext=\$(docker logs \$container_name 2>&1 | grep "\$search")
     if ! [ -z "\$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
@@ -6636,7 +6636,7 @@ function installStack()
     i=\$((i+1))
   done
   set -e
-  if [ \$isFound == "F" ]; then
+  if ! [ "\$isFound" = "true" ]; then
     echo "\$stack_name did not start up correctly..."
     exit 1
   fi
@@ -6692,14 +6692,14 @@ function installPortainer()
 
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ \$i -le 300 ]
   do
     findtext=\$(docker logs portainer 2>&1 | grep "\$search")
     if ! [ -z "\$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
@@ -6707,7 +6707,7 @@ function installPortainer()
     i=\$((i+1))
   done
   set -e
-  if [ \$isFound == "F" ]; then
+  if ! [ "\$isFound" = "true" ]; then
     echo "Portainer did not start up correctly..."
     exit 1
   fi
@@ -29449,14 +29449,14 @@ function installPortainer()
   # Version 74 Update - see note at very top inside of init() function.
   sudo docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs portainer 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
@@ -29464,7 +29464,7 @@ function installPortainer()
     i=$((i+1))
   done
   set -e
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "Portainer did not start up correctly..."
     exit 1
   fi
@@ -29736,20 +29736,34 @@ function installAdGuard()
   mkdir $HSHQ_STACKS_DIR/adguard/conf
   mkdir $HSHQ_NONBACKUP_DIR/adguard
   mkdir $HSHQ_NONBACKUP_DIR/adguard/work
-
   initServicesCredentials
   outputConfigAdGuard
   generateCert adguard adguard
-
   prepAdguardInstallation
-
   installStack adguard adguard "entering listener loop proto=tls" $HOME/adguard.env
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing AdGuard"
     exit $retval
   fi
-
+  isSuccess=false
+  i=0
+  set +e
+  while [ $i -le 300 ]
+  do
+    checkDNS=$(dig +short api.ipify.org | head -n 1)
+    if ! [ -z "$checkDNS" ] && [ "$(checkValidIPAddress $checkDNS)" = "true" ]; then
+      isSuccess=true
+      break
+    fi
+    echo "Adguard not ready, sleeping 3 seconds, total wait=$i seconds..."
+    sleep 3
+    i=$((i+3))
+  done
+  if ! [ "$isSuccess" = "true" ]; then
+    echo "Adguard did not install correctly, exiting..."
+    return 1
+  fi
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -30167,50 +30181,47 @@ function installSysUtils()
   mkdir $HSHQ_STACKS_DIR/sysutils/prometheus
   mkdir $HSHQ_NONBACKUP_DIR/sysutils
   mkdir $HSHQ_NONBACKUP_DIR/sysutils/prometheus
-
   initServicesCredentials
   generateCert influxdb influxdb
   gf_dataset_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
   outputConfigSysUtils
   docker compose -f $HOME/sysutils-compose-tmp.yml up -d
-
   search="HTTP Server Listen"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 120 ]
   do
     findtext=$(docker logs grafana 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "System Utils did not start up correctly..."
     docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
-
   search="service=tcp-listener transport=https"
-  isFound="F"
+  isFound=false
   i=0
   while [ $i -le 60 ]
   do
     findtext=$(docker logs influxdb 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 1 second, total wait=$i seconds..."
     sleep 1
     i=$((i+1))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "System Utils did not start up correctly..."
     docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
@@ -35809,8 +35820,8 @@ function installNextcloud()
     docker compose -f $HOME/nextcloud-compose-tmp.yml up -d
     search="ready to handle connections"
     error_text="rsync error"
-    isFound="F"
-    isError="F"
+    isFound=false
+    isError=false
     i=0
     set +e
     while [ $i -le 300 ]
@@ -35818,28 +35829,28 @@ function installNextcloud()
       findtext=$(docker logs nextcloud-app 2>&1 | grep "$search")
       finderror=$(docker logs nextcloud-app 2>&1 | grep "$error_text")
       if ! [ -z "$finderror" ]; then
-        isError="T"
+        isError=true
         break
       fi
       if ! [ -z "$findtext" ]; then
-        isFound="T"
+        isFound=true
         break
       fi
       echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
       sleep 5
       i=$((i+5))
     done
-    if [ $isFound == "T" ] && [ $isError == "F" ]; then
+    if [ "$isFound" = "true" ] && [ "$isError" = "false" ]; then
       break
     fi
-    if [ $isError == "T" ]; then
+    if [ "$isError" = "true" ]; then
       echo "(Attempt $curTries of $numTries) Error starting Nextcloud stack, restarting..."
     fi
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
     ((curTries++))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     performNextcloudInstallFailCleanup
     echo "ERROR: Nextcloud unknown installation error, exiting..."
@@ -40096,21 +40107,21 @@ function installPhotoPrism()
   echo "Starting PhotoPrism. Please be patient, this process takes a few minutes..."
   docker compose -f $HOME/photoprism-compose-tmp.yml up -d
   search="listening on 0.0.0.0:2342"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 600 ]
   do
     findtext=$(docker logs photoprism-app 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 10 seconds, total wait=$i seconds..."
     sleep 10
     i=$((i+10))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     docker compose -f $HOME/photoprism-compose-tmp.yml down -v
     echo "ERROR: PhotoPrism did not start up correctly..."
     return 1
@@ -40458,21 +40469,21 @@ function installGuacamole()
   echo "Waiting at least 15 seconds before continuing..."
   sleep 15
   search="ready for connections"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs guacamole-db 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "Guacamole did not start up correctly..."
     docker compose -f $HOME/guacamole-compose-tmp.yml down -v
     rm -f $HOME/guacamole-compose-tmp.yml
@@ -43622,21 +43633,21 @@ function installCodeServer()
   docker compose -f $HOME/codeserver-compose-tmp.yml up -d
 
   search="HTTPS server listening on https"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs codeserver 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "CodeServer did not start up correctly..."
     docker compose -f $HOME/codeserver-compose-tmp.yml down -v
     rm -f $HOME/codeserver-compose-tmp.yml
@@ -53411,21 +53422,21 @@ function installAIStack()
   echo "Waiting at least 5 seconds before continuing..."
   sleep 5
   search="mindsdb: http API: started on 47334"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs aistack-mindsdb-app 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
     sleep 5
     i=$((i+5))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "MindsDB did not start up correctly..."
     docker compose -f $HOME/aistack-compose-tmp.yml down -v
     rm -f $HOME/aistack-compose-tmp.yml
@@ -63269,21 +63280,21 @@ function installHeimdall()
 
   stack_loaded_text="service 99-ci-service-check successfully started"
   search="$stack_loaded_text"
-  isFound="F"
+  isFound=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
     findtext=$(docker logs heimdall 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
-      isFound="T"
+      isFound=true
       break
     fi
     echo "Container not ready, sleeping 3 seconds, total wait=$i seconds..."
     sleep 3
     i=$((i+3))
   done
-  if [ $isFound == "F" ]; then
+  if ! [ "$isFound" = "true" ]; then
     echo "Heimdall did not start up correctly..."
     sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
     exit 1
