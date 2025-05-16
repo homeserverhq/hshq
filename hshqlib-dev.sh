@@ -29762,7 +29762,7 @@ function installAdGuard()
   done
   if ! [ "$isSuccess" = "true" ]; then
     echo "Adguard did not install correctly, exiting..."
-    return 1
+    exit 1
   fi
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
@@ -35944,7 +35944,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi display_join_using_the_jitsi_app --value=1
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi jitsi_server_url --value="https://$SUB_JITSI.$HOMESERVER_DOMAIN"
   docker exec -u www-data nextcloud-app php occ config:app:set jitsi enabled --value="yes"
-  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turns\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_SECONDARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
+  docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turn\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_PRIMARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
@@ -36329,7 +36329,7 @@ services:
     environment:
       - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
       - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
-      - TALK_PORT=$COTURN_SECONDARY_PORT
+      - TALK_PORT=$COTURN_PRIMARY_PORT
       - TURN_SECRET=$COTURN_STATIC_SECRET
       - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
       - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
@@ -36351,6 +36351,7 @@ services:
     networks:
       - int-nextcloud-net
       - dock-proxy-net
+      - dock-ext-net
     depends_on:
       - nextcloud-app
     environment:
@@ -36635,7 +36636,7 @@ services:
     environment:
       - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
       - TALK_HOST=$SUB_COTURN.$HOMESERVER_DOMAIN
-      - TALK_PORT=$COTURN_SECONDARY_PORT
+      - TALK_PORT=$COTURN_PRIMARY_PORT
       - TURN_SECRET=$COTURN_STATIC_SECRET
       - SIGNALING_SECRET=$NEXTCLOUD_TALKHPB_SIGNALING_SECRET
       - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
@@ -36657,6 +36658,7 @@ services:
     networks:
       - int-nextcloud-net
       - dock-proxy-net
+      - dock-ext-net
     depends_on:
       - nextcloud-app
     environment:
@@ -37055,6 +37057,7 @@ function performUpdateNextcloud()
       image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudAddTalkHPB
+      docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turn\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_PRIMARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed enabled --value="yes"
