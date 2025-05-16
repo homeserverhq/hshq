@@ -37094,13 +37094,14 @@ function performUpdateNextcloud()
     ;;
     9)
       newVer=v9
-      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine,ghcr.io/nextcloud-releases/aio-talk:20250512_082954
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine,ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
       image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250512_082954"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954"
     ;;
     *)
       is_upgrade_error=true
@@ -37134,6 +37135,7 @@ function mfNextcloudAddTalkHPB()
   set +e
   initServicesCredentials
   pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
+  pullImage $(getScriptImageByContainerName nextcloud-talkrecord)
   outputComposeNextcloud
   grep "PYTHON_VER=" $HOME/nextcloud.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
@@ -37160,7 +37162,6 @@ function mfNextcloudAddTalkHPB()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
   insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -37177,6 +37178,7 @@ function mfNextcloudAddTalkHPB()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
   insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
+  restartAllCaddyContainers
 }
 
 # Jitsi
