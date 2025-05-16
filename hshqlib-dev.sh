@@ -6881,6 +6881,8 @@ dns:
   port: 53
   anonymize_client_ip: false
   ratelimit: 0
+  ratelimit_subnet_len_ipv4: 24
+  ratelimit_subnet_len_ipv6: 56
   ratelimit_whitelist: []
   refuse_any: true
   upstream_dns:
@@ -6936,6 +6938,8 @@ dns:
   dns64_prefixes: []
   serve_http3: false
   use_http3_upstreams: false
+  serve_plain_dns: true
+  hostsfile_enabled: true
 tls:
   enabled: true
   server_name: adguard
@@ -6952,6 +6956,7 @@ tls:
   private_key_path: /opt/adguardhome/conf/key.pem
   strict_sni_check: false
 querylog:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -6960,6 +6965,7 @@ querylog:
   enabled: true
   file_enabled: true
 statistics:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -7037,6 +7043,19 @@ filtering:
     schedule:
       time_zone: Local
     ids: []
+  protection_disabled_until: null
+  safe_search:
+    enabled: false
+    bing: true
+    duckduckgo: true
+    ecosia: true
+    google: true
+    pixabay: true
+    yandex: true
+    youtube: true
+  blocking_mode: default
+  parental_block_host: family-block.dns.adguard.com
+  safebrowsing_block_host: standard-block.dns.adguard.com
   rewrites:
     - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
       answer: $RELAYSERVER_SERVER_IP
@@ -7046,18 +7065,8 @@ filtering:
       answer: $RELAYSERVER_WG_HS_IP
     - domain: '*.$HOMESERVER_DOMAIN'
       answer: $RELAYSERVER_WG_HS_IP
-  protection_disabled_until: null
-  safe_search:
-    enabled: false
-    bing: true
-    duckduckgo: true
-    google: true
-    pixabay: true
-    yandex: true
-    youtube: true
-  blocking_mode: default
-  parental_block_host: family-block.dns.adguard.com
-  safebrowsing_block_host: standard-block.dns.adguard.com
+  safe_fs_patterns:
+    - /opt/adguardhome/work/data/userfilters/*
   safebrowsing_cache_size: 10485760
   safesearch_cache_size: 10485760
   parental_cache_size: 10485760
@@ -7077,6 +7086,7 @@ clients:
     hosts: true
   persistent: []
 log:
+  enabled: true
   file: ""
   max_backups: 0
   max_size: 100
@@ -7088,7 +7098,7 @@ os:
   group: ""
   user: ""
   rlimit_nofile: 0
-schema_version: 27
+schema_version: 29
 EOFAD
 }
 
@@ -29850,6 +29860,8 @@ dns:
   port: $ADGUARD_DNS_PORT
   anonymize_client_ip: false
   ratelimit: 0
+  ratelimit_subnet_len_ipv4: 24
+  ratelimit_subnet_len_ipv6: 56
   ratelimit_whitelist: []
   refuse_any: true
   upstream_dns:
@@ -29905,6 +29917,8 @@ dns:
   dns64_prefixes: []
   serve_http3: false
   use_http3_upstreams: false
+  serve_plain_dns: true
+  hostsfile_enabled: true
 tls:
   enabled: true
   server_name: adguard
@@ -29921,6 +29935,7 @@ tls:
   private_key_path: /opt/adguardhome/conf/key.pem
   strict_sni_check: false
 querylog:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -29929,6 +29944,7 @@ querylog:
   enabled: true
   file_enabled: true
 statistics:
+  dir_path: ""
   ignored:
     - $HOMESERVER_DOMAIN
     - '*.$HOMESERVER_DOMAIN'
@@ -30007,18 +30023,12 @@ filtering:
     schedule:
       time_zone: Local
     ids: []
-  rewrites:
-    - domain: '$HOMESERVER_DOMAIN'
-      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
-    - domain: '*.$HOMESERVER_DOMAIN'
-      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
-    - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
-      answer: $RELAYSERVER_SERVER_IP
   protection_disabled_until: null
   safe_search:
     enabled: false
     bing: true
     duckduckgo: true
+    ecosia: true
     google: true
     pixabay: true
     yandex: true
@@ -30026,6 +30036,15 @@ filtering:
   blocking_mode: default
   parental_block_host: family-block.dns.adguard.com
   safebrowsing_block_host: standard-block.dns.adguard.com
+  rewrites:
+    - domain: '$HOMESERVER_DOMAIN'
+      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
+    - domain: '*.$HOMESERVER_DOMAIN'
+      answer: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
+    - domain: '*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN'
+      answer: $RELAYSERVER_SERVER_IP
+  safe_fs_patterns:
+    - /opt/adguardhome/work/data/userfilters/*
   safebrowsing_cache_size: 10485760
   safesearch_cache_size: 10485760
   parental_cache_size: 10485760
@@ -30045,6 +30064,7 @@ clients:
     hosts: true
   persistent: []
 log:
+  enabled: true
   file: ""
   max_backups: 0
   max_size: 100
@@ -30056,7 +30076,7 @@ os:
   group: ""
   user: ""
   rlimit_nofile: 0
-schema_version: 27
+schema_version: 29
 EOFAD
 }
 
@@ -36017,7 +36037,7 @@ function installNextcloud()
   echo "memory_limit=2G" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
   echo "max_input_time=3600" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
   echo "max_execution_time=3600" | sudo tee -a $HSHQ_STACKS_DIR/nextcloud/app/.user.ini
-
+  #sudo sed -i "s/'overwrite.cli.url'.*/'overwrite.cli.url' => 'https:\/\/$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN',/" $HSHQ_STACKS_DIR/nextcloud/app/config/config.php
   installStack nextcloud nextcloud-app "ready to handle connections" $HOME/nextcloud.env
   if [ $? -ne 0 ]; then
     nc_arr=($(docker ps --filter name=nextcloud --format "{{.Names}}"))
@@ -36247,6 +36267,9 @@ services:
       - "NEXTCLOUD_TRUSTED_DOMAINS=nextcloud-web"
       - "TRUSTED_PROXIES=$TRUSTED_PROXIES"
       - NEXTCLOUD_DATA_DIR=/var/www/html/data
+      - OVERWRITEHOST=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITECLIURL=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITEPROTOCOL=https
 
   nextcloud-cron:
     image: $(getScriptImageByContainerName nextcloud-cron)
@@ -36542,6 +36565,10 @@ services:
     depends_on:
       - nextcloud-db
       - nextcloud-redis
+    environment:
+      - OVERWRITEHOST=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITECLIURL=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
+      - OVERWRITEPROTOCOL=https
 
   nextcloud-cron:
     image: $(getScriptImageByContainerName nextcloud-cron)
