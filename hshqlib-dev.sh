@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=155
+HSHQ_LIB_SCRIPT_VERSION=154
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -3014,6 +3014,15 @@ function initScreen()
   curScreenAttempt=0
   maxScreenAttempt=5
   screen -XS $screenName quit > /dev/null 2>&1
+  # The screen utility has a problem with stuffing
+  # special characters in strings, specifically
+  # in this case when trying to inject the sudo
+  # password. Thus, the easiest way to handle this 
+  # is to create a temporary "safe" password, inject
+  # it into the screen, get sudo in the screen, then
+  # change it back to the original.
+  tmpSudo=$(pwgen -c -n 32 1)
+  echo -e "$USERNAME:$tmpSudo" | sudo chpasswd
   while [ $curScreenAttempt -lt $maxScreenAttempt ]
   do
     ((curScreenAttempt++))
@@ -3031,11 +3040,12 @@ function initScreen()
       continue
     fi
     screen -S $screenName -X stuff "$screenCmd\n"
-    screen -S $screenName -X stuff "$USER_SUDO_PW\n"
+    screen -S $screenName -X stuff "$tmpSudo\n"
     rm -fr $dirtest1
     isScreenSuccess=true
     break
   done
+  echo -e "$USERNAME:$USER_SUDO_PW" | sudo chpasswd
   if ! [ "$isScreenSuccess" = "true" ]; then
     return 1
   fi
@@ -5445,12 +5455,6 @@ TMP_RS_CHECKDIR=/tmp/rscheckdir
 
 function main()
 {
-  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
-  if [ -d /tmp/hshqopen ]; then
-    echo "Installation already in progess, exiting..."
-    exit 2
-  fi
-  installLogNotify "Begin Main"
   IS_PERFORM_INSTALL=false
   IS_GET_SUPER=false
   IS_DETACH_RS_SCREEN=false
@@ -5471,18 +5475,12 @@ function main()
   set +e
   rm -fr \$TMP_RS_CHECKDIR
   if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
-    installLogNotify "Checking password..."
-    echo "Checking password..."
     mkdir -p \$TMP_RS_CHECKDIR
     read -s -t 10 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
-      installLogNotify "Password is bad. Sorry, try again."
       echo "Sorry, try again."
       USER_RELAY_SUDO_PW=""
-    else
-      installLogNotify "Password is good"
-      echo "Password is good"
     fi
     while [ -z "\$USER_RELAY_SUDO_PW" ]
     do
@@ -5501,6 +5499,12 @@ function main()
   fi
   loadVersionVars
   set -e
+  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
+  installLogNotify "Begin Main"
+  if [ -d /tmp/hshqopen ]; then
+    echo "Installation already in progess, exiting..."
+    exit 2
+  fi
   if [ \$USERID = "0" ]; then
     echo "This script should be run as a non-root user. Exiting..."
     exit 3
@@ -5524,6 +5528,11 @@ function main()
   if [ \$? -ne 0 ]; then
     echo "Installing screen..."
     performAptInstall screen > /dev/null 2>&1
+  fi
+  which pwgen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Installing pwgen..."
+    performAptInstall pwgen > /dev/null 2>&1
   fi
   if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
     mkdir /tmp/hshqopen
@@ -5549,16 +5558,16 @@ function initScreen()
   isScreenSuccess=false
   curScreenAttempt=0
   maxScreenAttempt=5
-  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    installLogNotify "initScreen: Bad password"
-    echo "initScreen: Bad password"
-    exit 1
-  else
-    installLogNotify "initScreen: Password is good"
-    echo "initScreen: Password is good"
-  fi
   screen -XS \$screenName quit > /dev/null 2>&1
+  # The screen utility has a problem with stuffing
+  # special characters in strings, specifically
+  # in this case when trying to inject the sudo
+  # password. Thus, the easiest way to handle this 
+  # is to create a temporary "safe" password, inject
+  # it into the screen, get sudo in the screen, then
+  # change it back to the original.
+  tmpSudo=\$(pwgen -c -n 32 1)
+  echo -e "\$USERNAME:\$tmpSudo" | sudo chpasswd
   while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
   do
     ((curScreenAttempt++))
@@ -5583,7 +5592,7 @@ function initScreen()
       ((curCheckCount++))
       sleep 1
     done
-    screen -S \$screenName -X stuff "\$USER_RELAY_SUDO_PW\n"
+    screen -S \$screenName -X stuff "\$tmpSudo\n"
     curCheckCount=0
     while [ -d \$TMP_RS_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
     do
@@ -5607,6 +5616,7 @@ function initScreen()
     isScreenSuccess=true
     break
   done
+  echo -e "\$USERNAME:\$USER_RELAY_SUDO_PW" | sudo chpasswd
   if ! [ "\$isScreenSuccess" = "true" ]; then
     return 1
   fi
