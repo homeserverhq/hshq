@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=153
+HSHQ_LIB_SCRIPT_VERSION=154
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -56003,13 +56003,6 @@ EOFMT
 TZ=\${TZ}
 PUID=\${UID}
 PGID=\${GID}
-TMDB_API=
-MAL_API=
-IGDB_ID=
-IGDB_SECRET=
-TRAKT_API=
-SIMKL_ID=
-SIMKL_SECRET=
 SOCIAL_PROVIDERS=allauth.socialaccount.providers.openid_connect
 SOCIALACCOUNT_PROVIDERS={"openid_connect":{"OAUTH_PKCE_ENABLED":true,"APPS":[{"provider_id":"authelia","name":"Authelia","client_id":"$YAMTRACK_OIDC_CLIENT_ID","secret":"$YAMTRACK_OIDC_CLIENT_SECRET","settings":{"server_url":"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration"}}]}}
 ACCOUNT_DEFAULT_HTTP_PROTOCOL=https
