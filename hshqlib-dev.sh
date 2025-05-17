@@ -5445,6 +5445,11 @@ TMP_RS_CHECKDIR=/tmp/rscheckdir
 
 function main()
 {
+  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
+  if [ -d /tmp/hshqopen ]; then
+    echo "Installation already in progess, exiting..."
+    exit 2
+  fi
   installLogNotify "Begin Main"
   IS_PERFORM_INSTALL=false
   IS_GET_SUPER=false
@@ -5496,11 +5501,6 @@ function main()
   fi
   loadVersionVars
   set -e
-  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
-  if [ -d /tmp/hshqopen ]; then
-    echo "Installation already in progess, exiting..."
-    exit 2
-  fi
   if [ \$USERID = "0" ]; then
     echo "This script should be run as a non-root user. Exiting..."
     exit 3
