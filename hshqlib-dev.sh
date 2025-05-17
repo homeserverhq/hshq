@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=152
+HSHQ_LIB_SCRIPT_VERSION=153
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5325,6 +5325,7 @@ function restorePortainer()
 {
   sed -i "s|^UID=.*|UID=\${USERID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
   sed -i "s|^GID=.*|GID=\${GROUPID}|g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+  cd ~
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   RELAYSERVER_PORTAINER_TOKEN="\$(getPortainerToken -u $RELAYSERVER_PORTAINER_ADMIN_USERNAME -p $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"
 }
@@ -6689,7 +6690,7 @@ function installPortainer()
   PORTAINER_DB_KEY=\$(pwgen -c -n 64 1)
   echo \$PORTAINER_DB_KEY | sudo tee \$RELAYSERVER_HSHQ_SECRETS_DIR/portainer_key.txt >/dev/null
   sudo chmod 0400 \$RELAYSERVER_HSHQ_SECRETS_DIR/portainer_key.txt
-
+  cd ~
   docker compose -f \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound=false
@@ -8284,9 +8285,8 @@ function installSyncthing()
   mkdir \$RELAYSERVER_HSHQ_NONBACKUP_DIR/syncthing/data
   generateCert syncthing syncthing
   outputConfigSyncthing
-
+  cd ~
   docker compose -f \$HOME/syncthing-compose-tmp.yml up -d
-
   search="Access the GUI via the following URL"
   isFound="F"
   i=0
@@ -8307,6 +8307,7 @@ function installSyncthing()
     exit
   fi
   set -e
+  cd ~
   docker compose -f \$HOME/syncthing-compose-tmp.yml down -v
   sleep 5
   rm -f \$HOME/syncthing-compose-tmp.yml
@@ -25420,6 +25421,7 @@ function loadPinnedDockerImages()
   IMG_WIKIJS=requarks/wiki:2.5.307
   IMG_WIREGUARD=linuxserver/wireguard:1.0.20210914-r4-ls72
   IMG_WORDPRESS=wordpress:php8.3-apache
+  IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.22.7
 }
 
 function getScriptStackVersion()
@@ -25561,6 +25563,8 @@ function getScriptStackVersion()
     aistack)
       echo "v1" ;;
     pixelfed)
+      echo "v1" ;;
+    yamtrack)
       echo "v1" ;;
     ofelia)
       echo "v5" ;;
@@ -25708,6 +25712,7 @@ function pullDockerImages()
   pullImage $IMG_AISTACK_OLLAMA_SERVER
   pullImage $IMG_AISTACK_OPENWEBUI
   pullImage $IMG_PIXELFED_APP
+  pullImage $IMG_YAMTRACK_APP
 }
 
 function pullImagesUpdatePB()
@@ -26497,6 +26502,19 @@ PIXELFED_DATABASE_USER_PASSWORD=
 PIXELFED_REDIS_PASSWORD=
 PIXELFED_APP_KEY=
 # Pixelfed (Service Details) END
+
+# Yamtrack (Service Details) BEGIN
+YAMTRACK_INIT_ENV=true
+YAMTRACK_ADMIN_USERNAME=
+YAMTRACK_ADMIN_PASSWORD=
+YAMTRACK_REDIS_PASSWORD=
+YAMTRACK_DATABASE_NAME=
+YAMTRACK_DATABASE_USER=
+YAMTRACK_DATABASE_USER_PASSWORD=
+YAMTRACK_SECRET_KEY=
+YAMTRACK_OIDC_CLIENT_ID=
+YAMTRACK_OIDC_CLIENT_SECRET=
+# Yamtrack (Service Details) END
 
 # Service Details END
 EOFCF
@@ -27716,6 +27734,42 @@ function initServicesCredentials()
     PIXELFED_APP_KEY=$(pwgen -c -n 32 1)
     updateConfigVar PIXELFED_APP_KEY $PIXELFED_APP_KEY
   fi
+  if [ -z "$YAMTRACK_ADMIN_USERNAME" ]; then
+    YAMTRACK_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_yamtrack"
+    updateConfigVar YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_USERNAME
+  fi
+  if [ -z "$YAMTRACK_ADMIN_PASSWORD" ]; then
+    YAMTRACK_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar YAMTRACK_ADMIN_PASSWORD $YAMTRACK_ADMIN_PASSWORD
+  fi
+  if [ -z "$YAMTRACK_REDIS_PASSWORD" ]; then
+    YAMTRACK_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar YAMTRACK_REDIS_PASSWORD $YAMTRACK_REDIS_PASSWORD
+  fi
+  if [ -z "$YAMTRACK_DATABASE_NAME" ]; then
+    YAMTRACK_DATABASE_NAME=yamtrackdb
+    updateConfigVar YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_NAME
+  fi
+  if [ -z "$YAMTRACK_DATABASE_USER" ]; then
+    YAMTRACK_DATABASE_USER=yamtrack-user
+    updateConfigVar YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER
+  fi
+  if [ -z "$YAMTRACK_DATABASE_USER_PASSWORD" ]; then
+    YAMTRACK_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar YAMTRACK_DATABASE_USER_PASSWORD $YAMTRACK_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$YAMTRACK_SECRET_KEY" ]; then
+    YAMTRACK_SECRET_KEY=$(openssl rand -hex 25)
+    updateConfigVar YAMTRACK_SECRET_KEY $YAMTRACK_SECRET_KEY
+  fi
+  if [ -z "$YAMTRACK_OIDC_CLIENT_ID" ]; then
+    YAMTRACK_OIDC_CLIENT_ID=yamtrack
+    updateConfigVar YAMTRACK_OIDC_CLIENT_ID $YAMTRACK_OIDC_CLIENT_ID
+  fi
+  if [ -z "$YAMTRACK_OIDC_CLIENT_SECRET" ]; then
+    YAMTRACK_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar YAMTRACK_OIDC_CLIENT_SECRET $YAMTRACK_OIDC_CLIENT_SECRET
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -27751,6 +27805,7 @@ function checkCreateNonbackupDirs()
   mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
   mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
   mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
+  mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
 }
 
 function installBaseStacks()
@@ -27889,6 +27944,7 @@ function initServiceVars()
   checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WG Portal,wgportal,hshq"
   checkAddSvc "SVCD_WIKIJS=wikijs,wikijs,other,user,Wiki.js,wikijs,hshq"
   checkAddSvc "SVCD_WORDPRESS=wordpress,wordpress,other,user,WordPress,wordpress,hshq"
+  checkAddSvc "SVCD_YAMTRACK=yamtrack,yamtrack,other,user,Yamtrack,yamtrack,hshq"
   set -e
 }
 
@@ -27896,6 +27952,7 @@ function installStackByName()
 {
   stack_name=$1
   is_integrate=$2
+  cd ~
   case "$stack_name" in
     adguard)
       installAdGuard $is_integrate ;;
@@ -28029,6 +28086,8 @@ function installStackByName()
       installAIStack $is_integrate ;;
     pixelfed)
       installPixelfed $is_integrate ;;
+    yamtrack)
+      installYamtrack $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -28189,6 +28248,8 @@ function performUpdateStackByName()
       performUpdateAIStack "$portainerToken" ;;
     pixelfed)
       performUpdatePixelfed "$portainerToken" ;;
+    yamtrack)
+      performUpdateYamtrack "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -28263,6 +28324,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
@@ -28403,6 +28465,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -28510,6 +28573,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -28617,6 +28681,7 @@ function insertServicesHeimdall()
   insertIntoHeimdallDB "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0 "snippetbox.png"
   insertIntoHeimdallDB "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0 "openwebui.png"
   insertIntoHeimdallDB "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" 0 "pixelfed.png"
+  insertIntoHeimdallDB "$FMLNAME_YAMTRACK" $USERTYPE_YAMTRACK "https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN" 0 "yamtrack.png"
   insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
   # HomeServers Tab
   insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
@@ -28717,6 +28782,7 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" 0
+  insertServiceUptimeKuma "$FMLNAME_YAMTRACK" $USERTYPE_YAMTRACK "https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
 
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
@@ -28737,10 +28803,10 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack
   DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack
   DS_MEM_HIGH=netdata,photoprism,aistack
@@ -29340,6 +29406,15 @@ function getScriptImageByContainerName()
     "pixelfed-redis")
       container_image=$IMG_REDIS
       ;;
+    "yamtrack-db")
+      container_image=$IMG_POSTGRES
+      ;;
+    "yamtrack-app")
+      container_image=$IMG_YAMTRACK_APP
+      ;;
+    "yamtrack-redis")
+      container_image=$IMG_REDIS
+      ;;
     *)
       ;;
   esac
@@ -29387,7 +29462,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
   checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD="
   checkAddServiceToConfig "Pixelfed" "PIXELFED_INIT_ENV=false,PIXELFED_DATABASE_NAME=,PIXELFED_DATABASE_ROOT_PASSWORD=,PIXELFED_DATABASE_USER=,PIXELFED_DATABASE_USER_PASSWORD=,PIXELFED_REDIS_PASSWORD=,PIXELFED_APP_KEY="
-  
+  checkAddServiceToConfig "Yamtrack" "YAMTRACK_INIT_ENV=false,YAMTRACK_ADMIN_USERNAME=,YAMTRACK_ADMIN_PASSWORD=,YAMTRACK_REDIS_PASSWORD=,YAMTRACK_DATABASE_NAME=,YAMTRACK_DATABASE_USER=,YAMTRACK_DATABASE_USER_PASSWORD=,YAMTRACK_SECRET_KEY=,YAMTRACK_OIDC_CLIENT_ID=,YAMTRACK_OIDC_CLIENT_SECRET="
+
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
@@ -29457,6 +29533,7 @@ function installPortainer()
     chmod 0400 $HSHQ_SECRETS_DIR/portainer_key.txt
   fi
   # Version 74 Update - see note at very top inside of init() function.
+  cd ~
   sudo docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   search="starting HTTPS server"
   isFound=false
@@ -29688,6 +29765,7 @@ function restartPortainer()
 
 function stopPortainer()
 {
+  cd ~
   docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
 }
 
@@ -29695,6 +29773,7 @@ function startPortainer()
 {
   stpo_curE=${-//[^e]/}
   set +e
+  cd ~
   docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d > /dev/null 2>&1
   search="starting HTTPS server"
   isFound="F"
@@ -30205,7 +30284,22 @@ function installSysUtils()
   generateCert influxdb influxdb
   gf_dataset_uid=$(pwgen -c -n 9 1)
   gf_dashboard_uid=$(pwgen -c -n 9 1)
+  # Have had 2 abrupt exits randomly around this point,
+  # with the error: "getwd: no such file or directory".
+  # So adding some debug statements and potential solutions.
+  echo "Sysutils - Output config"
   outputConfigSysUtils
+  # This may seem silly, but Since gfdashboard.json is
+  # very large, there could be a strange race condition.
+  while ! [ -f $HOME/gfdashboard.json ]
+  do
+    echo "Waiting for json dashboard file..."
+    sleep 1
+  done
+  cd ~
+  echo "Sysutils - Starting stack"
+  sleep 3
+  cd ~
   docker compose -f $HOME/sysutils-compose-tmp.yml up -d
   search="HTTP Server Listen"
   isFound=false
@@ -30224,6 +30318,7 @@ function installSysUtils()
   done
   if ! [ "$isFound" = "true" ]; then
     echo "System Utils did not start up correctly..."
+    cd ~
     docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
@@ -30243,6 +30338,7 @@ function installSysUtils()
   done
   if ! [ "$isFound" = "true" ]; then
     echo "System Utils did not start up correctly..."
+    cd ~
     docker compose -f $HOME/sysutils-compose-tmp.yml down -v
     return 1
   fi
@@ -30288,6 +30384,7 @@ function installSysUtils()
   echo $pref_string | http PATCH http://$GRAFANA_ADMIN_USERNAME:$GRAFANA_ADMIN_PASSWORD@127.0.0.1:6565/api/org/preferences > /dev/null 2>&1
 
   sleep 2
+  cd ~
   docker compose -f $HOME/sysutils-compose-tmp.yml down -v
   sleep 2
   installStack sysutils grafana "HTTP Server Listen" $HOME/sysutils.env
@@ -32909,7 +33006,6 @@ EOFPM
 	}
 }
 EOFJS
-
 }
 
 function performUpdateSysUtils()
@@ -35837,6 +35933,7 @@ function installNextcloud()
     mkdir $HSHQ_STACKS_DIR/nextcloud/record
     chmod 777 $HSHQ_STACKS_DIR/nextcloud/dbexport
     outputConfigNextcloud
+    cd ~
     docker compose -f $HOME/nextcloud-compose-tmp.yml up -d
     search="ready to handle connections"
     error_text="rsync error"
@@ -35866,11 +35963,13 @@ function installNextcloud()
     if [ "$isError" = "true" ]; then
       echo "(Attempt $curTries of $numTries) Error starting Nextcloud stack, restarting..."
     fi
+    cd ~
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     sudo rm -fr $HSHQ_STACKS_DIR/nextcloud
     ((curTries++))
   done
   if ! [ "$isFound" = "true" ]; then
+    cd ~
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     performNextcloudInstallFailCleanup
     echo "ERROR: Nextcloud unknown installation error, exiting..."
@@ -35916,6 +36015,7 @@ function installNextcloud()
     ((curTries++))
   done
   if [ "$isFound" = "false" ]; then
+    cd ~
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     performNextcloudInstallFailCleanup
     echo "ERROR: Nextcloud could not obtain apps manifest, exiting..."
@@ -35931,6 +36031,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install calendar
   # Sometimes there are issues with apps, check the first one to see if there is an error.
   if [ $? -ne 0 ]; then
+    cd ~
     docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
     performNextcloudInstallFailCleanup
     echo "ERROR: Nextcloud apps did not install correctly, exiting..."
@@ -36021,6 +36122,7 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ background:cron
 
   sleep 5
+  cd ~
   docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
   rm -f $HOME/nextcloud-compose-tmp.yml
 
@@ -39222,7 +39324,9 @@ function migrateMastodon()
   echo -e "\nPerforming Mastodon database migration...this could take a few minutes\n"
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/static/*
   sudo rm -fr ${HSHQ_NONBACKUP_DIR}/mastodon/redis/*
+  cd ~
   docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml run --rm mastodon-app bundle exec rake db:migrate > /dev/null 2>&1
+  cd ~
   docker compose -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml down -v
   rm -f $HSHQ_STACKS_DIR/mastodon/docker-compose.yml
   rm -f $HSHQ_STACKS_DIR/mastodon/stack.env
@@ -40137,6 +40241,7 @@ function installPhotoPrism()
     updateConfigVar PHOTOPRISM_INIT_ENV $PHOTOPRISM_INIT_ENV
   fi
   echo "Starting PhotoPrism. Please be patient, this process takes a few minutes..."
+  cd ~
   docker compose -f $HOME/photoprism-compose-tmp.yml up -d
   search="listening on 0.0.0.0:2342"
   isFound=false
@@ -40154,11 +40259,13 @@ function installPhotoPrism()
     i=$((i+10))
   done
   if ! [ "$isFound" = "true" ]; then
+    cd ~
     docker compose -f $HOME/photoprism-compose-tmp.yml down -v
     echo "ERROR: PhotoPrism did not start up correctly..."
     return 1
   fi
   sleep 5
+  cd ~
   docker compose -f $HOME/photoprism-compose-tmp.yml down -v
   installStack photoprism photoprism-app "listening on 0.0.0.0:2342" $HOME/photoprism.env
   retval=$?
@@ -40496,8 +40603,8 @@ function installGuacamole()
 
   outputConfigGuacamole
   docker run --rm $IMG_GUACAMOLE_WEB /opt/guacamole/bin/initdb.sh --mysql > $HSHQ_STACKS_DIR/guacamole/init/initdb.sql
+  cd ~
   docker compose -f $HOME/guacamole-compose-tmp.yml up -d
-
   echo "Waiting at least 15 seconds before continuing..."
   sleep 15
   search="ready for connections"
@@ -40517,12 +40624,13 @@ function installGuacamole()
   done
   if ! [ "$isFound" = "true" ]; then
     echo "Guacamole did not start up correctly..."
+    cd ~
     docker compose -f $HOME/guacamole-compose-tmp.yml down -v
     rm -f $HOME/guacamole-compose-tmp.yml
     return 1
   fi
   sleep 5
-
+  cd ~
   docker compose -f $HOME/guacamole-compose-tmp.yml down -v
   installStack guacamole guacamole-web "Server startup in" $HOME/guacamole.env 5
   retval=$?
@@ -43662,8 +43770,8 @@ function installCodeServer()
   generateCert codeserver codeserver
   outputConfigCodeServer
   mv $HOME/codeserver.yaml $HSHQ_STACKS_DIR/codeserver/.config/code-server/config.yaml
+  cd ~
   docker compose -f $HOME/codeserver-compose-tmp.yml up -d
-
   search="HTTPS server listening on https"
   isFound=false
   i=0
@@ -43681,6 +43789,7 @@ function installCodeServer()
   done
   if ! [ "$isFound" = "true" ]; then
     echo "CodeServer did not start up correctly..."
+    cd ~
     docker compose -f $HOME/codeserver-compose-tmp.yml down -v
     rm -f $HOME/codeserver-compose-tmp.yml
     return 1
@@ -43688,6 +43797,7 @@ function installCodeServer()
   echo "Codeserver installed, sleeping 10 seconds..."
   sleep 10
   docker exec codeserver code-server --install-extension kelvin.vscode-sshfs
+  cd ~
   docker compose -f $HOME/codeserver-compose-tmp.yml down -v
   rm -f $HOME/codeserver-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/codeserver/.local/share/code-server/User/settings.json
@@ -51748,7 +51858,7 @@ PENPOT_STORAGE_ASSETS_FS_DIRECTORY=/opt/data/assets
 PENPOT_DATABASE_URI=postgresql://penpot-db/$PENPOT_DATABASE_NAME
 PENPOT_DATABASE_USERNAME=$PENPOT_DATABASE_USER
 PENPOT_DATABASE_PASSWORD=$PENPOT_DATABASE_USER_PASSWORD
-PENPOT_REDIS_URI=redis://:$PENPOT_REDIS_PASSWORD@penpot-redis/0
+PENPOT_REDIS_URI=redis://:$PENPOT_REDIS_PASSWORD@penpot-redis:6379/0
 POSTGRES_DB=$PENPOT_DATABASE_NAME
 POSTGRES_USER=$PENPOT_DATABASE_USER
 POSTGRES_PASSWORD=$PENPOT_DATABASE_USER_PASSWORD
@@ -53470,6 +53580,7 @@ function installAIStack()
   done
   if ! [ "$isFound" = "true" ]; then
     echo "MindsDB did not start up correctly..."
+    cd ~
     docker compose -f $HOME/aistack-compose-tmp.yml down -v
     rm -f $HOME/aistack-compose-tmp.yml
     rm -f $HOME/aistack.env
@@ -53485,6 +53596,7 @@ function installAIStack()
   docker exec aistack-mindsdb-db bash /dbimport/insertAdmin.sh
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/insertAdmin.sh
   sleep 5
+  cd ~
   docker compose -f $HOME/aistack-compose-tmp.yml down -v
   rm -f $HOME/aistack-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport/init-dbs.sh
@@ -55677,6 +55789,7 @@ EOFPF
 EOFPF
   DOCKER_BUILDKIT=1 docker build -t $IMG_PIXELFED_MOD_APP .
   buildRetVal=$?
+  cd ~
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
   return $buildRetVal
 }
@@ -55684,6 +55797,256 @@ EOFPF
 function performUpdatePixelfed()
 {
   perform_stack_name=pixelfed
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Yamtrack
+function installYamtrack()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory yamtrack "Yamtrack"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName yamtrack-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/yamtrack
+  mkdir $HSHQ_STACKS_DIR/yamtrack/db
+  mkdir $HSHQ_STACKS_DIR/yamtrack/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/yamtrack
+  mkdir $HSHQ_NONBACKUP_DIR/yamtrack/redis
+  chmod 777 $HSHQ_STACKS_DIR/yamtrack/dbexport
+  initServicesCredentials
+  set +e
+  YAMTRACK_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $YAMTRACK_OIDC_CLIENT_SECRET | tr -d ':\n')
+  outputConfigYamtrack
+  oidcBlock=$(cat $HOME/yamtrack.oidc)
+  rm -f $HOME/yamtrack.oidc
+  insertOIDCClientAuthelia yamtrack "$oidcBlock"
+  installStack yamtrack yamtrack-app "Listening at: http://127.0.0.1:8001" $HOME/yamtrack.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$YAMTRACK_INIT_ENV" = "true" ]; then
+    sendEmail -s "Yamtrack Admin Login Info" -b "Yamtrack Admin Username: $YAMTRACK_ADMIN_USERNAME\nYamtrack Admin Password: $YAMTRACK_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    YAMTRACK_INIT_ENV=true
+    updateConfigVar YAMTRACK_INIT_ENV $YAMTRACK_INIT_ENV
+  fi
+  sleep 3
+  docker exec -it yamtrack-app python manage.py shell -c "User.objects.create_user(username='$YAMTRACK_ADMIN_USERNAME', password='$YAMTRACK_ADMIN_PASSWORD', is_staff=True, is_superuser=True)" > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://yamtrack-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_YAMTRACK $MANAGETLS_YAMTRACK "$is_integrate_hshq" $NETDEFAULT_YAMTRACK "$inner_block"
+  insertSubAuthelia $SUB_YAMTRACK.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll yamtrack "$FMLNAME_YAMTRACK" $USERTYPE_YAMTRACK "https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN" "yamtrack.png"
+    restartAllCaddyContainers
+    checkAddDBConnection true yamtrack "$FMLNAME_YAMTRACK" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigYamtrack()
+{
+  cat <<EOFMT > $HOME/yamtrack-compose.yml
+$STACK_VERSION_PREFIX yamtrack $(getScriptStackVersion yamtrack)
+
+services:
+  yamtrack-db:
+    image: $(getScriptImageByContainerName yamtrack-db)
+    container_name: yamtrack-db
+    hostname: yamtrack-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-yamtrack-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/yamtrack/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/yamtrack/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.yamtrack-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.yamtrack-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.yamtrack-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.yamtrack-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.yamtrack-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.yamtrack-hourly-db.email-from=Yamtrack Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.yamtrack-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.yamtrack-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.yamtrack-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.yamtrack-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.yamtrack-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.yamtrack-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.yamtrack-monthly-db.email-from=Yamtrack Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.yamtrack-monthly-db.mail-only-on-error=false"
+
+  yamtrack-app:
+    image: $(getScriptImageByContainerName yamtrack-app)
+    container_name: yamtrack-app
+    hostname: yamtrack-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - yamtrack-db
+    networks:
+      - int-yamtrack-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
+
+  yamtrack-redis:
+    image: $(getScriptImageByContainerName yamtrack-redis)
+    container_name: yamtrack-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-yamtrack-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-yamtrack-redis:/bitnami/redis/data
+    environment:
+      - REDIS_PASSWORD=$YAMTRACK_REDIS_PASSWORD
+
+volumes:
+  v-yamtrack-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/yamtrack/db
+  v-yamtrack-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/yamtrack/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-yamtrack-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+EOFMT
+  cat <<EOFMT > $HOME/yamtrack.env
+TZ=\${TZ}
+PUID=\${UID}
+PGID=\${GID}
+TMDB_API=
+MAL_API=
+IGDB_ID=
+IGDB_SECRET=
+TRAKT_API=
+SIMKL_ID=
+SIMKL_SECRET=
+SOCIAL_PROVIDERS=allauth.socialaccount.providers.openid_connect
+SOCIALACCOUNT_PROVIDERS={"openid_connect":{"OAUTH_PKCE_ENABLED":true,"APPS":[{"provider_id":"authelia","name":"Authelia","client_id":"$YAMTRACK_OIDC_CLIENT_ID","secret":"$YAMTRACK_OIDC_CLIENT_SECRET","settings":{"server_url":"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration"}}]}}
+ACCOUNT_DEFAULT_HTTP_PROTOCOL=https
+REDIS_URL=redis://:$YAMTRACK_REDIS_PASSWORD@yamtrack-redis:6379/0
+SECRET=$YAMTRACK_SECRET_KEY
+URLS=https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN
+ALLOWED_HOSTS=https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN
+CSRF=https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN
+REGISTRATION=true
+DEBUG=false
+ADMIN_ENABLED=true
+DB_HOST=yamtrack-db
+DB_PORT=5432
+DB_NAME=$YAMTRACK_DATABASE_NAME
+DB_USER=$YAMTRACK_DATABASE_USER
+DB_PASSWORD=$YAMTRACK_DATABASE_USER_PASSWORD
+POSTGRES_DB=$YAMTRACK_DATABASE_NAME
+POSTGRES_USER=$YAMTRACK_DATABASE_USER
+POSTGRES_PASSWORD=$YAMTRACK_DATABASE_USER_PASSWORD
+POSTGRES_INITDB_ARGS=--data-checksums
+PYTHON_VER=python3.12
+EOFMT
+  rm -f $HOME/yamtrack.oidc
+  cat <<EOFIM > $HOME/yamtrack.oidc
+# Authelia OIDC Client yamtrack BEGIN
+      - client_id: $YAMTRACK_OIDC_CLIENT_ID
+        client_name: $FMLNAME_YAMTRACK
+        client_secret: '$YAMTRACK_OIDC_CLIENT_SECRET_HASH'
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        require_pkce: true
+        pkce_challenge_method: S256
+        redirect_uris:
+          - https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/oidc/authelia/login/callback/
+        scopes:
+          - openid
+          - profile
+          - email
+          - groups
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client yamtrack END
+EOFIM
+}
+
+function performUpdateYamtrack()
+{
+  perform_stack_name=yamtrack
   prepPerformUpdate "$1"
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
@@ -63174,6 +63537,14 @@ SQLPAD_CONNECTIONS__wordpress__username=$WORDPRESS_DATABASE_USER
 SQLPAD_CONNECTIONS__wordpress__password=$WORDPRESS_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__wordpress__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__wordpress__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__yamtrack__name=Yamtrack
+SQLPAD_CONNECTIONS__yamtrack__driver=postgres
+SQLPAD_CONNECTIONS__yamtrack__host=yamtrack-db
+SQLPAD_CONNECTIONS__yamtrack__database=$YAMTRACK_DATABASE_NAME
+SQLPAD_CONNECTIONS__yamtrack__username=$YAMTRACK_DATABASE_USER
+SQLPAD_CONNECTIONS__yamtrack__password=$YAMTRACK_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__yamtrack__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__yamtrack__idleTimeoutSeconds=900
 EOFSP
 
 }
@@ -63308,6 +63679,7 @@ function installHeimdall()
 
   generateCert heimdall heimdall
   outputConfigHeimdall
+  cd ~
   sudo docker compose -f $HOME/heimdall-compose-tmp.yml up -d
 
   stack_loaded_text="service 99-ci-service-check successfully started"
@@ -63328,11 +63700,13 @@ function installHeimdall()
   done
   if ! [ "$isFound" = "true" ]; then
     echo "Heimdall did not start up correctly..."
+    cd ~
     sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
     exit 1
   fi
   sleep 3
   set -e
+  cd ~
   sudo docker compose -f $HOME/heimdall-compose-tmp.yml down -v
   rm -f $HOME/heimdall-compose-tmp.yml
 
