@@ -25302,7 +25302,7 @@ function loadPinnedDockerImages()
   IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=jgraph/export-server
   IMG_DRAWIO_WEB=jgraph/drawio:26.2.2
-  IMG_DUPLICATI=linuxserver/duplicati:2.1.0
+  IMG_DUPLICATI=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
   IMG_EXCALIDRAW_SERVER=excalidraw/excalidraw-room
   IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
@@ -25451,7 +25451,7 @@ function getScriptStackVersion()
     wikijs)
       echo "v4" ;;
     duplicati)
-      echo "v3" ;;
+      echo "v4" ;;
     mastodon)
       echo "v8" ;;
     dozzle)
@@ -38474,22 +38474,27 @@ function performUpdateDuplicati()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=linuxserver/duplicati:2.0.7
-      image_update_map[0]="linuxserver/duplicati:2.0.7,linuxserver/duplicati:2.1.0"
+      image_update_map[0]="linuxserver/duplicati:2.0.7,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=linuxserver/duplicati:2.0.8
-      image_update_map[0]="linuxserver/duplicati:2.0.8,linuxserver/duplicati:2.1.0"
+      image_update_map[0]="linuxserver/duplicati:2.0.8,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiAddSettingsEncryptionKey
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=linuxserver/duplicati:2.1.0
-      image_update_map[0]="linuxserver/duplicati:2.1.0,linuxserver/duplicati:2.1.0"
+      image_update_map[0]="linuxserver/duplicati:2.1.0,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
+    ;;
+    4)
+      newVer=v4
+      curImageList=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
+      image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
     ;;
     *)
       is_upgrade_error=true
