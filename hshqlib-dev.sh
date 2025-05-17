@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=154
+HSHQ_LIB_SCRIPT_VERSION=155
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5445,6 +5445,7 @@ TMP_RS_CHECKDIR=/tmp/rscheckdir
 
 function main()
 {
+  installLogNotify "Begin Main"
   IS_PERFORM_INSTALL=false
   IS_GET_SUPER=false
   IS_DETACH_RS_SCREEN=false
@@ -5465,12 +5466,18 @@ function main()
   set +e
   rm -fr \$TMP_RS_CHECKDIR
   if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
+    installLogNotify "Checking password..."
+    echo "Checking password..."
     mkdir -p \$TMP_RS_CHECKDIR
     read -s -t 10 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
+      installLogNotify "Password is bad. Sorry, try again."
       echo "Sorry, try again."
       USER_RELAY_SUDO_PW=""
+    else
+      installLogNotify "Password is good"
+      echo "Password is good"
     fi
     while [ -z "\$USER_RELAY_SUDO_PW" ]
     do
@@ -5490,7 +5497,6 @@ function main()
   loadVersionVars
   set -e
   mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
-  installLogNotify "Begin Main"
   if [ -d /tmp/hshqopen ]; then
     echo "Installation already in progess, exiting..."
     exit 2
@@ -5543,6 +5549,15 @@ function initScreen()
   isScreenSuccess=false
   curScreenAttempt=0
   maxScreenAttempt=5
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    installLogNotify "initScreen: Bad password"
+    echo "initScreen: Bad password"
+    exit 1
+  else
+    installLogNotify "initScreen: Password is good"
+    echo "initScreen: Password is good"
+  fi
   screen -XS \$screenName quit > /dev/null 2>&1
   while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
   do
