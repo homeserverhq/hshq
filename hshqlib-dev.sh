@@ -37218,13 +37218,18 @@ function performUpdateNextcloud()
 
 function performMaintenanceNextcloud()
 {
+  echo "Performing maintenance on Nextcloud, this could take a few minutes..."
   waitForStack "ready to handle connections" nextcloud-app 3600 5
   if [ "$isStackReady" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
     docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
+    docker exec -u www-data nextcloud-app php cron.php > /dev/null 2>&1
+    docker exec -u www-data nextcloud-app php occ dav:sync-system-addressbook > /dev/null 2>&1
+    docker exec -u www-data nextcloud-app php occ federation:sync-addressbooks > /dev/null 2>&1
   else
     echo "ERROR: There was a problem with the Nextcloud update..."
   fi
+  echo "Maintenance complete!"
 }
 
 function mfNextcloudUpdateNGINXConfig()
@@ -37239,6 +37244,7 @@ function mfNextcloudAddTalkHPB()
   pullImage $(getScriptImageByContainerName nextcloud-talkhpb)
   pullImage $(getScriptImageByContainerName nextcloud-talkrecord)
   outputComposeNextcloud
+  set +e
   grep "PYTHON_VER=" $HOME/nextcloud.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "PYTHON_VER=python3.13" >> $HOME/nextcloud.env
