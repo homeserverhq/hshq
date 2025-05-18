@@ -47,6 +47,8 @@ function init()
   CONFIG_FILE_DEFAULT_FILENAME=config.cnf
   ENCRYPTED_CONFIG_FILE_DEFAULT_FILENAME=config.enc
   ENCRYPTED_CONFIG_FILE_BACKUP_FILENAME=config-enc.bak
+  ENC_PW_FILE=/tmp/encpw.enc
+  TMP_PW_CHECKDIR=/tmp/pwcheckdir
   IS_CONFIG_FILE_UNENCRYPTED=false
   RS_INSTALL_SETUP_SCRIPT_NAME=setup.sh
   RS_INSTALL_FRESH_SCRIPT_NAME=install.sh
@@ -262,12 +264,20 @@ function main()
   if ! [ -z "$USER_SUDO_PW" ]; then
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
-      unset USER_SUDO_PW
       USER_SUDO_PW=""
     fi
   fi
   if [ "$IS_PERFORM_INSTALL" = "true" ]; then
-    read -s -p "" USER_SUDO_PW
+    mkdir -p $TMP_PW_CHECKDIR
+    read -s -p "" sudoPWKey
+    USER_SUDO_PW="$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:$sudoPWKey)"
+    rm -f $ENC_PW_FILE
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      echo "Error with sudo password, exiting installation..."
+      exit 6
+    fi
+    rm -fr $TMP_PW_CHECKDIR
     clear
     stty echo
     if [ "$USERNAME" = "root" ]; then
@@ -280,7 +290,16 @@ function main()
     exit 0
   fi
   if [ "$IS_PERFORM_RESTORE" = "true" ]; then
-    read -s -p "" USER_SUDO_PW
+    mkdir -p $TMP_PW_CHECKDIR
+    read -s -p "" sudoPWKey
+    USER_SUDO_PW="$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:$sudoPWKey)"
+    rm -f $ENC_PW_FILE
+    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      echo "Error with sudo password, exiting restore..."
+      exit 7
+    fi
+    rm -fr $TMP_PW_CHECKDIR
     clear
     stty echo
     if [ "$USERNAME" = "root" ]; then
@@ -2277,7 +2296,7 @@ function initInstallation()
     echo "Starting installation on RelayServer..."
     sleep 1
     loadSSHKey
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -d" <<< "$USER_RELAY_SUDO_PW"
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
   fi
   set -e
@@ -2321,7 +2340,6 @@ function performBaseInstallation()
   fi
   set +e
   checkLoadConfig
-  unset USER_SUDO_PW
   USER_SUDO_PW=""
   setSudoTimeoutInstall
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
@@ -3002,8 +3020,7 @@ function initScreen()
   # super-user (sudo) password into the running screen
   # with as minimal of a security footprint as possible.
   # There's also some race conditions to overcome, hence
-  # the added complexity. This method avoids environment
-  # variables, writing anything to file, and/or anything
+  # the added complexity. This method avoids anything
   # (long-running) from showing up in the process list
   # (ps auxwwe).
   screenName="$1"
@@ -3018,11 +3035,11 @@ function initScreen()
   # special characters in strings, specifically
   # in this case when trying to inject the sudo
   # password. Thus, the easiest way to handle this 
-  # is to create a temporary "safe" password, inject
-  # it into the screen, get sudo in the screen, then
-  # change it back to the original.
-  tmpSudo=$(pwgen -c -n 32 1)
-  echo -e "$USERNAME:$tmpSudo" | sudo chpasswd
+  # is to create a temporary "safe" key, output
+  # the encrypted password to file using the key
+  # and transmit the key to the screen session.
+  sudoPWKey=$(pwgen -c -n 32 1)
+  echo -n "$USER_SUDO_PW" | openssl enc -e -aes256 -pbkdf2 -pass pass:$sudoPWKey > $ENC_PW_FILE
   while [ $curScreenAttempt -lt $maxScreenAttempt ]
   do
     ((curScreenAttempt++))
@@ -3040,12 +3057,29 @@ function initScreen()
       continue
     fi
     screen -S $screenName -X stuff "$screenCmd\n"
-    screen -S $screenName -X stuff "$tmpSudo\n"
+    curCheckCount=0
+    while ! [ -d $TMP_PW_CHECKDIR ] && [ $curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    screen -S $screenName -X stuff "$sudoPWKey\n"
+    curCheckCount=0
+    while [ -d $TMP_PW_CHECKDIR ] && [ $curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
     rm -fr $dirtest1
+    if [ -d $TMP_PW_CHECKDIR ]; then
+      rm -fr $TMP_PW_CHECKDIR
+      echo "The sudo password was not correctly transmitted to the screen session, exiting..."
+      exit 5
+    fi
+    rm -fr $TMP_PW_CHECKDIR
     isScreenSuccess=true
     break
   done
-  echo -e "$USERNAME:$USER_SUDO_PW" | sudo chpasswd
   if ! [ "$isScreenSuccess" = "true" ]; then
     return 1
   fi
@@ -3870,7 +3904,7 @@ EOFRS
   echo "Starting installation on RelayServer..."
   loadSSHKey
   set +e
-  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -d" <<< "$USER_RELAY_SUDO_PW"
+  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW"
   ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "export TERM=linux; screen -r hshqInstall"
   unloadSSHKey
   echo "RelayServer is rebooting..."
@@ -5443,6 +5477,14 @@ TZ=$TZ
 USERNAME=\$(id -u -n)
 USERID=\$(id -u)
 GROUPID=\$(id -g)
+if [ \$USERID = "0" ]; then
+  echo "This script should be run as a non-root user. Exiting..."
+  exit 1
+fi
+if [ -d /tmp/hshqopen ]; then
+  echo "Installation already in progess, exiting..."
+  exit 2
+fi
 cd ~
 RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
 RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
@@ -5451,64 +5493,35 @@ RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
 RELAYSERVER_HSHQ_SECRETS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/secrets
 RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/stacks
 RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/ssl
-TMP_RS_CHECKDIR=/tmp/rscheckdir
 
 function main()
 {
-  IS_PERFORM_INSTALL=false
-  IS_GET_SUPER=false
-  IS_DETACH_RS_SCREEN=false
-  while getopts ':ipd' opt; do
+  while getopts ':ips' opt; do
     case "\$opt" in
-      i)
-        IS_PERFORM_INSTALL=true ;;
+      s)
+        startInstall ;;
       p)
-        IS_GET_SUPER=true ;;
-      d)
-        IS_DETACH_RS_SCREEN=true ;;
+        getSuper ;;
+      i)
+        performInstall ;;
       ?|h)
         echo "Usage: \$(basename \$0)"
         exit 1 ;;
     esac
   done
   shift "\$((\$OPTIND -1))"
+}
+
+function startInstall()
+{
   set +e
-  rm -fr \$TMP_RS_CHECKDIR
-  if ! [ "\$IS_PERFORM_INSTALL" = "true" ]; then
-    mkdir -p \$TMP_RS_CHECKDIR
-    read -s -t 10 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
-    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      echo "Sorry, try again."
-      USER_RELAY_SUDO_PW=""
-    fi
-    while [ -z "\$USER_RELAY_SUDO_PW" ]
-    do
-      read -s -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
-      echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-      if [ \$? -ne 0 ]; then
-        echo "Sorry, try again."
-        USER_RELAY_SUDO_PW=""
-        continue
-      fi
-    done
-    rm -fr \$TMP_RS_CHECKDIR
-    if [ "\$IS_GET_SUPER" = "true" ]; then
-      exit
-    fi
+  read -s -t 30 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Error with RelayServer sudo password, exiting..."
+    exit 8
   fi
   loadVersionVars
-  set -e
-  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
-  installLogNotify "Begin Main"
-  if [ -d /tmp/hshqopen ]; then
-    echo "Installation already in progess, exiting..."
-    exit 2
-  fi
-  if [ \$USERID = "0" ]; then
-    echo "This script should be run as a non-root user. Exiting..."
-    exit 3
-  fi
   echo "Update apt..."
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo dpkg --configure -a > /dev/null 2>&1
@@ -5534,27 +5547,37 @@ function main()
     echo "Installing pwgen..."
     performAptInstall pwgen > /dev/null 2>&1
   fi
-  if [ "\$IS_PERFORM_INSTALL" = "true" ]; then
-    mkdir /tmp/hshqopen
-    install
-  else
-    scName=hshqInstall
-    initScreen "\$scName"
-    if [ "\$IS_DETACH_RS_SCREEN" = "true" ]; then
-      screen -S "\$scName" -X stuff "bash \$0 -i\n"
-    else
-      screen -S "\$scName" -X stuff "bash \$0 -i\n"
-      screen -r "\$scName"
-    fi
+  set -e
+  mkdir -p \$RELAYSERVER_HSHQ_BASE_DIR
+  installLogNotify "Start Installation"
+  scName=hshqInstall
+  initScreen "\$scName"
+  screen -S "\$scName" -X stuff "bash \$0 -i\n"
+}
+
+function getSuper()
+{
+  set +e
+  stty -echo
+  mkdir -p $TMP_PW_CHECKDIR
+  read -s -p "" sudoPWKey
+  USER_RELAY_SUDO_PW="\$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:\$sudoPWKey)"
+  rm -f $ENC_PW_FILE
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    installLogNotify "Error with sudo password, exiting installation..."
+    exit 6
   fi
+  rm -fr $TMP_PW_CHECKDIR
+  clear
+  stty echo
 }
 
 function initScreen()
 {
-  screenName="\$1"
   set +e
+  screenName="\$1"
   dirtest1=/tmp/sctest1
-  dirtest2=/tmp/sctest2
   isScreenSuccess=false
   curScreenAttempt=0
   maxScreenAttempt=5
@@ -5563,16 +5586,16 @@ function initScreen()
   # special characters in strings, specifically
   # in this case when trying to inject the sudo
   # password. Thus, the easiest way to handle this 
-  # is to create a temporary "safe" password, inject
-  # it into the screen, get sudo in the screen, then
-  # change it back to the original.
-  tmpSudo=\$(pwgen -c -n 32 1)
-  echo -e "\$USERNAME:\$tmpSudo" | sudo chpasswd
+  # is to create a temporary "safe" key, output
+  # the encrypted password to file using the key
+  # and transmit the key to the screen session.
+  sudoPWKey=\$(pwgen -c -n 32 1)
+  echo -n "\$USER_RELAY_SUDO_PW" | openssl enc -e -aes256 -pbkdf2 -pass pass:\$sudoPWKey > $ENC_PW_FILE
   while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
   do
     ((curScreenAttempt++))
     rm -fr \$dirtest1
-    rm -fr \$dirtest2
+    rm -fr $TMP_PW_CHECKDIR
     screen -L -Logfile \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME -dmS \$screenName
     screen -S \$screenName -X stuff "stty -echo;mkdir \$dirtest1\n"
     curCheckCount=0
@@ -5587,36 +5610,29 @@ function initScreen()
     fi
     screen -S \$screenName -X stuff "bash \$0 -p\n"
     curCheckCount=0
-    while ! [ -d \$TMP_RS_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    while ! [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
     do
       ((curCheckCount++))
       sleep 1
     done
-    screen -S \$screenName -X stuff "\$tmpSudo\n"
+    screen -S \$screenName -X stuff "\$sudoPWKey\n"
     curCheckCount=0
-    while [ -d \$TMP_RS_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    while [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
     do
       ((curCheckCount++))
       sleep 1
     done
-    screen -S \$screenName -X stuff "mkdir \$dirtest2\n"
-    curCheckCount=0
-    while ! [ -d \$dirtest2 ] && [ \$curCheckCount -lt 5 ]
-    do
-      ((curCheckCount++))
-      sleep 1
-    done
-    if ! [ -d \$dirtest2 ]; then
-      screen -XS \$screenName quit > /dev/null 2>&1
-      continue
-    fi
-    screen -S \$screenName -X stuff "stty echo\n"
     rm -fr \$dirtest1
-    rm -fr \$dirtest2
+    if [ -d $TMP_PW_CHECKDIR ]; then
+      rm -fr $TMP_PW_CHECKDIR
+      echo "The sudo password was not correctly transmitted to the screen session, exiting..."
+      exit 5
+    fi
+    rm -fr $TMP_PW_CHECKDIR
     isScreenSuccess=true
     break
   done
-  echo -e "\$USERNAME:\$USER_RELAY_SUDO_PW" | sudo chpasswd
+  USER_RELAY_SUDO_PW=""
   if ! [ "\$isScreenSuccess" = "true" ]; then
     return 1
   fi
@@ -5718,6 +5734,7 @@ function loadVersionVars()
   DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  checkSupportedHostOS
 }
 
 function checkSupportedHostOS()
@@ -5734,7 +5751,6 @@ function checkSupportedHostOS()
   if [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
     return
   fi
-
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
   echo "@                   Unsupported Host Operating System                  @"
   echo "@                                                                      @"
@@ -5746,17 +5762,12 @@ function checkSupportedHostOS()
   echo "@  - Mint 22 (Wilma)                                                   @"
   echo "@                                                                      @"
   echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  rm -fr /tmp/hshqopen
   exit 2
 }
 
-function install()
+function performInstall()
 {
-  checkSupportedHostOS
-  #echo "The installation process is ready to initiate."
-  #echo "You can safely exit the screen after it starts"
-  #echo "by pressing CTRL-a, then release, then press d"
-  #echo "to detach. Enter your password to start."
+  mkdir /tmp/hshqopen
   sudo -v
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   set -e
