@@ -5781,11 +5781,9 @@ function performInstall()
   sudo chmod 700 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/root
   sudo mkdir -p \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot
   sudo chmod 700 \$RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot
-
   sudo mkdir -p \$RELAYSERVER_HSHQ_SECRETS_DIR
   mkdir -p \$RELAYSERVER_HSHQ_SSL_DIR
   mkdir -p \$RELAYSERVER_HSHQ_STACKS_DIR
-
   outputCerts
   pullDockerImages
   outputScripts
@@ -5804,9 +5802,10 @@ function performInstall()
   sudo rm -f \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
   docker image prune -af
   installLogNotify "Rebooting"
-  echo -e "\n\n\n\n########################################\n\n"
-  echo "RelayServer Installation Complete!"
-  echo -e "\n\n########################################\n\n"
+  echo -e "\n\n\n########################################\n"
+  echo "  RelayServer Installation Complete!"
+  echo "  Restarting server..."
+  echo -e "\n########################################\n\n"
   rm -fr /tmp/hshqopen
   # Successfull installation, clean up the logs
   #rm -f \$RELAYSERVER_HSHQ_BASE_DIR/$RELAYSERVER_HSHQ_FULL_LOG_NAME
