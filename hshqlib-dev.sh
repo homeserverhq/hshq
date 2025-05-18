@@ -2117,7 +2117,7 @@ function initConfig()
         continue
       fi
       if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
-        showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
+        showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
         tmp_pw1=abc
         tmp_pw2=def
         continue
@@ -2728,7 +2728,7 @@ EOF
       continue
     fi
     if [ $(checkValidPassword "$tmp_pw1" 16) = "false" ]; then
-      showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
+      showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
       tmp_pw1=""
       tmp_pw2=""
       continue
@@ -3646,7 +3646,7 @@ function webSetupHostedVPN()
       return
     fi
     if [ "$(checkValidPassword $rs_new_password 16)" = "false" ]; then
-      echo "ERROR: The password is invalid or is too weak($rs_new_password). It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($), returning..."
+      echo "ERROR: The password is invalid or is too weak($rs_new_password). It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes - returning..."
       return
     fi
     USER_RELAY_SUDO_PW="$rs_new_password"
@@ -8539,7 +8539,7 @@ function uploadVPNInstallScripts()
           continue
         fi
         if [ $(checkValidPassword "$tmp_pw1" 16) = "false" ]; then
-          showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
+          showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
           tmp_pw1=""
           tmp_pw2=""
           continue
@@ -14013,6 +14013,9 @@ function checkValidPassword()
   elif [[ "$pw_in" =~ '$' ]]; then
     # Contains a dollar sign.
     echo "false"
+  elif [[ "$pw_in" =~ '"' ]]; then
+    # Contains a double quote.
+    echo "false"
   elif [ $pw_length -lt $min_length ]; then
     # Less than min characters
     echo "false"
@@ -17867,7 +17870,7 @@ function createInitialEnv()
       continue
     fi
     if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
-      showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces or dollar sign ($)."
+      showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
       tmp_pw1=abc
       tmp_pw2=def
       continue
