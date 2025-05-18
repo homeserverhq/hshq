@@ -2117,7 +2117,7 @@ function initConfig()
         continue
       fi
       if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
-        showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
+        showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. It can only contain the following symbols: ~!@#%^&*()-_+=<>?.,"
         tmp_pw1=abc
         tmp_pw2=def
         continue
@@ -2728,7 +2728,7 @@ EOF
       continue
     fi
     if [ $(checkValidPassword "$tmp_pw1" 16) = "false" ]; then
-      showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
+      showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. It can only contain the following symbols: ~!@#%^&*()-_+=<>?.,"
       tmp_pw1=""
       tmp_pw2=""
       continue
@@ -3645,8 +3645,8 @@ function webSetupHostedVPN()
       echo "ERROR: The selected username is invalid. It must consists of a-z and/or 0-9. No special characters, the length must be between 4-32 characters, and it must begin with a letter, returning..."
       return
     fi
-    if [ "$(checkValidPassword $rs_new_password 16)" = "false" ]; then
-      echo "ERROR: The password is invalid or is too weak($rs_new_password). It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes - returning..."
+    if [ "$(checkValidPassword "$rs_new_password" 16)" = "false" ]; then
+      echo "ERROR: The password is invalid or is too weak($rs_new_password). It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. It can only contain the following symbols: ~!@#%^&*()-_+=<>?.,"
       return
     fi
     USER_RELAY_SUDO_PW="$rs_new_password"
@@ -8539,7 +8539,7 @@ function uploadVPNInstallScripts()
           continue
         fi
         if [ $(checkValidPassword "$tmp_pw1" 16) = "false" ]; then
-          showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
+          showMessageBox "Weak Password" "The password is invalid or is too weak. It must contain at least 16 characters and consist of uppercase letters, lowercase letters, and numbers. It can only contain the following symbols: ~!@#%^&*()-_+=<>?.,"
           tmp_pw1=""
           tmp_pw2=""
           continue
@@ -14016,11 +14016,17 @@ function checkValidPassword()
   elif [[ "$pw_in" =~ '"' ]]; then
     # Contains a double quote.
     echo "false"
+  elif [[ "$pw_in" =~ '`' ]]; then
+    # Contains a backtick.
+    echo "false"
   elif [ $pw_length -lt $min_length ]; then
     # Less than min characters
     echo "false"
-  else
+  elif echo "$pw_in" | grep -Eq '^[a-zA-Z0-9(~!@#%^&*_+=<>?.,)-]+$'; then
     echo "true"
+  else
+    # Some other problem
+    echo "false"
   fi
 }
 
@@ -17870,7 +17876,7 @@ function createInitialEnv()
       continue
     fi
     if [ $(checkValidPassword "$tmp_pw1" 8) = "false" ]; then
-      showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. No spaces, dollar sign ($), or double quotes."
+      showMessageBox "Password Invalid" "The password is too short or contains invalid characters. It must contain at least 8 characters and consist of uppercase letters, lowercase letters, and numbers. It can only contain the following symbols: ~!@#%^&*()-_+=<>?.,"
       tmp_pw1=abc
       tmp_pw2=def
       continue
