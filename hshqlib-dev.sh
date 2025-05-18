@@ -3752,7 +3752,6 @@ function main()
   sudo usermod -aG docker \$activeUsername > /dev/null 2>&1
   mkdir -p /home/\$activeUsername/.ssh
   chmod 775 /home/\$activeUsername/.ssh
-  chown -R \$activeUsername:\$activeUsername /home/\$activeUsername/.ssh
   pubk=\$(echo "\$pubkey" | cut -d " " -f2)
   grep "\$pubk" /home/\$activeUsername/.ssh/authorized_keys > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
@@ -3761,6 +3760,7 @@ function main()
   else
     echo "Pubkey already present."
   fi
+  chown -R \$activeUsername:\$activeUsername /home/\$activeUsername/.ssh
   rm -f /home/\$activeUsername/$RS_INSTALL_SETUP_SCRIPT_NAME
   rm -f /home/\$activeUsername/$RS_INSTALL_FRESH_SCRIPT_NAME
   removeMyself
@@ -8612,7 +8612,7 @@ function uploadVPNInstallScripts()
       if [ $is_err -ne 0 ]; then
         # Key not present
         echo "Adding key to RelayServer..."
-        SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
+        SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -f -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
         is_err=$?
       fi
       unloadSSHKey
