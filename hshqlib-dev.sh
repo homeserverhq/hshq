@@ -466,10 +466,8 @@ EOF
 )
   menures=$(whiptail --title "Select an option" --menu "$installedmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
   "1" "Services" \
-  "2" "Network" \
-  "3" "HSHQ Utils" \
-  "4" "System Utils" \
-  "5" "Exit" 3>&1 1>&2 2>&3)
+  "2" "System Utils" \
+  "3" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -478,33 +476,34 @@ EOF
 	  return 0 ;;
     1)
       checkLoadConfig
-      if ! [ "$IS_INSTALLED" = "true" ]; then
-        showMessageBox "System Not Installed" "You must perform a system installation first before using this utility."
-        exit
-      fi
       showStacksMenu
       set +e
       return 1 ;;
     2)
-      checkLoadConfig
-      if ! [ "$IS_INSTALLED" = "true" ]; then
-        showMessageBox "System Not Installed" "You must perform a system installation first before using this utility."
-        exit
-      fi
       set +e
-      showNetworkMenu
+      showAllUtilsMenu
       set +e
       return 1 ;;
-    3)
-      showHSHQUtilsMenu
-      set +e
-	  return 1 ;;
-    4)
-      showSysUtilsMenu
-      set +e
-	  return 1 ;;
-    5)
-	  return 0 ;;
+#    2)
+#      checkLoadConfig
+#      if ! [ "$IS_INSTALLED" = "true" ]; then
+#        showMessageBox "System Not Installed" "You must perform a system installation first before using this utility."
+#        exit
+#      fi
+#      set +e
+#      showNetworkMenu
+#      set +e
+#      return 1 ;;
+#    2)
+#      showHSHQUtilsMenu
+#      set +e
+#       return 1 ;;
+#    3)
+#      showSysUtilsMenu
+#      set +e
+#       return 1 ;;
+#    4)
+#       return 0 ;;
   esac
 }
 
@@ -1060,6 +1059,93 @@ function createClientDNSNetworksOnRestore()
   done
 }
 
+function showAllUtilsMenu()
+{
+  set +e
+  utilmenu=$(cat << EOF
+
+$(getLogo)
+EOF
+)
+  menures=$(whiptail --title "Select an option" --menu "$utilmenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+  "1" "Edit Encrypted Config File" \
+  "2" "Edit Plaintext Root Config File" \
+  "3" "Edit Plaintext User Config File" \
+  "4" "Release All Locks" \
+  "5" "Check For IP Address Changes" \
+  "6" "Refresh Firewall" \
+  "7" "Configure Simple Backup" \
+  "8" "Uninstall and Remove Everything" \
+  "9" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ]; then
+    menures=0
+  fi
+  set -e
+  case $menures in
+    0)
+      set +e
+	  return 1 ;;
+    1)
+      set +e
+      showYesNoMessageBox "WARNING" "Be VERY careful editing this file. You could very easily break things. The configuration file will be opened with the nano utility, so ensure you know how to use this before proceeding.\n\nDo you wish to continue?"
+      if [ $? -ne 0 ]; then
+        return 1
+      fi
+      checkLoadConfig
+      nano $CONFIG_FILE
+      loadConfigVars true
+      set +e
+      return 1 ;;
+    2)
+      set +e
+      showYesNoMessageBox "WARNING" "Be VERY careful editing this file. You could very easily break things. The configuration file will be opened with the nano utility, so ensure you know how to use this before proceeding.\n\nDo you wish to continue?"
+      if [ $? -ne 0 ]; then
+        return 1
+      fi
+      checkLoadConfig
+      sudo nano $HSHQ_PLAINTEXT_ROOT_CONFIG
+      loadConfigVars true
+      set +e
+      return 1 ;;
+    3)
+      set +e
+      showYesNoMessageBox "WARNING" "Be VERY careful editing this file. You could very easily break things. The configuration file will be opened with the nano utility, so ensure you know how to use this before proceeding.\n\nDo you wish to continue?"
+      if [ $? -ne 0 ]; then
+        return 1
+      fi
+      checkLoadConfig
+      nano $HSHQ_PLAINTEXT_USER_CONFIG
+      loadConfigVars true
+      set +e
+      return 1 ;;
+    4)
+      sudo -k
+      set +e
+      promptTestSudoPW
+      releaseAllLocks
+      return 1 ;;
+    5)
+      checkLoadConfig
+      checkHostAllInterfaceIPChanges true false User-Console
+      set +e
+      return 1 ;;
+    6)
+      checkLoadConfig
+      checkUpdateAllIPTables User-Console
+      set +e
+      return 1 ;;
+    7)
+      checkLoadConfig
+      showSimpleBackupMenu
+      set +e
+      return 1 ;;
+    8)
+      nukeHSHQ ;;
+    9)
+	  return 0 ;;
+  esac
+}
+
 function showHSHQUtilsMenu()
 {
   set +e
@@ -1072,7 +1158,6 @@ EOF
   "1" "Edit Encrypted Config File" \
   "2" "Edit Plaintext Root Config File" \
   "3" "Edit Plaintext User Config File" \
-  "4" "Generate Signed Certificate" \
   "5" "Reset Caddy Data" \
   "6" "Restart All Stacks" \
   "7" "Email Vaultwarden Credentials" \
@@ -9281,7 +9366,9 @@ EOF
       showMessageBox "Deprecated" "This function is now only accessible via Script-server (https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN)."
     ;;
     5)
-      transferHostedVPN ;;
+      #transferHostedVPN
+      showMessageBox "Deprecated" "This function is outdated and unsupported at the moment. If you need to transfer your RelayServer, then make a feature request on the forum (https://forum.homeserverhq.com)."
+    ;;
     6)
       showRemovePrimaryVPN ;;
     *)
@@ -28581,7 +28668,7 @@ function emailVaultwardenCredentials()
   fi
   strOutput=${strOutput}"\n\n\n\n"
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
-  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to HSHQ Utils -> 1 Edit Configuration File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
+  strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to System Utils -> 1 Edit Encrypted Config File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
   sendEmail -s "Vaultwarden Login Import !!! READ ALL STEPS !!!" -b "$strInstructions\n\n$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
 
@@ -63977,7 +64064,7 @@ EOFSC
       "name": "Exposed Ports",
       "regex": {
         "pattern": "^[0-9]{1,5}(:[0-9]{1,5})?(/(tcp|udp|both))?(,[0-9]{1,5}(:[0-9]{1,5})?(/(tcp|udp|both))?)*\$",
-        "description": "Letters, numbers, and/or .-"
+        "description": "Only valid ports or port ranges with protocol"
       },
       "required": false,
       "param": "-selports=",
