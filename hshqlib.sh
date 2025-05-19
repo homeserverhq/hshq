@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=155
+HSHQ_LIB_SCRIPT_VERSION=156
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -269,7 +269,7 @@ function main()
   fi
   if [ "$IS_PERFORM_INSTALL" = "true" ]; then
     mkdir -p $TMP_PW_CHECKDIR
-    read -s -p "" sudoPWKey
+    read -r -s -p "" sudoPWKey
     USER_SUDO_PW="$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:$sudoPWKey)"
     rm -f $ENC_PW_FILE
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -291,7 +291,7 @@ function main()
   fi
   if [ "$IS_PERFORM_RESTORE" = "true" ]; then
     mkdir -p $TMP_PW_CHECKDIR
-    read -s -p "" sudoPWKey
+    read -r -s -p "" sudoPWKey
     USER_SUDO_PW="$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:$sudoPWKey)"
     rm -f $ENC_PW_FILE
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -748,7 +748,7 @@ EOF
   echo -e "Log in to Portainer via the following URL: \n"
   echo -e "  https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT"
   echo -e "\n##########################################\n\n"
-  read -p "Press enter to continue."
+  read -r -p "Press enter to continue."
 }
 
 function restorePullDockerImages()
@@ -815,15 +815,22 @@ EOF
     done
   done
   IFS=$OLDIFS
-
   if [ $curListNum -le 1 ]; then
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
     return
   fi
-  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
-  if [ $? -ne 0 ]; then
-    return
-  fi
+  while true
+  do
+    selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    if [ -z "$selDiskItem" ]; then
+      showMessageBox "ERROR" "You did not make a selection, please try again."
+    else
+      break
+    fi
+  done
   selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
   if [ -z "$selDisk" ]; then
     showMessageBox "ERROR" "No partition was selected, returning..."
@@ -2258,7 +2265,7 @@ function initInstallation()
       echo -e "Do you want to retain the above information in a file in the home directory,"
       echo -e "i.e. ($hdir/$HSHQ_INSTALL_NOTES_FILENAME)? Note that this"
       echo -e "information is very sensitive and you should delete the file as soon"
-      read -p "as you are finished with it. Enter 'y' or 'n': " is_keep_config
+      read -r -p "as you are finished with it. Enter 'y' or 'n': " is_keep_config
     fi
     if [ "$is_keep_config" = "y" ]; then
       final_prompt="After reading the above section, enter 'install' or 'exit': "
@@ -2281,7 +2288,7 @@ function initInstallation()
   while true;
   do
     echo -e "\n\n________________________________________________________________________\n"
-    read -p "$final_prompt" is_install
+    read -r -p "$final_prompt" is_install
     if [ "$is_install" = "install" ]; then
       break
     elif [ "$is_install" = "exit" ]; then
@@ -2689,11 +2696,23 @@ EOF
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
     return
   fi
-  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
-  if [ $? -ne 0 ]; then
+  while true
+  do
+    selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    if [ -z "$selDiskItem" ]; then
+      showMessageBox "ERROR" "You did not make a selection, please try again."
+    else
+      break
+    fi
+  done
+  selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
+  if [ -z "$selDisk" ]; then
+    showMessageBox "ERROR" "No disk was selected, returning..."
     return
   fi
-  selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
   confirmFormat=$(promptUserInputMenu "" "Confirm Format" "WARNING - This operation will entirely ERASE the contents of the selected drive. To confirm, enter the word 'format' below:")
   if [ $? -ne 0 ]; then
     return
@@ -2981,10 +3000,18 @@ EOF
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
     return
   fi
-  selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
-  if [ $? -ne 0 ]; then
-    return
-  fi
+  while true
+  do
+    selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
+    if [ $? -ne 0 ]; then
+      return
+    fi
+    if [ -z "$selDiskItem" ]; then
+      showMessageBox "ERROR" "You did not make a selection, please try again."
+    else
+      break
+    fi
+  done
   selDisk=$(echo "$selDiskItem" | cut -d" " -f1)
   if [ -z "$selDisk" ]; then
     showMessageBox "ERROR" "No partition was selected, returning..."
@@ -3716,7 +3743,7 @@ pubkey="$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)"
 function main()
 {
   if [ "\$curUsername" = "root" ]; then
-    read -s -p "" newUserPass
+    read -r -s -p "" newUserPass
     id "\$newUsername" > /dev/null 2>&1
     if [ \$? -eq 0 ]; then
       echo "User (\$newUsername) already exists, exiting..."
@@ -3729,7 +3756,7 @@ function main()
     echo "\$newUsername:\$newUserPass" | sudo chpasswd > /dev/null 2>&1
     activeUsername=\$newUsername
   else
-    read -s -p "" curUserSudo
+    read -r -s -p "" curUserSudo
     echo "\$curUserSudo" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
       echo "The sudo password for \$curUsername is incorrect, exiting..."
@@ -5008,7 +5035,7 @@ function main()
   echo "============================================================"
   echo
   echo
-  read -p "Type 'nuclear' (no quotes): " isnuke
+  read -r -p "Type 'nuclear' (no quotes): " isnuke
   if ! [ "\\\$isnuke" = "nuclear" ]; then
     echo "String does not match, exiting..."
     exit 1
@@ -5210,11 +5237,11 @@ function haltAndWaitForConfirmation()
   echo "============================================================"
   echo
   echo
-  read -p "Type 'transfer' (no quotes) to continue: " isTransfer
+  read -r -p "Type 'transfer' (no quotes) to continue: " isTransfer
   while ! [ "\$isTransfer" = "transfer" ]
   do
     echo "The string does not match, please try again."
-    read -p "Type 'transfer' (no quotes) to continue: " isTransfer
+    read -r -p "Type 'transfer' (no quotes) to continue: " isTransfer
   done
   totalTries=720
   numTries=1
@@ -5235,7 +5262,7 @@ function haltAndWaitForConfirmation()
   if [ "\$isMatch" = "true" ]; then
     echo "Success! The IP matches the hostname, continuing the installation..."
   else
-    read -p "Failure. The IP does not match. The installation will continue, but you need to point the IP address correctly in order for everything to function properly. Press Enter to continue.   "
+    read -r -p "Failure. The IP does not match. The installation will continue, but you need to point the IP address correctly in order for everything to function properly. Press Enter to continue.   "
   fi
 }
 
@@ -5326,11 +5353,11 @@ function getPortainerToken()
   shift
   done
   if [ -z "\$port_username" ]; then
-    read -p "Enter the portainer username: " port_username
+    read -r -p "Enter the portainer username: " port_username
 	echo
   fi
   if [ -z "\$port_password" ]; then
-    read -s -p "Enter the portainer password: " port_password
+    read -r -s -p "Enter the portainer password: " port_password
 	echo
   fi
 
@@ -5515,7 +5542,7 @@ function main()
 function startInstall()
 {
   set +e
-  read -s -t 30 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
+  read -r -s -t 30 -p "[sudo] password for \$USERNAME: " USER_RELAY_SUDO_PW
   echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     echo "Error with RelayServer sudo password, exiting..."
@@ -5560,7 +5587,7 @@ function getSuper()
   set +e
   stty -echo
   mkdir -p $TMP_PW_CHECKDIR
-  read -s -p "" sudoPWKey
+  read -r -s -p "" sudoPWKey
   USER_RELAY_SUDO_PW="\$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:\$sudoPWKey)"
   rm -f $ENC_PW_FILE
   echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -6579,11 +6606,11 @@ function getPortainerToken()
   shift
   done
   if [ -z "\$port_username" ]; then
-    read -p "Enter the portainer username: " port_username
+    read -r -p "Enter the portainer username: " port_username
 	echo
   fi
   if [ -z "\$port_password" ]; then
-    read -s -p "Enter the portainer password: " port_password
+    read -r -s -p "Enter the portainer password: " port_password
 	echo
   fi
 
@@ -8627,7 +8654,7 @@ function uploadVPNInstallScripts()
 set +e
 function main()
 {
-  read -s -p "" rspw
+  read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
   sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1
@@ -8831,7 +8858,7 @@ function connectVPN()
           echo "ERROR: Could not log in to RelayServer to setup Syncthing. If this step is skipped, you will have to manually set up the RelayServer backup in Syncthing."
           while true;
           do
-            read -p "Enter 'retry' or 'cancel': " isRetryConnect
+            read -r -p "Enter 'retry' or 'cancel': " isRetryConnect
             case "$isRetryConnect" in
               "retry")
                 break
@@ -9083,7 +9110,7 @@ EOF
         echo -e "Check your admin email ($EMAIL_ADMIN_EMAIL_ADDRESS) for a copy of the WireGuard config info."
         while true;
         do
-          read -p "Enter 'integrate' to complete the integration (no quotes, all lowercase): " is_continue
+          read -r -p "Enter 'integrate' to complete the integration (no quotes, all lowercase): " is_continue
           if [ "$is_continue" = "integrate" ]; then
             break
           fi
@@ -12110,6 +12137,10 @@ function setAsWiredDHCP()
     echo "Your HomeServer primary interface is a public static IP address. This option is not available."
     return
   fi
+  if ! sudo test -f /etc/netplan/${NETPLAN_ORIGIN_HINT}.yaml; then
+    echo -e "\nYour netplan configuration is not managed by HSHQ. Please rename your\nconfiguration file to /etc/netplan/88-hshq.yaml in order to use this function.\n"
+    return
+  fi
   interfaceName="$1"
   isReplace="$2"
   set +e
@@ -12132,6 +12163,10 @@ function setAsWiredStaticIP()
 {
   if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
     echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
+  if ! sudo test -f /etc/netplan/${NETPLAN_ORIGIN_HINT}.yaml; then
+    echo -e "\nYour netplan configuration is not managed by HSHQ. Please rename your\nconfiguration file to /etc/netplan/88-hshq.yaml in order to use this function.\n"
     return
   fi
   interfaceName="$1"
@@ -12173,6 +12208,10 @@ function setAsWirelessDHCP()
     echo "Your HomeServer primary interface is a public static IP address. This option is not available."
     return
   fi
+  if ! sudo test -f /etc/netplan/${NETPLAN_ORIGIN_HINT}.yaml; then
+    echo -e "\nYour netplan configuration is not managed by HSHQ. Please rename your\nconfiguration file to /etc/netplan/88-hshq.yaml in order to use this function.\n"
+    return
+  fi
   interfaceName="$1"
   isReplace="$2"
   wifiSSID="$3"
@@ -12210,6 +12249,10 @@ function setAsWirelessStaticIP()
 {
   if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
     echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
+  if ! sudo test -f /etc/netplan/${NETPLAN_ORIGIN_HINT}.yaml; then
+    echo -e "\nYour netplan configuration is not managed by HSHQ. Please rename your\nconfiguration file to /etc/netplan/88-hshq.yaml in order to use this function.\n"
     return
   fi
   interfaceName="$1"
@@ -12264,6 +12307,10 @@ function removeFromNetplan()
 {
   if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
     echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
+  if ! sudo test -f /etc/netplan/${NETPLAN_ORIGIN_HINT}.yaml; then
+    echo -e "\nYour netplan configuration is not managed by HSHQ. Please rename your\nconfiguration file to /etc/netplan/88-hshq.yaml in order to use this function.\n"
     return
   fi
   interfaceName="$1"
@@ -12354,6 +12401,10 @@ function addUpdateWifiAccessPoint()
     echo "Your HomeServer primary interface is a public static IP address. This option is not available."
     return
   fi
+  if ! sudo test -f /etc/netplan/${NETPLAN_ORIGIN_HINT}.yaml; then
+    echo -e "\nYour netplan configuration is not managed by HSHQ. Please rename your\nconfiguration file to /etc/netplan/88-hshq.yaml in order to use this function.\n"
+    return
+  fi
   interfaceName="$1"
   wifiSSID="$2"
   wifiPass="$3"
@@ -12423,6 +12474,10 @@ function removeWifiAccessPoint()
 {
   if [ "$(checkIsPrimaryInterfacePrivate)" = "false" ]; then
     echo "Your HomeServer primary interface is a public static IP address. This option is not available."
+    return
+  fi
+  if ! sudo test -f /etc/netplan/${NETPLAN_ORIGIN_HINT}.yaml; then
+    echo -e "\nYour netplan configuration is not managed by HSHQ. Please rename your\nconfiguration file to /etc/netplan/88-hshq.yaml in order to use this function.\n"
     return
   fi
   interfaceName="$1"
@@ -18354,7 +18409,7 @@ function promptTestRelayServerPassword()
       fi
     else
       echo -e "\n\n"
-      read -s -p "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: " USER_RELAY_SUDO_PW
+      read -r -s -p "Enter the RelayServer sudo password for $RELAYSERVER_REMOTE_USERNAME: " USER_RELAY_SUDO_PW
       echo
       testRelayServerPassword
       if [ $? -ne 0 ]; then
@@ -19131,7 +19186,7 @@ function version41Update()
   set +e
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
-    read -p "Press enter to continue."
+    read -r -p "Press enter to continue."
     loadSSHKey
     set +e
     rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
@@ -20085,7 +20140,7 @@ EOFWZ
 
 function main()
 {
-  read -s -p "" rspw
+  read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   sudo chown root:wazuh ~/authd.pass
   sudo mv ~/authd.pass /var/ossec/etc/authd.pass
@@ -20237,7 +20292,7 @@ function version120Update()
 set +e
 function main()
 {
-  read -s -p "" rspw
+  read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   if sudo test -f /etc/logrotate.d/rsyslog; then
     # Set max size of syslog to 2G
@@ -20276,7 +20331,7 @@ function version121Update()
   cat <<EOFRS > $HOME/rsUpdateScript.sh
 function main()
 {
-  read -s -p "" rspw
+  read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   RELAYSERVER_HSHQ_SCRIPTS_DIR=\$HOME/hshq/data/scripts
   exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
@@ -21888,7 +21943,7 @@ function notifyRSLogin()
   is_continue=""
   while ! [ "$is_continue" = "update" ] && ! [ "$is_continue" = "bypass" ]
   do
-    read -p "Enter 'update' to perform the update or 'bypass' to ignore: " is_continue
+    read -r -p "Enter 'update' to perform the update or 'bypass' to ignore: " is_continue
     if [ "$is_continue" = "bypass" ]; then
       is_confirm=""
       while ! [ "$is_confirm" = "confirm" ] && ! [ "$is_confirm" = "cancel" ]
@@ -21898,7 +21953,7 @@ function notifyRSLogin()
         echo -e "Certain functions with your network, etc. might not work properly."
         echo -e "Only select this option if you no longer have access to this"
         echo -e "server, and you intend to remove it and create a new one.\n\n"
-        read -p "Enter 'confirm' or 'cancel': " is_confirm
+        read -r -p "Enter 'confirm' or 'cancel': " is_confirm
       done
       if [ "$is_confirm" = "cancel" ]; then
         is_continue=""
@@ -22003,7 +22058,7 @@ function nukeHSHQ()
   echo "============================================================"
   echo
   echo
-  read -p "Type 'nuclear' (no quotes): " isnuke
+  read -r -p "Type 'nuclear' (no quotes): " isnuke
   if ! [ "$isnuke" = "nuclear" ]; then
     echo "String does not match, exiting..."
     return 1
@@ -24348,11 +24403,12 @@ function checkUpdateHostInterface()
         logHSHQEvent error "$strMsg"
         return 14
       fi
-      updateHSInterface "$iface_name"
       logHSHQEvent debug "checkUpdateHostInterface Update 2"
+      updateHSInterface "$iface_name"
       if [ $? -ne 0 ]; then
         return 15
       fi
+      logHSHQEvent debug "checkUpdateHostInterface Update 3"
       updateIP=$(sqlite3 $HSHQ_DB "select IPAddress from connections where InterfaceName='$iface_name';")
       ;;
     *)
@@ -35644,7 +35700,7 @@ function updateWazuhAgents()
 set +e
 function main()
 {
-  read -s -p "" rspw
+  read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   sudo apt-mark unhold wazuh-agent
   sudo DEBIAN_FRONTEND=noninteractive apt update
@@ -56721,9 +56777,9 @@ EOFSC
 
 function main()
 {
-  read -s -p "$sudo_stdin_prompt" sudopw
+  read -r -s -p "$sudo_stdin_prompt" sudopw
   if [ -z "\$sudopw" ]; then
-    read -t 5 -s -p "" sudopw
+    read -r -t 5 -s -p "" sudopw
   fi
   if [ -z "\$sudopw" ]; then
     sudopw=""
@@ -56753,9 +56809,9 @@ EOFSC
 function main()
 {
   source $HSHQ_LIB_SCRIPT lib
-  read -s -p "$config_stdin_prompt" USER_CONFIG_PW
+  read -r -s -p "$config_stdin_prompt" USER_CONFIG_PW
   if [ -z "\$USER_CONFIG_PW" ]; then
-    read -t 5 -s -p "" USER_CONFIG_PW
+    read -r -t 5 -s -p "" USER_CONFIG_PW
   fi
   if [ -z "\$USER_CONFIG_PW" ]; then
     USER_CONFIG_PW=""
@@ -56776,9 +56832,9 @@ EOFSC
 
 function main()
 {
-  read -s -p "$relaysudo_stdin_prompt" relaysudopw
+  read -r -s -p "$relaysudo_stdin_prompt" relaysudopw
   if [ -z "\$relaysudopw" ]; then
-    read -t 5 -s -p "" relaysudopw
+    read -r -t 5 -s -p "" relaysudopw
   fi
   if [ -z "\$relaysudopw" ]; then
     relaysudopw=""
@@ -60349,9 +60405,9 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
 source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
-read -s -p "$rs_cur_password_prompt" rs_cur_password
+read -r -s -p "$rs_cur_password_prompt" rs_cur_password
 if [ -z "\$rs_cur_password" ]; then
-  read -t 5 -s -p "" rs_cur_password
+  read -r -t 5 -s -p "" rs_cur_password
 fi
 if [ -z "\$rs_cur_password" ]; then
   rs_cur_password=""
@@ -60359,9 +60415,9 @@ if [ -z "\$rs_cur_password" ]; then
   exit 3
 fi
 echo "ok"
-read -s -p "$rs_new_password_prompt" rs_new_password
+read -r -s -p "$rs_new_password_prompt" rs_new_password
 if [ -z "\$rs_new_password" ]; then
-  read -t 5 -s -p "" rs_new_password
+  read -r -t 5 -s -p "" rs_new_password
 fi
 if [ -z "\$rs_new_password" ]; then
   rs_new_password=""
