@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=156
+HSHQ_LIB_SCRIPT_VERSION=157
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -28516,8 +28516,8 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SQLPAD" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SYNCTHING" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_CODESERVER" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_TASMOADMIN" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_TASMOADMIN" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin,https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator,https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Admin" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Users" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-HomeServers" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD)"\n"
@@ -28907,7 +28907,7 @@ function initServiceDefaults()
   DS_MEM_LOW=minimal
   DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack
   DS_MEM_HIGH=netdata,photoprism,aistack
 }
@@ -56719,6 +56719,16 @@ function outputAllScriptServerScripts()
   relaysudo_stdin_prompt="Getting RelayServer password..."
   rs_cur_password_prompt="Getting current RS password..."
   rs_new_password_prompt="Getting new RS password..."
+  password_regex="^[a-zA-Z0-9(~!@#%^&*_+=<>?.,)-]+$"
+  password_max_len=64
+  password_special_chars="(~!@#%^&*_+=<>?.,)-"
+  password_text_description="Must be letters, numbers, and/or (~!@#%^&*_+=<>?.,)-"
+  email_regex="^[a-zA-Z0-9._+-]+@[a-zA-Z0-9._+-]+\\\\.[a-zA-Z]{2,}$"
+  email_max_len=128
+  email_text_description="Must be a valid email addresss"
+  long_reason_regex="^[A-Za-z0-9 ;:@()?!'_,.-]+$"
+  long_reason_max_len=512
+  long_reason_text_description="Only letters, numbers, and basic punctuation."
   if [ -z "$isReplaceSSScripts" ]; then
     isReplaceSSScripts=true
   fi
@@ -56918,7 +56928,7 @@ varName="\$2"
 checkCustom=\$(echo "\$varName" | cut -d" " -f2)
 
 if [ "\${varName: -8}" = "_DEFAULT" ]; then
-  echo \$(grep ^\$varName= $HSHQ_PLAINTEXT_USER_CONFIG | sed 's/^[^=]*=//' | sed 's/ *\$//g')
+  echo \$(grep ^\$varName= $HSHQ_PLAINTEXT_USER_CONFIG | sed 's/^[^=]*=//' | sed 's/ *\$//g' | sed 's/"//g')
 elif [ "\${checkCustom}" = "(Custom)" ]; then
   intID=\$(echo "\$varName" | cut -d" " -f1 | xargs)
   if [ "\$chainName" = "INPUT" ]; then
@@ -57063,6 +57073,11 @@ EOFSC
       "param": "-confirm=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "7",
+      "regex": {
+        "pattern": "^confirm\$",
+        "description": "Must be the word confirm"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -57128,6 +57143,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57142,6 +57162,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57158,6 +57183,11 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "secure": false,
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]+\$",
+        "description": "Only lowercase letters, numbers, and/or hyphens"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -57173,6 +57203,11 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "secure": false,
+      "max_length": "512",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9.-]*(,[a-z0-9][a-z0-9.-]*)*\$",
+        "description": "Comma-separated - only lowercase, numbers, hyphens, periods"
+      },
       "ui": {
         "width_weight": 2
       },
@@ -57185,6 +57220,11 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "secure": false,
+      "max_length": "64",
+      "regex": {
+        "pattern": "^((?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)+(,((?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))*\$",
+        "description": "Comma-separated - IP Addresses"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -57200,6 +57240,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "secure": false,
+      "regex": {
+        "pattern": "[1-2][0-9][0-9][0-9]-[0-2][0-9]-[0-2][0-9] [0-2][0-9]\\\\:[0-2][0-9]\\\\:[0-2][0-9] [A-Z]{3,5}",
+        "description": "Date format (see instructions)"
+      },
       "ui": {
         "width_weight": 2
       },
@@ -57212,6 +57256,10 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "secure": false,
+      "regex": {
+        "pattern": "[1-2][0-9][0-9][0-9]-[0-2][0-9]-[0-2][0-9] [0-2][0-9]\\\\:[0-2][0-9]\\\\:[0-2][0-9] [A-Z]{3,5}",
+        "description": "Date format (see instructions)"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -57253,6 +57301,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57267,6 +57320,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57325,6 +57383,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57339,6 +57402,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57379,6 +57447,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57393,6 +57466,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57433,6 +57511,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57447,6 +57530,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57490,6 +57578,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57504,6 +57597,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57519,6 +57617,11 @@ EOFSC
       "param": "-username=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]*\$",
+        "description": "Only lowercase letters, numbers, and/or hyphens"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -57530,6 +57633,11 @@ EOFSC
     },
     {
       "name": "Enter email address",
+      "max_length": "$email_max_len",
+      "regex": {
+        "pattern": "$email_regex",
+        "description": "$email_text_description"
+      },
       "required": true,
       "param": "-emailaddr=",
       "same_arg_param": true,
@@ -57571,6 +57679,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57585,6 +57698,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57627,6 +57745,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57641,6 +57764,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57700,6 +57828,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57714,6 +57847,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57756,6 +57894,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57770,6 +57913,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57781,6 +57929,11 @@ EOFSC
     },
     {
       "name": "Enter RelayServer sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "default": "pass",
@@ -57841,6 +57994,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57855,6 +58013,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57866,6 +58029,11 @@ EOFSC
     },
     {
       "name": "Enter RelayServer sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "default": "pass",
@@ -57912,6 +58080,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57926,6 +58099,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -57986,6 +58164,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58000,6 +58183,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58044,6 +58232,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58058,6 +58251,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58116,6 +58314,11 @@ EOFSC
       "param": "-confirm=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "7",
+      "regex": {
+        "pattern": "^confirm\$",
+        "description": "Must be the word confirm"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -58165,6 +58368,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58179,6 +58387,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58230,6 +58443,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58244,6 +58462,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58294,6 +58517,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58308,6 +58536,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58598,6 +58831,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58612,6 +58850,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58623,6 +58866,11 @@ EOFSC
     },
     {
       "name": "Enter RelayServer sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "default": "pass",
@@ -58668,6 +58916,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58705,6 +58958,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58748,6 +59006,11 @@ EOFSC
       "param": "-confirm=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "7",
+      "regex": {
+        "pattern": "^confirm\$",
+        "description": "Must be the word confirm"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -58782,6 +59045,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58852,6 +59120,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58866,6 +59139,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58896,6 +59174,11 @@ EOFSC
     },
     {
       "name": "Enter new email address",
+      "max_length": "$email_max_len",
+      "regex": {
+        "pattern": "$email_regex",
+        "description": "$email_text_description"
+      },
       "required": true,
       "param": "-newemail=",
       "same_arg_param": true,
@@ -58954,6 +59237,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -58968,6 +59256,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59035,6 +59328,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59072,6 +59370,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59167,6 +59470,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59181,6 +59489,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59276,7 +59589,7 @@ EOFSC
   "group": "$group_id_testing",
   "parameters": [
     {
-      "name": "Enter an key",
+      "name": "Enter a key",
       "required": true,
       "param": "-checkkey=",
       "same_arg_param": true,
@@ -59286,6 +59599,11 @@ EOFSC
         "separator_before": {
           "type": "new_line"
         }
+      },
+      "max_length": "44",
+      "regex": {
+        "pattern": "^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=\$",
+        "description": "Must be a valid WireGuard key"
       },
       "secure": false,
       "pass_as": "argument"
@@ -59334,6 +59652,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59348,6 +59671,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59392,6 +59720,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59406,6 +59739,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59421,6 +59759,11 @@ EOFSC
       "param": "-configname=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]+\$",
+        "description": "Only lowercase letters, numbers, and/or hyphens"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -59487,6 +59830,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59501,6 +59849,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59516,6 +59869,11 @@ EOFSC
       "param": "-configname=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]+\$",
+        "description": "Only lowercase letters, numbers, and/or hyphens"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -59527,6 +59885,11 @@ EOFSC
     },
     {
       "name": "Enter the requesting email address",
+      "max_length": "$email_max_len",
+      "regex": {
+        "pattern": "$email_regex",
+        "description": "$email_text_description"
+      },
       "required": true,
       "param": "-requestemailaddress=",
       "same_arg_param": true,
@@ -59575,6 +59938,11 @@ EOFSC
       "param": "-publickey=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "44",
+      "regex": {
+        "pattern": "^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=\$",
+        "description": "Must be a valid WireGuard key"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -59590,6 +59958,11 @@ EOFSC
       "param": "-presharedkey=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "44",
+      "regex": {
+        "pattern": "^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=\$",
+        "description": "Must be a valid WireGuard key"
+      },
       "ui": {
         "width_weight": 2
       },
@@ -59628,6 +60001,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59642,6 +60020,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59703,6 +60086,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59717,6 +60105,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59793,6 +60186,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59807,6 +60205,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59837,10 +60240,18 @@ EOFSC
     },
     {
       "name": "Enter a reason for removal",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
-      "type": "multiline_text",
+      "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 4,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "env_variable",
@@ -59879,6 +60290,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59893,6 +60309,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59923,10 +60344,18 @@ EOFSC
     },
     {
       "name": "Enter a reason for removal",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
-      "type": "multiline_text",
+      "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 4,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "env_variable",
@@ -59965,6 +60394,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -59979,6 +60413,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60009,10 +60448,18 @@ EOFSC
     },
     {
       "name": "Enter a reason for removal",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
-      "type": "multiline_text",
+      "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 4,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "env_variable",
@@ -60049,6 +60496,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60063,6 +60515,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60103,6 +60560,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60117,6 +60579,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60157,6 +60624,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60171,6 +60643,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60211,6 +60688,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60225,6 +60707,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60236,10 +60723,15 @@ EOFSC
     },
     {
       "name": "Enter the message",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
-      "type": "multiline_text",
+      "type": "text",
       "ui": {
-        "width_weight": 2,
+        "width_weight": 4,
         "separator_before": {
           "type": "new_line"
         }
@@ -60280,6 +60772,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60294,6 +60791,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60309,6 +60811,11 @@ EOFSC
       "param": "-cdnsname=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "10",
+      "regex": {
+        "pattern": "^[a-z0-9]{3,10}\$",
+        "description": "3-10 lowercase letters or numbers"
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -60351,6 +60858,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60365,6 +60877,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60461,6 +60978,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60475,6 +60997,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60490,6 +61017,11 @@ EOFSC
       "param": "-rs_name=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[A-Za-z0-9 _,.-]+\$",
+        "description": "Only letters, numbers, and simple punctuation."
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -60506,6 +61038,10 @@ EOFSC
       "param": "-rs_ledomains=",
       "same_arg_param": true,
       "type": "text",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9.-]*\\\\.[a-zA-Z]{2,}(,[a-z0-9][a-z0-9.-]*\\\\.[a-zA-Z]{2,})*\$",
+        "description": "Comma-separated - only lowercase, numbers, hyphens, periods"
+      },
       "ui": {
         "width_weight": 2
       },
@@ -60519,6 +61055,11 @@ EOFSC
       "param": "-rs_cur_username=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z][a-z0-9_-]+\$",
+        "description": "Only letters, numbers, hyphens, underscores."
+      },
       "ui": {
         "width_weight": 2,
         "separator_before": {
@@ -60535,6 +61076,11 @@ EOFSC
       "param": "-rs_new_username=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z][a-z0-9_-]+\$",
+        "description": "Only letters, numbers, hyphens, underscores."
+      },
       "ui": {
         "width_weight": 2
       },
@@ -60544,6 +61090,11 @@ EOFSC
     },
     {
       "name": "CURRENT Linux password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "param": "-rs_cur_password=",
       "same_arg_param": true,
@@ -60560,6 +61111,11 @@ EOFSC
     },
     {
       "name": "NEW Linux password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "param": "-rs_new_password=",
       "same_arg_param": true,
@@ -60676,6 +61232,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60690,6 +61251,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60701,10 +61267,15 @@ EOFSC
     },
     {
       "name": "Enter a reason for disconnect/removal",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
-      "type": "multiline_text",
+      "type": "text",
       "ui": {
-        "width_weight": 2,
+        "width_weight": 4,
         "separator_before": {
           "type": "new_line"
         }
@@ -60746,6 +61317,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60760,6 +61336,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60771,6 +61352,11 @@ EOFSC
     },
     {
       "name": "Enter the recipient email address",
+      "max_length": "$email_max_len",
+      "regex": {
+        "pattern": "$email_regex",
+        "description": "$email_text_description"
+      },
       "required": true,
       "param": "-applyemailaddress=",
       "same_arg_param": true,
@@ -60816,6 +61402,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60830,6 +61421,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60841,6 +61437,11 @@ EOFSC
     },
     {
       "name": "Enter the recipient email address",
+      "max_length": "$email_max_len",
+      "regex": {
+        "pattern": "$email_regex",
+        "description": "$email_text_description"
+      },
       "required": true,
       "param": "-applyemailaddress=",
       "same_arg_param": true,
@@ -60895,6 +61496,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60909,6 +61515,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -60920,6 +61531,11 @@ EOFSC
     },
     {
       "name": "Enter the recipient email address",
+      "max_length": "$email_max_len",
+      "regex": {
+        "pattern": "$email_regex",
+        "description": "$email_text_description"
+      },
       "required": true,
       "param": "-applyemailaddress=",
       "same_arg_param": true,
@@ -60935,6 +61551,11 @@ EOFSC
     },
     {
       "name": "Enter the requesting email address",
+      "max_length": "$email_max_len",
+      "regex": {
+        "pattern": "$email_regex",
+        "description": "$email_text_description"
+      },
       "required": true,
       "param": "-requestemailaddress=",
       "same_arg_param": true,
@@ -60947,6 +61568,11 @@ EOFSC
     },
     {
       "name": "Enter a description",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
       "param": "-description=",
       "same_arg_param": true,
@@ -60998,6 +61624,11 @@ EOFSC
       "param": "-publickey=",
       "same_arg_param": true,
       "type": "text",
+      "max_length": "44",
+      "regex": {
+        "pattern": "^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=\$",
+        "description": "Must be a valid WireGuard key"
+      },
       "ui": {
         "width_weight": 2
       },
@@ -61036,6 +61667,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61050,6 +61686,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61065,6 +61706,10 @@ EOFSC
       "param": "-lecertsubs=",
       "same_arg_param": true,
       "type": "text",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9.-]*\\\\.[a-zA-Z]{2,}(,[a-z0-9][a-z0-9.-]*\\\\.[a-zA-Z]{2,})*\$",
+        "description": "Comma-separated - only lowercase, numbers, hyphens, periods"
+      },
       "default": "$(getLetsEncryptCertsDefault)",
       "ui": {
         "width_weight": 2,
@@ -61108,6 +61753,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61122,6 +61772,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61178,6 +61833,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61192,6 +61852,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61222,10 +61887,18 @@ EOFSC
     },
     {
       "name": "Enter a reason for disconnecting",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
-      "type": "multiline_text",
+      "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 4,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "env_variable",
@@ -61264,6 +61937,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61278,6 +61956,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61308,10 +61991,18 @@ EOFSC
     },
     {
       "name": "Enter a reason for disconnecting",
+      "max_length": "$long_reason_max_len",
+      "regex": {
+        "pattern": "$long_reason_regex",
+        "description": "$long_reason_text_description"
+      },
       "required": true,
-      "type": "multiline_text",
+      "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 4,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
       "secure": false,
       "pass_as": "env_variable",
@@ -61350,6 +62041,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61364,6 +62060,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61418,6 +62119,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61432,6 +62138,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61478,6 +62189,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61492,6 +62208,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61503,6 +62224,10 @@ EOFSC
     },
     {
       "name": "Enter domain name",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9.-]*\\\\.[a-z]{2,}\$",
+        "description": "Only lowercase, numbers, hyphens, periods"
+      },
       "required": true,
       "param": "-adddomain=",
       "same_arg_param": true,
@@ -61567,6 +62292,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61581,6 +62311,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61660,6 +62395,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61674,6 +62414,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61704,6 +62449,10 @@ EOFSC
     },
     {
       "name": "Enter the subdomain",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]*\$",
+        "description": "Only lowercase, numbers, or hyphens"
+      },
       "required": true,
       "param": "-adddomain=",
       "same_arg_param": true,
@@ -61747,6 +62496,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61761,6 +62515,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61855,6 +62614,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61869,6 +62633,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61899,6 +62668,10 @@ EOFSC
     },
     {
       "name": "Enter subdomain",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9-]*\$",
+        "description": "Only lowercase, numbers, or hyphens"
+      },
       "required": false,
       "param": "-adddomain=",
       "same_arg_param": true,
@@ -61942,6 +62715,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -61956,6 +62734,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62031,6 +62814,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62045,6 +62833,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62098,6 +62891,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62110,9 +62908,13 @@ EOFSC
       "pass_as": "stdin",
       "stdin_expected_text": "$sudo_stdin_prompt"
     },
-
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62124,6 +62926,10 @@ EOFSC
     },
     {
       "name": "Enter rule name",
+      "regex": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]*\$",
+        "description": "Only letters, numbers, or hyphens"
+      },
       "required": true,
       "param": "-pfName=",
       "same_arg_param": true,
@@ -62293,6 +63099,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62307,6 +63118,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62426,6 +63242,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62440,6 +63261,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62451,6 +63277,11 @@ EOFSC
     },
     {
       "name": "Enter interface name",
+      "max_length": "15",
+      "regex": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9.-]{0,15}\$",
+        "description": "Letters, numbers, and/or .-"
+      },
       "required": true,
       "param": "-addinterface=",
       "same_arg_param": true,
@@ -62587,6 +63418,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62601,6 +63437,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62773,6 +63614,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62787,6 +63633,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62851,6 +63702,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62865,6 +63721,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62959,6 +63820,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -62973,6 +63839,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -63037,6 +63908,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -63051,6 +63927,11 @@ EOFSC
     },
     {
       "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -63094,6 +63975,10 @@ EOFSC
     },
     {
       "name": "Exposed Ports",
+      "regex": {
+        "pattern": "^[0-9]{1,5}(:[0-9]{1,5})?(/(tcp|udp|both))?(,[0-9]{1,5}(:[0-9]{1,5})?(/(tcp|udp|both))?)*\$",
+        "description": "Letters, numbers, and/or .-"
+      },
       "required": false,
       "param": "-selports=",
       "same_arg_param": true,
@@ -63152,6 +64037,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
@@ -63197,6 +64087,11 @@ EOFSC
   "parameters": [
     {
       "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
       "required": true,
       "type": "text",
       "ui": {
