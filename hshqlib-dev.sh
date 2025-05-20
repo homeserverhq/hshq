@@ -14245,9 +14245,12 @@ function checkValidVersionNumber()
 function checkValidIPAddress()
 {
   set +e
-  # Need to make checkValidIPAddress better, i.e. with full CIDR
   ip=$(echo "$1" | cut -d "/" -f1)
-  cidr=$(echo "$1" | cut -d "/" -f2-)
+  cidr=""
+  echo "$1" | grep "/" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    cidr=$(echo "$1" | cut -d "/" -f2-)
+  fi
   stat=1
   if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
     OLDIFS=$IFS
