@@ -3799,7 +3799,6 @@ function webSetupHostedVPN()
   RELAYSERVER_REMOTE_USERNAME="$rs_new_username"
   RELAYSERVER_SERVER_IP="$rs_external_ip"
   RELAYSERVER_CURRENT_SSH_PORT="$rs_cur_ssh_port"
-  RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
   if [ "$(checkValidIPAddress $rs_primary_vpn_subnet)" = "false" ]; then
     echo "ERROR: Invalid RelayServer IP address, returning..."
     return
@@ -3823,7 +3822,18 @@ function webSetupHostedVPN()
     return
   fi
   RELAYSERVER_SSH_PORT="$rs_new_ssh_port"
-
+  RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=""
+  tmp_port=$PORTAINER_LOCAL_HTTPS_PORT
+  while [ -z "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT" ]
+  do
+    chkSSHPort="$(checkPortForwardingIntersect tcp $tmp_port $tmp_port)"
+    if ! [ -z "$chkSSHPort" ]; then
+      tmp_port=$((9000 + $RANDOM % 999))
+    else
+      RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=$tmp_port
+      break
+    fi
+  done
   # Clear out any old hosts
   ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
   ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
@@ -3971,11 +3981,16 @@ EOFRS
   # Everything is good, let's begin
   resetRelayServerData
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE "$PRIMARY_VPN_SETUP_TYPE"
+  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
+  # SSH (do both protocols, even though only need TCP)
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
+  updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
+  # Portainer (do both protocols, even though only need TCP)
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-Portainer', $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, 0, 0, 'both','','','$curdt');"
   updateConfigVar RELAYSERVER_WG_VPN_NETNAME "$RELAYSERVER_WG_VPN_NETNAME"
   updateConfigVar RELAYSERVER_WG_INTERNET_NETNAME "$RELAYSERVER_WG_INTERNET_NETNAME"
   updateConfigVar RELAYSERVER_EXT_EMAIL_HOSTNAME $RELAYSERVER_EXT_EMAIL_HOSTNAME
   updateConfigVar RELAYSERVER_NAME "$RELAYSERVER_NAME"
-  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
   updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
   updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
   updateConfigVar RELAYSERVER_HSHQ_BASE_DIR $RELAYSERVER_HSHQ_BASE_DIR
@@ -3987,10 +4002,7 @@ EOFRS
   updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
   updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
-  updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
   updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
-  # SSH (do both protocols, even though only need TCP)
-  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
   leCertsArr=($(echo $RELAYSERVER_LE_CERT_DOMAINS | tr "," "\n"))
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
   for leCert in "${leCertsArr[@]}"
@@ -4085,10 +4097,6 @@ function initRelayServerCredentials()
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_PASSWORD" ]; then
     RELAYSERVER_PORTAINER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar RELAYSERVER_PORTAINER_ADMIN_PASSWORD $RELAYSERVER_PORTAINER_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT" ]; then
-    RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=$PORTAINER_LOCAL_HTTPS_PORT
-    updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
   fi
   if [ -z "$RELAYSERVER_ADGUARD_ADMIN_USERNAME" ]; then
     RELAYSERVER_ADGUARD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_adguard"
@@ -4424,6 +4432,45 @@ function setupHostedVPN()
     fi
     resetRSInit
   done
+  # SSH (do both protocols, even though only need TCP)
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
+
+  RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=""
+  while [ -z "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT" ]
+  do
+    tmp_port=$((9000 + $RANDOM % 999))
+    while [ "$tmp_port" = "$RELAYSERVER_SSH_PORT" ]
+    do
+      tmp_port=$((9000 + $RANDOM % 999))
+    done
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT="$tmp_port"
+    else
+      RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu "$tmp_port" "Enter RelayServer Portainer Port" "Enter a port to use for Portainer on the RelayServer. A random port between 9000-9999 has been generated for you.")
+    fi
+	if [ -z "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT" ]; then
+	  showMessageBox "Port Empty" "The port cannot be empty"
+    elif [ "$(checkValidNumber $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT)" = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must be a number."
+      RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=""
+    elif [ $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT -lt 1024 ] || [ $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT -gt 65536 ]; then
+      showMessageBox "Invalid Character(s)" "The port number is invalid, it must be between 1024-65536."
+      RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=""
+	fi
+    if ! [ -z "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT" ]; then
+      chkSSHPort="$(checkPortForwardingIntersect tcp $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT)"
+      if ! [ -z "$chkSSHPort" ]; then
+        showMessageBox "ERROR" "Error with port: $chkSSHPort"
+        RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=""
+      else
+        updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
+      fi
+    fi
+    resetRSInit
+  done
+  # Portainer (do both protocols, even though only need TCP)
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-Portainer', $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, 0, 0, 'both','','','$curdt');"
+
   while [ -z "$RELAYSERVER_NAME" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
@@ -4522,7 +4569,6 @@ function setupHostedVPN()
   initRelayServerCredentials
   outputHostedVPNConfigs
   insertSQLHostedVPN
-
   echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
@@ -16277,9 +16323,6 @@ function setupPortForwardingDB()
 
     # Syncthing Web (do both protocols, even though only need TCP)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingWeb', 8384, 8384, 0, 0, 'both','','','$curdt');"
-
-    # Portainer (do both protocols, even though only need TCP)
-    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-Portainer', $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, 0, 0, 'both','','','$curdt');"
 
     # Syncthing Sync (need both)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingSync', $SYNCTHING_SYNC_PORT, $SYNCTHING_SYNC_PORT, 0, 0, 'both','','','$curdt');"
