@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=157
+HSHQ_LIB_SCRIPT_VERSION=158
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -1915,38 +1915,6 @@ function initConfig()
     performAptInstall grepcidr > /dev/null 2>&1
   fi
 
-  while [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]
-  do
-    tmp_port=$((9000 + $RANDOM % 999))
-    while [ "$tmp_port" = "$SSH_PORT" ]
-    do
-      tmp_port=$((9000 + $RANDOM % 999))
-    done
-    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
-      PORTAINER_LOCAL_HTTPS_PORT=$tmp_port
-    else
-      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between 9000-9999 has been generated for you.")
-      if [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]; then
-        showMessageBox "Portainer Port Error" "The port cannot be empty or the same as the SSH port"
-      elif [ "$(checkValidNumber $PORTAINER_LOCAL_HTTPS_PORT '-')" = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must consist of 0-9"
-        PORTAINER_LOCAL_HTTPS_PORT=""
-      fi
-      set +e
-      if ! [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ]; then
-        checkAvailablePort $PORTAINER_LOCAL_HTTPS_PORT
-        if [ $? -ne 0 ]; then
-          showMessageBox "Invalid Port" "The port is invalid. Please enter a valid and available port higher than 1024."
-          PORTAINER_LOCAL_HTTPS_PORT=""
-        fi
-      fi
-      set -e
-    fi
-    updatePlaintextRootConfigVar PORTAINER_LOCAL_HTTPS_PORT $PORTAINER_LOCAL_HTTPS_PORT
-    DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT,$PORTAINER_LOCAL_HTTPS_PORT
-    updatePlaintextUserConfigVar DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT $DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT
-  done
-  
   is_add_error=false
   default_iface=$(getDefaultIface)
   add_interface=""
@@ -1958,6 +1926,19 @@ function initConfig()
       add_interface=$(promptUserInputMenu "$default_iface" "Enter Primary Interface" "Enter the primary network interface. The interface for the default route has been entered for you.")
       if [ $? -ne 0 ]; then
         exit 5
+      fi
+      if [ -z "$add_interface" ]; then
+        showMessageBox "Interface Error" "The interface cannot be empty."
+        add_interface=""
+        continue
+      elif [ $(checkValidStringUpperLowerNumbers "$add_interface" "-") = "false" ]; then
+        showMessageBox "Interface Error" "The interface contains invalid characters. It must consist of a-z (upper or lowercase), 0-9, and/or -"
+        add_interface=""
+        continue
+      elif [ $(getStringLength "$add_interface") -gt 15 ]; then
+        showMessageBox "Interface Error" "The interface name is too long, it must be 15 characters or less."
+        add_interface=""
+        continue
       fi
     fi
     set +e
@@ -2141,17 +2122,29 @@ function initConfig()
     SSH_PORT=""
   fi
   updatePlaintextRootConfigVar CURRENT_SSH_PORT $CURRENT_SSH_PORT
-  set -e
   while [ -z "$SSH_PORT" ]
   do
     SSH_PORT=$(promptUserInputMenu $((9000 + $RANDOM % 999)) "Enter HomeServer SSH Port" "It is highly advised to change your default SSH port (22), since bots will constantly probe port 22. A random port between 9000-9999 has been generated for you. Ensure you remember this port in order to log back in.")
     if [ -z "$SSH_PORT" ]; then
       showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
+    elif [ "$(checkValidNumber $SSH_PORT)" = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must be a number."
+      SSH_PORT=""
+    elif [ $SSH_PORT -eq 22 ]; then
+      # No change, we'll allow it
+      showMessageBox "Huh" "Okay, whatever...you do you."
+      SSH_PORT="22"
+      updatePlaintextRootConfigVar SSH_PORT $SSH_PORT
+      # Change SSH port on host
+      sudo sed -i "s|^#*Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
+      sudo sed -i "s|^Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
+    elif [ $SSH_PORT -lt 1024 ] || [ $SSH_PORT -gt 65536 ]; then
+      showMessageBox "Invalid Character(s)" "The port number is invalid, it must be between 1024-65536."
+      SSH_PORT=""
     else
-      set +e
-      checkAvailablePort $SSH_PORT
+      checkAvailableHomeServerPort $SSH_PORT
       if [ $? -ne 0 ]; then
-        showMessageBox "Invalid Port" "The port is invalid. Please enter a valid and available port higher than 1024."
+        showMessageBox "Invalid Port" "The port is invalid. It either conflicts with an existing used port or is less than 1024."
         SSH_PORT=""
       else
         updatePlaintextRootConfigVar SSH_PORT $SSH_PORT
@@ -2159,9 +2152,41 @@ function initConfig()
         sudo sed -i "s|^#*Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
         sudo sed -i "s|^Port .*$|Port ${SSH_PORT}|g" /etc/ssh/sshd_config
       fi
-      set -e
     fi
   done
+  while [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]
+  do
+    tmp_port=$((9000 + $RANDOM % 999))
+    while [ "$tmp_port" = "$SSH_PORT" ]
+    do
+      tmp_port=$((9000 + $RANDOM % 999))
+    done
+    if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+      PORTAINER_LOCAL_HTTPS_PORT=$tmp_port
+    else
+      PORTAINER_LOCAL_HTTPS_PORT=$(promptUserInputMenu $tmp_port "Enter Local Portainer Port" "Enter a local port to use for portainer. A random port between 9000-9999 has been generated for you.")
+      if [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ] || [ "$PORTAINER_LOCAL_HTTPS_PORT" = "$SSH_PORT" ]; then
+        showMessageBox "Portainer Port Error" "The port cannot be empty or the same as the SSH port"
+      elif [ "$(checkValidNumber $PORTAINER_LOCAL_HTTPS_PORT)" = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must be a number."
+        PORTAINER_LOCAL_HTTPS_PORT=""
+      elif [ $PORTAINER_LOCAL_HTTPS_PORT -lt 1024 ] || [ $PORTAINER_LOCAL_HTTPS_PORT -gt 65536 ]; then
+        showMessageBox "Invalid Character(s)" "The port number is invalid, it must be between 1024-65536."
+        PORTAINER_LOCAL_HTTPS_PORT=""
+      fi
+      if ! [ -z "$PORTAINER_LOCAL_HTTPS_PORT" ]; then
+        checkAvailableHomeServerPort $PORTAINER_LOCAL_HTTPS_PORT
+        if [ $? -ne 0 ]; then
+          showMessageBox "Invalid Port" "The port is invalid. It either conflicts with an existing used port or is less than 1024."
+          PORTAINER_LOCAL_HTTPS_PORT=""
+        fi
+      fi
+    fi
+    updatePlaintextRootConfigVar PORTAINER_LOCAL_HTTPS_PORT $PORTAINER_LOCAL_HTTPS_PORT
+    DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT,$PORTAINER_LOCAL_HTTPS_PORT
+    updatePlaintextUserConfigVar DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT $DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT
+  done
+  set -e
   # Do the boring things that must be done
   while [ -z "$LDAP_PRIMARY_USER_USERNAME" ]
   do
@@ -2186,8 +2211,8 @@ function initConfig()
     LDAP_PRIMARY_USER_FULLNAME=$(promptUserInputMenu "$curFullName" "Enter Full Name" "Enter the full name for your first HomeServer user account: ")
     if [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]; then
       showMessageBox "Name Empty" "The name cannot be empty"
-    elif [ $(checkValidStringUpperLowerNumbers "$LDAP_PRIMARY_USER_FULLNAME" "[:space:].-") = "false" ]; then
-      showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, periods, and/or hyphens."
+    elif [ $(checkValidStringUpperLowerNumbers "$LDAP_PRIMARY_USER_FULLNAME" "[:space:].,-") = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, periods, commas, and/or hyphens."
       LDAP_PRIMARY_USER_FULLNAME=""
     else
       updateConfigVar LDAP_PRIMARY_USER_FULLNAME "$LDAP_PRIMARY_USER_FULLNAME"
@@ -4366,7 +4391,7 @@ function setupHostedVPN()
     set -e
   fi
   set -e
-
+  setupPortForwardingDB
   RELAYSERVER_EXT_EMAIL_HOSTNAME=$SUB_POSTFIX.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
   updateConfigVar RELAYSERVER_EXT_EMAIL_HOSTNAME $RELAYSERVER_EXT_EMAIL_HOSTNAME
 
@@ -4377,11 +4402,21 @@ function setupHostedVPN()
 	if [ -z "$RELAYSERVER_SSH_PORT" ]; then
 	  showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
     elif [ "$(checkValidNumber $RELAYSERVER_SSH_PORT)" = "false" ]; then
-      showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must consist of 0-9"
+      showMessageBox "Invalid Character(s)" "The port contains invalid character(s). It must be a number."
       RELAYSERVER_SSH_PORT=""
-	else
-	  updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
+    elif [ $RELAYSERVER_SSH_PORT -lt 1024 ] || [ $RELAYSERVER_SSH_PORT -gt 65536 ]; then
+      showMessageBox "Invalid Character(s)" "The port number is invalid, it must be between 1024-65536."
+      RELAYSERVER_SSH_PORT=""
 	fi
+    if ! [ -z "$RELAYSERVER_SSH_PORT" ]; then
+      chkSSHPort="$(checkPortForwardingIntersect tcp $RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT)"
+      if ! [ -z "$chkSSHPort" ]; then
+        showMessageBox "ERROR" "Error with port: $chkSSHPort"
+        RELAYSERVER_SSH_PORT=""
+      else
+        updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
+      fi
+    fi
     resetRSInit
   done
   while [ -z "$RELAYSERVER_NAME" ]
@@ -4393,6 +4428,9 @@ function setupHostedVPN()
     fi
 	if [ -z "$RELAYSERVER_NAME" ]; then
 	  showMessageBox "RelayServer Name Empty" "The RelayServer Name cannot be empty"
+    elif [ $(checkValidStringUpperLowerNumbers "$RELAYSERVER_NAME" "[:space:],.-") = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The RelayServer name contains invalid character(s). It must consist of upper/lowercase letters, numbers, spaces, commas, periods, or hyphens."
+      RELAYSERVER_NAME=""
 	else
 	  updateConfigVar RELAYSERVER_NAME "$RELAYSERVER_NAME"
 	fi
@@ -4406,7 +4444,7 @@ function setupHostedVPN()
       RELAYSERVER_LE_CERT_DOMAINS="$lecert_def"
     else
       RELAYSERVER_LE_CERT_DOMAINS=$(promptUserInputMenu "$lecert_def" "Enter LE Cert Subdomains" "Enter the subdomains for which the certificates will be managed by LetsEncrypt (comma-separated):")
-	  if [ $(checkValidString "$RELAYSERVER_LE_CERT_DOMAINS" ",.-") = "false" ]; then
+	  if ! [ -z "$RELAYSERVER_LE_CERT_DOMAINS" ] && [ $(checkValidString "$RELAYSERVER_LE_CERT_DOMAINS" ",.-") = "false" ]; then
         showMessageBox "Invalid Character(s)" "The domain list contains invalid character(s). It must consist of a-z (lowercase), 0-9, -, and/or ."
         RELAYSERVER_LE_CERT_DOMAINS=unset
 	  fi
@@ -4477,7 +4515,6 @@ function setupHostedVPN()
   fi
 
   initRelayServerCredentials
-  setupPortForwardingDB
   outputHostedVPNConfigs
   insertSQLHostedVPN
 
@@ -12005,12 +12042,30 @@ function checkDeleteStackAndDirectory()
   fi
 }
 
-function checkAvailablePort()
+function checkAvailableHomeServerPort()
 {
   check_port=$1
   if [ $check_port -le 1024 ]; then
     return 1
   fi
+  allPortsArr=($(echo "$(getHomeServerPortsList)" | tr "," "\n"))
+  for curPort in "${allPortsArr[@]}"
+  do
+    echo "$curPort" | grep ":" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      # Range of ports
+      startPort=$(echo $curPort | cut -d":" -f1)
+      endPort=$(echo $curPort | cut -d":" -f2)
+      if [ $check_port -ge $startPort ] && [ $check_port -le $endPort ]; then
+        return 2
+      fi
+    else
+      # Single port
+      if [ $check_port -eq $curPort ]; then
+        return 3
+      fi
+    fi
+  done
 }
 
 function getPrivateIPRangesCaddy()
@@ -14221,6 +14276,11 @@ function checkValidPortsList()
       fi
     done
   fi
+}
+
+function getStringLength()
+{
+  echo "${#1}"
 }
 
 function isEmailMatchBaseDomain()
@@ -24974,6 +25034,12 @@ function initCertificateAuthority()
       CERTS_INTERNAL_COUNTRY="US"
     else
       CERTS_INTERNAL_COUNTRY=$(promptUserInputMenu "US" "Enter Certificate Country" "Enter the country abbreviation you would like to appear on your certificates: ")
+      if [ -z "$CERTS_INTERNAL_COUNTRY" ]; then
+        showMessageBox "Empty Value" "The country cannot be empty."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_COUNTRY" "-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The country contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or -"
+        CERTS_INTERNAL_COUNTRY=""
+      fi
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_COUNTRY "$CERTS_INTERNAL_COUNTRY"
   done
@@ -24983,6 +25049,12 @@ function initCertificateAuthority()
       CERTS_INTERNAL_STATE="Missouri"
     else
       CERTS_INTERNAL_STATE=$(promptUserInputMenu "Missouri" "Enter Certificate State" "Enter the state name you would like to appear on your certificates: ")
+      if [ -z "$CERTS_INTERNAL_STATE" ]; then
+        showMessageBox "Empty Value" "The state cannot be empty."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_STATE" "-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The state contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or -"
+        CERTS_INTERNAL_STATE=""
+      fi
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_STATE "$CERTS_INTERNAL_STATE"
   done
@@ -24992,6 +25064,12 @@ function initCertificateAuthority()
       CERTS_INTERNAL_LOCALITY="St. Louis"
     else
       CERTS_INTERNAL_LOCALITY=$(promptUserInputMenu "St. Louis" "Enter Certificate Locality" "Enter the locality you would like to appear on your certificates: ")
+      if [ -z "$CERTS_INTERNAL_LOCALITY" ]; then
+        showMessageBox "Empty Value" "The locality cannot be empty."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_LOCALITY" ".,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The state contains invalid character(s). It must consist of a-z (lowercase), 0-9, hyphens, commas or periods."
+        CERTS_INTERNAL_LOCALITY=""
+      fi
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_LOCALITY "$CERTS_INTERNAL_LOCALITY"
   done
@@ -25001,6 +25079,12 @@ function initCertificateAuthority()
       CERTS_INTERNAL_ROOT_CN="$HOMESERVER_NAME Root CA"
     else
       CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "$HOMESERVER_NAME Root CA" "Enter Certificate Root CN" "Enter the root CN you would like to appear on your certificates: ")
+      if [ -z "$CERTS_INTERNAL_ROOT_CN" ]; then
+        showMessageBox "Empty Value" "The root CN cannot be empty."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_ROOT_CN" ".,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The root CN contains invalid character(s). It must consist of a-z (lowercase), 0-9, hyphens, commas or periods."
+        CERTS_INTERNAL_ROOT_CN=""
+      fi
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_ROOT_CN "$CERTS_INTERNAL_ROOT_CN"
   done
@@ -25010,6 +25094,12 @@ function initCertificateAuthority()
       CERTS_INTERNAL_INTERMEDIATE_CN="$HOMESERVER_NAME ECC Intermediate"
     else
       CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "$HOMESERVER_NAME ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like to appear on your certificates: ")
+      if [ -z "$CERTS_INTERNAL_INTERMEDIATE_CN" ]; then
+        showMessageBox "Empty Value" "The intermediate CN cannot be empty."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_INTERMEDIATE_CN" ".,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The intermediate CN contains invalid character(s). It must consist of a-z (lowercase), 0-9, hyphens, commas or periods."
+        CERTS_INTERNAL_INTERMEDIATE_CN=""
+      fi
     fi
     updatePlaintextRootConfigVar CERTS_INTERNAL_INTERMEDIATE_CN "$CERTS_INTERNAL_INTERMEDIATE_CN"
   done
@@ -29681,6 +29771,12 @@ function importDBs()
   # This function is just here as a reminder to add any
   # DB connection info to SQLPad and/or the AIStack
   return
+}
+
+function getHomeServerPortsList()
+{
+  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
+  echo "$portsList"
 }
 
 # Stacks Installation/Update Functions
@@ -61243,7 +61339,7 @@ EOFSC
         "width_weight": 2
       },
       "default": "$SSH_PORT",
-      "min": "1",
+      "min": "1024",
       "max": "65535",
       "secure": false,
       "pass_as": "argument"
