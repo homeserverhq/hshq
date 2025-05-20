@@ -4549,20 +4549,33 @@ function setupHostedVPN()
     fi
 	if [ -z "$PRIMARY_VPN_SUBNET" ] || [ "$(checkValidIPAddress $PRIMARY_VPN_SUBNET)" = "false" ]; then
 	  showMessageBox "Invalid Subnet" "The VPN Subnet is invalid."
+      PRIMARY_VPN_SUBNET=""
       continue
 	fi
     is_intersect="$(isNetworkIntersectOurNetworks $PRIMARY_VPN_SUBNET false true)"
     if ! [ -z "$is_intersect" ]; then
-      if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then continue; fi
-	  showMessageBox "Network Collision" "Network Collision: $is_intersect"
+      if ! [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
+        showMessageBox "Network Collision" "Network Collision: $is_intersect"
+      fi
+      PRIMARY_VPN_SUBNET=""
       continue
     fi
+    set +e
+    firstOct=$(echo "$PRIMARY_VPN_SUBNET" | cut -d"." -f1)
+    if ! [ "$firstOct" = "10" ]; then
+      showYesNoMessageBox "Confirm" "This subnet is not in the 10.0.0.0/8 range. It is highly recommended that you stay within this range. Are you sure you know what you are doing?"
+      if [ $? -ne 0 ]; then
+        PRIMARY_VPN_SUBNET=""
+        continue
+      fi
+    fi
+    set -e
 	updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
     resetRSInit
   done
   if [ -z "$PRIMARY_VPN_SUBNET" ]; then
     # We tried...
-    echo "ERROR: Could not allocate VPN network subnet."
+    showMessageBox "ERROR" "Could not allocate VPN network subnet, returning..."
     return 1
   fi
 
