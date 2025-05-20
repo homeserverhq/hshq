@@ -14246,8 +14246,8 @@ function checkValidIPAddress()
 {
   set +e
   # Need to make checkValidIPAddress better, i.e. with full CIDR
-  ip=$(echo $1 | cut -d "/" -f1)
-  cidr=$(echo $1 | cut -d "/" -f2-)
+  ip=$(echo "$1" | cut -d "/" -f1)
+  cidr=$(echo "$1" | cut -d "/" -f2-)
   stat=1
   if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
     OLDIFS=$IFS
@@ -14257,8 +14257,10 @@ function checkValidIPAddress()
     [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
     stat=$?
   fi
-  if [ "$(checkValidNumber $cidr)" = "false" ] || [ $cidr -lt 0 ] || [ $cidr -gt 32 ]; then
-    stat=1
+  if ! [ -z "$cidr" ]; then
+    if [ "$(checkValidNumber $cidr)" = "false" ] || [ $cidr -lt 0 ] || [ $cidr -gt 32 ]; then
+      stat=1
+    fi
   fi
   set -e
   if [ $stat -eq 0 ]; then
