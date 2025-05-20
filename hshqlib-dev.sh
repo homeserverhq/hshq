@@ -2087,20 +2087,25 @@ function initConfig()
       updatePlaintextRootConfigVar HOMESERVER_ABBREV $HOMESERVER_ABBREV
     fi
   done
+  priorTZ=$(cat /etc/timezone)
   while [ -z "$TZ" ]
   do
-    TZ=$(promptUserInputMenu "$(cat /etc/timezone)" "Enter Time Zone" "Enter your time zone. For a list of all time zones, visit https://en.wikipedia.org/wiki/List_of_tz_database_time_zones and enter the value in the [TZ database name] column: ")
+    TZ=$(promptUserInputMenu "$priorTZ" "Enter Time Zone" "Enter your time zone. For a list of all time zones, visit https://en.wikipedia.org/wiki/List_of_tz_database_time_zones and enter the value in the [TZ database name] column: ")
     if [ $? -ne 0 ]; then
       exit 2
     fi
     if [ -z "$TZ" ]; then
       showMessageBox "Time Zone Empty" "The time zone cannot be empty"
+    elif [ $(checkValidStringUpperLowerNumbers "$TZ" "/_+-") = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The timezone contains invalid character(s)."
+      TZ=""
     else
       set +e
       sudo timedatectl set-timezone "$TZ"
       if [ $? -ne 0 ]; then
         showMessageBox "Invalid Time Zone" "The time zone is invalid. Please enter a valid time zone."
         TZ=""
+        sudo timedatectl set-timezone "$priorTZ"
       else
         echo "$TZ" | sudo tee /etc/timezone
         updatePlaintextRootConfigVar TZ $TZ
