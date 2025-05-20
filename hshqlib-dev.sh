@@ -14145,6 +14145,17 @@ function checkValidStringUpperLowerNumbers()
   fi
 }
 
+function checkValidStringUpper()
+{
+  check_string=$1
+  addchars=$2
+  if [[ $check_string =~ ^[A-Z$addchars]+$ ]]; then
+    echo "true"
+  else
+    echo "false"
+  fi
+}
+
 function checkValidNumber()
 {
   check_string=$1
@@ -25036,8 +25047,11 @@ function initCertificateAuthority()
       CERTS_INTERNAL_COUNTRY=$(promptUserInputMenu "US" "Enter Certificate Country" "Enter the country abbreviation you would like to appear on your certificates: ")
       if [ -z "$CERTS_INTERNAL_COUNTRY" ]; then
         showMessageBox "Empty Value" "The country cannot be empty."
-      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_COUNTRY" "[:space:].,-") = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The country contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, hyphens, commas or periods."
+      elif [ $(checkValidStringUpper "$CERTS_INTERNAL_COUNTRY") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The country contains invalid character(s). It must consist of exactly 2 uppercase letters."
+        CERTS_INTERNAL_COUNTRY=""
+      elif [ $(getStringLength "$CERTS_INTERNAL_COUNTRY") -ne 2 ]; then
+        showMessageBox "Invalid Length" "The country code must be exactly 2 characters."
         CERTS_INTERNAL_COUNTRY=""
       fi
     fi
