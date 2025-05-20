@@ -25036,8 +25036,8 @@ function initCertificateAuthority()
       CERTS_INTERNAL_COUNTRY=$(promptUserInputMenu "US" "Enter Certificate Country" "Enter the country abbreviation you would like to appear on your certificates: ")
       if [ -z "$CERTS_INTERNAL_COUNTRY" ]; then
         showMessageBox "Empty Value" "The country cannot be empty."
-      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_COUNTRY" "-") = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The country contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or -"
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_COUNTRY" "[:space:].,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The country contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, hyphens, commas or periods."
         CERTS_INTERNAL_COUNTRY=""
       fi
     fi
@@ -25051,8 +25051,8 @@ function initCertificateAuthority()
       CERTS_INTERNAL_STATE=$(promptUserInputMenu "Missouri" "Enter Certificate State" "Enter the state name you would like to appear on your certificates: ")
       if [ -z "$CERTS_INTERNAL_STATE" ]; then
         showMessageBox "Empty Value" "The state cannot be empty."
-      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_STATE" "-") = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The state contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or -"
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_STATE" "[:space:].,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The state contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, hyphens, commas or periods."
         CERTS_INTERNAL_STATE=""
       fi
     fi
@@ -25066,8 +25066,8 @@ function initCertificateAuthority()
       CERTS_INTERNAL_LOCALITY=$(promptUserInputMenu "St. Louis" "Enter Certificate Locality" "Enter the locality you would like to appear on your certificates: ")
       if [ -z "$CERTS_INTERNAL_LOCALITY" ]; then
         showMessageBox "Empty Value" "The locality cannot be empty."
-      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_LOCALITY" ".,-") = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The state contains invalid character(s). It must consist of a-z (lowercase), 0-9, hyphens, commas or periods."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_LOCALITY" "[:space:].,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The state contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, hyphens, commas or periods."
         CERTS_INTERNAL_LOCALITY=""
       fi
     fi
@@ -25081,8 +25081,8 @@ function initCertificateAuthority()
       CERTS_INTERNAL_ROOT_CN=$(promptUserInputMenu "$HOMESERVER_NAME Root CA" "Enter Certificate Root CN" "Enter the root CN you would like to appear on your certificates: ")
       if [ -z "$CERTS_INTERNAL_ROOT_CN" ]; then
         showMessageBox "Empty Value" "The root CN cannot be empty."
-      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_ROOT_CN" ".,-") = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The root CN contains invalid character(s). It must consist of a-z (lowercase), 0-9, hyphens, commas or periods."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_ROOT_CN" "[:space:].,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The root CN contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, hyphens, commas or periods."
         CERTS_INTERNAL_ROOT_CN=""
       fi
     fi
@@ -25096,8 +25096,8 @@ function initCertificateAuthority()
       CERTS_INTERNAL_INTERMEDIATE_CN=$(promptUserInputMenu "$HOMESERVER_NAME ECC Intermediate" "Enter Certificate Intermediate CN" "Enter the intermediate CN you would like to appear on your certificates: ")
       if [ -z "$CERTS_INTERNAL_INTERMEDIATE_CN" ]; then
         showMessageBox "Empty Value" "The intermediate CN cannot be empty."
-      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_INTERMEDIATE_CN" ".,-") = "false" ]; then
-        showMessageBox "Invalid Character(s)" "The intermediate CN contains invalid character(s). It must consist of a-z (lowercase), 0-9, hyphens, commas or periods."
+      elif [ $(checkValidStringUpperLowerNumbers "$CERTS_INTERNAL_INTERMEDIATE_CN" "[:space:].,-") = "false" ]; then
+        showMessageBox "Invalid Character(s)" "The intermediate CN contains invalid character(s). It must consist of a-z, A-Z, 0-9, spaces, hyphens, commas or periods."
         CERTS_INTERNAL_INTERMEDIATE_CN=""
       fi
     fi
