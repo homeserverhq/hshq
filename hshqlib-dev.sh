@@ -2813,7 +2813,7 @@ EOF
       return
     fi
     if [ -z "$selDiskItem" ]; then
-      showMessageBox "ERROR" "You did not make a selection, please try again."
+      showMessageBox "ERROR" "You did not make a selection, press spacebar on your desired option. Please try again."
     else
       break
     fi
