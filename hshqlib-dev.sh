@@ -4569,6 +4569,12 @@ function setupHostedVPN()
         continue
       fi
     fi
+    vpnCIDR=$(echo "$PRIMARY_VPN_SUBNET" | cut -d"/" -f2-)
+    if ! [ "$vpnCIDR" = "24" ]; then
+      showYesNoMessageBox "The VPN subnet must be of size /24."
+      PRIMARY_VPN_SUBNET=""
+      continue
+    fi
     set -e
 	updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
     resetRSInit
@@ -8734,6 +8740,9 @@ function uploadVPNInstallScripts()
           nonroot_username=$trUsername
         else
           nonroot_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
+          if [ $? -ne 0 ]; then
+            return 1
+          fi
           if [ $(checkValidString "$nonroot_username" "-") = "false" ]; then
             showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
             nonroot_username=""
@@ -8751,6 +8760,9 @@ function uploadVPNInstallScripts()
     do
       if ! [ -z "$nonroot_username" ]; then
         tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
+        if [ $? -ne 0 ]; then
+          return 1
+        fi
         if [ -z "$tmp_pw1" ]; then
           showMessageBox "Password Empty" "The password cannot be empty, please try again."
           continue
@@ -8762,11 +8774,17 @@ function uploadVPNInstallScripts()
           continue
         fi
         tmp_pw2=$(promptPasswordMenu "Confirm Password" "Enter the password again to confirm: ")
+        if [ $? -ne 0 ]; then
+          return 1
+        fi
         if ! [ "$tmp_pw1" = "$tmp_pw2" ]; then
           showMessageBox "Password Mismatch" "The passwords do not match, please try again."
         fi
       else
         tmp_pw1=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
+        if [ $? -ne 0 ]; then
+          return 1
+        fi
         if [ -z "$tmp_pw1" ]; then
           showMessageBox "Password Empty" "The password cannot be empty, please try again."
           continue
