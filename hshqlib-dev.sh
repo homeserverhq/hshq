@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=158
+HSHQ_LIB_SCRIPT_VERSION=159
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -937,7 +937,7 @@ EOF
   mkdir /tmp/dupconfig
   docker container stop duplicati-restore > /dev/null 2>&1
   docker container rm duplicati-restore > /dev/null 2>&1
-  docker run -d --name=duplicati-restore -v /tmp/dupconfig:/config -v $backupDirTL/$selBackupDir:/backup -v $HSHQ_RESTORE_DIR:/restore $IMG_DUPLICATI > /dev/null 2>&1
+  docker run -d --name=duplicati-restore -v /tmp/dupconfig:/config -v $backupDirTL/$selBackupDir:/backup -v $HSHQ_RESTORE_DIR:/restore $(getScriptImageByContainerName duplicati) > /dev/null 2>&1
   echo "Recreating duplicati database..."
   #docker exec -it duplicati-restore bash -c "mono /app/duplicati/Duplicati.CommandLine.exe repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
   docker exec -it duplicati-restore bash -c "/app/duplicati/duplicati-cli repair /backup --dbpath=/config/hshqrestore.sqlite --passphrase=$dup_pw"
@@ -3353,6 +3353,8 @@ function installAllAvailableStacks()
 {
   is_msgbox_prompt="$1"
   set +e
+  echo "Pulling common images..."
+  pullCommonImages
   stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
   sel_svcs=()
   is_list_emtpy=true
@@ -25448,6 +25450,7 @@ function getUpdateAssets()
 function pullImage()
 {
   img_and_version=$1
+  secs_mult=60
   logHSHQEvent info "Pulling Image: $img_and_version"
   echo "Pulling Image: $img_and_version"
   is_success=1
@@ -25455,9 +25458,17 @@ function pullImage()
   set +e
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
-    docker pull $img_and_version
-    docker image inspect $img_and_version > /dev/null 2>&1
-    is_success=$?
+    if [ $num_tries -lt $(($MAX_DOCKER_PULL_TRIES-1)) ]; then
+      timeout $(($num_tries*$secs_mult)) docker pull $img_and_version
+    else
+      docker pull $img_and_version
+    fi
+    if [ $? -eq 0 ]; then
+      docker image inspect $img_and_version > /dev/null 2>&1
+      is_success=$?
+    else
+      is_success=1
+    fi
     ((num_tries++))
   done
   if [ $is_success -ne 0 ]; then
@@ -26237,6 +26248,14 @@ function pullBaseServicesDockerImages()
   if [ $retVal -ne 0 ] || ! [ -f $HOME/script-server.zip ]; then
     return 4
   fi
+}
+
+function pullCommonImages()
+{
+  pullImage $IMG_POSTGRES
+  pullImage $IMG_MYSQL
+  pullImage $IMG_REDIS
+  pullImage $IMG_NGINX
 }
 
 function outputEncConfigFile()
@@ -28337,6 +28356,9 @@ function installStackByName()
   stack_name=$1
   is_integrate=$2
   cd ~
+  echo "------------------------------------------"
+  echo "  Installing stack: $stack_name"
+  echo "------------------------------------------"
   case "$stack_name" in
     adguard)
       installAdGuard $is_integrate ;;
@@ -30205,7 +30227,7 @@ function installAdGuard()
     echo "ERROR: AdGuard directory exists"
     exit 1
   fi
-  pullImage $IMG_ADGUARD
+  pullImage $(getScriptImageByContainerName adguard)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain AdGuard docker image"
     exit 1
@@ -30645,19 +30667,19 @@ function installSysUtils()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_GRAFANA
+  pullImage $(getScriptImageByContainerName grafana)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PROMETHEUS
+  pullImage $(getScriptImageByContainerName prometheus)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_NODE_EXPORTER
+  pullImage $(getScriptImageByContainerName node-exporter)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_INFLUXDB
+  pullImage $(getScriptImageByContainerName influxdb)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -33648,17 +33670,17 @@ function installOpenLDAP()
     echo "ERROR: OpenLDAP directory exists"
     exit 1
   fi
-  pullImage $IMG_OPENLDAP_SERVER
+  pullImage $(getScriptImageByContainerName ldapserver)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain OpenLDAP Server docker image"
     exit 1
   fi
-  pullImage $IMG_OPENLDAP_MANAGER
+  pullImage $(getScriptImageByContainerName ldapphp)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain OpenLDAP Manager docker image"
     exit 1
   fi
-  pullImage $IMG_OPENLDAP_PHP
+  pullImage $(getScriptImageByContainerName ldapmanager)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain OpenLDAP PHP docker image"
     exit 1
@@ -35092,15 +35114,15 @@ function installWazuh()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_WAZUH_DASHBOARD
+  pullImage $(getScriptImageByContainerName wazuh.dashboard)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_WAZUH_INDEXER
+  pullImage $(getScriptImageByContainerName wazuh.indexer)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_WAZUH_MANAGER
+  pullImage $(getScriptImageByContainerName wazuh.manager)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -36117,7 +36139,7 @@ function installCollabora()
     return 1
   fi
   mkdir $HSHQ_STACKS_DIR/collabora
-  pullImage $IMG_COLLABORA
+  pullImage $(getScriptImageByContainerName collabora)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -36539,8 +36561,8 @@ function installNextcloud()
       docker container rm $curcont
     done
     docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
-    docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
+    docker image rm $(getScriptImageByContainerName nextcloud-app) > /dev/null 2>&1
+    docker image rm $(getScriptImageByContainerName nextcloud-imaginary) > /dev/null 2>&1
     stack_name=nextcloud
     echo "ERROR: Nextcloud did not start up correctly, exiting..."
     return 6
@@ -36623,8 +36645,8 @@ function performNextcloudInstallFailCleanup()
   rm -f $HOME/nextcloud.env
   rm -f $HOME/nextcloud-json.tmp
   docker volume rm nextcloud_v-nextcloud > /dev/null 2>&1
-  docker image rm $IMG_NEXTCLOUD_APP > /dev/null 2>&1
-  docker image rm $IMG_NEXTCLOUD_IMAGINARY > /dev/null 2>&1
+  docker image rm $(getScriptImageByContainerName nextcloud-app) > /dev/null 2>&1
+  docker image rm $(getScriptImageByContainerName nextcloud-imaginary) > /dev/null 2>&1
   stack_name=nextcloud
 }
 
@@ -37690,19 +37712,19 @@ function installJitsi()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_JITSI_JICOFO
+  pullImage $(getScriptImageByContainerName jitsi-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_JITSI_JVB
+  pullImage $(getScriptImageByContainerName jitsi-prosody)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_JITSI_PROSODY
+  pullImage $(getScriptImageByContainerName jitsi-jicofo)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_JITSI_WEB
+  pullImage $(getScriptImageByContainerName jitsi-jvb)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -37939,11 +37961,19 @@ function installMatrix()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_MATRIX_ELEMENT
+  pullImage $(getScriptImageByContainerName matrix-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_MATRIX_SYNAPSE
+  pullImage $(getScriptImageByContainerName matrix-synapse)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName matrix-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName matrix-element-private)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -38537,7 +38567,11 @@ function installWikijs()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_WIKIJS
+  pullImage $(getScriptImageByContainerName wikijs-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName wikijs-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -38763,7 +38797,7 @@ function installDuplicati()
     echo "ERROR: Duplicati directory exists"
     exit 1
   fi
-  pullImage $IMG_DUPLICATI
+  pullImage $(getScriptImageByContainerName duplicati)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain Duplicati docker image"
     exit 1
@@ -38926,11 +38960,23 @@ function installMastodon()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName mastodon-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName mastodon-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   pullImage $(getScriptImageByContainerName mastodon-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
   pullImage $(getScriptImageByContainerName mastodon-streaming)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName mastodon-sidekiq)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -39751,7 +39797,7 @@ function mfUpdateMastodonV7()
   set +e
   rm -f $HOME/mastodon-compose.yml
   outputMastodonCompose
-  pullImage $IMG_MASTODON_STREAMING
+  pullImage $(getScriptImageByContainerName mastodon-streaming)
   grep "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY" $HSHQ_STACKS_DIR/mastodon/stack.env > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
@@ -39792,7 +39838,7 @@ function installDozzle()
     return 1
   fi
   set -e
-  pullImage $IMG_DOZZLE
+  pullImage $(getScriptImageByContainerName dozzle)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -39930,7 +39976,11 @@ function installSearxNG()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_SEARXNG
+  pullImage $(getScriptImageByContainerName searxng-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName searxng-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -40276,7 +40326,7 @@ function installJellyfin()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_JELLYFIN
+  pullImage $(getScriptImageByContainerName jellyfin)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -40471,7 +40521,7 @@ function installFileBrowser()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_FILEBROWSER
+  pullImage $(getScriptImageByContainerName filebrowser)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -40619,7 +40669,11 @@ function installPhotoPrism()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PHOTOPRISM_APP
+  pullImage $(getScriptImageByContainerName photoprism-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName photoprism-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -40981,11 +41035,15 @@ function installGuacamole()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_GUACAMOLE_GUACD
+  pullImage $(getScriptImageByContainerName guacamole-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_GUACAMOLE_WEB
+  pullImage $(getScriptImageByContainerName guacamole-daemon)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName guacamole-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -41003,7 +41061,7 @@ function installGuacamole()
   fi
 
   outputConfigGuacamole
-  docker run --rm $IMG_GUACAMOLE_WEB /opt/guacamole/bin/initdb.sh --mysql > $HSHQ_STACKS_DIR/guacamole/init/initdb.sql
+  docker run --rm $(getScriptImageByContainerName guacamole-web) /opt/guacamole/bin/initdb.sh --mysql > $HSHQ_STACKS_DIR/guacamole/init/initdb.sql
   cd ~
   docker compose -f $HOME/guacamole-compose-tmp.yml up -d
   echo "Waiting at least 15 seconds before continuing..."
@@ -41248,9 +41306,14 @@ function installAuthelia()
     echo "ERROR: Authelia directory exists"
     exit 1
   fi
-  pullImage $IMG_AUTHELIA
+  pullImage $(getScriptImageByContainerName authelia)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain Authelia docker image"
+    exit 1
+  fi
+  pullImage $(getScriptImageByContainerName authelia-redis)
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not obtain Authelia Redis docker image"
     exit 1
   fi
   set -e
@@ -41729,7 +41792,11 @@ function installWordPress()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_WORDPRESS
+  pullImage $(getScriptImageByContainerName wordpress-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName wordpress-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -41918,7 +41985,11 @@ function installGhost()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_GHOST
+  pullImage $(getScriptImageByContainerName ghost-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ghost-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -42145,7 +42216,15 @@ function installPeerTube()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PEERTUBE_APP
+  pullImage $(getScriptImageByContainerName peertube-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName peertube-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName peertube-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -42453,19 +42532,23 @@ function installHomeAssistant()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_HOMEASSISTANT_APP
+  pullImage $(getScriptImageByContainerName homeassistant-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_HOMEASSISTANT_CONFIGURATOR
+  pullImage $(getScriptImageByContainerName homeassistant-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_HOMEASSISTANT_NODERED
+  pullImage $(getScriptImageByContainerName homeassistant-nodered)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_HOMEASSISTANT_TASMOADMIN
+  pullImage $(getScriptImageByContainerName homeassistant-configurator)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName homeassistant-tasmoadmin)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -43037,7 +43120,15 @@ function installGitlab()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_GITLAB_APP
+  pullImage $(getScriptImageByContainerName gitlab-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName gitlab-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName gitlab-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -43383,11 +43474,15 @@ function installVaultwarden()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_VAULTWARDEN_APP
+  pullImage $(getScriptImageByContainerName vaultwarden-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_VAULTWARDEN_LDAP
+  pullImage $(getScriptImageByContainerName vaultwarden-ldap)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName vaultwarden-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -43677,7 +43772,19 @@ function installDiscourse()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_DISCOURSE
+  pullImage $(getScriptImageByContainerName discourse-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName discourse-sidekiq)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName discourse-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName discourse-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -43978,7 +44085,7 @@ function installSyncthing()
     echo "ERROR: Syncthing directory exists"
     exit 1
   fi
-  pullImage $IMG_SYNCTHING
+  pullImage $(getScriptImageByContainerName syncthing)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain Syncthing docker image"
     exit 1
@@ -44157,7 +44264,7 @@ function installCodeServer()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_CODESERVER
+  pullImage $(getScriptImageByContainerName codeserver)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -44411,11 +44518,19 @@ function installShlink()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_SHLINK_APP
+  pullImage $(getScriptImageByContainerName shlink-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_SHLINK_WEB
+  pullImage $(getScriptImageByContainerName shlink-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName shlink-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName shlink-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -44763,15 +44878,23 @@ function installFirefly()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_FIREFLY_APP
+  pullImage $(getScriptImageByContainerName firefly-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_FIREFLY_IMPORTER
+  pullImage $(getScriptImageByContainerName firefly-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_FIREFLY_CRON
+  pullImage $(getScriptImageByContainerName firefly-importer)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firefly-cron)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName firefly-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -45118,8 +45241,8 @@ function performUpdateFirefly()
 
 function mfFireflyAddImporterAndCron()
 {
-  pullImage $IMG_FIREFLY_IMPORTER
-  pullImage $IMG_FIREFLY_CRON
+  pullImage $(getScriptImageByContainerName firefly-importer)
+  pullImage $(getScriptImageByContainerName firefly-cron)
   initServicesCredentials
   rm -f $HOME/firefly-compose.yml
   rm -f $HOME/firefly.env
@@ -45153,15 +45276,19 @@ function installExcalidraw()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_EXCALIDRAW_SERVER
+  pullImage $(getScriptImageByContainerName excalidraw-server)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_EXCALIDRAW_STORAGE
+  pullImage $(getScriptImageByContainerName excalidraw-storage)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_EXCALIDRAW_WEB
+  pullImage $(getScriptImageByContainerName excalidraw-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName excalidraw-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -45380,15 +45507,15 @@ function installDrawIO()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_DRAWIO_PLANTUML
+  pullImage $(getScriptImageByContainerName drawio-plantuml)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_DRAWIO_EXPORT
+  pullImage $(getScriptImageByContainerName drawio-export)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_DRAWIO_WEB
+  pullImage $(getScriptImageByContainerName drawio-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -45585,11 +45712,15 @@ function installInvidious()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_INVIDIOUS_WEB
+  pullImage $(getScriptImageByContainerName invidious-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_INVIDIOUS_COMPANION
+  pullImage $(getScriptImageByContainerName invidious-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invidious-companion)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -46046,7 +46177,11 @@ function installGitea()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_GITEA_APP
+  pullImage $(getScriptImageByContainerName gitea-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName gitea-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -46298,7 +46433,11 @@ function installMealie()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_MEALIE
+  pullImage $(getScriptImageByContainerName mealie-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName mealie-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -46566,7 +46705,7 @@ function installKasm()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_KASM
+  pullImage $(getScriptImageByContainerName kasm)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -46727,7 +46866,7 @@ function installNTFY()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_NTFY
+  pullImage $(getScriptImageByContainerName ntfy)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -47222,7 +47361,7 @@ function installITTools()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_ITTOOLS
+  pullImage $(getScriptImageByContainerName ittools)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -47322,7 +47461,7 @@ function installRemotely()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_REMOTELY
+  pullImage $(getScriptImageByContainerName remotely)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -47470,11 +47609,11 @@ function installCalibre()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_CALIBRE_SERVER
+  pullImage $(getScriptImageByContainerName calibre-server)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_CALIBRE_WEB
+  pullImage $(getScriptImageByContainerName calibre-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -47710,7 +47849,7 @@ function installNetdata()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_NETDATA
+  pullImage $(getScriptImageByContainerName netdata)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -47879,7 +48018,11 @@ function installLinkwarden()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_LINKWARDEN
+  pullImage $(getScriptImageByContainerName linkwarden-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName linkwarden-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -48123,7 +48266,7 @@ function installStirlingPDF()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_STIRLINGPDF
+  pullImage $(getScriptImageByContainerName stirlingpdf)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -48273,6 +48416,10 @@ function installBarAssistant()
     return 1
   fi
   pullImage $(getScriptImageByContainerName bar-assistant-saltrim)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName bar-assistant-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -48650,7 +48797,11 @@ function installFreshRSS()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_FRESHRSS
+  pullImage $(getScriptImageByContainerName freshrss-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName freshrss-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -48932,7 +49083,11 @@ function installKeila()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_KEILA
+  pullImage $(getScriptImageByContainerName keila-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName keila-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -49166,7 +49321,15 @@ function installWallabag()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_WALLABAG
+  pullImage $(getScriptImageByContainerName wallabag-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName wallabag-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName wallabag-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -49436,7 +49599,7 @@ function installJupyter()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_JUPYTER
+  pullImage $(getScriptImageByContainerName jupyter)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -49571,15 +49734,23 @@ function installPaperless()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PAPERLESS_GOTENBERG
+  pullImage $(getScriptImageByContainerName paperless-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PAPERLESS_TIKA
+  pullImage $(getScriptImageByContainerName paperless-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PAPERLESS_APP
+  pullImage $(getScriptImageByContainerName paperless-tika)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName paperless-gotenberg)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName paperless-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -49946,7 +50117,11 @@ function installSpeedtestTrackerLocal()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_SPEEDTEST_TRACKER_APP
+  pullImage $(getScriptImageByContainerName speedtest-tracker-local-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName speedtest-tracker-local-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -50208,7 +50383,11 @@ function installSpeedtestTrackerVPN()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_SPEEDTEST_TRACKER_APP
+  pullImage $(getScriptImageByContainerName speedtest-tracker-vpn-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName speedtest-tracker-vpn-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -50467,11 +50646,11 @@ function installChangeDetection()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_CHANGEDETECTION_APP
+  pullImage $(getScriptImageByContainerName changedetection-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME
+  pullImage $(getScriptImageByContainerName changedetection-playwright-chrome)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -50694,7 +50873,11 @@ function installHuginn()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_HUGINN_APP
+  pullImage $(getScriptImageByContainerName huginn-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName huginn-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -50936,7 +51119,7 @@ function installCoturn()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_COTURN
+  pullImage $(getScriptImageByContainerName coturn)
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return 1 $retVal
@@ -51274,6 +51457,10 @@ function installPiped()
   checkDeleteStackAndDirectory piped "Piped"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName piped-db)
+  if [ $? -ne 0 ]; then
     return 1
   fi
   pullImage $(getScriptImageByContainerName piped-frontend)
@@ -51734,7 +51921,11 @@ function installGrampsWeb()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_GRAMPSWEB
+  pullImage $(getScriptImageByContainerName grampsweb-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName grampsweb-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -52010,15 +52201,23 @@ function installPenpot()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PENPOT_BACKEND
+  pullImage $(getScriptImageByContainerName penpot-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PENPOT_FRONTEND
+  pullImage $(getScriptImageByContainerName penpot-backend)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_PENPOT_EXPORTER
+  pullImage $(getScriptImageByContainerName penpot-frontend)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName penpot-exporter)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName penpot-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -52039,7 +52238,7 @@ function installPenpot()
 
   initServicesCredentials
   set +e
-  docker run --rm --name=tomcat -v $HSHQ_STACKS_DIR/penpot/ssl:/certsexport -v /usr/local/share/ca-certificates:/usr/local/share/ca-certificates tomcat:11 bash -c "keytool -importcert -file /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt -alias ${CERTS_ROOT_CA_NAME}.crt -cacerts -storepass changeit -noprompt; cp /opt/java/openjdk/lib/security/cacerts /certsexport/"
+  docker run --rm --name=tomcat -v $HSHQ_STACKS_DIR/penpot/ssl:/certsexport -v /usr/local/share/ca-certificates:/usr/local/share/ca-certificates $IMG_TOMCAT bash -c "keytool -importcert -file /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt -alias ${CERTS_ROOT_CA_NAME}.crt -cacerts -storepass changeit -noprompt; cp /opt/java/openjdk/lib/security/cacerts /certsexport/"
   if ! [ -f $HSHQ_STACKS_DIR/penpot/ssl/cacerts ]; then
     echo "There was an error generating the java keystore with the added CA certificate, returning..."
     return 2
@@ -52348,11 +52547,19 @@ function installEspoCRM()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_ESPOCRM_APP
+  pullImage $(getScriptImageByContainerName espocrm-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_MYSQL
+  pullImage $(getScriptImageByContainerName espocrm-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName espocrm-daemon)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName espocrm-websocket)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -52635,15 +52842,19 @@ function installImmich()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_IMMICH_DB
+  pullImage $(getScriptImageByContainerName immich-db)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_IMMICH_APP
+  pullImage $(getScriptImageByContainerName immich-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_IMMICH_ML
+  pullImage $(getScriptImageByContainerName immich-ml)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName immich-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -53120,7 +53331,7 @@ function installHomarr()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_HOMARR_APP
+  pullImage $(getScriptImageByContainerName homarr-app)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -53314,7 +53525,15 @@ function installMatomo()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName matomo-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   pullImage $(getScriptImageByContainerName matomo-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName matomo-web)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -53604,6 +53823,10 @@ function installPastefy()
   checkDeleteStackAndDirectory pastefy "Pastefy"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName pastefy-db)
+  if [ $? -ne 0 ]; then
     return 1
   fi
   pullImage $(getScriptImageByContainerName pastefy-app)
@@ -53910,6 +54133,10 @@ function installAIStack()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName aistack-mindsdb-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   pullImage $(getScriptImageByContainerName aistack-mindsdb-app)
   if [ $? -ne 0 ]; then
     return 1
@@ -53927,6 +54154,10 @@ function installAIStack()
     return 1
   fi
   pullImage $(getScriptImageByContainerName aistack-openwebui)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName aistack-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -53990,8 +54221,8 @@ function installAIStack()
   sleep 5
   echo "Installing polars-lts-cpu, please be patient, this might take a few minutes..."
   docker exec aistack-mindsdb-app pip install polars-lts-cpu
-  docker image rm $IMG_AISTACK_MINDSDB_MOD_APP > /dev/null 2>&1
-  docker commit aistack-mindsdb-app $IMG_AISTACK_MINDSDB_MOD_APP
+  docker image rm $(getScriptImageByContainerName aistack-mindsdb-mod-app) > /dev/null 2>&1
+  docker commit aistack-mindsdb-app $(getScriptImageByContainerName aistack-mindsdb-mod-app)
   # See the code at the end of this function, as it informs the user regarding the import
   #importDBConnectionsAIStack
   docker exec aistack-mindsdb-db bash /dbimport/insertAdmin.sh
@@ -54779,6 +55010,14 @@ function installPixelfed()
   is_integrate_hshq=$1
   checkDeleteStackAndDirectory pixelfed "Pixelfed"
   cdRes=$?
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName pixelfed-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName pixelfed-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -56188,7 +56427,7 @@ EOFPF
 </script>
 @endpush
 EOFPF
-  DOCKER_BUILDKIT=1 docker build -t $IMG_PIXELFED_MOD_APP .
+  DOCKER_BUILDKIT=1 docker build -t $(getScriptImageByContainerName pixelfed-app) .
   buildRetVal=$?
   cd ~
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
@@ -56227,7 +56466,15 @@ function installYamtrack()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName yamtrack-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   pullImage $(getScriptImageByContainerName yamtrack-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName yamtrack-redis)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -56663,7 +56910,7 @@ function installOfelia()
     echo "ERROR: Ofelia directory exists"
     exit 1
   fi
-  pullImage $IMG_OFELIA
+  pullImage $(getScriptImageByContainerName ofelia)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain Ofelia docker image"
     exit 1
@@ -64463,7 +64710,7 @@ function installSQLPad()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  pullImage $IMG_SQLPAD
+  pullImage $(getScriptImageByContainerName sqlpad)
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -64948,7 +65195,7 @@ function installHeimdall()
     echo "ERROR: Heimdall directory exists"
     exit 1
   fi
-  pullImage $IMG_HEIMDALL
+  pullImage $(getScriptImageByContainerName heimdall)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain Heimdall docker image"
     exit 1
@@ -66583,7 +66830,7 @@ function installUptimeKuma()
     echo "ERROR: Uptimekuma directory exists"
     exit 1
   fi
-  pullImage $IMG_UPTIMEKUMA
+  pullImage $(getScriptImageByContainerName uptimekuma)
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not obtain Uptimekuma docker image"
     exit 1
