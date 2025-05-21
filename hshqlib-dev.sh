@@ -3778,7 +3778,7 @@ function webSetupHostedVPN()
     return
   fi
   RELAYSERVER_NAME="$rs_name"
-  if [ $(checkValidString "$rs_ledomains" ",.-") = "false" ]; then
+  if ! [ -z "$rs_ledomains" ] && [ $(checkValidString "$rs_ledomains" ",.-") = "false" ]; then
     echo "ERROR: The selected LetsEncrypt subdomains list contains invalid characters, returning..."
     return
   fi
