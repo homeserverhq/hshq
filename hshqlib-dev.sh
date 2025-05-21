@@ -2710,6 +2710,8 @@ EOFHP
 function sanitizeHSHQLog()
 {
   sudo sed -i 's/\x1b//g' $HSHQ_LOG_FILE
+  sudo sed -i 's/\^//g' $HSHQ_LOG_FILE
+  sudo sed -i 's/\x1b//g' $HSHQ_LOG_FILE
   sudo sed -i "s|$USERNAME|hshquser|g" $HSHQ_LOG_FILE
   sudo sed -i "s|$LDAP_PRIMARY_USER_USERNAME|hshquser|g" $HSHQ_LOG_FILE
   sudo sed -i "s|$LDAP_ADMIN_USER_USERNAME|hshqadmin|g" $HSHQ_LOG_FILE
