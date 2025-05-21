@@ -3355,6 +3355,8 @@ function installAllAvailableStacks()
 {
   is_msgbox_prompt="$1"
   set +e
+  echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
+  setSystemState $SS_INSTALLING
   echo "Pulling common images..."
   pullCommonImages
   stackListArr=($(echo $HSHQ_OPTIONAL_STACKS | tr "," "\n"))
@@ -3387,8 +3389,6 @@ function installAllAvailableStacks()
     fi
   fi
   set -e
-  echo "Installing all services, Start time: $(date '+%Y-%m-%d %H:%M:%S')"
-  setSystemState $SS_INSTALLING
   setSudoTimeoutInstall
   getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
