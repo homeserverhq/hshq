@@ -4391,7 +4391,6 @@ function setupHostedVPN()
     fi
     updateConfigVar RELAYSERVER_WG_INTERNET_NETNAME "$RELAYSERVER_WG_INTERNET_NETNAME"
   fi
-
   if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
     set +e
     showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
@@ -4403,6 +4402,7 @@ function setupHostedVPN()
     fi
     set -e
   fi
+  sudo sqlite3 $HSHQ_DB "drop table portforwarding;"
   set -e
   setupPortForwardingDB
   RELAYSERVER_EXT_EMAIL_HOSTNAME=$SUB_POSTFIX.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
