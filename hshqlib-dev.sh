@@ -8722,6 +8722,11 @@ function uploadVPNInstallScripts()
     if [ $? -ne 0 ]; then
       return 1
     fi
+    if [ $(checkValidString "$RELAYSERVER_REMOTE_USERNAME" "-") = "false" ]; then
+      showMessageBox "Invalid Character(s)" "The username contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
+      RELAYSERVER_REMOTE_USERNAME=""
+      continue
+    fi
     if [ "$RELAYSERVER_REMOTE_USERNAME" = "root" ]; then
       while [ -z "$nonroot_username" ]
       do
@@ -8729,8 +8734,8 @@ function uploadVPNInstallScripts()
           nonroot_username=$trUsername
         else
           nonroot_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
-          if [ $(checkValidString "$nonroot_username") = "false" ]; then
-            showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase) and/or 0-9"
+          if [ $(checkValidString "$nonroot_username" "-") = "false" ]; then
+            showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
             nonroot_username=""
           fi
         fi
