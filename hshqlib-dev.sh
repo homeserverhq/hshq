@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=159
+HSHQ_LIB_SCRIPT_VERSION=160
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -54125,7 +54125,6 @@ function performUpdateSnippetBox()
 }
 
 # AIStack
-# This stack is still a work-in-progress
 function installAIStack()
 {
   set +e
@@ -54578,6 +54577,7 @@ services:
       - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
+      - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -54928,7 +54928,7 @@ function main()
       continue
     fi
     if [ \$checkExist -eq 0 ]; then
-      sqlcmd="insert into integration(updated_at, created_at, name, data, engine) values ('\$curdt', '\$curdt', '\$connName','{"database": "\$connDatabase", "host": "\$connHost", "password": "\$connPassword", "port": "\$connPort", "user": "\$connUser"}','\$connType');"
+      sqlcmd="insert into integration(updated_at, created_at, name, data, engine) values ('\$curdt', '\$curdt', '\$connName','{\"database\": \"\$connDatabase\", \"host\": \"\$connHost\", \"password\": \"\$connPassword\", \"port\": \"\$connPort\", \"user\": \"\$connUser\"}','\$connType');"
       echo "\$sqlcmd" | psql -U \$AISTACK_MINDSDB_DATABASE_USER \$AISTACK_MINDSDB_DATABASE_NAME > /dev/null 2>&1
     else
       echo "INFO: DB Connection already exists in MindsDB - \$connName"
