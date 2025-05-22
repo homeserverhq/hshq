@@ -4407,7 +4407,7 @@ function setupHostedVPN()
     set -e
   fi
   set +e
-  sudo sqlite3 $HSHQ_DB "drop table portforwarding;"
+  sudo sqlite3 $HSHQ_DB "drop table portforwarding;" > /dev/null 2>&1
   set -e
   setupPortForwardingDB
   RELAYSERVER_EXT_EMAIL_HOSTNAME=$SUB_POSTFIX.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
