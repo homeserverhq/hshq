@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=160
+HSHQ_LIB_SCRIPT_VERSION=161
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -4406,6 +4406,7 @@ function setupHostedVPN()
     fi
     set -e
   fi
+  set +e
   sudo sqlite3 $HSHQ_DB "drop table portforwarding;"
   set -e
   setupPortForwardingDB
