@@ -18455,7 +18455,6 @@ function checkUpdateVersion()
     checkAddAllNewSvcs
     set -e
     is_update_performed=true
-    refreshSudo
     pauseCronService
   fi
   if [ $HSHQ_VERSION -lt 11 ]; then
