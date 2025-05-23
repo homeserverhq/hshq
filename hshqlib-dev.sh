@@ -315,6 +315,7 @@ function main()
       exit
     fi
     sudo -k
+    USER_SUDO_PW=""
     refreshSudo
     if [ $? -ne 0 ]; then
       exit 3
@@ -1118,8 +1119,9 @@ EOF
       set +e
       return 1 ;;
     4)
-      sudo -k
       set +e
+      sudo -k
+      USER_SUDO_PW=""
       refreshSudo
       releaseAllLocks
       return 1 ;;
@@ -1256,6 +1258,7 @@ EOF
     3)
       sudo -k
       set +e
+      USER_SUDO_PW=""
       refreshSudo
       releaseAllLocks
       return 1 ;;
