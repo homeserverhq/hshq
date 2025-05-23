@@ -2438,10 +2438,10 @@ function initInstallation()
     isRSReady=false
     set +e
     countRSPreRetries=0
-    maxRSPreRetries=20
+    maxRSPreRetries=30
     while true;
     do
-      ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" <<< "$USER_RELAY_SUDO_PW"
+      ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi"
       if [ $? -eq 0 ]; then
         break
       fi
