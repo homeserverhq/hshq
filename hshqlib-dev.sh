@@ -1774,8 +1774,8 @@ function checkLoadConfig()
 
 function confirmUnlockCreds()
 {
-  refreshSudo
   set +e
+  refreshSudo
   if [ $? -ne 0 ]; then
     return 3
   fi
@@ -20195,7 +20195,7 @@ EOFBS
     ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi; sleep 5; sudo reboot"
     unloadSSHKey
     rm -f $HOME/onBootRoot.sh
-    sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/transferRS.sh
+    sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
   fi
 
   HSHQ_VERSION=53
