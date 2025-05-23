@@ -1818,7 +1818,7 @@ function refreshSudo()
         USER_SUDO_PW=""
       fi
     else
-      echo -e "\n\n"
+      echo
       read -r -s -p "Enter the sudo password for $USERNAME: " USER_SUDO_PW
       echo
       echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -2441,7 +2441,7 @@ function initInstallation()
     maxRSPreRetries=30
     while true;
     do
-      ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi"
+      ssh -o 'StrictHostKeyChecking accept-new' -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi"
       if [ $? -eq 0 ]; then
         break
       fi
@@ -2453,6 +2453,7 @@ function initInstallation()
       echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for installation, sleeping 30 seconds then will retry..."
       sleep 30
     done
+    sleep 1
     ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
   fi
@@ -2603,23 +2604,11 @@ function postInstallation()
 {
   refreshSudo
   echo "Performing post-installation tasks..."
-  # No reason to send this. It becomes a security risk if left in the mailbox
-  #mail_msg=""
-  #mail_msg=${mail_msg}"Below is a copy of your configuration file:\n\n"
-  #mail_msg=${mail_msg}"""$(tail -n +10 $HSHQ_CONFIG_DIR/${CONFIG_FILE_DEFAULT_FILENAME})"""
-  #sendEmail -s "Configuration File" -b "$mail_msg" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
   sendRootCAEmail true
   draw_progress_bar 91
   emailFormattedCredentials
-  draw_progress_bar 92
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    #echo "Emailing DNS Info..."
-    #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
-    echo ""
-  fi
-  sleep 5
-  draw_progress_bar 94
+  draw_progress_bar 93
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
   echo "Sanitizing installation log..."
@@ -3794,28 +3783,20 @@ function startValidation()
       dpkg --configure -a > /dev/null 2>&1
       DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
     else
-      echo "Sudo is not installed. Please either install log in with the root account or install it manually."
+      echo "------------------------------------------------------------------------------------"
+      echo "  Sudo is not installed."
+      echo "  Please either log in with the root account or install it manually."
+      echo "------------------------------------------------------------------------------------"
       exit 2
     fi
-  fi
-  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-  sudo dpkg --configure -a > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
-  which screen > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' screen > /dev/null 2>&1
-  fi
-  which pwgen > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    DEBIAN_FRONTEND=noninteractive sudo apt update > /dev/null 2>&1
-    sudo dpkg --configure -a > /dev/null 2>&1
-    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' pwgen > /dev/null 2>&1
   fi
   if [ "\$curUsername" = "root" ]; then
     read -r -s -p "" USER_RELAY_SUDO_PW
     id "\$newUsername" > /dev/null 2>&1
     if [ \$? -eq 0 ]; then
-      echo "User (\$newUsername) already exists, exiting..."
+      echo "------------------------------------------------------------------------------------"
+      echo "  User (\$newUsername) already exists, exiting..."
+      echo "------------------------------------------------------------------------------------"
       removeMyself
       exit 1
     fi
@@ -3827,7 +3808,9 @@ function startValidation()
     read -r -s -p "" USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
-      echo "The sudo password for \$curUsername is incorrect, exiting..."
+      echo "------------------------------------------------------------------------------------"
+      echo "  The sudo password for \$curUsername is incorrect, exiting..."
+      echo "------------------------------------------------------------------------------------"
       removeMyself
       exit 2
     fi
@@ -3861,7 +3844,10 @@ function checkForHSHQ()
 {
   findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
   if ! [ -z "\$findhshq" ]; then
-    echo "An hshq directory already exists: \$findhshq. You must log into the RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out."
+    echo "------------------------------------------------------------------------------------"
+    echo "  An hshq directory already exists: \$findhshq. You must log into the"
+    echo "  RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out."
+    echo "------------------------------------------------------------------------------------"
     exit 5
   fi
 }
@@ -3870,7 +3856,10 @@ function checkForRunningDockerContainers()
 {
   is_containers=\$(docker ps -q 2>/dev/null | head -n 1)
   if ! [ -z "\$is_containers" ]; then
-    echo "There are currently running docker containers, the server must be clear of all activity."
+    echo "------------------------------------------------------------------------------------"
+    echo "  There are currently running docker containers, the server must be clear"
+    echo "  of all activity."
+    echo "------------------------------------------------------------------------------------"
     exit 6
   fi
 }
@@ -3883,10 +3872,26 @@ function removeMyself()
 
 function checkPerformPreInstall()
 {
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo dpkg --configure -a > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
+  which screen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' screen > /dev/null 2>&1
+  fi
+  which pwgen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive sudo apt update > /dev/null 2>&1
+    sudo dpkg --configure -a > /dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' pwgen > /dev/null 2>&1
+  fi
   docker ps > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
     if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+      echo "------------------------------------------------------------------------------------"
+      echo " Docker must be installed and the system rebooted before starting the installation."
+      echo "------------------------------------------------------------------------------------"
       # Must install docker and reboot
       touch /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
       scName=hshqPreInstall
@@ -3987,6 +3992,7 @@ function initScreen()
 
 main "\$@"
 EOFRS
+  chmod 600 $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
 }
 
 function webSetupHostedVPN()
@@ -5546,7 +5552,7 @@ case "\$1" in
 esac
 
 EOFRS
-  chmod 0400 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  chmod 0600 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
 }
 
 function outputRelayServerInstallTransferScript()
@@ -5898,7 +5904,7 @@ EOFWZ
 
 main "\$@"
 EOFRS
-  chmod 0400 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
+  chmod 0600 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
 }
 
 function outputRelayServerInstallFreshScript()
@@ -8916,7 +8922,7 @@ EOFST
 
 main "\$@"
 EOFRS
-  chmod 0400 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
+  chmod 0600 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
 }
 
 function uploadVPNInstallScripts()
@@ -9111,12 +9117,15 @@ EOF
       rm -f /tmp/rsValidationOutput.txt
       continue
     fi
-    rm -f /tmp/rsValidationOutput.txt
     unloadSSHKey
     if [ $is_err -eq 0 ]; then
       break
     fi
   done
+  if [ -f /tmp/rsValidationOutput.txt ]; then
+    cat /tmp/rsValidationOutput.txt
+  fi
+  rm -f /tmp/rsValidationOutput.txt
   refreshSudo
   rs_cur_password=""
   updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
@@ -14005,6 +14014,30 @@ function restartStackIfRunning()
     sleep $waitTime
     startStopStackByID $stackID start $portainerToken
   fi
+}
+
+function forceRestartStack()
+{
+  stackName=$1
+  waitTime=$2
+  portainerToken=$3
+  if [ "$stackName" = "portainer" ]; then
+    # Special case for portainer
+    restartPortainer
+    return
+  fi
+  set +e
+  if [ -z "$portainerToken" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  stackID=$(getStackID $stackName "$portainerToken")
+  if [ -z "$stackID" ]; then
+    return
+  fi
+  set +e
+  startStopStackByID $stackID stop $portainerToken
+  sleep $waitTime
+  startStopStackByID $stackID start $portainerToken
 }
 
 function getStackStatusByID()
@@ -23714,7 +23747,7 @@ function performPostDockerBootActions()
     systemctl is-enabled wg-quick@${curSVC} > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       logHSHQEvent info "performPostDockerBootActions - Restarting WG Connection: $curSVC"
-      timeout 10 sudo systemctl restart wg-quick@${curSVC} > /dev/null 2>&1
+      timeout 30 sudo systemctl restart wg-quick@${curSVC} > /dev/null 2>&1
     fi
   done
   logHSHQEvent info "performPostDockerBootActions - createWGDockerNetworks"
@@ -24092,6 +24125,11 @@ function updateEndpointIPs()
         if [ $? -ne 0 ]; then
           logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname ($iname)..."
           timeout 10 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
+          # If applicable, restart the associated caddy Stack
+          checkCaddyInterface=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ConnectionType in ('homeserver_vpn') and NetworkType in ('other','primary') and ID=$cur_id;")
+          if ! [ -z "$checkCaddyInterface" ]; then
+            forceRestartStack "caddy-${checkCaddyInterface}" 3
+          fi
           logHSHQEvent error "updateEndpointIPs - Connection Error, restart complete(HSVPN) $cname ($iname)..."
         fi
       fi
@@ -57516,25 +57554,24 @@ EOFSC
 
 function main()
 {
-  read -r -s -p "$sudo_stdin_prompt" sudopw
-  if [ -z "\$sudopw" ]; then
-    read -r -t 5 -s -p "" sudopw
+  read -r -s -p "$sudo_stdin_prompt" USER_SUDO_PW
+  if [ -z "\$USER_SUDO_PW" ]; then
+    read -r -t 5 -s -p "" USER_SUDO_PW
   fi
-  if [ -z "\$sudopw" ]; then
-    sudopw=""
+  if [ -z "\$USER_SUDO_PW" ]; then
+    USER_SUDO_PW=""
     cat <<< "ERROR: Password is incorrect." 1>&2
     exit 1
   fi
-  echo "\$sudopw" | sudo -S -v -p "" > /dev/null 2>&1
+  echo "\$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     echo "bad"
-    sudopw=""
+    USER_SUDO_PW=""
     cat <<< "ERROR: Password is incorrect." 1>&2
     exit 1
   else
     echo "good"
   fi
-  sudopw=""
 }
 
 main
@@ -61702,7 +61739,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, etc. Just be patient and allow the process to run its course. If it hangs for longer than 15-20 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
