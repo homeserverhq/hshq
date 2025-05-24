@@ -172,7 +172,7 @@ While the integrated systems approach is a significant improvement compared to o
 
 To get a better understanding of how it all works, the best place to start is our <a href="https://wiki.homeserverhq.com/getting-started#homeserverhq-architecture" target="_blank">Architecture video</a>. As illustrated in the video, the main thing to understand is the concept of a two-server setup: a HomeServer and a RelayServer. The HomeServer is the physical equipment in your home where the data resides, and the RelayServer is a lightweight access point so that you can connect to your HomeServer from anywhere. It doesn't matter where your HomeServer is physically located - it could be a laptop connected to a McDonald's wifi, and it would still be capable of hosting an email server, websites, etc. on the public internet. The RelayServer on the other hand is like your router - it handles all of the incoming and outgoing traffic of your network. But it is a smart router. Rather than doing a simple passthrough like a basic bastion host, we instead incorporated smarter relay tools to allow for more efficient routing of traffic.
 
-![RelayServerDiagram](https://github.com/user-attachments/assets/0b5fe940-fbeb-4788-90c8-040eeb5a8dc4)
+![RelayServerDiagram](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-arch-1.png)
 
 For example, to route https traffic for any websites that you want to host on the public internet, the RelayServer has its own reverse proxy. As requests come in, they will be routed appropriately to the correct internal host. This allows for unlimited internal hosts(HomeServers), as well as unlimited domains on a single HomeServer. We also applied the same concept to the email relay. It is a simple <a href="https://www.postfix.org/" target="_blank">Postfix</a> relay that inspects and determines the correct internal host and routes the mail accordingly. The mail relay also has a few added features such as: 
 - Basic spam detection with <a href="https://rspamd.com/" target="_blank">RSpamD</a> - to limit unwanted email from even being forwarded
@@ -187,25 +187,25 @@ There are simple-to-use tools on the managing HomeServer to perform nearly every
 - Adding/removing a port forwarding rule - passes traffic that arrives at a port (or range of ports) on the RelayServer to a port (or range of ports) on a specific internal host
 - Adding/removing a LetsEncrypt certificate request passthrough - this allows LE certificates to be issued to backend services on the HomeServer (which solves the problem that some mobile apps encounter with certificates signed by a custom CA)
 
-![image](https://github.com/user-attachments/assets/3b56b48e-fced-46db-85d1-0c63eac2f56a)
+![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-scriptserver-1.png)
 
 The networking features described so far are somewhat known and typical regarding the concept of a generic relay server. However, when looking at our internal networking infrastructure, some really cool concepts emerged. A large amount of credit is given to the elegant and versitile design pattern of <a href="https://www.wireguard.com/" target="_blank">WireGuard</a>. The split-tunnelling capabilities coupled with the peer-to-peer nature of the protocol allows for very advanced networking techniques, yet requires only a few lines of simple and straightforward configuration.
 
 When you first set up your RelayServer, you HomeServer creates an outgoing persistent tunnel to the RelayServer. This connection is the means in which mail is delivered as well as server-to-server communications within your private network - it is your PrimaryVPN. When you invite another HomeServer to host on your network, you are providing them with a tunnel into your network as well, and the RelayServer is the central access point for all of the connections. On the other side of the coin, when you join someone else's network, you are provided a tunnel into THEIR network, which ingresses via THEIR RelayServer.
 
-![image](https://github.com/user-attachments/assets/f3369a75-7d65-4646-aecb-17fd058a5612)
+![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-arch-2.png)
 
 Each time you host on a different network, a new corresponding reverse proxy instance is created to serve that network. This reverse proxy will request certificates from the hosting network, using the <a href="https://smallstep.com/certificates/" target="_blank">SmallStep</a> integration with <a href="https://caddyserver.com/" target="_blank">Caddy</a> (ACME Protocol). There is a default set of services that are exposed to other networks, but each instance can be customized differently, depending on your preferences for that network. This is where the whole concept of "overlapping private internets" comes from - you can simultaneously host on different networks, while picking and choosing which services to expose on which networks.
 
 The reason that a new reverse proxy instance is generated for each new network is because there is currently no such thing as conditional TLS, i.e. conditional based on the IP address of the requestor - no open source projects support this idea. Thus, each reverse proxy instance must serve certificates with a chain signed by the root certificate of that network (otherwise all servers and client devices on the network would have to install a root certificate for each HomeServer - a mess!). We could have opted to use something like <a href="https://letsencrypt.org/" target="_blank">LetsEncrypt</a> or <a href="https://zerossl.com/" target="_blank">ZeroSSL</a> throughout, but there's no reason to overload their servers with this much traffic, and it's against the true spirit and essence of self-hosting with open-source software - especially when the tools exist.
 
-![OverlappingInternets](https://github.com/user-attachments/assets/a8e28479-f5a0-43a9-93f1-63c5e3aeec29)
+![OverlappingInternets](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-arch-3.png)
 
 All of these processes take place seamlessly in the background, the user is typically never aware of anything. The DNS and TLS in most cases are handled automatically as well (there are some advanced use cases where manual intervention is needed). The only thing that they will see is the occasional automated email informing them of a new HomeServer joining or an existing one leaving. Even as the manager of a network, the process is as simple as a few button clicks. There are also simple-to-use tools to both manage your network as well as connections to other networks. To add another HomeServer to your network (or join your HomeServer to another network) requires a three-part, two-email exchange (to exercice proper <a href="https://en.wikipedia.org/wiki/Public-key_cryptography" target="_blank">public-key cryptography</a> practices).
 
-![image](https://github.com/user-attachments/assets/8b976614-324a-492d-906c-22240351e05c)
+![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-scriptserver-2.png)
 
-![image](https://github.com/user-attachments/assets/cfb0f325-6f43-4298-a32b-04822e30f3c5)
+![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-scriptserver-3.png)
 
 ## FAQ
   <ins>***Q: Why one big bash script?***</ins>
