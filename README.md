@@ -203,9 +203,9 @@ The reason that a new reverse proxy instance is generated for each new network i
 
 All of these processes take place seamlessly in the background, the user is typically never aware of anything. The DNS and TLS in most cases are handled automatically as well (there are some advanced use cases where manual intervention is needed). The only thing that they will see is the occasional automated email informing them of a new HomeServer joining or an existing one leaving. Even as the manager of a network, the process is as simple as a few button clicks. There are also simple-to-use tools to both manage your network as well as connections to other networks. To add another HomeServer to your network (or join your HomeServer to another network) requires a three-part, two-email exchange (to exercice proper <a href="https://en.wikipedia.org/wiki/Public-key_cryptography" target="_blank">public-key cryptography</a> practices).
 
-![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-scriptserver-2.png)
-
 ![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-scriptserver-3.png)
+
+![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/preview-scriptserver-2.png)
 
 ## FAQ
   <ins>***Q: Why one big bash script?***</ins>
