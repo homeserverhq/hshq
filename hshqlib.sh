@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=161
+HSHQ_LIB_SCRIPT_VERSION=162
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -50,13 +50,17 @@ function init()
   ENC_PW_FILE=/tmp/encpw.enc
   TMP_PW_CHECKDIR=/tmp/pwcheckdir
   IS_CONFIG_FILE_UNENCRYPTED=false
-  RS_INSTALL_SETUP_SCRIPT_NAME=setup.sh
-  RS_INSTALL_FRESH_SCRIPT_NAME=install.sh
-  RS_INSTALL_TRANSFER_SCRIPT_NAME=transfer.sh
+  RS_INSTALL_SETUP_SCRIPT_NAME=setupRS.sh
+  RS_INSTALL_FRESH_SCRIPT_NAME=installRS.sh
+  RS_INSTALL_TRANSFER_SCRIPT_NAME=transferRS.sh
+  RS_INSTALL_VALIDATION_SCRIPT_NAME=validateRS.sh
+  RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME=validateLib.sh
   NUKE_SCRIPT_NAME=nuke.sh
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
+  RELAYSERVER_NOT_READY_FILE=notready
   RELAYSERVER_INSTALL_COMPLETE_FILE=installed
+  RELAYSERVER_INSTALL_FAILED_FILE=failed
   RELAYSERVER_SWAP_SIZE=2G
   HSHQ_LOG_FILE=/var/log/hshq.log
   HSHQ_INSTALL_NOTES_FILENAME='HomeServer_Install_Notes.txt'
@@ -272,11 +276,7 @@ function main()
     read -r -s -p "" sudoPWKey
     USER_SUDO_PW="$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:$sudoPWKey)"
     rm -f $ENC_PW_FILE
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      echo "Error with sudo password, exiting installation..."
-      exit 6
-    fi
+    refreshSudo
     rm -fr $TMP_PW_CHECKDIR
     clear
     stty echo
@@ -294,11 +294,7 @@ function main()
     read -r -s -p "" sudoPWKey
     USER_SUDO_PW="$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:$sudoPWKey)"
     rm -f $ENC_PW_FILE
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      echo "Error with sudo password, exiting restore..."
-      exit 7
-    fi
+    refreshSudo
     rm -fr $TMP_PW_CHECKDIR
     clear
     stty echo
@@ -319,7 +315,8 @@ function main()
       exit
     fi
     sudo -k
-    promptTestSudoPW
+    USER_SUDO_PW=""
+    refreshSudo
     if [ $? -ne 0 ]; then
       exit 3
     fi
@@ -365,22 +362,9 @@ function showNotInstalledMenu()
 {
   set +e
   checkSupportedHostOS
-  while [ -z "$USER_SUDO_PW" ]
-  do
-    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
-    if [ $? -ne 0 ]; then
-      releaseLock hshqopen "User-Console" false
-      exit 3
-    fi
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
-      USER_SUDO_PW=""
-      continue
-    fi
-  done
+  refreshSudo
   setSudoTimeoutInstall
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
     echo "Installing openssh-server, please wait..."
     performAptInstall openssh-server > /dev/null 2>&1
@@ -405,6 +389,7 @@ EOF
     0)
       return 0 ;;
     1)
+      checkDockerPre
       checkLoadConfig
       initConfig
       initCertificateAuthority
@@ -446,6 +431,23 @@ EOF
     6)
       return 0 ;;
   esac
+}
+
+function checkDockerPre()
+{
+  set +e
+  sudo docker ps > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+      # Docker must be installed and system rebooted
+      showMessageBox "It appears that docker is not installed, and the OS Linux version is Debian 12. Due to recent changes, docker must be installed beforehand and the system rebooted in order to continue. After the system has rebooted, please log back in with this same user ($USERNAME) and restart the installation. Press okay to proceed."
+      sudo DEBIAN_FRONTEND=noninteractive apt update
+      sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+      sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+      installDocker
+      sudo reboot
+    fi
+  fi
 }
 
 function getLogo()
@@ -604,9 +606,7 @@ function showRestoreUnencryptedMenu()
 
 function performFullRestore()
 {
-  echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  unset USER_SUDO_PW
-  USER_SUDO_PW=""
+  refreshSudo
   createHSHQLog
   checkLoadConfig
   forceGetLock networkchecks performFullRestore
@@ -1119,9 +1119,10 @@ EOF
       set +e
       return 1 ;;
     4)
-      sudo -k
       set +e
-      promptTestSudoPW
+      sudo -k
+      USER_SUDO_PW=""
+      refreshSudo
       releaseAllLocks
       return 1 ;;
     5)
@@ -1257,7 +1258,8 @@ EOF
     3)
       sudo -k
       set +e
-      promptTestSudoPW
+      USER_SUDO_PW=""
+      refreshSudo
       releaseAllLocks
       return 1 ;;
     4)
@@ -1772,7 +1774,8 @@ function checkLoadConfig()
 
 function confirmUnlockCreds()
 {
-  promptTestSudoPW
+  set +e
+  refreshSudo
   if [ $? -ne 0 ]; then
     return 3
   fi
@@ -1791,8 +1794,9 @@ function confirmUnlockCreds()
   fi
 }
 
-function promptTestSudoPW()
+function refreshSudo()
 {
+  rsu_curE=${-//[^e]/}
   set +e
   if ! [ -z "$USER_SUDO_PW" ]; then
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -1802,18 +1806,31 @@ function promptTestSudoPW()
   fi
   while [ -z "$USER_SUDO_PW" ]
   do
-    USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter your sudo password for $USERNAME: ")
-    retVal=$?
-    if [ $retVal -ne 0 ]; then
-      return 3
-    fi
-    echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-      showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
-      USER_SUDO_PW=""
-      continue
+    if [ "$IS_CONSOLE_ENV" = "true" ]; then
+      USER_SUDO_PW=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
+      retVal=$?
+      if [ $retVal -ne 0 ]; then
+        exit 3
+      fi
+      echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        showMessageBox "Incorrect Password" "The password is incorrect, please re-enter it."
+        USER_SUDO_PW=""
+      fi
+    else
+      echo
+      read -r -s -p "Enter the sudo password for $USERNAME: " USER_SUDO_PW
+      echo
+      echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+      if [ $? -ne 0 ]; then
+        echo "The password is incorrect, please re-enter it."
+        USER_SUDO_PW=""
+      fi
     fi
   done
+  if ! [ -z "$rsu_curE" ]; then
+    set -e
+  fi
 }
 
 function checkConfigAvailable()
@@ -2418,11 +2435,30 @@ function initInstallation()
     echo "Starting installation on RelayServer..."
     sleep 1
     loadSSHKey
+    isRSReady=false
+    set +e
+    countRSPreRetries=0
+    maxRSPreRetries=30
+    while true;
+    do
+      ssh -o 'StrictHostKeyChecking accept-new' -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi"
+      if [ $? -eq 0 ]; then
+        break
+      fi
+      if [ $countRSPreRetries -ge $maxRSPreRetries ]; then
+        echo "Max retries reached. Something has likely gone wrong with the RelayServer pre-installation script, exiting..."
+        exit 2
+      fi
+      ((countRSPreRetries++))
+      echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for installation, sleeping 30 seconds then will retry..."
+      sleep 30
+    done
+    sleep 1
     ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW"
     unloadSSHKey
   fi
   set -e
-  sudo -v
+  refreshSudo
   echo "Starting installation on HomeServer..."
   sleep 1
   releaseLock hshqopen "preInstallation" false
@@ -2462,7 +2498,6 @@ function performBaseInstallation()
   fi
   set +e
   checkLoadConfig
-  USER_SUDO_PW=""
   setSudoTimeoutInstall
   if [ "$IS_INSTALLED" = "true" ] || [ "$IS_INSTALLING" = "true" ]; then
     strErr="performBaseInstallation - Already installed or existing installation is in progress, exiting..."
@@ -2567,25 +2602,13 @@ function trustDesktopIcon()
 
 function postInstallation()
 {
-  sudo -v
+  refreshSudo
   echo "Performing post-installation tasks..."
-  # No reason to send this. It becomes a security risk if left in the mailbox
-  #mail_msg=""
-  #mail_msg=${mail_msg}"Below is a copy of your configuration file:\n\n"
-  #mail_msg=${mail_msg}"""$(tail -n +10 $HSHQ_CONFIG_DIR/${CONFIG_FILE_DEFAULT_FILENAME})"""
-  #sendEmail -s "Configuration File" -b "$mail_msg" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
   echo "Emailing Root CA..."
   sendRootCAEmail true
   draw_progress_bar 91
   emailFormattedCredentials
-  draw_progress_bar 92
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
-    #echo "Emailing DNS Info..."
-    #sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
-    echo ""
-  fi
-  sleep 5
-  draw_progress_bar 94
+  draw_progress_bar 93
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
   echo "Sanitizing installation log..."
@@ -3686,12 +3709,6 @@ EOF
   fi
 }
 
-function resetRSInit()
-{
-  RELAYSERVER_IS_INIT=false
-  updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
-}
-
 function setupJoinPrimaryVPN()
 {
   vpnmenu=$(cat << EOF
@@ -3797,6 +3814,7 @@ function webSetupHostedVPN()
     fi
     USER_RELAY_SUDO_PW="$rs_new_password"
   else
+    rs_new_username="$rs_cur_username"
     USER_RELAY_SUDO_PW="$rs_cur_password"
   fi
   RELAYSERVER_LE_CERT_DOMAINS="$rs_ledomains"
@@ -3863,103 +3881,29 @@ function webSetupHostedVPN()
   fi
   # 2. Upload check script
   echo "Uploading validation script..."
-  tee /tmp/checkRS.sh >/dev/null <<EOFRS
-#!/bin/bash
-
-curUsername=$rs_cur_username
-newUsername=$rs_new_username
-pubkey="$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)"
-function main()
-{
-  if [ "\$curUsername" = "root" ]; then
-    read -r -s -p "" newUserPass
-    id "\$newUsername" > /dev/null 2>&1
-    if [ \$? -eq 0 ]; then
-      echo "User (\$newUsername) already exists, exiting..."
-      removeMyself
-      exit 1
-    fi
-    checkForHSHQ
-    checkForRunningDockerContainers
-    sudo useradd -m -G sudo -s /bin/bash "\$newUsername" > /dev/null 2>&1
-    echo "\$newUsername:\$newUserPass" | sudo chpasswd > /dev/null 2>&1
-    activeUsername=\$newUsername
-  else
-    read -r -s -p "" curUserSudo
-    echo "\$curUserSudo" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      echo "The sudo password for \$curUsername is incorrect, exiting..."
-      removeMyself
-      exit 2
-    fi
-    sudo bash -c "\$(declare -f checkForHSHQ); checkForHSHQ"
-    if [ \$? -ne 0 ]; then
-      removeMyself
-      exit 2
-    fi
-    sudo bash -c "\$(declare -f checkForRunningDockerContainers); checkForRunningDockerContainers"
-    if [ \$? -ne 0 ]; then
-      removeMyself
-      exit 2
-    fi
-    activeUsername=\$curUsername
-  fi
-  getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
-  sudo usermod -aG docker \$activeUsername > /dev/null 2>&1
-  mkdir -p /home/\$activeUsername/.ssh
-  chmod 775 /home/\$activeUsername/.ssh
-  pubk=\$(echo "\$pubkey" | cut -d " " -f2)
-  grep "\$pubk" /home/\$activeUsername/.ssh/authorized_keys > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    echo "Adding pubkey to /home/\$activeUsername/.ssh/authorized_keys"
-    echo "\$pubkey" >> /home/\$activeUsername/.ssh/authorized_keys
-  else
-    echo "Pubkey already present."
-  fi
-  chown -R \$activeUsername:\$activeUsername /home/\$activeUsername/.ssh
-  rm -f /home/\$activeUsername/$RS_INSTALL_SETUP_SCRIPT_NAME
-  rm -f /home/\$activeUsername/$RS_INSTALL_FRESH_SCRIPT_NAME
-  removeMyself
-}
-
-function checkForHSHQ()
-{
-  findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
-  if ! [ -z "\$findhshq" ]; then
-    echo "An hshq directory already exists: \$findhshq. You must log into the RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out, exiting..."
-    exit 5
-  fi
-}
-
-function checkForRunningDockerContainers()
-{
-  is_containers=\$(docker ps -q 2>/dev/null | head -n 1)
-  if ! [ -z "\$is_containers" ]; then
-    echo "There are currently running docker containers, the server must be clear of all activity, exiting..."
-    exit 6
-  fi
-}
-
-function removeMyself()
-{
-  rm -f \$0
-}
-
-main
-EOFRS
-  sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT /tmp/checkRS.sh $rs_cur_username@$RELAYSERVER_SERVER_IP:~/
-  if [ $? -ne 0 ]; then
-    echo "ERROR: There was an problem uploading a file to the RelayServer, returning..."
-    rm -f /tmp/checkRS.sh
+  outputRelayServerValidationScript
+  outputRelayServerInstallSetupScript
+  sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/
+  is_err=$?
+  rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the validation script to the RelayServer, returning..."
     return
   fi
-  rm -f /tmp/checkRS.sh
+  sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
+  is_err=$?
+  rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: There was an problem uploading the setup script to the RelayServer, returning..."
+    return
+  fi
+  rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
   # 3. Log back in and run check script
-  echo "Performing validation..."
   if ! [ "$rs_cur_username" = "root" ]; then
     rs_new_password="$rs_cur_password"
   fi
-  SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "bash ~/checkRS.sh" <<< "$rs_new_password"
+  echo "Performing pre-installation checks, please wait..."
+  SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" <<< "$rs_new_password"
   if [ $? -ne 0 ]; then
     echo "ERROR: There was a problem with the RelayServer, see above."
     return
@@ -4035,7 +3979,6 @@ EOFRS
   initRelayServerCredentials
   outputHostedVPNConfigs
   insertSQLHostedVPN
-
   echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
@@ -4048,8 +3991,6 @@ EOFRS
   unloadSSHKey
   set +e
   prepSvcsHostedVPN
-  RELAYSERVER_IS_INIT=true
-  updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
   set +e
   startStopStack mailu stop
   sleep 2
@@ -4062,6 +4003,22 @@ EOFRS
   echo "Starting installation on RelayServer..."
   loadSSHKey
   set +e
+  countRSPreRetries=0
+  maxRSPreRetries=20
+  while true;
+  do
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" <<< "$USER_RELAY_SUDO_PW"
+    if [ $? -eq 0 ]; then
+      break
+    fi
+    if [ $countRSPreRetries -ge $maxRSPreRetries ]; then
+      echo "Max retries reached. Something has likely gone wrong with the RelayServer pre-installation script, exiting..."
+      exit 2
+    fi
+    ((countRSPreRetries++))
+    echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for installation, sleeping 30 seconds then will retry..."
+    sleep 30
+  done
   ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW"
   ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "export TERM=linux; screen -r hshqInstall"
   unloadSSHKey
@@ -4361,10 +4318,6 @@ function setupHostedVPN()
     echo "Installing jq, please wait..."
     performAptInstall jq > /dev/null 2>&1
   fi
-  if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$RELAYSERVER_IS_INIT" = "true" ]; then
-    echo "setupHostedVPN - RelayServer is initialized, PRIMARY_VPN_SETUP_TYPE=$PRIMARY_VPN_SETUP_TYPE, RELAYSERVER_IS_INIT=$RELAYSERVER_IS_INIT"
-    return 0
-  fi
   resetRelayServerData
   if [ -z "$RELAYSERVER_WG_VPN_NETNAME" ]; then
     RELAYSERVER_WG_VPN_NETNAME="vpn-"${HOMESERVER_ABBREV:0:6}
@@ -4380,7 +4333,6 @@ function setupHostedVPN()
     fi
     updateConfigVar RELAYSERVER_WG_VPN_NETNAME "$RELAYSERVER_WG_VPN_NETNAME"
   fi
-
   if [ -z "$RELAYSERVER_WG_INTERNET_NETNAME" ]; then
     RELAYSERVER_WG_INTERNET_NETNAME="ext-${HOMESERVER_ABBREV:0:6}"
     curNum=1
@@ -4412,7 +4364,6 @@ function setupHostedVPN()
   setupPortForwardingDB
   RELAYSERVER_EXT_EMAIL_HOSTNAME=$SUB_POSTFIX.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
   updateConfigVar RELAYSERVER_EXT_EMAIL_HOSTNAME $RELAYSERVER_EXT_EMAIL_HOSTNAME
-
   RELAYSERVER_SSH_PORT=""
   while [ -z "$RELAYSERVER_SSH_PORT" ]
   do
@@ -4435,11 +4386,9 @@ function setupHostedVPN()
         updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
       fi
     fi
-    resetRSInit
   done
   # SSH (do both protocols, even though only need TCP)
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SSH', $RELAYSERVER_SSH_PORT, $RELAYSERVER_SSH_PORT, 0, 0, 'both','','','$curdt');"
-
   RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT=""
   while [ -z "$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT" ]
   do
@@ -4471,11 +4420,9 @@ function setupHostedVPN()
         updateConfigVar RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT
       fi
     fi
-    resetRSInit
   done
   # Portainer (do both protocols, even though only need TCP)
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-Portainer', $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, $RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT, 0, 0, 'both','','','$curdt');"
-
   while [ -z "$RELAYSERVER_NAME" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
@@ -4491,9 +4438,7 @@ function setupHostedVPN()
 	else
 	  updateConfigVar RELAYSERVER_NAME "$RELAYSERVER_NAME"
 	fi
-    resetRSInit
   done
-
   while [ "$RELAYSERVER_LE_CERT_DOMAINS" = "unset" ]
   do
     lecert_def=$(getLetsEncryptCertsDefault)
@@ -4506,7 +4451,6 @@ function setupHostedVPN()
         RELAYSERVER_LE_CERT_DOMAINS=unset
 	  fi
     fi
-    resetRSInit
   done
   updateConfigVar RELAYSERVER_LE_CERT_DOMAINS $RELAYSERVER_LE_CERT_DOMAINS
   leCertsArr=($(echo $RELAYSERVER_LE_CERT_DOMAINS | tr "," "\n"))
@@ -4539,7 +4483,6 @@ function setupHostedVPN()
   if [ "$isReload" = "true" ]; then
     loadSvcVars
   fi
-  resetRSInit
   echo "Initializing RelayServer service credentials..."
   num_tries=1
   max_tries=100
@@ -4582,14 +4525,12 @@ function setupHostedVPN()
     fi
     set -e
 	updatePlaintextRootConfigVar PRIMARY_VPN_SUBNET $PRIMARY_VPN_SUBNET
-    resetRSInit
   done
   if [ -z "$PRIMARY_VPN_SUBNET" ]; then
     # We tried...
     showMessageBox "ERROR" "Could not allocate VPN network subnet, returning..."
     return 1
   fi
-
   initRelayServerCredentials
   outputHostedVPNConfigs
   insertSQLHostedVPN
@@ -4612,8 +4553,6 @@ function setupHostedVPN()
     startStopStack mailu start
     prepSvcsHostedVPN
   fi
-  RELAYSERVER_IS_INIT=true
-  updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
 }
 
@@ -4739,28 +4678,302 @@ function transferHostedVPN()
   releaseLock networkchecks transferHostedVPN false
 }
 
+function outputRelayServerValidationScript()
+{
+  # This function assumes rs_cur_username and rs_new_username have been defined before calling it.
+  # It also assumes that the caller will send the current/new user's password immediately via
+  # standard input.
+  if [ -z "$rs_cur_username" ] || [ -z "$rs_new_username" ]; then
+    # Fatal
+    echo "RelayServer usernames undefined for script, exiting..."
+    exit 5
+  fi
+  tee $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME >/dev/null <<EOFRS
+#!/bin/bash
+
+curUsername=$rs_cur_username
+newUsername=$rs_new_username
+pubkey="$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)"
+
+function main()
+{
+  while getopts ':ips' opt; do
+    case "\$opt" in
+      s)
+        startValidation ;;
+      p)
+        getSuper ;;
+      i)
+        performPreInstall ;;
+      ?|h)
+        echo "Usage: \$(basename \$0)"
+        exit 1 ;;
+    esac
+  done
+  shift "\$((\$OPTIND -1))"
+}
+
+function startValidation()
+{
+  set +e
+  which sudo > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    if [ "\$curUsername" = "root" ]; then
+      DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+      dpkg --configure -a > /dev/null 2>&1
+      DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
+    else
+      echo "------------------------------------------------------------------------------------"
+      echo "  Sudo is not installed."
+      echo "  Please either log in with the root account or install it manually."
+      echo "------------------------------------------------------------------------------------"
+      exit 2
+    fi
+  fi
+  if [ "\$curUsername" = "root" ]; then
+    read -r -s -p "" USER_RELAY_SUDO_PW
+    id "\$newUsername" > /dev/null 2>&1
+    if [ \$? -eq 0 ]; then
+      echo "------------------------------------------------------------------------------------"
+      echo "  User (\$newUsername) already exists, exiting..."
+      echo "------------------------------------------------------------------------------------"
+      removeMyself
+      exit 1
+    fi
+    checkForHSHQ
+    checkForRunningDockerContainers
+    sudo useradd -m -G sudo -s /bin/bash "\$newUsername" > /dev/null 2>&1
+    echo "\$newUsername:\$USER_RELAY_SUDO_PW" | sudo chpasswd > /dev/null 2>&1
+  else
+    read -r -s -p "" USER_RELAY_SUDO_PW
+    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      echo "------------------------------------------------------------------------------------"
+      echo "  The sudo password for \$curUsername is incorrect, exiting..."
+      echo "------------------------------------------------------------------------------------"
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForValidOSVersion); checkForValidOSVersion \$curUsername" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForHSHQ); checkForHSHQ" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForRunningDockerContainers); checkForRunningDockerContainers" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+  fi
+  getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
+  sudo usermod -aG docker \$newUsername > /dev/null 2>&1
+  mkdir -p /home/\$newUsername/.ssh
+  chmod 775 /home/\$newUsername/.ssh
+  pubk=\$(echo "\$pubkey" | cut -d " " -f2)
+  grep "\$pubk" /home/\$newUsername/.ssh/authorized_keys > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "\$pubkey" >> /home/\$newUsername/.ssh/authorized_keys
+  fi
+  chown -R \$newUsername:\$newUsername /home/\$newUsername/.ssh
+  rm -f /home/\$newUsername/$RS_INSTALL_SETUP_SCRIPT_NAME
+  rm -f /home/\$newUsername/$RS_INSTALL_FRESH_SCRIPT_NAME
+  checkPerformPreInstall
+}
+
+function checkForValidOSVersion()
+{
+  source /home/\$1/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
+  checkSupportedHostOS
+  rtVal=\$?
+  if [ \$rtVal -ne 0 ]; then
+    exit \$rtVal
+  fi
+}
+
+function checkForHSHQ()
+{
+  findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
+  if ! [ -z "\$findhshq" ]; then
+    echo "------------------------------------------------------------------------------------"
+    echo "  An hshq directory already exists: \$findhshq. You must log into the"
+    echo "  RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out."
+    echo "------------------------------------------------------------------------------------"
+    exit 5
+  fi
+}
+
+function checkForRunningDockerContainers()
+{
+  is_containers=\$(docker ps -q 2>/dev/null | head -n 1)
+  if ! [ -z "\$is_containers" ]; then
+    echo "------------------------------------------------------------------------------------"
+    echo "  There are currently running docker containers, the server must be clear"
+    echo "  of all activity."
+    echo "------------------------------------------------------------------------------------"
+    exit 6
+  fi
+}
+
+function removeMyself()
+{
+  rm -f ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
+  rm -f \$0
+}
+
+function checkPerformPreInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo dpkg --configure -a > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
+  which screen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' screen > /dev/null 2>&1
+  fi
+  which pwgen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive sudo apt update > /dev/null 2>&1
+    sudo dpkg --configure -a > /dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' pwgen > /dev/null 2>&1
+  fi
+  docker ps > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
+    if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+      echo "------------------------------------------------------------------------------------"
+      echo " Docker must be installed and the system rebooted before starting the installation."
+      echo "------------------------------------------------------------------------------------"
+      # Must install docker and reboot
+      touch /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
+      scName=hshqPreInstall
+      initScreen "\$scName"
+      screen -S "\$scName" -X stuff "bash \$0 -i\n"
+      return
+    fi
+  fi
+  removeMyself
+}
+
+function performPreInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  installDocker
+  rm -f /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
+  removeMyself
+  reboot
+}
+
+function getSuper()
+{
+  set +e
+  stty -echo
+  mkdir -p $TMP_PW_CHECKDIR
+  read -r -s -p "" sudoPWKey
+  USER_RELAY_SUDO_PW="\$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:\$sudoPWKey)"
+  rm -f $ENC_PW_FILE
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    exit 6
+  fi
+  rm -fr $TMP_PW_CHECKDIR
+  clear
+  stty echo
+}
+
+function initScreen()
+{
+  set +e
+  screenName="\$1"
+  dirtest1=/tmp/scPre1
+  isScreenSuccess=false
+  curScreenAttempt=0
+  maxScreenAttempt=5
+  screen -XS \$screenName quit > /dev/null 2>&1
+  sudoPWKey=\$(pwgen -c -n 32 1)
+  echo -n "\$USER_RELAY_SUDO_PW" | openssl enc -e -aes256 -pbkdf2 -pass pass:\$sudoPWKey > $ENC_PW_FILE
+  while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
+  do
+    ((curScreenAttempt++))
+    rm -fr \$dirtest1
+    rm -fr $TMP_PW_CHECKDIR
+    screen -dmS \$screenName
+    screen -S \$screenName -X stuff "stty -echo;mkdir \$dirtest1\n"
+    curCheckCount=0
+    while ! [ -d \$dirtest1 ] && [ \$curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d \$dirtest1 ]; then
+      screen -XS \$screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S \$screenName -X stuff "bash \$0 -p\n"
+    curCheckCount=0
+    while ! [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    screen -S \$screenName -X stuff "\$sudoPWKey\n"
+    curCheckCount=0
+    while [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    rm -fr \$dirtest1
+    if [ -d $TMP_PW_CHECKDIR ]; then
+      rm -fr $TMP_PW_CHECKDIR
+      echo "The sudo password was not correctly transmitted to the screen session, exiting..."
+      exit 5
+    fi
+    rm -fr $TMP_PW_CHECKDIR
+    isScreenSuccess=true
+    break
+  done
+  USER_RELAY_SUDO_PW=""
+  if ! [ "\$isScreenSuccess" = "true" ]; then
+    return 1
+  fi
+}
+
+main "\$@"
+EOFRS
+  chmod 600 $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
+}
+
 function outputRelayServerInstallSetupScript()
 {
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
   cat <<EOFRS > $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
 #!/bin/bash
 
-set -e
+set +e
 
-USERNAME=\$(id -u -n)
-RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
-RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
-RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
-RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
-MAIL_RELAY_SUBNET=172.16.3.0/24
-CLIENT_DNS_SUBNET=172.16.4.0/24
+function init()
+{
+  USERNAME=\$(id -u -n)
+  RELAYSERVER_HSHQ_BASE_DIR=\$HOME/hshq
+  RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/data
+  RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
+  RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_DATA_DIR/scripts
+  MAIL_RELAY_SUBNET=172.16.3.0/24
+  CLIENT_DNS_SUBNET=172.16.4.0/24
+  loadVersionVars
+}
 
 function main()
 {
+  init
   echo "Running setup script..."
   outputNukeScript
-  set +e
-  loadVersionVars
   new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
     echo "127.0.1.1 \$new_hostname" | sudo tee -a /etc/hosts
@@ -5059,6 +5272,34 @@ function loadVersionVars()
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
 }
 
+function checkSupportedHostOS()
+{
+  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
+    return
+  fi
+  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    return
+  fi
+  if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+    return
+  fi
+  if [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
+    return
+  fi
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  echo "@                   Unsupported Host Operating System                  @"
+  echo "@                                                                      @"
+  echo "@ This installation only supports the following Linux distribution(s): @"
+  echo "@                                                                      @"
+  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
+  echo "@  - Debian 12 (Bookworm)                                              @"
+  echo "@  - Mint 22 (Wilma)                                                   @"
+  echo "@                                                                      @"
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  return 2
+}
+
 function outputDockerSettings()
 {
   sudo mkdir -p /etc/docker
@@ -5163,11 +5404,16 @@ function installDockerUbuntu2204()
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg --yes
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  echo "Installing docker-ce..."
   performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  echo "Installing docker-ce-cli..."
   performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  echo "Installing containerd.io..."
   performAptInstall containerd.io > /dev/null 2>&1
+  echo "Installing docker-compose..."
   performAptInstall docker-compose > /dev/null 2>&1
+  echo "Installing docker-compose-plugin..."
   performAptInstall docker-compose-plugin > /dev/null 2>&1
 }
 
@@ -5178,12 +5424,17 @@ function installDockerUbuntu2404()
   sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(. /etc/os-release && echo "\$UBUNTU_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  echo "Installing docker-ce..."
   performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  echo "Installing docker-ce-cli..."
   performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  echo "Installing containerd.io..."
   performAptInstall containerd.io > /dev/null 2>&1
+  echo "Installing docker-buildx-plugin..."
   performAptInstall docker-buildx-plugin > /dev/null 2>&1
-  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+  echo "Installing docker-compose-plugin..."
+  performAptInstall docker-compose-plugin > /dev/null 2>&1
 }
 
 function installDockerDebian12()
@@ -5193,12 +5444,17 @@ function installDockerDebian12()
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \$(. /etc/os-release && echo "\$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  echo "Installing docker-ce..."
   performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  echo "Installing docker-ce-cli..."
   performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  echo "Installing containerd.io..."
   performAptInstall containerd.io > /dev/null 2>&1
+  echo "Installing docker-compose..."
   performAptInstall docker-compose > /dev/null 2>&1
-  performAptInstall docker-compose-plugin > /dev/null 2>&1  
+  echo "Installing docker-compose-plugin..."
+  performAptInstall docker-compose-plugin > /dev/null 2>&1
 }
 
 function outputNukeScript()
@@ -5332,10 +5588,13 @@ function createDockerNetworks()
   docker network create -o com.docker.network.bridge.name=brcd-user1 --driver=bridge --subnet \$CLIENT_DNS_SUBNET cdns-user1
 }
 
-main "\$@"
+case "\$1" in
+  "lib")     init;;
+  *)         main "\$@";;
+esac
 
 EOFRS
-  chmod 0400 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
+  chmod 0600 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
 }
 
 function outputRelayServerInstallTransferScript()
@@ -5641,7 +5900,7 @@ function restoreWireGuard()
   startStopStack clientdns stop
   startStopStack clientdns start
   # Let's restart the interface just to make sure
-  sudo systemctl restart wg-quick@$RELAYSERVER_WG_INTERFACE_NAME.service
+  timeout 10 sudo systemctl restart wg-quick@$RELAYSERVER_WG_INTERFACE_NAME.service
 }
 
 function restoreCaddy()
@@ -5687,7 +5946,7 @@ EOFWZ
 
 main "\$@"
 EOFRS
-  chmod 0400 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
+  chmod 0600 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
 }
 
 function outputRelayServerInstallFreshScript()
@@ -5958,35 +6217,6 @@ function loadVersionVars()
   DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
-  checkSupportedHostOS
-}
-
-function checkSupportedHostOS()
-{
-  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
-    return
-  fi
-  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
-    return
-  fi
-  if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
-    return
-  fi
-  if [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
-    return
-  fi
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  echo "@                   Unsupported Host Operating System                  @"
-  echo "@                                                                      @"
-  echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@                                                                      @"
-  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
-  echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
-  echo "@  - Debian 12 (Bookworm)                                              @"
-  echo "@  - Mint 22 (Wilma)                                                   @"
-  echo "@                                                                      @"
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  exit 2
 }
 
 function performInstall()
@@ -5994,6 +6224,12 @@ function performInstall()
   mkdir /tmp/hshqopen
   sudo -v
   bash \$HOME/$RS_INSTALL_SETUP_SCRIPT_NAME
+  docker ps > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "Docker was not install properly, exiting..."
+    touch ~/$RELAYSERVER_INSTALL_FAILED_FILE
+    exit 6
+  fi
   set -e
   mkdir -p \$RELAYSERVER_HSHQ_DATA_DIR
   mkdir -p \$RELAYSERVER_HSHQ_NONBACKUP_DIR
@@ -8699,7 +8935,7 @@ EOFST
 
 main "\$@"
 EOFRS
-  chmod 0400 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
+  chmod 0600 $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
 }
 
 function uploadVPNInstallScripts()
@@ -8719,43 +8955,75 @@ function uploadVPNInstallScripts()
   fi
   set +e
   echo "Checking known_hosts..."
-  if ! [ -z "$HOMESERVER_DOMAIN" ] && ! [ -z "$RELAYSERVER_SSH_PORT" ] && ! [ -z "$RELAYSERVER_SERVER_IP" ]; then
+  if ! [ -z "$RELAYSERVER_SSH_PORT" ]; then
     echo "Removing old known_hosts entry: [$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT"
-    ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT"
-    echo "Removing old known_hosts entry: [$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT"
-    ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT"
+    ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+    if ! [ -z "$RELAYSERVER_SERVER_IP" ] && [ "$(checkValidIPAddress $RELAYSERVER_SERVER_IP)" = "true" ]; then
+      echo "Removing old known_hosts entry: [$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT"
+      ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+    fi
   fi
+  is_err=0
+  err_message="unknown"
   while true;
   do
-    nonroot_username=""
+    if [ $is_err -ne 0 ]; then
+      errmenu=$(cat << EOF
+
+$(getLogo)
+
+There is a problem with the RelayServer host:
+-----------------------------------------------------------------
+$err_message
+-----------------------------------------------------------------
+Please address this issue, then press Retry to proceed or Cancel to exit.
+
+EOF
+  )
+      if ! (whiptail --title "Login Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
+        return 1
+      fi
+    fi
+    is_err=0
+    err_message="unknown"
+    rs_new_username=""
+    rs_cur_password=""
     trUsername=$RELAYSERVER_REMOTE_USERNAME
-    RELAYSERVER_REMOTE_USERNAME=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host. A fresh installation will typically default to root: ")
+    rs_cur_username=$(promptUserInputMenu "root" "Enter Username" "Enter the CURRENT Linux OS username for the RelayServer host. A fresh installation will typically default to root: ")
     if [ $? -ne 0 ]; then
       return 1
     fi
-    if [ $(checkValidString "$RELAYSERVER_REMOTE_USERNAME" "-") = "false" ]; then
+    if [ $(checkValidString "$rs_cur_username" "-") = "false" ]; then
       showMessageBox "Invalid Character(s)" "The username contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
-      RELAYSERVER_REMOTE_USERNAME=""
+      rs_cur_username=""
       continue
     fi
-    if [ "$RELAYSERVER_REMOTE_USERNAME" = "root" ]; then
-      while [ -z "$nonroot_username" ]
+    if [ "$rs_cur_username" = "root" ]; then
+      rs_cur_password=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
+      if [ $(checkValidPassword "$rs_cur_password") = "false" ]; then
+        showMessageBox "ERROR" "The password is invalid . It must consist of uppercase/lowercase letters, numbers, or the following symbols: ~!@#%^&*()-_+=<>?., Please change your root password on the remote host to fit this set in order to continue."
+        continue
+      fi
+      while [ -z "$rs_new_username" ]
       do
         if [ "$isTransfer" = "true" ]; then
-          nonroot_username=$trUsername
+          rs_new_username=$trUsername
         else
-          nonroot_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
+          rs_new_username=$(promptUserInputMenu "$USERNAME" "Enter New Username" "Enter a NEW Linux OS username to add (in place of root): ")
           if [ $? -ne 0 ]; then
             return 1
           fi
-          if [ $(checkValidString "$nonroot_username" "-") = "false" ]; then
+          if [ $(checkValidString "$rs_new_username" "-") = "false" ]; then
             showMessageBox "Invalid Character(s)" "The name contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or hyphens"
-            nonroot_username=""
+            rs_new_username=""
           fi
         fi
       done
-      RELAYSERVER_REMOTE_USERNAME=$nonroot_username
-    elif [ "$isTransfer" = "true" ] && ! [ "$RELAYSERVER_REMOTE_USERNAME" = "$trUsername" ]; then
+      RELAYSERVER_REMOTE_USERNAME="$rs_new_username"
+    else
+      RELAYSERVER_REMOTE_USERNAME="$rs_cur_username"
+    fi
+    if [ "$isTransfer" = "true" ] && ! [ "$RELAYSERVER_REMOTE_USERNAME" = "$trUsername" ]; then
       showMessageBox "Invalid Username" "The username must match the username from the previous installation ($trUsername) when doing a transfer. Either login with root and allow this script to create this user or create it manually on the RelayServer."
       continue
     fi
@@ -8763,7 +9031,7 @@ function uploadVPNInstallScripts()
     tmp_pw2=""
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
-      if ! [ -z "$nonroot_username" ]; then
+      if ! [ -z "$rs_new_username" ]; then
         tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password for your RelayServer Linux OS user ($RELAYSERVER_REMOTE_USERNAME) account: ")
         if [ $? -ne 0 ]; then
           return 1
@@ -8797,8 +9065,7 @@ function uploadVPNInstallScripts()
         tmp_pw2=$tmp_pw1
       fi
     done
-    USER_RELAY_SUDO_PW=$tmp_pw1
-    remote_pw=$tmp_pw1
+    USER_RELAY_SUDO_PW="$tmp_pw1"
     tmp_pw1=""
     tmp_pw2=""
     domain_ip_guess=$(getIPFromHostname ip.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN)
@@ -8818,13 +9085,7 @@ function uploadVPNInstallScripts()
         showMessageBox "Invalid Character(s)" "The IP address contains invalid character(s)."
         RELAYSERVER_SERVER_IP=""
       fi
-      resetRSInit
     done
-    updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
-    addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
-    if [ "$IS_INSTALLED" = "true" ]; then
-      addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
-    fi
     RELAYSERVER_CURRENT_SSH_PORT=""
     while [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]
     do
@@ -8832,111 +9093,60 @@ function uploadVPNInstallScripts()
       if [ -z "$RELAYSERVER_CURRENT_SSH_PORT" ]; then
         showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
       fi
-      resetRSInit
     done
     set +e
-    if ! [ -z "$nonroot_username" ]; then
-      pubkey=$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)
-      pw_hash=$(openssl passwd -6 $USER_RELAY_SUDO_PW)
-      remote_pw=$(promptPasswordMenu "Enter Password" "Enter the password for your RelayServer Linux OS root account: ")
-      SSHPASS="$remote_pw" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT root@$RELAYSERVER_SERVER_IP "useradd -m -G sudo -s /bin/bash $nonroot_username && (getent group docker >/dev/null || sudo groupadd docker >/dev/null 2>&1 || true) && usermod -aG docker $nonroot_username && echo '$nonroot_username:$pw_hash' | chpasswd --encrypted && mkdir -p /home/$nonroot_username/.ssh && chmod 775 /home/$nonroot_username/.ssh && echo \"$pubkey\" >> /home/$nonroot_username/.ssh/authorized_keys && chown -R $nonroot_username:$nonroot_username /home/$nonroot_username/.ssh"
-      is_err=$?
-      if [ $is_err -eq 0 ]; then
-        showMessageBox "User Created" "The user, $nonroot_username, was succesfully created on the RelayServer. Ensure to use this Linux username going forward (if reprompted)."
-      fi
-      loadSSHKey
-    else
-      loadSSHKey
-      set +e
-      ssh -q -o ConnectTimeout=10 -o "BatchMode=yes" -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP exit
-      is_err=$?
-      if [ $is_err -ne 0 ]; then
-        # Key not present
-        echo "Adding key to RelayServer..."
-        SSHPASS="$USER_RELAY_SUDO_PW" sshpass -e ssh-copy-id -f -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -i $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP
-        is_err=$?
-      fi
-      unloadSSHKey
-      if [ $is_err -eq 0 ]; then
-        echo "Logging into RelayServer..."
-        loadSSHKey
-        ssh -q -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new' -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN exit
-        unloadSSHKey
-        cat <<EOFRS > $HOME/rsUpdateScript.sh
-#!/bin/bash
-
-set +e
-function main()
-{
-  read -r -s -p "" rspw
-  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
-  sudo -S getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
-  sudo usermod -aG sudo,docker $RELAYSERVER_REMOTE_USERNAME > /dev/null 2>&1
-  rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_SETUP_SCRIPT_NAME
-  rm -f /home/$RELAYSERVER_REMOTE_USERNAME/$RS_INSTALL_FRESH_SCRIPT_NAME
-  echo "Done"
-}
-main
-EOFRS
-        updateRelayServerWithScript
-        is_err=$?
-      fi
+    if [ -z "$rs_new_username" ]; then
+      rs_new_username="$RELAYSERVER_REMOTE_USERNAME"
+      rs_cur_password="$USER_RELAY_SUDO_PW"
     fi
-    if [ $is_err -eq 0 ]; then
-      echo "Checking for existing installation..."
-      set +e
-      loadSSHKey
-      # Ensure there is not already an existing installation on the RelayServer
-      isHSHQDir=$(ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -d /home/$RELAYSERVER_REMOTE_USERNAME/hshq ] || ! [ -z \"\$(docker ps -q)\" ]; then echo true; else echo false; fi")
-      is_err=$?
-      if [ $is_err -ne 0 ]; then
-        if [ -z "$nonroot_username" ]; then
-          showMessageBox "ERROR" "There was an unknown error checking for an existing installation. You will be reprompted for login info."
-        else
-          showMessageBox "ERROR" "There was an unknown error checking for an existing installation. You will be reprompted for login info. It appears you just created a new user, $nonroot_username, so ensure to use this username on subsequent prompts."
-        fi
-        remote_pw=""
-        continue
-      fi
-      unloadSSHKey
-      set +e
-      if [ "$isHSHQDir" = "true" ]; then
-        errmenu=$(cat << EOF
-
-$(getLogo)
-It appears that there is already an existing installation on the RelayServer. Please remove this installation by logging in and running 'bash nuke.sh' and follow the provided instructions to clear everything out before continuing. Press Retry or Cancel to proceed.
-
-EOF
-  )
-        if ! (whiptail --title "Install Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
-          return 1
-        fi
-        remote_pw=""
-        continue
-      fi
+    echo "Logging into RelayServer..."
+    SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo hello >/dev/null"
+    is_err=$?
+    if [ $is_err -ne 0 ]; then
+      err_message="Could not log in to RelayServer. It could be wrong IP address/port and/or incorrect credentials. Please check your records and try again."
+      continue
+    fi
+    # 2. Upload check script
+    outputRelayServerValidationScript
+    echo "Uploading validation script..."
+    sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/
+    is_err=$?
+    rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
+    if [ $is_err -ne 0 ]; then
+      err_message="There was an error uploading the validation script to the RelayServer."
+      continue
+    fi
+    sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
+    is_err=$?
+    if [ $is_err -ne 0 ]; then
+      err_message="There was an error uploading the setup script to the RelayServer."
+      continue
+    fi
+    echo "Performing pre-installation checks, please wait..."
+    SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW" > /tmp/rsValidationOutput.txt
+    is_err=$?
+    if [ $is_err -ne 0 ]; then
+      err_message="$(cat /tmp/rsValidationOutput.txt)"
+      rm -f /tmp/rsValidationOutput.txt
+      continue
     fi
     unloadSSHKey
     if [ $is_err -eq 0 ]; then
       break
-    else
-      errmenu=$(cat << EOF
-
-$(getLogo)
-
-There is a problem logging into the RelayServer host.
-
-Press Retry or Cancel.
-
-EOF
-  )
-      if ! (whiptail --title "Login Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
-        return 1
-      fi
     fi
-    remote_pw=""
   done
-  set -e
+  if [ -f /tmp/rsValidationOutput.txt ]; then
+    cat /tmp/rsValidationOutput.txt
+  fi
+  rm -f /tmp/rsValidationOutput.txt
+  refreshSudo
+  rs_cur_password=""
   updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
+  updateConfigVar RELAYSERVER_SERVER_IP $RELAYSERVER_SERVER_IP
+  addHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
+  if [ "$IS_INSTALLED" = "true" ]; then
+    addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
+  fi
   if ! [ "$isTransfer" = "true" ]; then
     updateConfigVar RELAYSERVER_REMOTE_USERNAME $RELAYSERVER_REMOTE_USERNAME
     RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
@@ -8954,7 +9164,6 @@ EOF
     updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
     updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   fi
-
   loadSSHKey
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   if [ "$isTransfer" = "true" ]; then
@@ -9057,13 +9266,19 @@ function connectVPN()
       isBreak=false
       while [ $total_attempts -le $max_attempts ]
       do
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logged in to RelayServer...\"; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1"
-        if [ $? -eq 0 ]; then
+        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logged in to RelayServer...\"; if test -f ~/$RELAYSERVER_INSTALL_FAILED_FILE; then exit 23; fi; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1"
+        rtVal=$?
+        if [ $rtVal -eq 0 ]; then
           isBreak=true
           break
+        elif [ $rtVal -eq 23 ]; then
+          echo "************************************************************************************"
+          echo " ERROR: The RelayServer installation failed to complete. Please remove it and retry."
+          echo "************************************************************************************"
+          return
         fi
         echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
-        sudo -v
+        refreshSudo
         sleep 30
         total_attempts=$((total_attempts + 1))
       done
@@ -9237,7 +9452,7 @@ function runCommandOnRelayServer()
       break
     fi
     echo "($total_attempts of $maxRSRetries), retrying in 5 seconds..."
-    sudo -v
+    refreshSudo
     sleep 5
     total_attempts=$((total_attempts + 1))
   done
@@ -9297,8 +9512,6 @@ EOF
         if [ $? -ne 0 ]; then
           return 0
         fi
-        RELAYSERVER_IS_INIT=true
-        updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
         rs_wg_user_conf=$(sudo cat $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf)
         # Set env vars in mailu stack
         set +e
@@ -9345,8 +9558,6 @@ EOF
         if [ $join_res -ne 0 ]; then
           return
         fi
-        RELAYSERVER_IS_INIT=true
-        updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
         connectPrimaryVPN true
         email_msg="Your joined RelayServer has been configured, please update your DNS MX record with your domain name provider to the new mail server:  $RELAYSERVER_EXT_EMAIL_HOSTNAME\n\n"
         # Set env vars in mailu stack
@@ -9399,7 +9610,7 @@ EOF
       fi
       showMyNetworkMenu ;;
     2)
-      sudo -v
+      refreshSudo
       showOtherNetworksMenu ;;
     3)
       showRelayServerUtilsMenu ;;
@@ -10797,7 +11008,7 @@ function performNetworkInvite()
 function createNetworkJoin()
 {
   is_connect="$1"
-  sudo -v
+  refreshSudo
   set +e
   join_file=$HOME/joinvpn_hs.cnf
   showMessageBox "Paste Configuration" "In this next step, you will need to paste your configuration file contents that you received via email. After pasting the contents, press CTRL-o to save, then Enter to confirm, then CTRL-x to exit. Please remember these key combinations. Press OK to proceed."
@@ -11320,7 +11531,7 @@ function removeMyNetworkPrimaryVPN()
       sleep 30
     fi
   fi
-  sudo -v
+  refreshSudo
   if sudo test -f /etc/wireguard/${ifaceName}.conf; then
     echo "Removing WireGuard interface: $ifaceName"
     removeWGInterfaceQuick $ifaceName
@@ -11396,8 +11607,6 @@ function removeMyNetworkPrimaryVPN()
   docker container start heimdall >/dev/null
   PRIMARY_VPN_SETUP_TYPE=none
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE $PRIMARY_VPN_SETUP_TYPE
-  RELAYSERVER_IS_INIT=false
-  updateConfigVar RELAYSERVER_IS_INIT $RELAYSERVER_IS_INIT
   resetRelayServerData
   updateSvcsIPChanges
   checkUpdateAllIPTables removeMyNetworkPrimaryVPN
@@ -12071,7 +12280,7 @@ function checkDeleteStackAndDirectory()
   is_force_delete="$4"
   is_delete_stack=false
   is_delete_dirs=false
-  sudo -v
+  refreshSudo
   set +e
   if ! [ "$is_check_stack" = "false" ]; then
     stackID=$(getStackID $stack_name)
@@ -13246,7 +13455,7 @@ function restartAllStacksDialog()
     return 0
   fi
   sudo -k
-  sudo -v
+  refreshSudo
   restartAllStacks
 }
 
@@ -13691,7 +13900,7 @@ function installStack()
   fi
   logHSHQEvent info "installStack - Installing Stack ($stack_name)"
   # Refresh the sudo timestamp
-  sudo -v
+  refreshSudo
   if [ -z "$PORTAINER_TOKEN" ]; then
     PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
@@ -13818,6 +14027,30 @@ function restartStackIfRunning()
     sleep $waitTime
     startStopStackByID $stackID start $portainerToken
   fi
+}
+
+function forceRestartStack()
+{
+  stackName=$1
+  waitTime=$2
+  portainerToken=$3
+  if [ "$stackName" = "portainer" ]; then
+    # Special case for portainer
+    restartPortainer
+    return
+  fi
+  set +e
+  if [ -z "$portainerToken" ]; then
+    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  stackID=$(getStackID $stackName "$portainerToken")
+  if [ -z "$stackID" ]; then
+    return
+  fi
+  set +e
+  startStopStackByID $stackID stop $portainerToken
+  sleep $waitTime
+  startStopStackByID $stackID start $portainerToken
 }
 
 function getStackStatusByID()
@@ -14306,6 +14539,9 @@ function checkValidPassword()
   pw_in="$1"
   min_length=$2
   pw_length=${#pw_in}
+  if [ -z "$min_length" ]; then
+    min_length=1
+  fi
   if ! [[ "$pw_in" =~ [[:upper:]] ]]; then
     # Does not contain upper case.
     echo "false"
@@ -18232,7 +18468,6 @@ function checkUpdateVersion()
     checkAddAllNewSvcs
     set -e
     is_update_performed=true
-    sudo -v
     pauseCronService
   fi
   if [ $HSHQ_VERSION -lt 11 ]; then
@@ -18714,7 +18949,7 @@ function version22Update()
   updateMOTD
   set -e
   showMessageBox "Version 22 Update" "A large update needs to be applied to your system. Please be patient as it will take around 10 minutes to complete. All running stacks will be stopped and then restarted. Press okay to continue."
-  sudo -v
+  refreshSudo
   set +e
   cdns_stack_name="user1"
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -19351,7 +19586,7 @@ function version37Update()
 
 function version38Update()
 {
-  sudo -v
+  refreshSudo
   sudo sqlite3 $HSHQ_DB "create table if not exists exposedomains(Domain text primary key,BaseDomain text not null);"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
@@ -19972,7 +20207,7 @@ EOFBS
     ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi; sleep 5; sudo reboot"
     unloadSSHKey
     rm -f $HOME/onBootRoot.sh
-    sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/transfer.sh
+    sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
   fi
 
   HSHQ_VERSION=53
@@ -20322,7 +20557,7 @@ function version87Update()
 function version91Update()
 {
   set +e
-  sudo -v
+  refreshSudo
   setupPortForwardingDB
   version91UploadPortForwardingScripts
   version91WazuhUpdate
@@ -21677,7 +21912,7 @@ function setVersionOnStacks()
   # This function modifies the variable strSetVersionReport to report the results to the caller
   # The caller is responsible for doing something with it.
   set +e
-  sudo -v
+  refreshSudo
   strSetVersionReport=""
   stackListArr=($(echo ${HSHQ_REQUIRED_STACKS}","${HSHQ_OPTIONAL_STACKS} | tr "," "\n"))
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -23524,7 +23759,7 @@ function performPostDockerBootActions()
     systemctl is-enabled wg-quick@${curSVC} > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       logHSHQEvent info "performPostDockerBootActions - Restarting WG Connection: $curSVC"
-      systemctl restart wg-quick@${curSVC} > /dev/null 2>&1
+      timeout 30 sudo systemctl restart wg-quick@${curSVC} > /dev/null 2>&1
     fi
   done
   logHSHQEvent info "performPostDockerBootActions - createWGDockerNetworks"
@@ -23902,6 +24137,11 @@ function updateEndpointIPs()
         if [ $? -ne 0 ]; then
           logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname ($iname)..."
           timeout 10 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
+          # If applicable, restart the associated caddy Stack
+          checkCaddyInterface=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ConnectionType in ('homeserver_vpn') and NetworkType in ('other','primary') and ID=$cur_id;")
+          if ! [ -z "$checkCaddyInterface" ]; then
+            forceRestartStack "caddy-${checkCaddyInterface}" 3
+          fi
           logHSHQEvent error "updateEndpointIPs - Connection Error, restart complete(HSVPN) $cname ($iname)..."
         fi
       fi
@@ -26298,7 +26538,6 @@ RELAYSERVER_SSH_PRIVATE_KEY_PHRASE=
 RELAYSERVER_CLIENT_DEFAULT_MTU=1372
 RELAYSERVER_SERVER_DEFAULT_MTU=1372
 RELAYSERVER_PERSISTENT_KEEPALIVE=20
-RELAYSERVER_IS_INIT=
 RELAYSERVER_WG_PORTAL_PORT=8323
 RELAYSERVER_WG_INTERFACE_NAME=wg0
 RELAYSERVER_WG_PORT=51821
@@ -57327,25 +57566,24 @@ EOFSC
 
 function main()
 {
-  read -r -s -p "$sudo_stdin_prompt" sudopw
-  if [ -z "\$sudopw" ]; then
-    read -r -t 5 -s -p "" sudopw
+  read -r -s -p "$sudo_stdin_prompt" USER_SUDO_PW
+  if [ -z "\$USER_SUDO_PW" ]; then
+    read -r -t 5 -s -p "" USER_SUDO_PW
   fi
-  if [ -z "\$sudopw" ]; then
-    sudopw=""
+  if [ -z "\$USER_SUDO_PW" ]; then
+    USER_SUDO_PW=""
     cat <<< "ERROR: Password is incorrect." 1>&2
     exit 1
   fi
-  echo "\$sudopw" | sudo -S -v -p "" > /dev/null 2>&1
+  echo "\$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     echo "bad"
-    sudopw=""
+    USER_SUDO_PW=""
     cat <<< "ERROR: Password is incorrect." 1>&2
     exit 1
   else
     echo "good"
   fi
-  sudopw=""
 }
 
 main
@@ -61513,7 +61751,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, etc. Just be patient and allow the process to run its course. If it hangs for longer than 15-20 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
