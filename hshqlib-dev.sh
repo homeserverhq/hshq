@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=162
+HSHQ_LIB_SCRIPT_VERSION=163
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -2611,9 +2611,6 @@ function postInstallation()
   draw_progress_bar 93
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
-  echo "Sanitizing installation log..."
-  sanitizeHSHQLog
-  echo "Installed"
   draw_progress_bar 95
   sudo rm -f /etc/skel/hshq.sh
   IS_INSTALLED=true
@@ -2699,6 +2696,7 @@ EOFHP
     sudo cp -f ~/Desktop/HSHQConsole.desktop /usr/share/applications/
     sudo cp -f ~/Desktop/HSHQScriptServer.desktop /usr/share/applications/
     sudo cp -f ~/Desktop/HSHQHelp.desktop /usr/share/applications/
+    draw_progress_bar 96
     which gsettings > /dev/null 2>&1
     if [ $? -eq 0 ]; then
       # Spell check doesn't belong in a basic text editor,
@@ -2707,26 +2705,29 @@ EOFHP
       # Just because
       gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' > /dev/null 2>&1
     fi
-    draw_progress_bar 96
+    draw_progress_bar 97
     addRootCertificateToApps
+    draw_progress_bar 98
     configureFirefox
     set -e
   fi
   draw_progress_bar 99
   initCronJobs
   encryptConfigFile
+  draw_progress_bar 100
   destroy_scroll_area
+  releaseLock hshqopen "postInstallation" false
+  removeSudoTimeoutInstall
+  rm -f ~/dead.letter
+  rm -f $HSHQ_BASE_DIR/cip.txt
+  sanitizeHSHQLog
+  setSystemState $SS_RUNNING
   echo -e "\n\n\n\n################################################################\n"
   echo "               HomeServer Installation Complete!"
   echo "     The system will automatically reboot in 60 seconds..."
   echo -e "\n################################################################\n\n"
   sleep 60
   logHSHQEvent info "postInstallation - Rebooting"
-  releaseLock hshqopen "postInstallation" false
-  removeSudoTimeoutInstall
-  rm -f ~/dead.letter
-  rm -f $HSHQ_BASE_DIR/cip.txt
-  setSystemState $SS_RUNNING
   sudo reboot
 }
 
