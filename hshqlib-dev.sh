@@ -3738,263 +3738,6 @@ EOF
   esac
 }
 
-function outputRelayServerValidationScript()
-{
-  # This function assumes rs_cur_username and rs_new_username have been defined before calling it.
-  # It also assumes that the caller will send the current/new user's password immediately via
-  # standard input.
-  if [ -z "$rs_cur_username" ] || [ -z "$rs_new_username" ]; then
-    # Fatal
-    echo "RelayServer usernames undefined for script, exiting..."
-    exit 5
-  fi
-  tee $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME >/dev/null <<EOFRS
-#!/bin/bash
-
-curUsername=$rs_cur_username
-newUsername=$rs_new_username
-pubkey="$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)"
-
-function main()
-{
-  while getopts ':ips' opt; do
-    case "\$opt" in
-      s)
-        startValidation ;;
-      p)
-        getSuper ;;
-      i)
-        performPreInstall ;;
-      ?|h)
-        echo "Usage: \$(basename \$0)"
-        exit 1 ;;
-    esac
-  done
-  shift "\$((\$OPTIND -1))"
-}
-
-function startValidation()
-{
-  set +e
-  which sudo > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    if [ "\$curUsername" = "root" ]; then
-      DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-      dpkg --configure -a > /dev/null 2>&1
-      DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
-    else
-      echo "------------------------------------------------------------------------------------"
-      echo "  Sudo is not installed."
-      echo "  Please either log in with the root account or install it manually."
-      echo "------------------------------------------------------------------------------------"
-      exit 2
-    fi
-  fi
-  if [ "\$curUsername" = "root" ]; then
-    read -r -s -p "" USER_RELAY_SUDO_PW
-    id "\$newUsername" > /dev/null 2>&1
-    if [ \$? -eq 0 ]; then
-      echo "------------------------------------------------------------------------------------"
-      echo "  User (\$newUsername) already exists, exiting..."
-      echo "------------------------------------------------------------------------------------"
-      removeMyself
-      exit 1
-    fi
-    checkForHSHQ
-    checkForRunningDockerContainers
-    sudo useradd -m -G sudo -s /bin/bash "\$newUsername" > /dev/null 2>&1
-    echo "\$newUsername:\$USER_RELAY_SUDO_PW" | sudo chpasswd > /dev/null 2>&1
-  else
-    read -r -s -p "" USER_RELAY_SUDO_PW
-    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-    if [ \$? -ne 0 ]; then
-      echo "------------------------------------------------------------------------------------"
-      echo "  The sudo password for \$curUsername is incorrect, exiting..."
-      echo "------------------------------------------------------------------------------------"
-      removeMyself
-      exit 2
-    fi
-    sudo bash -c "\$(declare -f checkForHSHQ); checkForHSHQ" 2> /dev/null
-    if [ \$? -ne 0 ]; then
-      removeMyself
-      exit 2
-    fi
-    sudo bash -c "\$(declare -f checkForRunningDockerContainers); checkForRunningDockerContainers" 2> /dev/null
-    if [ \$? -ne 0 ]; then
-      removeMyself
-      exit 2
-    fi
-  fi
-  getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
-  sudo usermod -aG docker \$newUsername > /dev/null 2>&1
-  mkdir -p /home/\$newUsername/.ssh
-  chmod 775 /home/\$newUsername/.ssh
-  pubk=\$(echo "\$pubkey" | cut -d " " -f2)
-  grep "\$pubk" /home/\$newUsername/.ssh/authorized_keys > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    echo "\$pubkey" >> /home/\$newUsername/.ssh/authorized_keys
-  fi
-  chown -R \$newUsername:\$newUsername /home/\$newUsername/.ssh
-  rm -f /home/\$newUsername/$RS_INSTALL_SETUP_SCRIPT_NAME
-  rm -f /home/\$newUsername/$RS_INSTALL_FRESH_SCRIPT_NAME
-  checkPerformPreInstall
-}
-
-function checkForHSHQ()
-{
-  findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
-  if ! [ -z "\$findhshq" ]; then
-    echo "------------------------------------------------------------------------------------"
-    echo "  An hshq directory already exists: \$findhshq. You must log into the"
-    echo "  RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out."
-    echo "------------------------------------------------------------------------------------"
-    exit 5
-  fi
-}
-
-function checkForRunningDockerContainers()
-{
-  is_containers=\$(docker ps -q 2>/dev/null | head -n 1)
-  if ! [ -z "\$is_containers" ]; then
-    echo "------------------------------------------------------------------------------------"
-    echo "  There are currently running docker containers, the server must be clear"
-    echo "  of all activity."
-    echo "------------------------------------------------------------------------------------"
-    exit 6
-  fi
-}
-
-function removeMyself()
-{
-  rm -f ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
-  rm -f \$0
-}
-
-function checkPerformPreInstall()
-{
-  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-  sudo dpkg --configure -a > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
-  which screen > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' screen > /dev/null 2>&1
-  fi
-  which pwgen > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    DEBIAN_FRONTEND=noninteractive sudo apt update > /dev/null 2>&1
-    sudo dpkg --configure -a > /dev/null 2>&1
-    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' pwgen > /dev/null 2>&1
-  fi
-  docker ps > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
-    if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
-      echo "------------------------------------------------------------------------------------"
-      echo " Docker must be installed and the system rebooted before starting the installation."
-      echo "------------------------------------------------------------------------------------"
-      # Must install docker and reboot
-      touch /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
-      scName=hshqPreInstall
-      initScreen "\$scName"
-      screen -S "\$scName" -X stuff "bash \$0 -i\n"
-      return
-    fi
-  fi
-  removeMyself
-}
-
-function performPreInstall()
-{
-  source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
-  sudo DEBIAN_FRONTEND=noninteractive apt update
-  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
-  sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
-  installDocker
-  rm -f /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
-  removeMyself
-  reboot
-}
-
-function getSuper()
-{
-  set +e
-  stty -echo
-  mkdir -p $TMP_PW_CHECKDIR
-  read -r -s -p "" sudoPWKey
-  USER_RELAY_SUDO_PW="\$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:\$sudoPWKey)"
-  rm -f $ENC_PW_FILE
-  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    exit 6
-  fi
-  rm -fr $TMP_PW_CHECKDIR
-  clear
-  stty echo
-}
-
-function initScreen()
-{
-  set +e
-  screenName="\$1"
-  dirtest1=/tmp/scPre1
-  isScreenSuccess=false
-  curScreenAttempt=0
-  maxScreenAttempt=5
-  screen -XS \$screenName quit > /dev/null 2>&1
-  sudoPWKey=\$(pwgen -c -n 32 1)
-  echo -n "\$USER_RELAY_SUDO_PW" | openssl enc -e -aes256 -pbkdf2 -pass pass:\$sudoPWKey > $ENC_PW_FILE
-  while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
-  do
-    ((curScreenAttempt++))
-    rm -fr \$dirtest1
-    rm -fr $TMP_PW_CHECKDIR
-    screen -dmS \$screenName
-    screen -S \$screenName -X stuff "stty -echo;mkdir \$dirtest1\n"
-    curCheckCount=0
-    while ! [ -d \$dirtest1 ] && [ \$curCheckCount -lt 5 ]
-    do
-      ((curCheckCount++))
-      sleep 1
-    done
-    if ! [ -d \$dirtest1 ]; then
-      screen -XS \$screenName quit > /dev/null 2>&1
-      continue
-    fi
-    screen -S \$screenName -X stuff "bash \$0 -p\n"
-    curCheckCount=0
-    while ! [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
-    do
-      ((curCheckCount++))
-      sleep 1
-    done
-    screen -S \$screenName -X stuff "\$sudoPWKey\n"
-    curCheckCount=0
-    while [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
-    do
-      ((curCheckCount++))
-      sleep 1
-    done
-    rm -fr \$dirtest1
-    if [ -d $TMP_PW_CHECKDIR ]; then
-      rm -fr $TMP_PW_CHECKDIR
-      echo "The sudo password was not correctly transmitted to the screen session, exiting..."
-      exit 5
-    fi
-    rm -fr $TMP_PW_CHECKDIR
-    isScreenSuccess=true
-    break
-  done
-  USER_RELAY_SUDO_PW=""
-  if ! [ "\$isScreenSuccess" = "true" ]; then
-    return 1
-  fi
-}
-
-main "\$@"
-EOFRS
-  chmod 600 $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
-}
-
 function webSetupHostedVPN()
 {
   set +e
@@ -4935,6 +4678,277 @@ function transferHostedVPN()
   releaseLock networkchecks transferHostedVPN false
 }
 
+function outputRelayServerValidationScript()
+{
+  # This function assumes rs_cur_username and rs_new_username have been defined before calling it.
+  # It also assumes that the caller will send the current/new user's password immediately via
+  # standard input.
+  if [ -z "$rs_cur_username" ] || [ -z "$rs_new_username" ]; then
+    # Fatal
+    echo "RelayServer usernames undefined for script, exiting..."
+    exit 5
+  fi
+  tee $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME >/dev/null <<EOFRS
+#!/bin/bash
+
+curUsername=$rs_cur_username
+newUsername=$rs_new_username
+pubkey="$(cat $HSHQ_CONFIG_DIR/${RELAYSERVER_SSH_PRIVATE_KEY_FILENAME}.pub)"
+
+function main()
+{
+  while getopts ':ips' opt; do
+    case "\$opt" in
+      s)
+        startValidation ;;
+      p)
+        getSuper ;;
+      i)
+        performPreInstall ;;
+      ?|h)
+        echo "Usage: \$(basename \$0)"
+        exit 1 ;;
+    esac
+  done
+  shift "\$((\$OPTIND -1))"
+}
+
+function startValidation()
+{
+  set +e
+  which sudo > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    if [ "\$curUsername" = "root" ]; then
+      DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+      dpkg --configure -a > /dev/null 2>&1
+      DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
+    else
+      echo "------------------------------------------------------------------------------------"
+      echo "  Sudo is not installed."
+      echo "  Please either log in with the root account or install it manually."
+      echo "------------------------------------------------------------------------------------"
+      exit 2
+    fi
+  fi
+  if [ "\$curUsername" = "root" ]; then
+    read -r -s -p "" USER_RELAY_SUDO_PW
+    id "\$newUsername" > /dev/null 2>&1
+    if [ \$? -eq 0 ]; then
+      echo "------------------------------------------------------------------------------------"
+      echo "  User (\$newUsername) already exists, exiting..."
+      echo "------------------------------------------------------------------------------------"
+      removeMyself
+      exit 1
+    fi
+    checkForHSHQ
+    checkForRunningDockerContainers
+    sudo useradd -m -G sudo -s /bin/bash "\$newUsername" > /dev/null 2>&1
+    echo "\$newUsername:\$USER_RELAY_SUDO_PW" | sudo chpasswd > /dev/null 2>&1
+  else
+    read -r -s -p "" USER_RELAY_SUDO_PW
+    echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+    if [ \$? -ne 0 ]; then
+      echo "------------------------------------------------------------------------------------"
+      echo "  The sudo password for \$curUsername is incorrect, exiting..."
+      echo "------------------------------------------------------------------------------------"
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForValidOSVersion); checkForValidOSVersion \$curUsername" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForHSHQ); checkForHSHQ" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForRunningDockerContainers); checkForRunningDockerContainers" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+  fi
+  getent group docker >/dev/null || sudo groupadd docker > /dev/null 2>&1
+  sudo usermod -aG docker \$newUsername > /dev/null 2>&1
+  mkdir -p /home/\$newUsername/.ssh
+  chmod 775 /home/\$newUsername/.ssh
+  pubk=\$(echo "\$pubkey" | cut -d " " -f2)
+  grep "\$pubk" /home/\$newUsername/.ssh/authorized_keys > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    echo "\$pubkey" >> /home/\$newUsername/.ssh/authorized_keys
+  fi
+  chown -R \$newUsername:\$newUsername /home/\$newUsername/.ssh
+  rm -f /home/\$newUsername/$RS_INSTALL_SETUP_SCRIPT_NAME
+  rm -f /home/\$newUsername/$RS_INSTALL_FRESH_SCRIPT_NAME
+  checkPerformPreInstall
+}
+
+function checkForValidOSVersion()
+{
+  source /home/\$1/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
+  checkSupportedHostOS
+  rtVal=\$?
+  if [ \$rtVal -ne 0 ]; then
+    exit \$rtVal
+  fi
+}
+
+function checkForHSHQ()
+{
+  findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
+  if ! [ -z "\$findhshq" ]; then
+    echo "------------------------------------------------------------------------------------"
+    echo "  An hshq directory already exists: \$findhshq. You must log into the"
+    echo "  RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out."
+    echo "------------------------------------------------------------------------------------"
+    exit 5
+  fi
+}
+
+function checkForRunningDockerContainers()
+{
+  is_containers=\$(docker ps -q 2>/dev/null | head -n 1)
+  if ! [ -z "\$is_containers" ]; then
+    echo "------------------------------------------------------------------------------------"
+    echo "  There are currently running docker containers, the server must be clear"
+    echo "  of all activity."
+    echo "------------------------------------------------------------------------------------"
+    exit 6
+  fi
+}
+
+function removeMyself()
+{
+  rm -f ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
+  rm -f \$0
+}
+
+function checkPerformPreInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo dpkg --configure -a > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y needrestart > /dev/null 2>&1
+  which screen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' screen > /dev/null 2>&1
+  fi
+  which pwgen > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive sudo apt update > /dev/null 2>&1
+    sudo dpkg --configure -a > /dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' pwgen > /dev/null 2>&1
+  fi
+  docker ps > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
+    if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+      echo "------------------------------------------------------------------------------------"
+      echo " Docker must be installed and the system rebooted before starting the installation."
+      echo "------------------------------------------------------------------------------------"
+      # Must install docker and reboot
+      touch /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
+      scName=hshqPreInstall
+      initScreen "\$scName"
+      screen -S "\$scName" -X stuff "bash \$0 -i\n"
+      return
+    fi
+  fi
+  removeMyself
+}
+
+function performPreInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt update
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  installDocker
+  rm -f /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
+  removeMyself
+  reboot
+}
+
+function getSuper()
+{
+  set +e
+  stty -echo
+  mkdir -p $TMP_PW_CHECKDIR
+  read -r -s -p "" sudoPWKey
+  USER_RELAY_SUDO_PW="\$(openssl enc -d -aes256 -pbkdf2 -in $ENC_PW_FILE -pass pass:\$sudoPWKey)"
+  rm -f $ENC_PW_FILE
+  echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    exit 6
+  fi
+  rm -fr $TMP_PW_CHECKDIR
+  clear
+  stty echo
+}
+
+function initScreen()
+{
+  set +e
+  screenName="\$1"
+  dirtest1=/tmp/scPre1
+  isScreenSuccess=false
+  curScreenAttempt=0
+  maxScreenAttempt=5
+  screen -XS \$screenName quit > /dev/null 2>&1
+  sudoPWKey=\$(pwgen -c -n 32 1)
+  echo -n "\$USER_RELAY_SUDO_PW" | openssl enc -e -aes256 -pbkdf2 -pass pass:\$sudoPWKey > $ENC_PW_FILE
+  while [ \$curScreenAttempt -lt \$maxScreenAttempt ]
+  do
+    ((curScreenAttempt++))
+    rm -fr \$dirtest1
+    rm -fr $TMP_PW_CHECKDIR
+    screen -dmS \$screenName
+    screen -S \$screenName -X stuff "stty -echo;mkdir \$dirtest1\n"
+    curCheckCount=0
+    while ! [ -d \$dirtest1 ] && [ \$curCheckCount -lt 5 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    if ! [ -d \$dirtest1 ]; then
+      screen -XS \$screenName quit > /dev/null 2>&1
+      continue
+    fi
+    screen -S \$screenName -X stuff "bash \$0 -p\n"
+    curCheckCount=0
+    while ! [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    screen -S \$screenName -X stuff "\$sudoPWKey\n"
+    curCheckCount=0
+    while [ -d $TMP_PW_CHECKDIR ] && [ \$curCheckCount -lt 15 ]
+    do
+      ((curCheckCount++))
+      sleep 1
+    done
+    rm -fr \$dirtest1
+    if [ -d $TMP_PW_CHECKDIR ]; then
+      rm -fr $TMP_PW_CHECKDIR
+      echo "The sudo password was not correctly transmitted to the screen session, exiting..."
+      exit 5
+    fi
+    rm -fr $TMP_PW_CHECKDIR
+    isScreenSuccess=true
+    break
+  done
+  USER_RELAY_SUDO_PW=""
+  if ! [ "\$isScreenSuccess" = "true" ]; then
+    return 1
+  fi
+}
+
+main "\$@"
+EOFRS
+  chmod 600 $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
+}
+
 function outputRelayServerInstallSetupScript()
 {
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
@@ -5256,6 +5270,34 @@ function loadVersionVars()
   DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+}
+
+function checkSupportedHostOS()
+{
+  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
+    return
+  fi
+  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    return
+  fi
+  if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+    return
+  fi
+  if [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
+    return
+  fi
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  echo "@                   Unsupported Host Operating System                  @"
+  echo "@                                                                      @"
+  echo "@ This installation only supports the following Linux distribution(s): @"
+  echo "@                                                                      @"
+  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
+  echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
+  echo "@  - Debian 12 (Bookworm)                                              @"
+  echo "@  - Mint 22 (Wilma)                                                   @"
+  echo "@                                                                      @"
+  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
+  return 2
 }
 
 function outputDockerSettings()
@@ -6175,35 +6217,6 @@ function loadVersionVars()
   DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
-  checkSupportedHostOS
-}
-
-function checkSupportedHostOS()
-{
-  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
-    return
-  fi
-  if [ "\$DISTRO_ID" = "ubuntu" ] && [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
-    return
-  fi
-  if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
-    return
-  fi
-  if [ "\$DISTRO_ID" = "linuxmint" ] && [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
-    return
-  fi
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  echo "@                   Unsupported Host Operating System                  @"
-  echo "@                                                                      @"
-  echo "@ This installation only supports the following Linux distribution(s): @"
-  echo "@                                                                      @"
-  echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
-  echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
-  echo "@  - Debian 12 (Bookworm)                                              @"
-  echo "@  - Mint 22 (Wilma)                                                   @"
-  echo "@                                                                      @"
-  echo "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@"
-  exit 2
 }
 
 function performInstall()
