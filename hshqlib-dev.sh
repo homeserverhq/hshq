@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=163
+HSHQ_LIB_SCRIPT_VERSION=164
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -22912,8 +22912,8 @@ function checkUpdateAllIPTables()
   comment="HSHQ_BEGIN INPUT --ctstate INVALID HSHQ_END"
   checkAddRule "$comment" 'sudo iptables -I INPUT -m conntrack --ctstate INVALID -m comment --comment "$comment" -j DROP'
   # Limit connections per source IP
-  comment="HSHQ_BEGIN INPUT --connlimit-above 50 HSHQ_END"
-  checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp -m connlimit --connlimit-above 50 -m comment --comment "$comment" -j REJECT --reject-with tcp-reset'
+  comment="HSHQ_BEGIN INPUT --connlimit-above 200 HSHQ_END"
+  checkAddRule "$comment" 'sudo iptables -I INPUT -p tcp --syn -m connlimit --connlimit-above 200 -m comment --comment "$comment" -j REJECT --reject-with tcp-reset'
 
   # Append any remaining to the bottom
   # Configure loopback
@@ -25703,7 +25703,8 @@ function pullImage()
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
     if [ $num_tries -lt $(($MAX_DOCKER_PULL_TRIES-1)) ]; then
-      timeout $(($num_tries*$secs_mult)) docker pull $img_and_version
+      #timeout $(($num_tries*$secs_mult)) docker pull $img_and_version
+      docker pull $img_and_version
     else
       docker pull $img_and_version
     fi
