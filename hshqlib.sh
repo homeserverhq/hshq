@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=164
+HSHQ_LIB_SCRIPT_VERSION=165
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -306,6 +306,8 @@ function main()
     exit 0
   fi
   set +e
+  # Mitigate any race conditions after an update
+  sleep 2
   tgLock="$(tryGetLock hshqopen User-Console)"
   if ! [ "$tgLock" = "true" ]; then
     checkRes="$(getLockOpenMsg hshqopen)"
@@ -11943,7 +11945,7 @@ function tryGetLock()
       set -e
     fi
     # Unknown lock name
-    echo "Unknown lock name (\$lockName)"
+    echo "false"
     return
   fi
   # BeforeNetwork is always the first one called during boot,
@@ -11979,7 +11981,11 @@ function forceGetLock()
 {
   lockName="\$1"
   callerName="\$2"
-  sudo rm -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+  if [ -d /tmp/\$lockName ]; then
+    sudo rm -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+  else
+    mkdir -- "/tmp/\$lockName"
+  fi
   echo \$callerName > /tmp/locktmp
   echo \$(date '+%s') >> /tmp/locktmp
   echo 0 >> /tmp/locktmp
@@ -18867,6 +18873,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=164
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 165 ]; then
+    echo "Updating to Version 165..."
+    version165Update
+    HSHQ_VERSION=165
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -21312,6 +21324,11 @@ function version152Update()
 function version164Update()
 {
   checkUpdateAllIPTables versionUpdate
+}
+
+function version165Update()
+{
+  outputLockUtilsScript
 }
 
 function updateRelayServerWithScript()
