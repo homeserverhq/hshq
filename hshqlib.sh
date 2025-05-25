@@ -18861,6 +18861,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=152
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 164 ]; then
+    echo "Updating to Version 164..."
+    version164Update
+    HSHQ_VERSION=164
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -21300,6 +21306,11 @@ function version152Update()
   fi
   echo "Updating adguard env..."
   updateStackEnv adguard modFunAdguardFixMSS
+  checkUpdateAllIPTables versionUpdate
+}
+
+function version164Update()
+{
   checkUpdateAllIPTables versionUpdate
 }
 
