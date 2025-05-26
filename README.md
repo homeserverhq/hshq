@@ -76,7 +76,7 @@ Ubuntu 24 Oliver* | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/u
 
 ![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/LinuxDEPreview.gif)
 
-Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. If you are unsure of which one to get, just get Oliver!
+Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. See [this](https://wiki.homeserverhq.com/en/tutorials/install-linux) link for more detailed instructions. If you are unsure of which one to get, just get Oliver!
 
 To create a bootable USB:
   1) Download and run <a href="https://etcher.balena.io/#download-etcher" target="_blank">Balena Etcher</a>
