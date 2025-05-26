@@ -74,6 +74,8 @@ Ubuntu 24 Oliver* | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/u
 
 *An Oliver build contains ALL 5 desktop environments ([GNOME](https://wiki.homeserverhq.com/foss-projects/gnome), [Cinnamon](https://wiki.homeserverhq.com/foss-projects/cinnamon), [KDE Plasma](https://wiki.homeserverhq.com/foss-projects/kde-plasma), [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce), [MATE](https://wiki.homeserverhq.com/foss-projects/mate)), plus 1 more - [Budgie](https://wiki.homeserverhq.com/foss-projects/budgie). Simply select your desired environment at the login prompt and quickly swap between environments with ease.
 
+![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/LinuxDEPreview.gif)
+
 Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. If you are unsure of which one to get, just get Oliver!
 
 To create a bootable USB:
