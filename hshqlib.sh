@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=165
+HSHQ_LIB_SCRIPT_VERSION=166
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -366,7 +366,7 @@ function showNotInstalledMenu()
   checkSupportedHostOS
   refreshSudo
   setSudoTimeoutInstall
-  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt update
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
     echo "Installing openssh-server, please wait..."
     performAptInstall openssh-server > /dev/null 2>&1
@@ -24166,10 +24166,13 @@ function updateEndpointIPs()
         if [ $? -ne 0 ]; then
           logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname ($iname)..."
           timeout 10 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
-          # If applicable, restart the associated caddy Stack
-          checkCaddyInterface=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ConnectionType in ('homeserver_vpn') and NetworkType in ('other','primary') and ID=$cur_id;")
-          if ! [ -z "$checkCaddyInterface" ]; then
-            forceRestartStack "caddy-${checkCaddyInterface}" 3
+          if [ $? -eq 0 ]; then
+            # If applicable, restart the associated caddy Stack
+            checkCaddyInterface=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ConnectionType in ('homeserver_vpn') and NetworkType in ('other','primary') and ID=$cur_id;")
+            if ! [ -z "$checkCaddyInterface" ]; then
+              logHSHQEvent error "updateEndpointIPs - Connection Error, restarting caddy interface (caddy-${checkCaddyInterface})..."
+              forceRestartStack "caddy-${checkCaddyInterface}" 3
+            fi
           fi
           logHSHQEvent error "updateEndpointIPs - Connection Error, restart complete(HSVPN) $cname ($iname)..."
         fi
@@ -26119,7 +26122,7 @@ function getScriptStackVersion()
     wikijs)
       echo "v4" ;;
     duplicati)
-      echo "v4" ;;
+      echo "v5" ;;
     mastodon)
       echo "v8" ;;
     dozzle)
@@ -28631,6 +28634,7 @@ function installStackByName()
   echo "------------------------------------------"
   echo "  Installing stack: $stack_name"
   echo "------------------------------------------"
+  echo "Current date/time: $(date '+%Y-%m-%d %H:%M:%S')"
   case "$stack_name" in
     adguard)
       installAdGuard $is_integrate ;;
@@ -39084,6 +39088,13 @@ function installDuplicati()
   initServicesCredentials
   echo "Installing Duplicati..."
   outputConfigDuplicati
+  rm -f $HOME/duplicati.env
+  cat <<EOFDP > $HOME/duplicati.env
+PUID=0
+PGID=0
+SETTINGS_ENCRYPTION_KEY=$DUPLICATI_SETTINGS_ENCRYPTION_KEY
+CLI_ARGS=--webservice-password=$DUPLICATI_ADMIN_PASSWORD
+EOFDP
   generateCert duplicati duplicati
   installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env
   retval=$?
@@ -39099,8 +39110,9 @@ function installDuplicati()
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-level','all');"
-  docker container restart duplicati
-
+  set +e
+  updateStackEnv duplicati outputEnvDuplicati
+  set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -39119,6 +39131,7 @@ function installDuplicati()
 
 function outputConfigDuplicati()
 {
+  rm -f $HOME/duplicati-compose.yml
   cat <<EOFDP > $HOME/duplicati-compose.yml
 $STACK_VERSION_PREFIX duplicati $(getScriptStackVersion duplicati)
 
@@ -39153,11 +39166,15 @@ networks:
     name: dock-internalmail
     external: true
 EOFDP
+  outputEnvDuplicati
+}
 
+function outputEnvDuplicati()
+{
+  rm -f $HOME/duplicati.env
   cat <<EOFDP > $HOME/duplicati.env
 PUID=0
 PGID=0
-CLI_ARGS=--webservice-password=$DUPLICATI_ADMIN_PASSWORD
 SETTINGS_ENCRYPTION_KEY=$DUPLICATI_SETTINGS_ENCRYPTION_KEY
 EOFDP
 }
@@ -39170,9 +39187,9 @@ function performUpdateDuplicati()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v2
       curImageList=linuxserver/duplicati:2.0.7
-      image_update_map[0]="linuxserver/duplicati:2.0.7,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
+      image_update_map[0]="linuxserver/duplicati:2.0.7,linuxserver/duplicati:2.0.8"
     ;;
     2)
       newVer=v4
@@ -39188,7 +39205,15 @@ function performUpdateDuplicati()
       image_update_map[0]="linuxserver/duplicati:2.1.0,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
     ;;
     4)
-      newVer=v4
+      newVer=v5
+      curImageList=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
+      image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiUpdateEnv
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    5)
+      newVer=v5
       curImageList=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
       image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
     ;;
@@ -39200,6 +39225,14 @@ function performUpdateDuplicati()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfDuplicatiUpdateEnv()
+{
+  set +e
+  initServicesCredentials
+  set +e
+  outputEnvDuplicati
 }
 
 function mfDuplicatiAddSettingsEncryptionKey()
@@ -54487,6 +54520,7 @@ function installAIStack()
     docker compose -f $HOME/aistack-compose-tmp.yml down -v
     rm -f $HOME/aistack-compose-tmp.yml
     rm -f $HOME/aistack.env
+    rm -f $HOME/aistack-compose.yml
     return 1
   fi
   sleep 5
