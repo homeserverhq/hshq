@@ -39110,8 +39110,9 @@ EOFDP
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-to','$EMAIL_ADMIN_EMAIL_ADDRESS');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-url','smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-level','all');"
+  set +e
   updateStackEnv duplicati outputEnvDuplicati
-
+  set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -39228,7 +39229,9 @@ function performUpdateDuplicati()
 
 function mfDuplicatiUpdateEnv()
 {
+  set +e
   initServicesCredentials
+  set +e
   outputEnvDuplicati
 }
 
