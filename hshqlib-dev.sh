@@ -366,7 +366,7 @@ function showNotInstalledMenu()
   checkSupportedHostOS
   refreshSudo
   setSudoTimeoutInstall
-  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt update
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
     echo "Installing openssh-server, please wait..."
     performAptInstall openssh-server > /dev/null 2>&1
