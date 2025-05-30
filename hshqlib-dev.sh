@@ -391,7 +391,7 @@ EOF
     0)
       return 0 ;;
     1)
-      checkUpdateAptSources
+      checkUpdateAptSources false
       checkDockerPre
       set -e
       checkLoadConfig
@@ -413,7 +413,7 @@ EOF
       fi
       initInstallation ;;
     2)
-      checkUpdateAptSources
+      checkUpdateAptSources false
       set -e
       checkLoadConfig
       initConfig
@@ -422,7 +422,7 @@ EOF
       set +e
       return 1 ;;
     3)
-      checkUpdateAptSources
+      checkUpdateAptSources false
       set -e
       installDependencies
       pullBaseServicesDockerImages
@@ -432,7 +432,7 @@ EOF
       set +e
       return 1 ;;
     5)
-      checkUpdateAptSources
+      checkUpdateAptSources false
       showRestoreMenu
       set +e
       return 1 ;;
@@ -468,8 +468,9 @@ function getDefaultAptSource()
 
 function checkUpdateAptSources()
 {
+  isForceUpdate="$1"
   set +e
-  if [ "$IS_CONFIG_INIT" = "true" ]; then
+  if [ "$IS_CONFIG_INIT" = "true" ] && ! [ "$isForceUpdate" = "true" ]; then
     performAptUpdate false
     return
   fi
@@ -2486,7 +2487,7 @@ EOF
       sudo -k
       USER_SUDO_PW=""
       refreshSudo
-      checkUpdateAptSources
+      checkUpdateAptSources true
       return 1 ;;
     5)
       set +e
