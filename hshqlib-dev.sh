@@ -475,6 +475,7 @@ function checkUpdateAptSources()
     return
   fi
   default_apt_src="$(getDefaultAptSource)"
+  sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
   echo "===================================================================================="
   echo "Calculating the closest apt mirrors. This could take a minute or two, please wait..."
   echo "===================================================================================="
@@ -493,14 +494,14 @@ function checkUpdateAptSources()
 $(getLogo)
 
 Select your desired apt sources mirror from the list below.
-To keep the default ($default_apt_src), select Cancel.
+To keep the current settings, select Cancel.
 EOF
 )
   uas_menu_items=( --title "Select Mirror" --radiolist "$aptupdatemenu" $(($MENU_HEIGHT+2)) $MENU_WIDTH $MENU_INT_HEIGHT )
   curNum=1
   for curMirror in "${mirrorResultsArr[@]}"
   do
-    uas_menu_items+=( "$curMirror" )
+    uas_menu_items+=( "$(echo $curMirror | xargs)" )
     uas_menu_items+=( "|" )
     if [ $curNum -eq 1 ]; then
       uas_menu_items+=( "on" )
@@ -513,12 +514,11 @@ EOF
     do
     selItem=$(whiptail "${uas_menu_items[@]}" 3>&1 1>&2 2>&3)
     if [ $? -ne 0 ]; then
-      sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
+      sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
       performAptUpdate false
       return
     fi
     selAptSource=$(echo "$selItem" | xargs | rev | cut -d" " -f1 | rev)
-    sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
     if [ "$DISTRO_ID" = "debian" ]; then
       sudo sed -i "/security/! s|deb [a-z]*://[^ ]* |deb ${selAptSource} |g" /etc/apt/sources.list
       sudo sed -i "/security/! s|deb-src [a-z]*://[^ ]* |deb-src ${selAptSource} |g" /etc/apt/sources.list
@@ -561,7 +561,7 @@ EOF
         echo "Enter 'confirm': To proceed with this option"
         echo "        'retry': To select a different mirror from the list"
         echo "       'revert': To restore the original default and continue"
-        echo "         'exit': To do nothing and exit the HSHQ script entirely"
+        echo "         'exit': To restore the prior settings and exit the HSHQ utility"
         echo
         read -r -p "Your selection: " selMirrorOption
         if [ "$selMirrorOption" = "confirm" ]; then
@@ -577,6 +577,7 @@ EOF
           performAptUpdate false
           break
         elif [ "$selMirrorOption" = "exit" ]; then
+          sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
           performExitFunctions true
           exit
         else
@@ -630,12 +631,12 @@ function getFastestMirrors()
   outputMirrorsList
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  fastestMirrorsArr=($(sudo netselect -s50 -t10 $(grep "^$distID" /tmp/mirrors.txt | cut -d" " -f2)))
+  fastestMirrorsArr=($(sudo netselect -s50 -t4 $(grep "^$distID" /tmp/mirrors.txt | cut -d" " -f2)))
   IFS=$OLDIFS
   rm -f /tmp/mirrors.txt
   mirrorsDomainList=$(echo "$default_mirror" | tr -s "/" | cut -d"/" -f2)
   mirrorsURLsList="$default_mirror"
-  maxMirrors=10
+  maxMirrors=15
   curMirrorCount=1
   curDTSeconds=$(date +%s)
   last_modified_path="ls-lR.gz"
@@ -664,7 +665,7 @@ function getFastestMirrors()
       fi
     fi
   done
-  echo -e "$mirrorsURLsList" | xargs -P 5 -i bash -c "curl -r 0-5120000 --max-time 10 -sf -w '%{speed_download} {}\n' -o /dev/null {}ls-lR.gz 2>/dev/null" | awk '$1 > 0' | awk '{$1=$1/1024 " kB/s "; print}' | sort -rg | head -n 8
+  echo -e "$mirrorsURLsList" | xargs -P 5 -i bash -c "curl -r 0-2560000 --max-time 5 -sf -w '%{speed_download} {}\n' -o /dev/null {}ls-lR.gz 2>/dev/null" | awk '$1 > 0' | awk '{printf "%.2f MB/s  %s\n",$1/1048576,$2}' | sort -rg | head -n 7
 }
 
 function outputMirrorsList()
