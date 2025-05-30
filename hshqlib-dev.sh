@@ -476,7 +476,7 @@ function checkUpdateAptSources()
   fi
   default_apt_src="$(getDefaultAptSource)"
   echo "===================================================================================="
-  echo "Calculating the closest apt mirrors. This will take a minute, please wait..."
+  echo "Calculating the closest apt mirrors. This could take a minute or two, please wait..."
   echo "===================================================================================="
   mirrorResults="$(getFastestMirrors)"
   if [ -z "$mirrorResults" ]; then
@@ -664,7 +664,7 @@ function getFastestMirrors()
       fi
     fi
   done
-  echo -e "$mirrorsURLsList" | xargs -P 10 -i bash -c "curl -r 0-5120000 --max-time 10 -sf -w '%{speed_download} {}\n' -o /dev/null {}ls-lR.gz 2>/dev/null" | awk '$1 > 0' | awk '{$1=$1/1024 " kb/s "; print}' | sort -rg | head -n 5
+  echo -e "$mirrorsURLsList" | xargs -P 5 -i bash -c "curl -r 0-5120000 --max-time 10 -sf -w '%{speed_download} {}\n' -o /dev/null {}ls-lR.gz 2>/dev/null" | awk '$1 > 0' | awk '{$1=$1/1024 " kB/s "; print}' | sort -rg | head -n 8
 }
 
 function outputMirrorsList()
