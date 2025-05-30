@@ -625,13 +625,13 @@ function getFastestMirrors()
     sudo apt install ./netselect_${netselect_version}_${DISTRO_ARCH}.deb > /dev/null 2>&1
     rm -f /netselect_${netselect_version}_${DISTRO_ARCH}.deb
   fi
-  rm -f ~/mirrors.txt
+  rm -f /tmp/mirrors.txt
   outputMirrorsList
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  fastestMirrorsArr=($(sudo netselect -s50 -t10 $(grep "^$distID" ~/mirrors.txt | cut -d" " -f2)))
+  fastestMirrorsArr=($(sudo netselect -s50 -t10 $(grep "^$distID" /tmp/mirrors.txt | cut -d" " -f2)))
   IFS=$OLDIFS
-  rm -f ~/mirrors.txt
+  rm -f /tmp/mirrors.txt
   mirrorsDomainList=$(echo "$default_mirror" | tr -s "/" | cut -d"/" -f2)
   mirrorsURLsList="$default_mirror"
   maxMirrors=10
@@ -670,7 +670,7 @@ function outputMirrorsList()
 {
   # We'll just manage the list right here
   # to reduce the potential points of failure
-  cat <<EOFML > ~/mirrors.txt
+  cat <<EOFML > /tmp/mirrors.txt
 debian http://ftp.am.debian.org/debian/
 debian http://ftp.au.debian.org/debian/
 debian http://ftp.at.debian.org/debian/
