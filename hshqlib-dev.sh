@@ -380,9 +380,10 @@ EOF
   "1" "Perform Base Installation" \
   "2" "Edit Configuration" \
   "3" "Install Dependencies" \
-  "4" "Uninstall and Remove Everything" \
-  "5" "Restore From Backup" \
-  "6" "Exit" 3>&1 1>&2 2>&3)
+  "4" "Update APT Mirror" \
+  "5" "Uninstall and Remove Everything" \
+  "6" "Restore From Backup" \
+  "7" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -391,6 +392,7 @@ EOF
     0)
       return 0 ;;
     1)
+      checkWorkingInternet
       checkUpdateAptSources false
       checkDockerPre
       set -e
@@ -413,6 +415,7 @@ EOF
       fi
       initInstallation ;;
     2)
+      checkWorkingInternet
       checkUpdateAptSources false
       set -e
       checkLoadConfig
@@ -422,21 +425,29 @@ EOF
       set +e
       return 1 ;;
     3)
+      checkWorkingInternet
       checkUpdateAptSources false
       set -e
       installDependencies
       pullBaseServicesDockerImages
       sudo reboot ;;
     4)
+      set +e
+      checkWorkingInternet
+      refreshSudo
+      checkUpdateAptSources true
+      return 1 ;;
+    5)
       nukeHSHQ
       set +e
       return 1 ;;
-    5)
+    6)
+      checkWorkingInternet
       checkUpdateAptSources false
       showRestoreMenu
       set +e
       return 1 ;;
-    6)
+    7)
       return 0 ;;
   esac
 }
@@ -458,30 +469,133 @@ function checkDockerPre()
   fi
 }
 
+function checkWorkingInternet()
+{
+  set +e
+  timeout 10 ping -c 1 1.1.1.1 > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "You do not appear to have a working internet connection. Please check your network settings and try again."
+    exit 2
+  fi
+}
+
+function backupOrigAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if ! test -f /etc/apt/sources.list.orig; then
+      sudo cp /etc/apt/sources.list /etc/apt/sources.list.orig
+    fi
+  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if ! test -f /etc/apt/sources.list.d/ubuntu.sources.orig; then
+      sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.orig
+    fi
+  fi
+}
+
+function checkIfOrigAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if test -f /etc/apt/sources.list.orig; then
+      echo "true"
+    else
+      echo "false"
+    fi
+  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if test -f /etc/apt/sources.list.d/ubuntu.sources.orig; then
+      echo "true"
+    else
+      echo "false"
+    fi
+  fi
+}
+
 function getDefaultAptSource()
 {
-  if ! test -f /etc/apt/sources.list.orig; then
-    sudo cp /etc/apt/sources.list /etc/apt/sources.list.orig
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    grep "^deb" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
+  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    grep "^URIs" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
   fi
-  grep "^deb" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
+}
+
+function backupAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
+  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.backup
+  fi
+}
+
+function removeBackupAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo rm -f /etc/apt/sources.list.backup
+  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo rm -f /etc/apt/sources.list.d/ubuntu.sources.backup
+  fi
+}
+
+function restoreBackupAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
+  fi
+  if ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.backup /etc/apt/sources.list.d/ubuntu.sources
+  fi
+}
+
+function restoreOrigAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
+  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.orig /etc/apt/sources.list.d/ubuntu.sources
+  fi
+}
+
+function replaceAptMirror()
+{
+  aptUrl="$1"
+  if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+    sudo sed -i "/security/! s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list
+    sudo sed -i "/security/! s|deb-src [a-z]*://[^ ]* |deb-src ${aptUrl} |g" /etc/apt/sources.list
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo sed -i "s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list
+    sudo sed -i "s|deb-src [a-z]*://[^ ]* |deb-src ${aptUrl} |g" /etc/apt/sources.list
+  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo sed -i "s|^URIs.*|URIs: ${aptUrl} |g" /etc/apt/sources.list.d/ubuntu.sources
+  fi
 }
 
 function checkUpdateAptSources()
 {
-  isForceUpdate="$1"
+  isForceCheck="$1"
   set +e
-  if [ "$IS_CONFIG_INIT" = "true" ] && ! [ "$isForceUpdate" = "true" ]; then
+  if [ "$(checkIfOrigAptSource)" = "true" ] && ! [ "$isForceCheck" = "true" ]; then
     performAptUpdate false
     return
   fi
+  if ! [ "$isForceCheck" = "true" ]; then
+    showYesNoMessageBox "Find Mirrors" "Would you like to look for nearby apt mirrors? This process will take around 1-2 minutes to complete, but it will likely save a lot more time in the future when performing Linux host updates."
+    if [ $? -ne 0 ]; then
+      backupOrigAptSource
+      performAptUpdate false
+      return
+    fi
+  fi
+  backupOrigAptSource
   default_apt_src="$(getDefaultAptSource)"
-  sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
-  echo "===================================================================================="
-  echo "Calculating the closest apt mirrors. This could take a minute or two, please wait..."
-  echo "===================================================================================="
+  backupAptSource
+  echo "========================================================================"
+  echo "  Calculating the closest apt mirrors."
+  echo "  This could take a minute or two, please wait..."
+  echo "========================================================================"
   mirrorResults="$(getFastestMirrors)"
   if [ -z "$mirrorResults" ]; then
-    echo "There was a problem obtaining mirror info, continuing with current settings..."
+    showMessageBox "ERROR" "There was a problem obtaining mirror info, continuing with current settings..."
+    removeBackupAptSource
     performAptUpdate false
     return
   fi
@@ -514,21 +628,13 @@ EOF
     do
     selItem=$(whiptail "${uas_menu_items[@]}" 3>&1 1>&2 2>&3)
     if [ $? -ne 0 ]; then
-      sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
+      restoreBackupAptSource
+      removeBackupAptSource
       performAptUpdate false
       return
     fi
     selAptSource=$(echo "$selItem" | xargs | rev | cut -d" " -f1 | rev)
-    if [ "$DISTRO_ID" = "debian" ]; then
-      sudo sed -i "/security/! s|deb [a-z]*://[^ ]* |deb ${selAptSource} |g" /etc/apt/sources.list
-      sudo sed -i "/security/! s|deb-src [a-z]*://[^ ]* |deb-src ${selAptSource} |g" /etc/apt/sources.list
-    elif [ "$DISTRO_ID" = "ubuntu" ] || [ "$DISTRO_ID" = "linuxmint" ]; then
-      sudo sed -i "s|deb [a-z]*://[^ ]* |deb ${selAptSource} |g" /etc/apt/sources.list
-      sudo sed -i "s|deb-src [a-z]*://[^ ]* |deb-src ${selAptSource} |g" /etc/apt/sources.list
-    else
-      # Fatal
-      exit 1
-    fi
+    replaceAptMirror "$selAptSource"
     tmpOutput=/tmp/aptOut.txt
     rm -f $tmpOutput
     performAptUpdate false 2>&1 | tee $tmpOutput
@@ -545,7 +651,7 @@ Select Retry to select a different mirror, or select
 Revert to restore the original default.
 EOF
       )
-      sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
+      restoreOrigAptSource
       if (whiptail --title "Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --yes-button "Retry" --no-button "Revert" ); then
         continue
       else
@@ -553,14 +659,15 @@ EOF
         break
       fi
     else
-      echo -e "====================================================================================\n"
-      echo -e "The selected mirror does not appear to have any issues. (See above)\n"
+      echo -e "========================================================================\n"
+      echo -e "The selected mirror appears to be in good working order. (See above)\n"
       isBreakMainLoop=false
       while true
       do
         echo "Enter 'confirm': To proceed with this option"
         echo "        'retry': To select a different mirror from the list"
-        echo "       'revert': To restore the original default and continue"
+        echo "       'revert': To restore the prior settings and continue"
+        echo "         'orig': To restore the original default and continue"
         echo "         'exit': To restore the prior settings and exit the HSHQ utility"
         echo
         read -r -p "Your selection: " selMirrorOption
@@ -568,16 +675,22 @@ EOF
           isBreakMainLoop=true
           break
         elif [ "$selMirrorOption" = "retry" ]; then
-          sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
+          restoreBackupAptSource
           isBreakMainLoop=false
           break
         elif [ "$selMirrorOption" = "revert" ]; then
-          sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
+          restoreBackupAptSource
+          isBreakMainLoop=true
+          performAptUpdate false
+          break
+        elif [ "$selMirrorOption" = "orig" ]; then
+          restoreOrigAptSource
           isBreakMainLoop=true
           performAptUpdate false
           break
         elif [ "$selMirrorOption" = "exit" ]; then
-          sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
+          restoreBackupAptSource
+          removeBackupAptSource
           performExitFunctions true
           exit
         else
@@ -589,6 +702,7 @@ EOF
       fi
     fi
   done
+  removeBackupAptSource
 }
 
 function performAptUpdate()
@@ -619,19 +733,20 @@ function getFastestMirrors()
     exit 1
   fi
   cd ~
+  backupOrigAptSource
   default_mirror="$(getDefaultAptSource)"
   which netselect > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     netselect_version='0.3.ds1-30.1'
     wget http://ftp.debian.org/debian/pool/main/n/netselect/netselect_${netselect_version}_${DISTRO_ARCH}.deb > /dev/null 2>&1
     sudo apt install ./netselect_${netselect_version}_${DISTRO_ARCH}.deb > /dev/null 2>&1
-    rm -f /netselect_${netselect_version}_${DISTRO_ARCH}.deb
+    rm -f ./netselect_${netselect_version}_${DISTRO_ARCH}.deb
   fi
   rm -f /tmp/mirrors.txt
   outputMirrorsList
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
-  fastestMirrorsArr=($(sudo netselect -s50 -t4 $(grep "^$distID" /tmp/mirrors.txt | cut -d" " -f2)))
+  fastestMirrorsArr=($(sudo netselect -s50 -t4 $(grep "^$distID" /tmp/mirrors.txt | cut -d" " -f2) 2>/dev/null))
   IFS=$OLDIFS
   rm -f /tmp/mirrors.txt
   mirrorsDomainList=$(echo "$default_mirror" | tr -s "/" | cut -d"/" -f2)
@@ -2485,8 +2600,6 @@ EOF
       return 1 ;;
     4)
       set +e
-      sudo -k
-      USER_SUDO_PW=""
       refreshSudo
       checkUpdateAptSources true
       return 1 ;;
