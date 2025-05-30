@@ -479,15 +479,40 @@ function checkWorkingInternet()
   fi
 }
 
+function verifyAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if test -f /etc/apt/sources.list; then
+      echo "true"
+      return
+    fi
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    if test -f /etc/apt/sources.list.d/ubuntu.sources; then
+      echo "true"
+      return
+    fi
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if test -f /etc/apt/sources.list.d/official-package-repositories.list; then
+      echo "true"
+      return
+    fi
+  fi
+  echo "false"
+}
+
 function backupOrigAptSource()
 {
   if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
     if ! test -f /etc/apt/sources.list.orig; then
       sudo cp /etc/apt/sources.list /etc/apt/sources.list.orig
     fi
-  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     if ! test -f /etc/apt/sources.list.d/ubuntu.sources.orig; then
       sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.orig
+    fi
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if ! test -f /etc/apt/sources.list.d/official-package-repositories.list.orig; then
+      sudo cp /etc/apt/sources.list.d/official-package-repositories.list /etc/apt/sources.list.d/official-package-repositories.list.orig
     fi
   fi
 }
@@ -500,8 +525,14 @@ function checkIfOrigAptSource()
     else
       echo "false"
     fi
-  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     if test -f /etc/apt/sources.list.d/ubuntu.sources.orig; then
+      echo "true"
+    else
+      echo "false"
+    fi
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if test -f /etc/apt/sources.list.d/official-package-repositories.list.orig; then
       echo "true"
     else
       echo "false"
@@ -513,8 +544,10 @@ function getDefaultAptSource()
 {
   if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
     grep "^deb" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
-  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
-    grep "^URIs" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    grep "^URIs" /etc/apt/sources.list.d/ubuntu.sources.orig | head -n 1 | cut -d" " -f2
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    grep "^URIs" /etc/apt/sources.list.d/official-package-repositories.list.orig | head -n 1 | cut -d" " -f2
   fi
 }
 
@@ -522,8 +555,10 @@ function backupAptSource()
 {
   if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
     sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
-  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo cp -f /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.backup
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list /etc/apt/sources.list.d/official-package-repositories.list.backup
   fi
 }
 
@@ -531,8 +566,10 @@ function removeBackupAptSource()
 {
   if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
     sudo rm -f /etc/apt/sources.list.backup
-  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo rm -f /etc/apt/sources.list.d/ubuntu.sources.backup
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo rm -f /etc/apt/sources.list.d/official-package-repositories.list.backup
   fi
 }
 
@@ -540,9 +577,10 @@ function restoreBackupAptSource()
 {
   if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
     sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
-  fi
-  if ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.backup /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list.backup /etc/apt/sources.list.d/official-package-repositories.list
   fi
 }
 
@@ -550,8 +588,10 @@ function restoreOrigAptSource()
 {
   if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
     sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
-  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.orig /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list.orig /etc/apt/sources.list.d/official-package-repositories.list
   fi
 }
 
@@ -564,8 +604,10 @@ function replaceAptMirror()
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     sudo sed -i "s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list
     sudo sed -i "s|deb-src [a-z]*://[^ ]* |deb-src ${aptUrl} |g" /etc/apt/sources.list
-  elif ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]) || ([ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo sed -i "s|^URIs.*|URIs: ${aptUrl} |g" /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo sed -i "/linuxmint/! s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list.d/official-package-repositories.list
   fi
 }
 
@@ -573,12 +615,16 @@ function checkUpdateAptSources()
 {
   isForceCheck="$1"
   set +e
+  if ! [ "$(verifyAptSource)" = "true" ]; then
+    showMessageBox "ERROR" "There was a problem with your apt sources list. Proceeding with current settings..."
+    return
+  fi
   if [ "$(checkIfOrigAptSource)" = "true" ] && ! [ "$isForceCheck" = "true" ]; then
     performAptUpdate false
     return
   fi
   if ! [ "$isForceCheck" = "true" ]; then
-    showYesNoMessageBox "Find Mirrors" "Would you like to look for nearby apt mirrors? This process will take around 1-2 minutes to complete, but it will likely save a lot more time in the future when performing Linux host updates."
+    showYesNoMessageBox "Find Mirrors" "Would you like to check for nearby apt mirrors? This process will take around 1-2 minutes to complete, but it will likely save a lot more time in the future when performing Linux host updates."
     if [ $? -ne 0 ]; then
       backupOrigAptSource
       performAptUpdate false
