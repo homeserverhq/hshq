@@ -665,7 +665,7 @@ function getFastestMirrors()
       fi
     fi
   done
-  echo -e "$mirrorsURLsList" | xargs -P 5 -i bash -c "curl -r 0-2560000 --max-time 5 -sf -w '%{speed_download} {}\n' -o /dev/null {}ls-lR.gz 2>/dev/null" | awk '$1 > 0' | awk '{printf "%.2f MB/s  %s\n",$1/1048576,$2}' | sort -rg | head -n 7
+  echo -e "$mirrorsURLsList" | xargs -P 5 -i bash -c "curl -r 0-5120000 --max-time 5 -sf -w '%{speed_download} {}\n' -o /dev/null {}ls-lR.gz 2>/dev/null" | awk '$1 > 0' | awk '{printf "%.2f MB/s %s\n",$1/1048576,$2}' | sort -rg | head -n 7
 }
 
 function outputMirrorsList()
