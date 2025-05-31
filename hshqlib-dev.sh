@@ -19996,7 +19996,7 @@ function removeVNCServer()
           newPortsList="${newPortsList},$curPort"
         fi
       done
-      updateExposedPortsLists "INPUT" "$custNetID (Custom)" "$newPortsList"
+      updateExposedPortsLists "INPUT" "$custNetID (Custom)" "$newPortsList" > /dev/null 2>&1
     fi
   fi
   # Local network
