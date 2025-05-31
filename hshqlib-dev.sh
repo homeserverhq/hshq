@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=167
+HSHQ_LIB_SCRIPT_VERSION=168
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -118,6 +118,7 @@ function init()
   SYNCTHING_DISC_PORT=21027
   SYNCTHING_SYNC_PORT=22000
   UPNP_PORT=1900
+  VNC_SERVER_PORT=5901
   WAZUH_PORT_1=1514
   WAZUH_PORT_2=1515
   WAZUH_PORT_3=514
@@ -19901,6 +19902,129 @@ EOFUS
   rm -f $HOME/user.js
 }
 
+function addVNCServer()
+{
+  set +e
+  sudo systemctl list-unit-files x11vnc.service > /dev/null 2>&1
+  if [ $? -eq 0 ] || sudo test -f /lib/systemd/system/x11vnc.service; then
+    echo "There is already an existing x11vnc service installed. Please remove it, then retry."
+    return
+  fi
+  echo "Installing x11vnc..."
+  performAptUpdate true > /dev/null 2>&1
+  performAptInstall x11vnc > /dev/null 2>&1
+  echo "Configuring x11vnc..."
+  sudo x11vnc -storepasswd "$USER_SUDO_PW" /etc/x11vnc.pass > /dev/null 2>&1
+  sudo tee /lib/systemd/system/x11vnc.service >/dev/null <<EOFVN
+[Unit]
+Description=x11vnc service
+After=display-manager.service network.target syslog.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/x11vnc -shared -display :0 -auth guess -rfbauth /etc/x11vnc.pass -rfbport $VNC_SERVER_PORT -geometry 1600x900 -xkb -noxrecord -noxdamage
+ExecStop=/usr/bin/killall x11vnc
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOFVN
+  sudo systemctl daemon-reload > /dev/null 2>&1
+  sudo systemctl enable --now x11vnc.service > /dev/null 2>&1
+  echo "Updating firewall..."
+  # Allow dock-ext network access (for Guacamole)
+  ruleName="dock-ext-net"
+  subnet="${NET_EXTERNAL_SUBNET_PREFIX}.0/24"
+  addFirewallSubnet "$ruleName" "${NET_EXTERNAL_SUBNET_PREFIX}.0" "24" > /dev/null 2>&1
+  custNetID=$(sqlite3 $HSHQ_DB "select ID from customfwsubnet where Name='$ruleName' and Subnet='$subnet';")
+  curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from customfwsubnet where ID=$custNetID;")
+  echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    if [ -z "$curPortsList" ]; then
+      curPortsList="${VNC_SERVER_PORT}/both"
+    else
+      curPortsList="${curPortsList},${VNC_SERVER_PORT}/both"
+    fi
+  fi
+  updateExposedPortsLists INPUT "$custNetID (Custom)" "$curPortsList" > /dev/null 2>&1
+  # Allow local network access
+  primaryIfaceDBID=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType = 'primary' and NetworkType = 'home_network';")
+  primaryIfaceBaseName=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$primaryIfaceDBID;")
+  primaryIfaceIFName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$primaryIfaceDBID;")
+  curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where ID=$primaryIfaceDBID;")
+  echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    if [ -z "$curPortsList" ]; then
+      curPortsList="${VNC_SERVER_PORT}/both"
+    else
+      curPortsList="${curPortsList},${VNC_SERVER_PORT}/both"
+    fi
+  fi
+  updateExposedPortsLists INPUT "$primaryIfaceIFName ($primaryIfaceBaseName)" "$curPortsList" > /dev/null 2>&1
+  echo "x11vnc installation complete!"
+}
+
+function removeVNCServer()
+{
+  set +e
+  echo "Removing x11vnc..."
+  sudo systemctl disable --now x11vnc.service > /dev/null 2>&1
+  sudo rm -f /lib/systemd/system/x11vnc.service > /dev/null 2>&1
+  sudo systemctl daemon-reload > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y x11vnc > /dev/null 2>&1
+  echo "Updating firewall..."
+  # dock-ext network
+  ruleName="dock-ext-net"
+  subnet="${NET_EXTERNAL_SUBNET_PREFIX}.0/24"
+  custNetID=$(sqlite3 $HSHQ_DB "select ID from customfwsubnet where Name='$ruleName' and Subnet='$subnet';")
+  if ! [ -z "$custNetID" ]; then
+    curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from customfwsubnet where ID=$custNetID;")
+    echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      newPortsList=""
+      portsListArr=($(echo "$curPortsList" | tr "," "\n"))
+      for curPort in "${portsListArr[@]}"
+      do
+        chkPort=$(echo $curPort | cut -d"/" -f1)
+        if [ "$chkPort" = "$VNC_SERVER_PORT" ]; then
+          continue
+        fi
+        if [ -z "$newPortsList" ]; then
+          newPortsList="$curPort"
+        else
+          newPortsList="${newPortsList},$curPort"
+        fi
+      done
+      updateExposedPortsLists "INPUT" "$custNetID (Custom)" "$newPortsList"
+    fi
+  fi
+  # Local network
+  primaryIfaceDBID=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType = 'primary' and NetworkType = 'home_network';")
+  primaryIfaceBaseName=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$primaryIfaceDBID;")
+  primaryIfaceIFName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$primaryIfaceDBID;")
+  curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where ID=$primaryIfaceDBID;")
+  echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    newPortsList=""
+    portsListArr=($(echo "$curPortsList" | tr "," "\n"))
+    for curPort in "${portsListArr[@]}"
+    do
+      chkPort=$(echo $curPort | cut -d"/" -f1)
+      if [ "$chkPort" = "$VNC_SERVER_PORT" ]; then
+        continue
+      fi
+      if [ -z "$newPortsList" ]; then
+        newPortsList="$curPort"
+      else
+        newPortsList="${newPortsList},$curPort"
+      fi
+    done
+    updateExposedPortsLists INPUT "$primaryIfaceIFName ($primaryIfaceBaseName)" "$newPortsList" > /dev/null 2>&1
+  fi
+  echo "x11vnc removal complete!"
+}
+
 # Initialization
 function createInitialEnv()
 {
@@ -26566,9 +26690,14 @@ function addFirewallSubnet()
   subnet="${2}/${3}"
   if [ $(checkValidStringUpperLowerNumbers "$ruleName" "-") = "false" ]; then
     strMsg="The rule name is invalid. It must consist of a-z (lowercase), 0-9, and/or -, no spaces."
-    logHSHQEvent error "addFirewallSubnet - $strMsg"
     echo "ERROR: $strMsg"
     return 1
+  fi
+  chkExist=$(sqlite3 $HSHQ_DB "select Name from customfwsubnet where Name='$ruleName' and Subnet='$subnet';")
+  if ! [ -z "$chkExist" ]; then
+    strMsg="This rule name and subnet combo already exists..."
+    echo "ERROR: $strMsg"
+    return 2
   fi
   sudo sqlite3 $HSHQ_DB "insert into customfwsubnet(Name,Subnet) values('$ruleName','$subnet');"
 }
@@ -26693,7 +26822,9 @@ function updateExposedPortsLists()
   selectedChain="$1"
   selectedList="$2"
   selectedPorts="$3"
-  checkValidPortsList "$selectedPorts"
+  if ! [ -z "$selectedPorts" ]; then
+    checkValidPortsList "$selectedPorts"
+  fi
   if [ $? -ne 0 ]; then
     strMsg="There was an error with the ports list: $selectedPorts"
     logHSHQEvent error "updateExposedPortsLists (checkValidPortsList) - $strMsg"
@@ -31707,7 +31838,7 @@ function importDBs()
 
 function getHomeServerPortsList()
 {
-  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
+  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
   echo "$portsList"
 }
 
@@ -61670,9 +61801,98 @@ EOFSC
 {
   "name": "10 Update HomeServer Logos",
   "script_path": "conf/scripts/updateHomeServerLogoImages.sh",
-  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page. If you wish to set the logo image for your own HomeServer, then run the 04 System Utils -> 09 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager(s) run this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).",
+  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page. If you wish to set the logo image for your own HomeServer, then run the 04 System Utils -> 09 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager(s) run this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": []
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addRemoveVNCServer.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts
+
+set +e
+isAddRem=\$(getArgumentValue addremvnc "\$@")
+if [ "\$isAddRem" = "Add" ]; then
+  addVNCServer
+elif [ "\$isAddRem" = "Remove" ]; then
+  removeVNCServer
+else
+  echo "Unknown option, returning..."
+fi
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addRemoveVNCServer.json
+{
+  "name": "11 Add/Remove VNC Server",
+  "script_path": "conf/scripts/addRemoveVNCServer.sh",
+  "description": "Add or Remove Host VNC Server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add (or remove) an [x11vnc](https://github.com/LibVNC/x11vnc) server on the Linux host. It will bind the service to port $VNC_SERVER_PORT, and it will expose this port on the local network. It will also allow this port to be accessed on the dock-ext docker network, which is needed for setting up a connection profile in [Guacmole](https://wiki.homeserverhq.com/en/foss-projects/guacamole) (access the desktop from anywhere in a web-browser). You must have a desktop environment installed in order for this service to be functional. The default password is your sudo password. To access your server with a VNC client on the local network, use the following IP address/port combo: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$VNC_SERVER_PORT. You can also use the hostname, i.e.: $HOMESERVER_DOMAIN:$VNC_SERVER_PORT.<br/>\nItems of note:\n1. This services fails to work on the GNOME desktop environment. If you attempt to do so, you will have to log out of that desktop instance directly on this physical server, so that the VNC server can (automatically) restore itself to a healthy state. It does not have any (known) issues with Cinnamon, KDE, XFCE, MATE, or Budgie.\n2. This service is configured with the -shared option, meaning multiple clients can connect to the same shared session. It also attacheds directly to an X display environment, meaning if you log in remotely, it will also log in on the physical machine as well.\n3. Finally, if you attempt to open a Guacamole web instance directly on this server's desktop environment, it will cause a paradox that could implode the universe onto itself (or just cause some cool screen effects, it depends).\n\n<hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_systemutils",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Add/Remove",
+      "required": true,
+      "param": "-addremvnc=",
+      "same_arg_param": true,
+      "type": "list",
+      "default": "Add",
+      "values": [
+        "Add",
+        "Remove"
+      ],
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
 }
 
 EOFSC
@@ -66272,7 +66492,7 @@ EOFSC
 {
   "name": "07 Edit Exposed Ports",
   "script_path": "conf/scripts/editExposedPorts.sh",
-  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list.<br/><br/>All ports must be comma-separated with no spaces.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list. All ports must be comma-separated with no spaces.<br/><br/>Ensure to refresh this page if performing multiple actions, to allow the auto-computing functions on the input fields to properly reflect the correct up-to-date info.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
