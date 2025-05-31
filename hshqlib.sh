@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=166
+HSHQ_LIB_SCRIPT_VERSION=167
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -366,8 +366,8 @@ function showNotInstalledMenu()
   checkSupportedHostOS
   refreshSudo
   setSudoTimeoutInstall
-  sudo DEBIAN_FRONTEND=noninteractive apt update
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
+    sudo DEBIAN_FRONTEND=noninteractive apt update
     echo "Installing openssh-server, please wait..."
     performAptInstall openssh-server > /dev/null 2>&1
   fi
@@ -380,9 +380,10 @@ EOF
   "1" "Perform Base Installation" \
   "2" "Edit Configuration" \
   "3" "Install Dependencies" \
-  "4" "Uninstall and Remove Everything" \
-  "5" "Restore From Backup" \
-  "6" "Exit" 3>&1 1>&2 2>&3)
+  "4" "Update APT Mirror" \
+  "5" "Uninstall and Remove Everything" \
+  "6" "Restore From Backup" \
+  "7" "Exit" 3>&1 1>&2 2>&3)
   if [ $? -ne 0 ]; then
     menures=0
   fi
@@ -391,7 +392,10 @@ EOF
     0)
       return 0 ;;
     1)
+      checkWorkingInternet
+      checkUpdateAptSources false
       checkDockerPre
+      set -e
       checkLoadConfig
       initConfig
       initCertificateAuthority
@@ -411,6 +415,9 @@ EOF
       fi
       initInstallation ;;
     2)
+      checkWorkingInternet
+      checkUpdateAptSources false
+      set -e
       checkLoadConfig
       initConfig
       nano $CONFIG_FILE
@@ -418,19 +425,29 @@ EOF
       set +e
       return 1 ;;
     3)
+      checkWorkingInternet
+      checkUpdateAptSources false
+      set -e
       installDependencies
       pullBaseServicesDockerImages
       sudo reboot ;;
     4)
+      set +e
+      checkWorkingInternet
+      refreshSudo
+      checkUpdateAptSources true
+      return 1 ;;
+    5)
       nukeHSHQ
       set +e
       return 1 ;;
-    5)
-      set +e
+    6)
+      checkWorkingInternet
+      checkUpdateAptSources false
       showRestoreMenu
       set +e
       return 1 ;;
-    6)
+    7)
       return 0 ;;
   esac
 }
@@ -450,6 +467,1513 @@ function checkDockerPre()
       sudo reboot
     fi
   fi
+}
+
+function checkWorkingInternet()
+{
+  set +e
+  timeout 10 ping -c 1 1.1.1.1 > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    showMessageBox "ERROR" "You do not appear to have a working internet connection. Please check your network settings and try again."
+    exit 2
+  fi
+}
+
+function verifyAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if test -f /etc/apt/sources.list; then
+      echo "true"
+      return
+    fi
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    if test -f /etc/apt/sources.list.d/ubuntu.sources; then
+      echo "true"
+      return
+    fi
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if test -f /etc/apt/sources.list.d/official-package-repositories.list; then
+      echo "true"
+      return
+    fi
+  fi
+  echo "false"
+}
+
+function backupOrigAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if ! test -f /etc/apt/sources.list.orig; then
+      sudo cp /etc/apt/sources.list /etc/apt/sources.list.orig
+    fi
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    if ! test -f /etc/apt/sources.list.d/ubuntu.sources.orig; then
+      sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.orig
+    fi
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if ! test -f /etc/apt/sources.list.d/official-package-repositories.list.orig; then
+      sudo cp /etc/apt/sources.list.d/official-package-repositories.list /etc/apt/sources.list.d/official-package-repositories.list.orig
+    fi
+  fi
+}
+
+function checkIfOrigAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    if test -f /etc/apt/sources.list.orig; then
+      echo "true"
+    else
+      echo "false"
+    fi
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    if test -f /etc/apt/sources.list.d/ubuntu.sources.orig; then
+      echo "true"
+    else
+      echo "false"
+    fi
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    if test -f /etc/apt/sources.list.d/official-package-repositories.list.orig; then
+      echo "true"
+    else
+      echo "false"
+    fi
+  fi
+}
+
+function getDefaultAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    grep "^deb" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    grep "^URIs" /etc/apt/sources.list.d/ubuntu.sources.orig | head -n 1 | cut -d" " -f2
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    grep "^URIs" /etc/apt/sources.list.d/official-package-repositories.list.orig | head -n 1 | cut -d" " -f2
+  fi
+}
+
+function backupAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.backup
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list /etc/apt/sources.list.d/official-package-repositories.list.backup
+  fi
+}
+
+function removeBackupAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo rm -f /etc/apt/sources.list.backup
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    sudo rm -f /etc/apt/sources.list.d/ubuntu.sources.backup
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo rm -f /etc/apt/sources.list.d/official-package-repositories.list.backup
+  fi
+}
+
+function restoreBackupAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.backup /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list.backup /etc/apt/sources.list.d/official-package-repositories.list
+  fi
+}
+
+function restoreOrigAptSource()
+{
+  if ([ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]) || ([ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]); then
+    sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.orig /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list.orig /etc/apt/sources.list.d/official-package-repositories.list
+  fi
+}
+
+function replaceAptMirror()
+{
+  aptUrl="$1"
+  if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+    sudo sed -i "/security/! s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list
+    sudo sed -i "/security/! s|deb-src [a-z]*://[^ ]* |deb-src ${aptUrl} |g" /etc/apt/sources.list
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo sed -i "s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list
+    sudo sed -i "s|deb-src [a-z]*://[^ ]* |deb-src ${aptUrl} |g" /etc/apt/sources.list
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
+    sudo sed -i "s|^URIs.*|URIs: ${aptUrl} |g" /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+    sudo sed -i "/linuxmint/! s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list.d/official-package-repositories.list
+  fi
+}
+
+function checkUpdateAptSources()
+{
+  isForceCheck="$1"
+  set +e
+  if ! [ "$(verifyAptSource)" = "true" ]; then
+    showMessageBox "ERROR" "There was a problem with your apt sources list. Proceeding with current settings..."
+    return
+  fi
+  if [ "$(checkIfOrigAptSource)" = "true" ] && ! [ "$isForceCheck" = "true" ]; then
+    performAptUpdate false
+    return
+  fi
+  if ! [ "$isForceCheck" = "true" ]; then
+    showYesNoMessageBox "Find Mirrors" "Would you like to check for nearby apt mirrors? This process will take around 1-2 minutes to complete, but it will likely save a lot more time in the future when performing Linux host updates."
+    if [ $? -ne 0 ]; then
+      backupOrigAptSource
+      performAptUpdate false
+      return
+    fi
+  fi
+  backupOrigAptSource
+  default_apt_src="$(getDefaultAptSource)"
+  backupAptSource
+  echo "========================================================================"
+  echo "  Calculating the closest apt mirrors."
+  echo "  This could take a minute or two, please wait..."
+  echo "========================================================================"
+  mirrorResults="$(getFastestMirrors)"
+  if [ -z "$mirrorResults" ]; then
+    showMessageBox "ERROR" "There was a problem obtaining mirror info, continuing with current settings..."
+    removeBackupAptSource
+    performAptUpdate false
+    return
+  fi
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  mirrorResultsArr=($(echo "$mirrorResults"))
+  IFS=$OLDIFS
+  aptupdatemenu=$(cat << EOF
+
+$(getLogo)
+
+Select your desired apt sources mirror from the list below.
+To keep the current settings, select Cancel.
+EOF
+)
+  uas_menu_items=( --title "Select Mirror" --radiolist "$aptupdatemenu" $(($MENU_HEIGHT+2)) $MENU_WIDTH $MENU_INT_HEIGHT )
+  curNum=1
+  for curMirror in "${mirrorResultsArr[@]}"
+  do
+    uas_menu_items+=( "$(echo $curMirror | xargs)" )
+    uas_menu_items+=( "|" )
+    if [ $curNum -eq 1 ]; then
+      uas_menu_items+=( "on" )
+    else
+      uas_menu_items+=( "off" )
+    fi
+    ((curNum++))
+  done
+  while true
+    do
+    selItem=$(whiptail "${uas_menu_items[@]}" 3>&1 1>&2 2>&3)
+    if [ $? -ne 0 ]; then
+      restoreBackupAptSource
+      removeBackupAptSource
+      performAptUpdate false
+      return
+    fi
+    selAptSource=$(echo "$selItem" | xargs | rev | cut -d" " -f1 | rev)
+    replaceAptMirror "$selAptSource"
+    tmpOutput=/tmp/aptOut.txt
+    rm -f $tmpOutput
+    performAptUpdate false 2>&1 | tee $tmpOutput
+    grep -e "^Err:" -e "Failed" $tmpOutput > /dev/null 2>&1
+    chkRes=$?
+    rm -f $tmpOutput
+    if [ $chkRes -eq 0 ]; then
+      errmenu=$(cat << EOF
+
+$(getLogo)
+
+There were some errors found with the selected mirror.
+Select Retry to select a different mirror, or select
+Revert to restore the original default.
+EOF
+      )
+      restoreOrigAptSource
+      if (whiptail --title "Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --yes-button "Retry" --no-button "Revert" ); then
+        continue
+      else
+        performAptUpdate false
+        break
+      fi
+    else
+      echo -e "========================================================================\n"
+      echo -e "The selected mirror appears to be in good working order. (See above)\n"
+      isBreakMainLoop=false
+      while true
+      do
+        echo "Enter 'confirm': To proceed with this option"
+        echo "        'retry': To select a different mirror from the list"
+        echo "       'revert': To restore the prior settings and continue"
+        echo "         'orig': To restore the original default and continue"
+        echo "         'exit': To restore the prior settings and exit the HSHQ utility"
+        echo
+        read -r -p "Your selection: " selMirrorOption
+        if [ "$selMirrorOption" = "confirm" ]; then
+          isBreakMainLoop=true
+          break
+        elif [ "$selMirrorOption" = "retry" ]; then
+          restoreBackupAptSource
+          isBreakMainLoop=false
+          break
+        elif [ "$selMirrorOption" = "revert" ]; then
+          restoreBackupAptSource
+          isBreakMainLoop=true
+          performAptUpdate false
+          break
+        elif [ "$selMirrorOption" = "orig" ]; then
+          restoreOrigAptSource
+          isBreakMainLoop=true
+          performAptUpdate false
+          break
+        elif [ "$selMirrorOption" = "exit" ]; then
+          restoreBackupAptSource
+          removeBackupAptSource
+          performExitFunctions true
+          exit
+        else
+          echo "Unknown response, please retry."
+        fi
+      done
+      if [ "$isBreakMainLoop" = "true" ]; then
+        break
+      fi
+    fi
+  done
+  removeBackupAptSource
+}
+
+function performAptUpdate()
+{
+  clear
+  isQuietUpdate="$1"
+  if [ "$isQuietUpdate" = "true" ]; then
+    echo "Performing apt update, please wait..."
+    sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null
+  else
+    sudo DEBIAN_FRONTEND=noninteractive apt update
+  fi
+}
+
+function getFastestMirrors()
+{
+  # Some of the concepts of this function were adopted from
+  # https://github.com/vegardit/fast-apt-mirror.sh/blob/v1/fast-apt-mirror.sh
+  set +e
+  distID=""
+  last_modified_path=""
+  if [ "$DISTRO_ID" = "debian" ]; then
+    distID="debian"
+  elif [ "$DISTRO_ID" = "ubuntu" ] || [ "$DISTRO_ID" = "linuxmint" ]; then
+    distID="ubuntu"
+  else
+    # Fatal
+    exit 1
+  fi
+  cd ~
+  backupOrigAptSource
+  default_mirror="$(getDefaultAptSource)"
+  which netselect > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    netselect_version='0.3.ds1-30.1'
+    wget http://ftp.debian.org/debian/pool/main/n/netselect/netselect_${netselect_version}_${DISTRO_ARCH}.deb > /dev/null 2>&1
+    sudo apt install ./netselect_${netselect_version}_${DISTRO_ARCH}.deb > /dev/null 2>&1
+    rm -f ./netselect_${netselect_version}_${DISTRO_ARCH}.deb
+  fi
+  rm -f /tmp/mirrors.txt
+  outputMirrorsList
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  fastestMirrorsArr=($(sudo netselect -s50 -t4 $(grep "^$distID" /tmp/mirrors.txt | cut -d" " -f2) 2>/dev/null))
+  IFS=$OLDIFS
+  rm -f /tmp/mirrors.txt
+  mirrorsDomainList=$(echo "$default_mirror" | tr -s "/" | cut -d"/" -f2)
+  mirrorsURLsList="$default_mirror"
+  maxMirrors=15
+  curMirrorCount=1
+  curDTSeconds=$(date +%s)
+  last_modified_path="ls-lR.gz"
+  for curMirror in "${fastestMirrorsArr[@]}"
+  do
+    curURL=$(echo "$curMirror" | xargs | cut -d" " -f2)
+    curDomain=$(echo "$curURL" | tr -s "/" | cut -d"/" -f2)
+    echo "$mirrorsDomainList" | grep "$curDomain" > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      mirrorsDomainList="$mirrorsDomainList $curDomain"
+      # Check last modified date
+      lastModified=$(curl --max-time 3 -sSfL --head "$curURL${last_modified_path}" 2>/dev/null | grep -i "last-modified" | cut -d" " -f2- | LANG=C date -f- -u +%s)
+      if ! [ -z "$lastModified" ] && [ "$(checkValidNumber $lastModified)" = "true" ] && [ $lastModified -gt 0 ]; then
+        secsDiff=$(($curDTSeconds-$lastModified))
+        # 2592000 is equivalent to last 30 days
+        if [ $secsDiff -ge 2592000 ]; then
+          continue
+        fi
+      else
+        continue
+      fi
+      mirrorsURLsList="$mirrorsURLsList\n$curURL"
+      ((curMirrorCount++))
+      if [ $curMirrorCount -ge $maxMirrors ]; then
+        break
+      fi
+    fi
+  done
+  echo -e "$mirrorsURLsList" | xargs -P 5 -i bash -c "curl -r 0-5120000 --max-time 5 -sf -w '%{speed_download} {}\n' -o /dev/null {}ls-lR.gz 2>/dev/null" | awk '$1 > 0' | awk '{printf "%.2f MB/s %s\n",$1/1048576,$2}' | sort -rg | head -n 7
+}
+
+function outputMirrorsList()
+{
+  # We'll just manage the list right here
+  # to reduce the potential points of failure
+  cat <<EOFML > /tmp/mirrors.txt
+debian http://ftp.am.debian.org/debian/
+debian http://ftp.au.debian.org/debian/
+debian http://ftp.at.debian.org/debian/
+debian http://ftp.by.debian.org/debian/
+debian http://ftp.be.debian.org/debian/
+debian http://ftp.br.debian.org/debian/
+debian http://ftp.bg.debian.org/debian/
+debian http://ftp.ca.debian.org/debian/
+debian http://ftp.cl.debian.org/debian/
+debian http://ftp.cn.debian.org/debian/
+debian http://ftp.hr.debian.org/debian/
+debian http://ftp.cz.debian.org/debian/
+debian http://ftp.dk.debian.org/debian/
+debian http://ftp.fi.debian.org/debian/
+debian http://ftp.fr.debian.org/debian/
+debian http://ftp2.de.debian.org/debian/
+debian http://ftp.de.debian.org/debian/
+debian http://ftp.hk.debian.org/debian/
+debian http://ftp.is.debian.org/debian/
+debian http://ftp.it.debian.org/debian/
+debian http://ftp.jp.debian.org/debian/
+debian http://ftp.kr.debian.org/debian/
+debian http://ftp.lt.debian.org/debian/
+debian http://ftp.md.debian.org/debian/
+debian http://ftp.nl.debian.org/debian/
+debian http://ftp.nc.debian.org/debian/
+debian http://ftp.nz.debian.org/debian/
+debian http://ftp.no.debian.org/debian/
+debian http://ftp.pl.debian.org/debian/
+debian http://ftp.pt.debian.org/debian/
+debian http://ftp.sk.debian.org/debian/
+debian http://ftp.si.debian.org/debian/
+debian http://ftp.es.debian.org/debian/
+debian http://ftp.se.debian.org/debian/
+debian http://ftp.ch.debian.org/debian/
+debian http://ftp.tw.debian.org/debian/
+debian http://ftp.tr.debian.org/debian/
+debian http://ftp.uk.debian.org/debian/
+debian http://ftp.us.debian.org/debian/
+debian http://mirror.abmanagement.al/debian/
+debian http://debian.unnoba.edu.ar/debian/
+debian http://mirror.sitsa.com.ar/debian/
+debian http://mirrors.asnet.am/debian/
+debian http://debian.mirror.digitalpacific.com.au/debian/
+debian http://debian.mirror.serversaustralia.com.au/debian/
+debian http://mirror.aarnet.edu.au/debian/
+debian http://mirror.amaze.com.au/debian/
+debian http://mirror.gsl.icu/debian/
+debian http://mirror.linux.org.au/debian/
+debian http://mirror.overthewire.com.au/debian/
+debian http://mirror.realcompute.io/debian/
+debian http://mirrors.xtom.au/debian/
+debian http://debian.anexia.at/debian/
+debian http://debian.lagis.at/debian/
+debian http://debian.mur.at/debian/
+debian http://debian.sil.at/debian/
+debian http://ftp.tu-graz.ac.at/mirror/debian/
+debian http://mirror.alwyzon.net/debian/
+debian http://mirror.ourhost.az/debian/
+debian http://mirror.limda.net/debian/
+debian http://mirror.xeonbd.com/debian/
+debian http://ftp.byfly.by/debian/
+debian http://mirror.datacenter.by/debian/
+debian http://debian-mirror.behostings.net/debian/
+debian http://ftp.belnet.be/debian/
+debian http://mirror.as35701.net/debian/
+debian http://mirror.unix-solutions.be/debian/
+debian http://debian.c3sl.ufpr.br/debian/
+debian http://debian.pop-sc.rnp.br/debian/
+debian http://mirror.blue3.com.br/debian/
+debian http://mirrors.ic.unicamp.br/debian/
+debian http://mirror.uepg.br/debian/
+debian http://mirror.ufscar.br/debian/
+debian http://debian.a1.bg/debian/
+debian http://debian.ipacct.com/debian/
+debian http://debian.ludost.net/debian/
+debian http://debian.mnet.bg/debian/
+debian http://debian.telecoms.bg/debian/
+debian http://ftp.uni-sofia.bg/debian/
+debian http://mirrors.netix.net/debian/
+debian http://mirror.telepoint.bg/debian/
+debian http://mirror.sabay.com.kh/debian/
+debian http://debian.linux.n0c.ca/debian/
+debian http://debian.mirror.rafal.ca/debian/
+debian http://mirror.csclub.uwaterloo.ca/debian/
+debian http://mirror.dst.ca/debian/
+debian http://mirror.estone.ca/debian/
+debian http://mirror.it.ubc.ca/debian/
+debian http://debian-mirror.puq.apoapsis.cl/debian/
+debian http://debian.redlibre.cl/debian/
+debian http://mirror.hnd.cl/debian/
+debian http://mirror.insacom.cl/debian/
+debian http://mirror.ufro.cl/debian/
+debian http://mirror.lzu.edu.cn/debian/
+debian http://mirror.nju.edu.cn/debian/
+debian http://mirror.nyist.edu.cn/debian/
+debian http://mirrors.163.com/debian/
+debian http://mirrors.bfsu.edu.cn/debian/
+debian http://mirrors.hit.edu.cn/debian/
+debian http://mirrors.jlu.edu.cn/debian/
+debian http://mirrors.neusoft.edu.cn/debian/
+debian http://mirrors.tuna.tsinghua.edu.cn/debian/
+debian http://mirrors.ustc.edu.cn/debian/
+debian http://mirrors.zju.edu.cn/debian/
+debian http://mirrors.ucr.ac.cr/debian/
+debian http://debian.carnet.hr/debian/
+debian http://debian.iskon.hr/debian/
+debian http://debian.superhosting.cz/debian/
+debian http://ftp.cvut.cz/debian/
+debian http://ftp.debian.cz/debian/
+debian http://ftp.sh.cvut.cz/debian/
+debian http://ftp.zcu.cz/debian/
+debian http://merlin.fit.vutbr.cz/debian/
+debian http://mirror.dkm.cz/debian/
+debian http://mirror.it4i.cz/debian/
+debian http://mirrors.nic.cz/debian/
+debian http://mirror.one.com/debian/
+debian http://mirrors.dotsrc.org/debian/
+debian http://mirrors.rackhosting.com/debian/
+debian http://mirrors.xtom.ee/debian/
+debian http://debian.web.trex.fi/debian/
+debian http://www.nic.funet.fi/debian/
+debian http://apt.tetaneutral.net/debian/
+debian http://debian.apt-mirror.de/debian/
+debian http://debian.mirrors.ovh.net/debian/
+debian http://debian.obspm.fr/debian/
+debian http://debian.polytech-lille.fr/debian/
+debian http://debian.proxad.net/debian/
+debian http://debian.univ-tlse2.fr/debian/
+debian http://deb-mir1.naitways.net/debian/
+debian http://deb.syxpi.fr/debian/
+debian http://ftp.ec-m.fr/debian/
+debian http://ftp.lip6.fr/pub/linux/distributions/debian/
+debian http://ftp.rezopole.net/debian/
+debian http://ftp.univ-pau.fr/linux/mirrors/debian/
+debian http://ftp.u-picardie.fr/debian/
+debian http://ftp.u-strasbg.fr/debian/
+debian http://miroir.univ-lorraine.fr/debian/
+debian http://mirror.debian.ikoula.com/debian/
+debian http://mirror.gitoyen.net/debian/
+debian http://mirror.ibcp.fr/debian/
+debian http://mirror.johnnybegood.fr/debian/
+debian http://mirror.plusserver.com/debian/debian/
+debian http://mirrors.ircam.fr/pub/debian/
+debian http://debian.grena.ge/debian/
+debian http://debian.charite.de/debian/
+debian http://debian.inf.tu-dresden.de/debian/
+debian http://debian.intergenia.de/debian/
+debian http://debian.mirror.iphh.net/debian/
+debian http://debian.mirror.lrz.de/debian/
+debian http://debian.netcologne.de/debian/
+debian http://debian.tu-bs.de/debian/
+debian http://de.mirrors.clouvider.net/debian/
+debian http://drmirror.physi.uni-heidelberg.de/debian/
+debian http://ftp.fau.de/debian/
+debian http://ftp.gwdg.de/debian/
+debian http://ftp.halifax.rwth-aachen.de/debian/
+debian http://ftp.hosteurope.de/mirror/ftp.debian.org/debian/
+debian http://ftp-stud.hs-esslingen.de/debian/
+debian http://ftp.stw-bonn.de/debian/
+debian http://ftp.tu-chemnitz.de/debian/
+debian http://ftp.tu-clausthal.de/debian/
+debian http://ftp.uni-bayreuth.de/debian/
+debian http://ftp.uni-hannover.de/debian/debian/
+debian http://ftp.uni-kl.de/debian/
+debian http://ftp.uni-mainz.de/debian/
+debian http://ftp.uni-stuttgart.de/debian/
+debian http://ftp.wrz.de/debian/
+debian http://mirror.23m.com/debian/
+debian http://mirror.creoline.net/debian/
+debian http://mirror.de.leaseweb.net/debian/
+debian http://mirror.dogado.de/debian/
+debian http://mirror.eu.oneandone.net/debian/
+debian http://mirror.informatik.tu-freiberg.de/debian/
+debian http://mirror.ipb.de/debian/
+debian http://mirror.netzwerge.de/debian/
+debian http://mirror.plusline.net/debian/
+debian http://mirrors.xtom.de/debian/
+debian http://mirror.united-gameserver.de/debian/
+debian http://mirror.wtnet.de/debian/
+debian http://packages.hs-regensburg.de/debian/
+debian http://pubmirror.plutex.de/debian/
+debian http://debian.otenet.gr/debian/
+debian http://mirror.xtom.com.hk/debian/
+debian http://ftp.bme.hu/debian/
+debian http://repo.jztkft.hu/debian/
+debian http://is.mirror.flokinet.net/debian/
+debian http://mirror.cse.iitk.ac.in/debian/
+debian http://mirror.nitc.ac.in/debian/
+debian http://mirrors.iitd.ac.in/debian/
+debian http://kartolo.sby.datautama.net.id/debian/
+debian http://kebo.pens.ac.id/debian/
+debian http://mirror.poliwangi.ac.id/debian/
+debian http://mirror.unair.ac.id/debian/
+debian http://mr.heru.id/debian/
+debian http://mirror.aminidc.com/debian/
+debian http://mirrors.pardisco.co/debian/
+debian http://debian.interhost.co.il/debian/
+debian http://debian.connesi.it/debian/
+debian http://debian.dynamica.it/debian/
+debian http://debian.mirror.garr.it/debian/
+debian http://ftp.linux.it/debian/
+debian http://giano.com.dist.unige.it/debian/
+debian http://mirror.units.it/debian/
+debian http://debian-mirror.sakura.ne.jp/debian/
+debian http://ftp.jaist.ac.jp/debian/
+debian http://ftp.kddilabs.jp/pub/debian/
+debian http://ftp.nara.wide.ad.jp/debian/
+debian http://ftp.riken.jp/Linux/debian/debian/
+debian http://ftp.yz.yamagata-u.ac.jp/debian/
+debian http://mirrors.xtom.jp/debian/
+debian http://repo.jing.rocks/debian/
+debian http://mirror.hoster.kz/debian/
+debian http://mirror.ps.kz/debian/
+debian http://debian.mirror.ac.ke/debian/
+debian http://debian.mirror.liquidtelecom.com/debian/
+debian http://ftp.kaist.ac.kr/debian/
+debian http://ftp.lanet.kr/debian/
+debian http://mirror.siwoo.org/debian/
+debian http://debian.koyanet.lv/debian/
+debian http://mirror.cloudhosting.lv/debian/
+debian http://mirror.veesp.com/debian/
+debian http://debian.mirror.vu.lt/debian/
+debian http://mirror.litnet.lt/debian/
+debian http://mirror.vpsnet.com/debian/
+debian http://debian.mirror.root.lu/debian/
+debian http://mirror.a1.mk/debian/
+debian http://mirror-mk.interspace.com/debian/
+debian http://lidsol.fi-b.unam.mx/debian/
+debian http://mirror.as43289.net/debian/
+debian http://mirror.marwan.ma/debian/
+debian http://debian.snt.utwente.nl/debian/
+debian http://mirror.ams.macarne.com/debian/
+debian http://mirror.bgp.rodeo/debian/
+debian http://mirror.duocast.net/debian/
+debian http://mirror.i3d.net/debian/
+debian http://mirror.nforce.com/debian/
+debian http://mirror.nl.cdn-perfprod.com/debian/
+debian http://mirror.nl.datapacket.com/debian/
+debian http://mirror.nl.leaseweb.net/debian/
+debian http://mirror.nl.mirhosting.net/debian/
+debian http://mirrors.hostiserver.com/debian/
+debian http://mirrors.xtom.nl/debian/
+debian http://mirror.tngnet.com/debian/
+debian http://mirror.vpgrp.io/debian/
+debian http://nl.mirror.flokinet.net/debian/
+debian http://nl.mirrors.clouvider.net/debian/
+debian http://debian.nautile.nc/debian/
+debian http://mirror.lagoon.nc/debian/
+debian http://linux.purple-cat.net/debian/
+debian http://mirror.fsmg.org.nz/debian/
+debian http://ftp.uio.no/debian/
+debian http://ftp.agh.edu.pl/debian/
+debian http://ftp.psnc.pl/debian/
+debian http://ftp.task.gda.pl/debian/
+debian http://debian.uevora.pt/debian/
+debian http://ftp.eq.uc.pt/software/Linux/debian/
+debian http://ftp.rnl.tecnico.ulisboa.pt/pub/debian/
+debian http://mirror.leitecastro.com/debian/
+debian http://mirrors.upr.edu/debian/
+debian http://debian.mithril.re/debian/
+debian http://mirror.flo.c-f.ro/debian/
+debian http://mirror.linux.ro/debian/
+debian http://mirror.ro.cdn-perfprod.com/debian/
+debian http://mirrors.hosterion.ro/debian/
+debian http://mirrors.hostico.ro/debian/
+debian http://mirrors.nav.ro/debian/
+debian http://mirrors.nxthost.com/debian/
+debian http://mirrors.pidginhost.com/debian/
+debian http://ro.mirror.flokinet.net/debian/
+debian http://ftp.psn.ru/debian/
+debian http://mirror.corbina.net/debian/
+debian http://mirror.docker.ru/debian/
+debian http://mirror.hyperdedic.ru/debian/
+debian http://mirror.kpfu.ru/debian/
+debian http://mirrors.powernet.com.ru/debian/
+debian http://mirror.truenetwork.ru/debian/
+debian http://repository.su/debian/
+debian http://mirror.pmf.kg.ac.rs/debian/
+debian http://mirror.coganng.com/debian/
+debian http://mirror.djvg.sg/debian/
+debian http://mirror.sg.gs/debian/
+debian http://ossmirror.mycloud.services/debian/
+debian http://deb.bbxnet.sk/debian/
+debian http://ftp.antik.sk/debian/
+debian http://ftp.debian.sk/debian/
+debian http://debian.mirror.ac.za/debian/
+debian http://ftp.is.co.za/debian/
+debian http://debian.grn.cat/debian/
+debian http://debian.redimadrid.es/debian/
+debian http://debian.redparra.com/debian/
+debian http://debian.uvigo.es/debian/
+debian http://ftp.caliu.cat/debian/
+debian http://ftp.cica.es/debian/
+debian http://ftp.udc.es/debian/
+debian http://mirror.raiolanetworks.com/debian/
+debian http://repo.ifca.es/debian/
+debian http://softlibre.unizar.es/debian/
+debian http://ulises.hostalia.com/debian/
+debian http://debian.lth.se/debian/
+debian http://debian.mirror.su.se/debian/
+debian http://ftp.acc.umu.se/debian/
+debian http://ftpmirror1.infania.net/debian/
+debian http://mirror.braindrainlan.nu/debian/
+debian http://mirrors.glesys.net/debian/
+debian http://debian.ethz.ch/debian/
+debian http://linuxsoft.cern.ch/debian/
+debian http://mirror1.infomaniak.com/debian/
+debian http://mirror2.infomaniak.com/debian/
+debian http://mirror.init7.net/debian/
+debian http://mirror.iway.ch/debian/
+debian http://mirror.sinavps.ch/debian/
+debian http://pkg.adfinis-on-exoscale.ch/debian/
+debian http://debian.ccns.ncku.edu.tw/debian/
+debian http://debian.csie.ntu.edu.tw/debian/
+debian http://debian.cs.nycu.edu.tw/debian/
+debian http://ftp.tku.edu.tw/debian/
+debian http://mirror.twds.com.tw/debian/
+debian http://opensource.nchc.org.tw/debian/
+debian http://tw1.mirror.blendbyte.net/debian/
+debian http://ftp.debianclub.org/debian/
+debian http://mirror.applebred.net/debian/
+debian http://mirror.kku.ac.th/debian/
+debian http://mirrors.cloudforest.co.th/debian/
+debian http://ftp.linux.org.tr/debian/
+debian http://debian.netforce.hosting/debian/
+debian http://debian.volia.net/debian/
+debian http://distrohub.kyiv.ua/debian/
+debian http://mirror.mirohost.net/debian/
+debian http://mirror.ukrnames.com/debian/
+debian http://debian.mirrors.uk2.net/debian/
+debian http://debian.mirror.uk.sargasso.net/debian/
+debian http://free.hands.com/debian/
+debian http://ftp.ticklers.org/debian/
+debian http://mirror.cov.ukservers.com/debian/
+debian http://mirror.lchost.net/debian/
+debian http://mirror.mythic-beasts.com/debian/
+debian http://mirror.ox.ac.uk/debian/
+debian http://mirror.positive-internet.com/debian/
+debian http://mirrors.coreix.net/debian/
+debian http://mirrorservice.org/sites/ftp.debian.org/debian/
+debian http://mirror.vinehost.net/debian/
+debian http://uk.mirrors.clouvider.net/debian/
+debian http://atl.mirrors.clouvider.net/debian/
+debian http://debian-archive.trafficmanager.net/debian/
+debian http://debian.cc.lehigh.edu/debian/
+debian http://debian.csail.mit.edu/debian/
+debian http://debian.cs.binghamton.edu/debian/
+debian http://debian.mirror.constant.com/debian/
+debian http://debian.osuosl.org/debian/
+debian http://debian.uchicago.edu/debian/
+debian http://la.mirrors.clouvider.net/debian/
+debian http://lethe.chinstrap.org/debian/
+debian http://mirror.0x626b.com/debian/
+debian http://mirror.cogentco.com/debian/
+debian http://mirror.dal.nexril.net/debian/
+debian http://mirror.keystealth.org/debian/
+debian http://mirror.rustytel.net/debian/
+debian http://mirrors.accretive-networks.net/debian/
+debian http://mirrors.bloomu.edu/debian/
+debian http://mirrors.bmcc.edu/debian/
+debian http://mirrors.iu13.net/debian/
+debian http://mirrors.lug.mtu.edu/debian/
+debian http://mirrors.mwcampbell.us/debian/
+debian http://mirrors.namecheap.com/debian/
+debian http://mirrors.ocf.berkeley.edu/debian/
+debian http://mirror.steadfast.net/debian/
+debian http://mirrors.vcea.wsu.edu/debian/
+debian http://mirrors.wikimedia.org/debian/
+debian http://mirrors.xtom.com/debian/
+debian http://mirror.timkevin.us/debian/
+debian http://mirror.us.leaseweb.net/debian/
+debian http://mirror.us.mirhosting.net/debian/
+debian http://mirror.us.oneandone.net/debian/
+debian http://nyc.mirrors.clouvider.net/debian/
+debian http://plug-mirror.rcac.purdue.edu/debian/
+debian http://repo.ialab.dsu.edu/debian/
+debian http://us.mirror.ahrefs.org/debian/
+debian http://debian.repo.cure.edu.uy/debian/
+debian http://debian.xtdv.net/debian/
+debian http://mirror.bizflycloud.vn/debian/
+ubuntu http://mirror.sitsa.com.ar/ubuntu/
+ubuntu http://ubuntu.zero.com.ar/ubuntu/
+ubuntu http://ubuntu.unc.edu.ar/ubuntu/
+ubuntu http://mirrors.asnet.am/ubuntu/
+ubuntu http://ubuntu.mirror.gnc.am/ubuntu/
+ubuntu http://mirrors.teamcloud.am/mirrors/ubuntu/
+ubuntu http://mirror.aarnet.edu.au/pub/ubuntu/archive/
+ubuntu http://mirror.internet.asn.au/pub/ubuntu/archive/
+ubuntu http://mirror.datamossa.io/ubuntu/archive/
+ubuntu http://mirror.realcompute.io/ubuntu/
+ubuntu http://ubuntu.mirror.serversaustralia.com.au/ubuntu/
+ubuntu http://ftp.iinet.net.au/pub/ubuntu/
+ubuntu ftp://ftp.iinet.net.au/pub/ubuntu
+ubuntu http://mirror.as24220.net/pub/ubuntu-archive/
+ubuntu ftp://mirror.as24220.net/pub/ubuntu-archive/
+ubuntu http://mirror.as24220.net/pub/ubuntu/
+ubuntu ftp://mirror.as24220.net/pub/ubuntu/
+ubuntu http://mirror.internode.on.net/pub/ubuntu/ubuntu/
+ubuntu ftp://mirror.internode.on.net/pub/ubuntu/ubuntu/
+ubuntu http://mirror.netspace.net.au/pub/ubuntu/
+ubuntu ftp://mirror.netspace.net.au/pub/ubuntu/
+ubuntu http://mirror.overthewire.com.au/ubuntu/
+ubuntu ftp://mirror.overthewire.com.au/ubuntu/
+ubuntu http://mirror.alwyzon.net/ubuntu/
+ubuntu http://mirror.easyname.at/ubuntu-archive/
+ubuntu ftp://mirror.easyname.at/ubuntu-archive/
+ubuntu http://ubuntu.anexia.at/ubuntu/
+ubuntu http://mirror.kumi.systems/ubuntu/
+ubuntu ftp://mirror.kumi.systems/ubuntu/
+ubuntu http://mirror.kumi.systems/ubuntu-ports/
+ubuntu ftp://mirror.kumi.systems/ubuntu-ports/
+ubuntu http://ubuntu.lagis.at/ubuntu/
+ubuntu ftp://ubuntu.lagis.at/ubuntu/
+ubuntu http://mirror.datacenter.az/ubuntu/
+ubuntu http://mirror.ourhost.az/ubuntu/
+ubuntu http://aze.archive.ubuntu.com/ubuntu/
+ubuntu ftp://aze.archive.ubuntu.com/ubuntu/
+ubuntu http://mirror.yer.az/ubuntu/archive/
+ubuntu http://mirror.gotmyhost.com/ubuntu-archive/
+ubuntu http://mirror.limda.net/ubuntu-archive/
+ubuntu http://mirror.xeonbd.com/ubuntu-archive/
+ubuntu http://ftp.byfly.by/ubuntu/
+ubuntu ftp://ftp.byfly.by/ubuntu/
+ubuntu http://mirror.datacenter.by/ubuntu/
+ubuntu ftp://mirror.datacenter.by/ubuntu/
+ubuntu http://ftp.belnet.be/ubuntu/
+ubuntu ftp://ftp.belnet.be/ubuntu/
+ubuntu http://mirror.unix-solutions.be/ubuntu/
+ubuntu http://mirrors-ubuntu.behostings.com/ubuntu/
+ubuntu http://archive.ubuntu.mirror.ba/ubuntu/
+ubuntu http://ubuntu-mirror.bhtelecom.ba/ubuntu/
+ubuntu http://mirror.uepg.br/ubuntu/
+ubuntu http://ubuntu.c3sl.ufpr.br/ubuntu/
+ubuntu ftp://ubuntu.c3sl.ufpr.br/ubuntu/
+ubuntu http://ubuntu.mirror.letscloud.io/
+ubuntu http://mirror.ufam.edu.br/ubuntu/
+ubuntu http://mirror.ufscar.br/ubuntu/
+ubuntu http://mirror.unesp.br/ubuntu/
+ubuntu http://sft.if.usp.br/ubuntu/
+ubuntu ftp://sft.if.usp.br/ubuntu/
+ubuntu http://ubuntu-archive.locaweb.com.br/ubuntu/
+ubuntu http://ubuntu.letscloud.io/ubuntu/
+ubuntu http://ubuntu.mti.mt.gov.br/
+ubuntu http://mirror.telepoint.bg/ubuntu/
+ubuntu ftp://mirror.telepoint.bg/ubuntu/
+ubuntu http://mirrors.neterra.net/ubuntu/archive/
+ubuntu ftp://mirrors.neterra.net/ubuntu/archive/
+ubuntu http://mirrors.netix.net/ubuntu/archive/
+ubuntu ftp://mirrors.netix.net/ubuntu/archive/
+ubuntu http://ubuntu.ipacct.com/ubuntu/
+ubuntu ftp://ubuntu.ipacct.com/ubuntu/
+ubuntu http://mirrors.storpool.com/ubuntu/archive/
+ubuntu http://ubuntu.linux-bg.org/ubuntu/
+ubuntu ftp://ubuntu.linux-bg.org/ubuntu/
+ubuntu http://mirror.bg.host.ag/ubuntu/
+ubuntu ftp://mirror.bg.host.ag/ubuntu/
+ubuntu http://mirror.sabay.com.kh/ubuntu/
+ubuntu http://mirrors.layeronline.com/ubuntu/
+ubuntu http://ubuntu.linux.n0c.ca/ubuntuarchive/
+ubuntu http://mirror.csclub.uwaterloo.ca/ubuntu/
+ubuntu ftp://mirror.csclub.uwaterloo.ca/ubuntu/
+ubuntu http://mirror.it.ubc.ca/ubuntu/
+ubuntu http://mirror.reenigne.net/ubuntu/
+ubuntu http://muug.ca/mirror/ubuntu/
+ubuntu ftp://ftp.muug.ca/mirror/ubuntu/
+ubuntu http://mirror.0xem.ma/ubuntu/
+ubuntu http://mirror.hep.gg/ubuntu/
+ubuntu http://archive.ubuntu.mirror.rafal.ca/ubuntu/
+ubuntu ftp://archive.ubuntu.mirror.rafal.ca/ubuntu/
+ubuntu http://gpl.savoirfairelinux.net/pub/mirrors/ubuntu/
+ubuntu http://mirror.ca-tr.kamatera.com/ubuntu/
+ubuntu http://mirror.rcg.sfu.ca/mirror/ubuntu/
+ubuntu http://ubuntu.mirror.globo.tech/
+ubuntu ftp://ubuntu.mirror.globo.tech/
+ubuntu http://mirror.its.dal.ca/ubuntu/
+ubuntu ftp://mirror.its.dal.ca/ubuntu/
+ubuntu http://ubuntu.mirror.rafal.ca/ubuntu/
+ubuntu http://mirror.hnd.cl/ubuntu/
+ubuntu http://ubuntu-mirror.puq.apoapsis.cl/ubuntu/
+ubuntu http://mirror.uchile.cl/ubuntu/
+ubuntu http://elmirror.cl/ubuntu/
+ubuntu http://mirror.ufro.cl/ubuntu/
+ubuntu http://mirror1.grupocg.cl/ubuntu/
+ubuntu http://mirrors.tuna.tsinghua.edu.cn/ubuntu/
+ubuntu http://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/
+ubuntu http://mirror.nju.edu.cn/ubuntu/
+ubuntu http://mirror.nyist.edu.cn/ubuntu/
+ubuntu http://mirror.nyist.edu.cn/ubuntu-ports/
+ubuntu http://mirrors.ustc.edu.cn/ubuntu/
+ubuntu http://mirrors.sdu.edu.cn/ubuntu/
+ubuntu http://repo.huaweicloud.com/ubuntu/
+ubuntu http://ftp.sjtu.edu.cn/ubuntu/
+ubuntu ftp://ftp.sjtu.edu.cn/ubuntu/
+ubuntu http://mirror.bjtu.edu.cn/ubuntu/
+ubuntu http://mirrors.cn99.com/ubuntu/
+ubuntu http://mirrors.huaweicloud.com/repository/ubuntu/
+ubuntu http://mirrors.hust.edu.cn/ubuntu/
+ubuntu http://mirrors.jcut.edu.cn/ubuntu/
+ubuntu http://mirrors.jlu.edu.cn/ubuntu/
+ubuntu http://mirrors.jxust.edu.cn/ubuntu/
+ubuntu http://mirrors.njupt.edu.cn/ubuntu/
+ubuntu http://mirrors.sjtug.sjtu.edu.cn/ubuntu/
+ubuntu http://mirrors.sohu.com/ubuntu/
+ubuntu ftp://mirrors.sohu.com/ubuntu/
+ubuntu http://mirrors.xjtu.edu.cn/ubuntu/
+ubuntu http://mirrors.yun-idc.com/ubuntu/
+ubuntu ftp://mirrors.yun-idc.com/ubuntu/
+ubuntu http://mirrors.zju.edu.cn/ubuntu/
+ubuntu http://mirrors.cqu.edu.cn/ubuntu/
+ubuntu http://edgeuno-bog2.mm.fcix.net/ubuntu/
+ubuntu http://mirror.unimagdalena.edu.co/ubuntu/
+ubuntu http://mirrors.atlas.net.co/ubuntu/
+ubuntu http://mirrors.united.cd/ubuntu/
+ubuntu http://ubuntu.ucr.ac.cr/ubuntu/
+ubuntu ftp://ubuntu.ucr.ac.cr/ubuntu/
+ubuntu http://ubuntu.grad.hr/ubuntu/
+ubuntu ftp://ubuntu.grad.hr/ubuntu/
+ubuntu http://mirror.library.ucy.ac.cy/linux/ubuntu/archive/
+ubuntu http://cz.archive.ubuntu.com/ubuntu/
+ubuntu http://ftp.linux.cz/pub/linux/ubuntu/
+ubuntu ftp://ftp.linux.cz/pub/linux/ubuntu/
+ubuntu http://ftp.sh.cvut.cz/ubuntu/
+ubuntu ftp://ftp.sh.cvut.cz/ubuntu/
+ubuntu http://mirror.it4i.cz/ubuntu/
+ubuntu http://ftp.cvut.cz/ubuntu/
+ubuntu ftp://ftp.cvut.cz/ubuntu/
+ubuntu http://ucho.ignum.cz/ubuntu/
+ubuntu ftp://ucho.ignum.cz/ubuntu/
+ubuntu http://mirrors.dotsrc.org/ubuntu/
+ubuntu ftp://mirrors.dotsrc.org/ubuntu/
+ubuntu http://mirrors.fibianet.dk/ubuntu/
+ubuntu http://mirror.group.one/ubuntu/
+ubuntu http://mirror.one.com/ubuntu/
+ubuntu ftp://mirror.one.com/ubuntu/
+ubuntu http://ftp.klid.dk/ftp/ubuntu/
+ubuntu ftp://ftp.klid.dk/ubuntu/
+ubuntu http://mirror.cedia.org.ec/ubuntu/
+ubuntu ftp://mirror.cedia.org.ec/ubuntu/
+ubuntu http://mirrors.xtom.ee/ubuntu/
+ubuntu http://mirror.5i.fi/ubuntu/
+ubuntu http://ubuntu.web.trex.fi/ubuntu/
+ubuntu ftp://mirror.clientvps.com/ubuntu/
+ubuntu http://mirror.fi.ossplanet.net/ubuntu/
+ubuntu http://mirror.ubuntu.ikoula.com/
+ubuntu http://ubuntu.lafibre.info/ubuntu/
+ubuntu http://ubuntu.univ-reims.fr/ubuntu/
+ubuntu ftp://ubuntu.univ-reims.fr/ubuntu/
+ubuntu http://ubuntu.mirrors.ovh.net/ubuntu/
+ubuntu http://mirror.plusserver.com/ubuntu/ubuntu/
+ubuntu http://miroir.univ-lorraine.fr/ubuntu/
+ubuntu http://mirror.its-tps.fr/ubuntu/
+ubuntu http://mirror.johnnybegood.fr/ubuntu/
+ubuntu http://mirrors.ircam.fr/pub/ubuntu/archive/
+ubuntu ftp://mirrors.ircam.fr/pub/ubuntu/archive/
+ubuntu http://ubuntu.syxpi.fr/ubuntu/
+ubuntu http://ubuntu.univ-nantes.fr/ubuntu/
+ubuntu ftp://ubuntu.univ-nantes.fr/ubuntu/
+ubuntu http://ftp.u-picardie.fr/mirror/ubuntu/ubuntu/
+ubuntu http://distrib-coffee.ipsl.jussieu.fr/pub/linux/ubuntu/
+ubuntu ftp://distrib-coffee.ipsl.jussieu.fr/pub/linux/ubuntu/
+ubuntu http://ubuntu.grena.ge/ubuntu/
+ubuntu http://ftp.uni-stuttgart.de/ubuntu/
+ubuntu http://ftp.halifax.rwth-aachen.de/ubuntu/
+ubuntu ftp://ftp.halifax.rwth-aachen.de/ubuntu/
+ubuntu http://mirror.dogado.de/ubuntu/
+ubuntu http://mirror.netcologne.de/ubuntu/
+ubuntu ftp://mirror.netcologne.de/ubuntu/
+ubuntu http://ubuntu.mirror.lrz.de/ubuntu/
+ubuntu http://de.mirrors.clouvider.net/ubuntu/
+ubuntu http://debian.charite.de/ubuntu/
+ubuntu http://ftp.stw-bonn.de/ubuntu/
+ubuntu ftp://ftp.stw-bonn.de/ubuntu/
+ubuntu http://mirror.creoline.net/ubuntu/
+ubuntu http://mirror.de.leaseweb.net/ubuntu/
+ubuntu ftp://mirror.de.leaseweb.net/ubuntu/
+ubuntu http://mirror.ipb.de/ubuntu/
+ubuntu http://mirror.wtnet.de/ubuntu/
+ubuntu http://mirrors.xtom.de/ubuntu/
+ubuntu http://ubuntu.mirror.tudos.de/ubuntu/
+ubuntu http://ftp.fau.de/ubuntu/
+ubuntu ftp://ftp.fau.de/ubuntu/
+ubuntu http://drmirror.physi.uni-heidelberg.de/ubuntu/
+ubuntu http://ftp-stud.hs-esslingen.de/ubuntu/
+ubuntu ftp://ftp-stud.hs-esslingen.de/ubuntu/
+ubuntu http://mirror.netzwerge.de/ubuntu/
+ubuntu http://mirror.serverloft.eu/ubuntu/ubuntu/
+ubuntu http://artfiles.org/ubuntu.com/
+ubuntu ftp://artfiles.org/ubuntu.com/
+ubuntu ftp://ftp.fu-berlin.de/linux/ubuntu/
+ubuntu http://ftp.rz.tu-bs.de/pub/mirror/ubuntu-packages/
+ubuntu ftp://ftp.rz.tu-bs.de/pub/mirror/ubuntu-packages/
+ubuntu http://ftp.tu-chemnitz.de/pub/linux/ubuntu-ports/
+ubuntu ftp://ftp.tu-chemnitz.de/pub/linux/ubuntu-ports/
+ubuntu http://ftp.tu-ilmenau.de/mirror/ubuntu/
+ubuntu ftp://ftp.tu-ilmenau.de/mirror/ubuntu/
+ubuntu http://ftp.uni-bayreuth.de/linux/ubuntu/ubuntu/
+ubuntu ftp://ftp.uni-bayreuth.de/pub/linux/ubuntu/ubuntu/
+ubuntu http://ftp.uni-mainz.de/ubuntu/
+ubuntu ftp://ftp.uni-mainz.de/ubuntu/
+ubuntu http://ftp5.gwdg.de/pub/linux/debian/ubuntu/
+ubuntu ftp://ftp5.gwdg.de/pub/linux/debian/ubuntu/
+ubuntu http://mirror.23m.com/ubuntu/
+ubuntu http://mirror.daniel-jost.net/ubuntu/
+ubuntu ftp://mirror.daniel-jost.net/ubuntu/
+ubuntu http://mirror.eu-fr.kamatera.com/ubuntu/
+ubuntu http://mirror.informatik.tu-freiberg.de/ubuntu/
+ubuntu http://mirror.kamp.de/ubuntu/
+ubuntu http://mirror.kkg.berlin/ubuntu/
+ubuntu http://mirror.liquidrp.de/ubuntu/
+ubuntu http://mirror.scaleuptech.com/ubuntu/
+ubuntu ftp://mirror.scaleuptech.com/ubuntu/
+ubuntu http://mirror.thunderhosting.cloud/ubuntu/
+ubuntu http://mirror.united-gameserver.de/ubuntu/
+ubuntu http://packages.oth-regensburg.de/ubuntu/
+ubuntu http://suse.uni-leipzig.de/pub/releases.ubuntu.com/ubuntu/
+ubuntu ftp://suse.uni-leipzig.de/pub/releases.ubuntu.com/ubuntu/
+ubuntu http://ftp.hosteurope.de/mirror/archive.ubuntu.com/
+ubuntu ftp://ftp.hosteurope.de/mirror/archive.ubuntu.com/
+ubuntu http://ftp.tu-chemnitz.de/pub/linux/ubuntu/
+ubuntu http://ftp.cc.uoc.gr/mirrors/linux/ubuntu/packages/
+ubuntu ftp://ftp.cc.uoc.gr/mirrors/linux/ubuntu/packages/
+ubuntu http://ftp.ntua.gr/ubuntu/
+ubuntu ftp://ftp.ntua.gr/ubuntu/
+ubuntu http://ubuntu.otenet.gr/
+ubuntu ftp://ftp.otenet.gr/ubuntu/
+ubuntu http://mirror.greennet.gl/ubuntu/
+ubuntu http://hk.mirrors.thegigabit.com/ubuntu/
+ubuntu http://mirror-hk.koddos.net/ubuntu/
+ubuntu http://mirror.01link.hk/ubuntu/
+ubuntu http://mirror.as.kamatera.com/ubuntu/
+ubuntu http://repo.jztkft.hu/ubuntu/
+ubuntu http://mirror.niif.hu/ubuntu/
+ubuntu http://quantum-mirror.hu/mirrors/pub/ubuntu/
+ubuntu http://mirrors.sth.sze.hu/ubuntu/
+ubuntu http://ubuntu.hysing.is/ubuntu/
+ubuntu http://is.mirror.flokinet.net/ubuntu/
+ubuntu http://mirrors.opensource.is/ubuntu/
+ubuntu http://repos.del.extreme-ix.org/ubuntu/
+ubuntu http://in.mirror.coganng.com/ubuntu/
+ubuntu ftp://in.mirror.coganng.com/ubuntu/
+ubuntu http://in.mirror.coganng.com/ubuntu-ports/
+ubuntu ftp://in.mirror.coganng.com/ubuntu-ports/
+ubuntu http://mirror.bharatdatacenter.com/ubuntu/
+ubuntu ftp://mirror.bharatdatacenter.com/ubuntu/
+ubuntu http://mirror.cse.iitk.ac.in/ubuntu/
+ubuntu ftp://mirror.cse.iitk.ac.in/ubuntu/
+ubuntu http://mirror.ietlucknow.ac.in/ubuntu/
+ubuntu http://mirror.nitc.ac.in/ubuntu/
+ubuntu http://mirrors.nxtgen.com/ubuntu-mirror/ubuntu/
+ubuntu http://repo.extreme-ix.org/ubuntu/
+ubuntu http://ftp.iitm.ac.in/ubuntu/
+ubuntu ftp://ftp.iitm.ac.in/ubuntu
+ubuntu http://cdn.repo.cloudeka.id/ubuntu/
+ubuntu http://cdn.ubuntu.repo.cloudeka.id/ubuntu/
+ubuntu http://linux.domainesia.com/ubuntu/ubuntu-archive/
+ubuntu http://mirror.faizuladib.com/ubuntu/
+ubuntu http://mirror.repository.id/ubuntu/
+ubuntu http://mr.heru.id/ubuntu/
+ubuntu http://mirror.deace.id/ubuntu/
+ubuntu http://mirror-gw.elastis.id/ubuntu/
+ubuntu http://mirror.biznetgio.com/ubuntu/
+ubuntu http://mirror.cepatcloud.id/ubuntu/
+ubuntu http://mirror.citrahost.com/ubuntu/
+ubuntu http://mirror.dewabiz.com/ubuntu/
+ubuntu http://mirror.gi.co.id/ubuntu/
+ubuntu http://mirror.papua.go.id/ubuntu/
+ubuntu http://mirror.poliwangi.ac.id/ubuntu/
+ubuntu http://mirror.unair.ac.id/ubuntu/
+ubuntu http://repo.ugm.ac.id/ubuntu/
+ubuntu http://repo.usk.ac.id/ubuntu/
+ubuntu http://suro.ubaya.ac.id/ubuntu/
+ubuntu ftp://suro.ubaya.ac.id/mirror/ubuntu/
+ubuntu http://archive.ubuntu.mirrors.zagrio.net/
+ubuntu ftp://mirrors.zagrio.net/ubuntu/archive/
+ubuntu http://mirror.iranserver.com/ubuntu/
+ubuntu http://ir.archive.ubuntu.com/ubuntu/
+ubuntu ftp://ir.archive.ubuntu.com/ubuntu/
+ubuntu http://ubuntu.mobinhost.com/ubuntu/
+ubuntu ftp://ubuntu.mobinhost.com/ubuntu/
+ubuntu http://ubuntu.pishgaman.net/ubuntu/
+ubuntu http://mirror.aminidc.com/ubuntu/
+ubuntu ftp://mirror.aminidc.com/ubuntu/
+ubuntu http://mirrors.pardisco.co/ubuntu/
+ubuntu http://archive.ubuntu.petiak.ir/ubuntu/
+ubuntu ftp://archive.ubuntu.petiak.ir/ubuntu/
+ubuntu http://ubuntu.pars.host/
+ubuntu http://ubuntu.parsvds.com/ubuntu/
+ubuntu http://mirror.faraso.org/ubuntu/
+ubuntu http://mirrors.ubuntu.dimit.cloud/
+ubuntu http://repo.iut.ac.ir/repo/Ubuntu/
+ubuntu http://mirror.webworld.ie/ubuntu/
+ubuntu http://mirror.il-ha.kamatera.com/ubuntu/
+ubuntu http://ubuntu-archive.interhost.co.il/ubuntu/
+ubuntu http://mirror.il-pt.kamatera.com/ubuntu/
+ubuntu http://mirror.il-rh.kamatera.com/ubuntu/
+ubuntu http://mirror.il-ta.kamatera.com/ubuntu/
+ubuntu http://mirror.il.kamatera.com/ubuntu/
+ubuntu http://rep-ubuntu-il.upress.io/ubuntu/
+ubuntu http://mirror.isoc.org.il/pub/ubuntu/
+ubuntu ftp://mirror.isoc.org.il/ubuntu/
+ubuntu http://it1.mirror.vhosting-it.com/ubuntu/
+ubuntu http://it2.mirror.vhosting-it.com/ubuntu/
+ubuntu http://giano.com.dist.unige.it/ubuntu/
+ubuntu http://ftp.udx.icscoe.jp/Linux/ubuntu/
+ubuntu http://mirror.hashy0917.net/ubuntu/
+ubuntu http://mirror.hashy0917.net/ubuntu-ports/
+ubuntu http://archive.g4t1.pro/ubuntu/
+ubuntu http://ftp.tsukuba.wide.ad.jp/Linux/ubuntu/
+ubuntu http://linux.yz.yamagata-u.ac.jp/ubuntu/
+ubuntu http://mirror.nishi.network/ubuntu/
+ubuntu http://mirror.nishi.network/ubuntu-ports/
+ubuntu http://repo.jing.rocks/ubuntu/
+ubuntu http://repo.jing.rocks/ubuntu-ports/
+ubuntu http://ftp.jaist.ac.jp/pub/Linux/ubuntu/
+ubuntu ftp://ftp.jaist.ac.jp/pub/Linux/ubuntu/
+ubuntu http://ftp.riken.jp/Linux/ubuntu/
+ubuntu ftp://ftp.riken.jp/Linux/ubuntu/
+ubuntu http://ubuntutym.u-toyama.ac.jp/ubuntu/
+ubuntu http://ftp.sakura.ad.jp/ubuntu/
+ubuntu http://jp.mirror.coganng.com/ubuntu/
+ubuntu ftp://jp.mirror.coganng.com/ubuntu/
+ubuntu http://jp.mirror.coganng.com/ubuntu-ports/
+ubuntu ftp://jp.mirror.coganng.com/ubuntu-ports/
+ubuntu http://mirror.hoster.kz/ubuntu/
+ubuntu ftp://mirror.hoster.kz/ubuntu/
+ubuntu http://mirror.ps.kz/ubuntu/
+ubuntu ftp://mirror.ps.kz/ubuntu/
+ubuntu http://mirror.amuksa.com/ubuntu/
+ubuntu http://mirror.kakao.com/ubuntu/
+ubuntu http://mirror.krfoss.org/ubuntu/
+ubuntu http://mirror.siwoo.org/ubuntu/
+ubuntu http://ftp.daum.net/ubuntu/
+ubuntu ftp://ftp.daum.net/ubuntu/
+ubuntu http://ftp.lanet.kr/ubuntu/
+ubuntu ftp://ftp.lanet.kr/ubuntu/
+ubuntu http://ftp.lanet.kr/ubuntu-ports/
+ubuntu ftp://ftp.lanet.kr/ubuntu-ports/
+ubuntu http://mirror.jeonnam.school/ubuntu/
+ubuntu http://mirror.zzunipark.com/ubuntu/
+ubuntu http://mirror.zzunipark.com/ubuntu-ports/
+ubuntu http://mirror.yuki.net.uk/ubuntu-ports/
+ubuntu http://mir.linux.kg/ubuntu/
+ubuntu http://mirror.cloudhosting.lv/ubuntu/
+ubuntu http://ubuntu-arch.linux.edu.lv/ubuntu/
+ubuntu ftp://ubuntu-arch.linux.edu.lv/lv.archive.ubuntu.com/ubuntu/
+ubuntu http://ubuntu.koyanet.lv/ubuntu/
+ubuntu http://mirror.bacloud.com/ubuntu-mirror/archive/
+ubuntu http://mirror.vpsnet.com/ubuntu/
+ubuntu http://ubuntu.mirror.vu.lt/ubuntu/
+ubuntu ftp://ubuntu.mirror.vu.lt/ubuntu/
+ubuntu http://ftp.litnet.lt/ubuntu/
+ubuntu ftp://ftp.litnet.lt/ubuntu/
+ubuntu http://ubuntu.mirror.root.lu/ubuntu/
+ubuntu ftp://mirror.root.lu/ubuntu/ubuntu/
+ubuntu http://mirror.a1.mk/ubuntu/
+ubuntu http://mirror.t-home.mk/ubuntu/
+ubuntu http://ubuntu.dts.mg/ubuntu/
+ubuntu http://mirrors.gbnetwork.com/ubuntu/
+ubuntu http://mirrors.ipserverone.com/ubuntu/
+ubuntu http://ubuntu.mirror.thegigabit.com/
+ubuntu http://ubuntu.tuxuri.com/ubuntu/
+ubuntu http://ubuntu-mirror.cloud.mu/ubuntu/
+ubuntu http://ubuntu-mirror.cloud.mu/ubuntu-ports/
+ubuntu http://mirror.as43289.net/ubuntu/
+ubuntu ftp://mirror.as43289.net/ubuntu/
+ubuntu http://mirror.ihost.md/ubuntu/
+ubuntu http://mirrors.mivocloud.com/ubuntu/
+ubuntu ftp://mirrors.mivocloud.com/ubuntu/
+ubuntu http://mirror.hosthink.net/ubuntu/
+ubuntu http://mirror.datacenter.mn/ubuntu/
+ubuntu http://mirror.marwan.ma/ubuntu/
+ubuntu http://mirrors.ygn.mmix.net.mm/ubuntu/
+ubuntu http://download.nust.na/pub/ubuntu/ubuntu/
+ubuntu http://ubuntu.ntc.net.np/ubuntu/
+ubuntu http://mirror.ams.macarne.com/ubuntu/
+ubuntu http://mirror.i3d.net/pub/ubuntu/
+ubuntu http://mirror.nl.datapacket.com/ubuntu/
+ubuntu http://nl.archive.ubuntu.com/ubuntu/
+ubuntu http://ftp.nluug.nl/os/Linux/distr/ubuntu/
+ubuntu ftp://ftp.nluug.nl/pub/os/Linux/distr/ubuntu/
+ubuntu http://ftp.snt.utwente.nl/pub/os/linux/ubuntu/
+ubuntu ftp://ftp.snt.utwente.nl/pub/os/linux/ubuntu/
+ubuntu http://mirror.lyrahosting.com/ubuntuarchive/
+ubuntu ftp://mirror.lyrahosting.com/ubuntuarchive/
+ubuntu http://mirror.nforce.com/pub/linux/ubuntu/
+ubuntu ftp://mirror.nforce.com/pub/linux/ubuntu/
+ubuntu http://mirror.nl.altushost.com/ubuntu/
+ubuntu http://mirror.nl.leaseweb.net/ubuntu/
+ubuntu ftp://mirror.nl.leaseweb.net/ubuntu/
+ubuntu http://mirror.serverion.com/ubuntu/
+ubuntu ftp://mirror.serverion.com/ubuntu/
+ubuntu http://mirror.vpgrp.io/ubuntu/
+ubuntu http://mirrors.xtom.nl/ubuntu/
+ubuntu http://nl.mirrors.clouvider.net/ubuntu/
+ubuntu http://ubuntu.mirror.intermax.nl/
+ubuntu http://ubuntu.mirror.true.nl/ubuntu/
+ubuntu http://ubuntu.mirror.wearetriple.com/archive/
+ubuntu http://mirror.transip.net/ubuntu/ubuntu/
+ubuntu ftp://mirror.transip.net/ubuntu/ubuntu/
+ubuntu http://mirrors.as215248.net/ubuntu/
+ubuntu http://nl3.archive.ubuntu.com/ubuntu/
+ubuntu http://ftp.tudelft.nl/archive.ubuntu.com/
+ubuntu ftp://ftp.tudelft.nl/pub/Linux/archive.ubuntu.com/
+ubuntu http://mirror.eu.kamatera.com/ubuntu/
+ubuntu http://mirror.hostnet.nl/ubuntu/archive/
+ubuntu http://mirror.nl.as215296.net/ubuntu/
+ubuntu http://mirror.previder.nl/ubuntu/
+ubuntu http://mirrors.evoluso.com/ubuntu/
+ubuntu http://nl.mirror.flokinet.net/ubuntu/
+ubuntu http://osmirror.rug.nl/ubuntu/
+ubuntu ftp://osmirror.rug.nl/ubuntu/
+ubuntu ftp://ftpserv.tudelft.nl/pub/Linux/archive.ubuntu.com/
+ubuntu http://ubuntu.lagoon.nc/ubuntu/
+ubuntu ftp://ubuntu.lagoon.nc/ubuntu/
+ubuntu http://archive.ubuntu.nautile.nc/ubuntu/
+ubuntu http://mirror.fsmg.org.nz/ubuntu/
+ubuntu http://ubuntu.btit.nz/ubuntu/
+ubuntu ftp://ubuntu.btit.nz/ubuntu/
+ubuntu http://no.mirrors.blix.com/ubuntu/
+ubuntu http://no.archive.ubuntu.com/ubuntu/
+ubuntu http://ubuntu.hi.no/archive/
+ubuntu http://ftp.uninett.no/ubuntu/
+ubuntu ftp://ftp.uninett.no/ubuntu/
+ubuntu http://ubuntu.uib.no/archive/
+ubuntu ftp://ubuntu.uib.no/pub/Linux/Distributions/ubuntu/archive/
+ubuntu http://mirror.virtury.com/ubuntu/
+ubuntu http://mirror.rise.ph/ubuntu/
+ubuntu ftp://mirror.rise.ph/ubuntu/
+ubuntu http://ftp.icm.edu.pl/pub/Linux/ubuntu/
+ubuntu ftp://ftp.icm.edu.pl/pub/Linux/ubuntu/
+ubuntu http://ftp.psnc.pl/linux/ubuntu/
+ubuntu http://ubuntu.task.gda.pl/ubuntu/
+ubuntu ftp://ubuntu.task.gda.pl/ubuntu/
+ubuntu http://ftp.agh.edu.pl/ubuntu/
+ubuntu ftp://ftp.agh.edu.pl/ubuntu/
+ubuntu http://mirror.chmuri.net/ubuntu/
+ubuntu http://ubuntu.man.lodz.pl/ubuntu/
+ubuntu ftp://ubuntu.man.lodz.pl/ubuntu/
+ubuntu http://mirror.leitecastro.com/ubuntu/
+ubuntu http://mirrors.ptisp.pt/ubuntu/
+ubuntu http://mirrors.up.pt/ubuntu/
+ubuntu ftp://mirrors.up.pt/pub/ubuntu/
+ubuntu http://cesium.di.uminho.pt/pub/ubuntu-archive/
+ubuntu ftp://cesium.di.uminho.pt/pub/ubuntu-archive/
+ubuntu http://archive.ubuntumirror.dei.uc.pt/ubuntu/
+ubuntu ftp://archive.ubuntumirror.dei.uc.pt/ubuntu/
+ubuntu http://ftp.rnl.tecnico.ulisboa.pt/pub/ubuntu/archive/
+ubuntu ftp://ftp.rnl.tecnico.ulisboa.pt/pub/ubuntu/archive/
+ubuntu http://glua.ua.pt/pub/ubuntu/
+ubuntu ftp://glua.ua.pt/pub/ubuntu/
+ubuntu http://mirrors.webhs.pt/ubuntu/
+ubuntu http://mirrors.hosterion.ro/ubuntu/
+ubuntu http://mirror.efect.ro/ubuntu/archive/
+ubuntu http://mirrors.nav.ro/ubuntu/
+ubuntu ftp://mirrors.nav.ro/ubuntu/
+ubuntu http://mirror.flo.c-f.ro/ubuntu/
+ubuntu http://mirror.flokinet.net/ubuntu/
+ubuntu http://mirrors.chroot.ro/ubuntu/
+ubuntu ftp://mirrors.chroot.ro/ubuntu/
+ubuntu http://mirrors.hostico.ro/ubuntu/archive/
+ubuntu http://mirrors.pidginhost.com/ubuntu/
+ubuntu ftp://mirrors.pidginhost.com/ubuntu/
+ubuntu http://ubuntu.mirrors.linux.ro/archive/
+ubuntu ftp://ftp.linux.ro/ubuntu/archive/
+ubuntu http://mirror.linux-ia64.org/ubuntu/
+ubuntu http://mirror.neftm.ru/ubuntu/
+ubuntu http://mirror.timeweb.ru/ubuntu/
+ubuntu http://mirror.truenetwork.ru/ubuntu/
+ubuntu ftp://mirror.truenetwork.ru/ubuntu/
+ubuntu http://mirror.docker.ru/ubuntu/
+ubuntu http://mirror.corbina.net/ubuntu/
+ubuntu ftp://mirror.corbina.net/ubuntu/
+ubuntu http://mirror.hyperdedic.ru/ubuntu/
+ubuntu http://mirror.yandex.ru/ubuntu/
+ubuntu ftp://mirror.yandex.ru/ubuntu/
+ubuntu http://mirrors.powernet.com.ru/ubuntu/
+ubuntu ftp://mirrors.powernet.com.ru/pub/ubuntu/archive/
+ubuntu http://mirror.logol.ru/ubuntu/
+ubuntu ftp://mirror.logol.ru/ubuntu/
+ubuntu http://mirror.maeen.sa/apt-mirror/
+ubuntu http://mirror1.sox.rs/ubuntu/ubuntu/
+ubuntu http://ossmirror.mycloud.services/os/linux/ubuntu/
+ubuntu http://mirror.sg.gs/ubuntu/
+ubuntu http://kambing.uu.sg/ubuntu/
+ubuntu http://mirror.0x.sg/ubuntu/
+ubuntu ftp://mirror.0x.sg/ubuntu/
+ubuntu http://mirror.soonkeat.sg/ubuntu/
+ubuntu http://mirror.aktkn.sg/ubuntu/
+ubuntu http://mirror.coganng.com/ubuntu/
+ubuntu ftp://mirror.coganng.com/ubuntu/
+ubuntu http://mirror.coganng.com/ubuntu-ports/
+ubuntu ftp://mirror.coganng.com/ubuntu-ports/
+ubuntu http://sg-mirrors.vhost.vn/ubuntu/
+ubuntu http://mirror.vnet.sk/ubuntu/
+ubuntu http://ftp.energotel.sk/pub/linux/ubuntu/
+ubuntu ftp://ftp.energotel.sk/pub/linux/ubuntu/
+ubuntu http://tux.rainside.sk/ubuntu/
+ubuntu ftp://tux.rainside.sk/ubuntu/
+ubuntu http://ftp.arnes.si/pub/mirrors/ubuntu/
+ubuntu ftp://ftp.arnes.si/mirrors/ubuntu/
+ubuntu http://ubuntu.mirror.ac.za/ubuntu/
+ubuntu ftp://ubuntu.mirror.ac.za/ubuntu/
+ubuntu http://mirror.hostafrica.co.za/ubuntu/
+ubuntu http://ubuntu.mirror.rain.co.za/ubuntu/
+ubuntu http://mirror.raiolanetworks.com/ubuntu/
+ubuntu http://ftp.udc.es/ubuntu/
+ubuntu ftp://ftp.udc.es/ubuntu/
+ubuntu http://ubuntu.cica.es/ubuntu/
+ubuntu ftp://ubuntu.cica.es/ubuntu/
+ubuntu http://ftp.caliu.cat/pub/distribucions/ubuntu/archive/
+ubuntu http://ftp.csuc.cat/ubuntu/archive/
+ubuntu ftp://ftp.csuc.cat/ubuntu/archive/
+ubuntu http://ubuntu.uvigo.es/
+ubuntu ftp://ftp.uvigo.es/ubuntu/
+ubuntu http://dafi.inf.um.es/ubuntu/
+ubuntu ftp://dafi.inf.um.es/ubuntu/
+ubuntu http://ubuntu.grn.cat/ubuntu/
+ubuntu ftp://ubuntu.grn.cat/ubuntu/
+ubuntu http://ftp.acc.umu.se/ubuntu/
+ubuntu ftp://ftp.acc.umu.se/ubuntu/
+ubuntu http://ftp.ludd.ltu.se/mirrors/ubuntu/
+ubuntu http://mirror.bahnhof.net/ubuntu/
+ubuntu ftp://mirror.bahnhof.net/ubuntu/
+ubuntu http://mirror.zetup.net/ubuntu/
+ubuntu http://ftp.lysator.liu.se/ubuntu/
+ubuntu ftp://ftp.lysator.liu.se/ubuntu/
+ubuntu http://ftpmirror1.infania.net/ubuntu/
+ubuntu ftp://ftpmirror1.infania.net/ubuntu/
+ubuntu http://mirror.siati.ch/ubuntu-archive/
+ubuntu http://mirror.infomaniak.ch/ubuntu/
+ubuntu ftp://mirror.infomaniak.ch/ubuntu/
+ubuntu http://mirror.init7.net/ubuntu/
+ubuntu http://mirror.solnet.ch/ubuntu/
+ubuntu http://pkg.adfinis-on-exoscale.ch/ubuntu/
+ubuntu http://ubuntu.ethz.ch/ubuntu/
+ubuntu ftp://ubuntu.ethz.ch/ubuntu/
+ubuntu http://mirror.gofoss.xyz/ubuntu/
+ubuntu http://mirror.gofoss.xyz/ubuntu-ports/
+ubuntu http://pkg.adfinis.com/ubuntu/
+ubuntu http://mirror.twds.com.tw/ubuntu/
+ubuntu http://mirror.twds.com.tw/ubuntu-ports/
+ubuntu http://free.nchc.org.tw/ubuntu/
+ubuntu ftp://free.nchc.org.tw/ubuntu
+ubuntu http://ftp.tw.debian.org/ubuntu/
+ubuntu ftp://ftp.tw.debian.org/ubuntu/
+ubuntu http://ubuntu.ccns.ncku.edu.tw/ubuntu/
+ubuntu http://ftp.ubuntu-tw.net/ubuntu/
+ubuntu ftp://ftp.ubuntu-tw.net/ubuntu/
+ubuntu http://mirror.ossplanet.net/ubuntu/
+ubuntu ftp://mirror.ossplanet.net/ubuntu/
+ubuntu http://ftp.tku.edu.tw/ubuntu/
+ubuntu ftp://ftp.tku.edu.tw/ubuntu/
+ubuntu http://tw1.mirror.blendbyte.net/ubuntu/
+ubuntu http://ubuntu.cs.nctu.edu.tw/ubuntu/
+ubuntu ftp://ubuntu.cs.nctu.edu.tw/ubuntu/
+ubuntu http://ftp.mirror.tw/pub/ubuntu/ubuntu/
+ubuntu ftp://ftp.mirror.tw/pub/ubuntu/ubuntu/
+ubuntu http://mirror.aptus.co.tz/pub/ubuntuarchive/
+ubuntu http://deb-mirror.habari.co.tz/ubuntu/
+ubuntu http://mirror.kku.ac.th/ubuntu/
+ubuntu ftp://mirror.kku.ac.th/ubuntu/
+ubuntu http://mirrors.cloudforest.co.th/ubuntu/
+ubuntu http://mirror1.totbb.net/ubuntu/
+ubuntu http://mirrors.bangmod.cloud/ubuntu/
+ubuntu http://mirror1.ku.ac.th/ubuntu/
+ubuntu http://mirror.ati.tn/ubuntu/
+ubuntu http://mirror.ekiphost.com/ubuntu/
+ubuntu http://mirror.sh.com.tr/ubuntu/
+ubuntu http://mirror.domainhizmetleri.com/ubuntu/
+ubuntu http://mirror.verinomi.com/ubuntu/ubuntu-archive/
+ubuntu http://mirror.kapteyan.com.tr/ubuntu/
+ubuntu http://mirror.rabisu.com/ubuntu/ubuntu-archive/
+ubuntu http://mirror.renu.ac.ug/ubuntu/
+ubuntu http://ubuntu.ip-connect.vn.ua/
+ubuntu ftp://ubuntu.ip-connect.vn.ua/mirror/ubuntu/
+ubuntu http://ubuntu.mirrors.omnilance.com/ubuntu/
+ubuntu http://distrohub.kyiv.ua/ubuntu/
+ubuntu http://mirror.mirohost.net/ubuntu/
+ubuntu ftp://mirror.mirohost.net/ubuntu/
+ubuntu http://ubuntu.netforce.hosting/ubuntu/
+ubuntu ftp://ubuntu.netforce.hosting/ubuntu/
+ubuntu http://ubuntu.org.ua/ubuntu/
+ubuntu ftp://ubuntu.org.ua/ubuntu/
+ubuntu http://mirror.cov.ukservers.com/ubuntu/
+ubuntu ftp://mirror.cov.ukservers.com/ubuntu/
+ubuntu http://mirror.katapult.io/ubuntu/
+ubuntu http://mirror.server.net/ubuntu/
+ubuntu http://mirror.vorboss.net/ubuntu-archive/
+ubuntu http://mirrors.ukfast.co.uk/sites/archive.ubuntu.com/
+ubuntu ftp://mirrors.ukfast.co.uk/archive.ubuntu.com/
+ubuntu http://www.mirrorservice.org/sites/archive.ubuntu.com/ubuntu/
+ubuntu ftp://ftp.mirrorservice.org/sites/archive.ubuntu.com/ubuntu/
+ubuntu http://uk.mirrors.clouvider.net/ubuntu/
+ubuntu http://archive.ubuntu.moon127.net/
+ubuntu http://mirror.as29550.net/archive.ubuntu.com/
+ubuntu ftp://mirror.as29550.net/archive.ubuntu.com/
+ubuntu http://mirror.bytemark.co.uk/ubuntu/
+ubuntu ftp://mirror.bytemark.co.uk/ubuntu/
+ubuntu http://mirror.eu-lo.kamatera.com/ubuntu/
+ubuntu http://mirror.freethought-internet.co.uk/ubuntu/
+ubuntu ftp://mirror.freethought-internet.co.uk/ubuntu/
+ubuntu http://mirror.ox.ac.uk/sites/archive.ubuntu.com/ubuntu/
+ubuntu ftp://mirror.ox.ac.uk/sites/archive.ubuntu.com/ubuntu/
+ubuntu http://mirror.vinehost.net/ubuntu/
+ubuntu ftp://mirror.vinehost.net/ubuntu/
+ubuntu http://mirrors.coreix.net/ubuntu/
+ubuntu http://mirrors.gethosted.online/ubuntu/
+ubuntu ftp://mirrors.gethosted.online/ubuntu/
+ubuntu http://mirrors.melbourne.co.uk/ubuntu/
+ubuntu ftp://mirrors.melbourne.co.uk/ubuntu/
+ubuntu http://ports.ubuntu.moon127.net/
+ubuntu http://ubuntu.mirrors.uk2.net/ubuntu/
+ubuntu ftp://ubuntu.mirrors.uk2.net/ubuntu/
+ubuntu http://archive.ubuntu.com/ubuntu/
+ubuntu ftp://archive.ubuntu.com/ubuntu/
+ubuntu http://mirror.enzu.com/ubuntu/
+ubuntu ftp://mirror.enzu.com/ubuntu/
+ubuntu http://mirror.pilotfiber.com/ubuntu/
+ubuntu http://dal.mirrors.serverside.com/ubuntu/
+ubuntu http://mirror.math.princeton.edu/pub/ubuntu/
+ubuntu http://mirror.pit.teraswitch.com/ubuntu/
+ubuntu http://mirror.us.mirhosting.net/ubuntu/
+ubuntu ftp://mirror.us.mirhosting.net/ubuntu/
+ubuntu http://mirrors.iu13.net/ubuntu/
+ubuntu http://atl.mirrors.clouvider.net/ubuntu/
+ubuntu http://dal.mirrors.clouvider.net/ubuntu/
+ubuntu http://la.mirrors.clouvider.net/ubuntu/
+ubuntu http://mirror.arizona.edu/ubuntu/
+ubuntu http://mirror.brightridge.com/ubuntuarchive/
+ubuntu http://mirror.hoobly.com/ubuntu/
+ubuntu http://mirror.its.umich.edu/ubuntu/
+ubuntu http://mirror.linux.ncsu.edu/ubuntu/
+ubuntu http://mirror.lstn.net/ubuntu/
+ubuntu http://mirror.nodesdirect.com/ubuntu/
+ubuntu ftp://mirror.nodesdirect.com/ubuntu/
+ubuntu http://mirror.servaxnet.com/ubuntu/
+ubuntu http://mirror.timkevin.us/ubuntu/
+ubuntu http://mirror.ubuntu.serverforge.org/
+ubuntu http://mirror.umd.edu/ubuntu/
+ubuntu http://mirror.us.leaseweb.net/ubuntu/
+ubuntu ftp://mirror.us.leaseweb.net/ubuntu/
+ubuntu http://mirrors.bloomu.edu/ubuntu/
+ubuntu ftp://mirrors.bloomu.edu/ubuntu/
+ubuntu http://mirrors.egr.msu.edu/ubuntu/
+ubuntu http://mirrors.rit.edu/ubuntu/
+ubuntu ftp://mirrors.rit.edu/ubuntu/
+ubuntu http://mirrors.usinternet.com/ubuntu/archive/
+ubuntu http://mirrors.xtom.com/ubuntu/
+ubuntu http://nyc.mirrors.clouvider.net/ubuntu/
+ubuntu http://plug-mirror.rcac.purdue.edu/ubuntu/
+ubuntu ftp://plug-mirror.rcac.purdue.edu/ubuntu/
+ubuntu http://ubuntu.cs.utah.edu/ubuntu/
+ubuntu ftp://ubuntu.cs.utah.edu/ubuntu/ubuntu/
+ubuntu http://ubuntu.mirror.constant.com/
+ubuntu http://ubuntu.mirror.shastacoe.net/ubuntu/
+ubuntu http://mirrors.wikimedia.org/ubuntu/
+ubuntu http://mirrors.gigenet.com/ubuntu/
+ubuntu http://mirror.rustytel.net/ubuntu/
+ubuntu http://mirror.siena.edu/ubuntu/
+ubuntu http://mirrors.cmich.edu/ubuntu/
+ubuntu http://mirrors.us.kernel.org/ubuntu/
+ubuntu ftp://mirrors.us.kernel.org/ubuntu/
+ubuntu http://repo.ialab.dsu.edu/ubuntu/
+ubuntu http://ubuntu.osuosl.org/ubuntu/
+ubuntu ftp://ubuntu.osuosl.org/pub/ubuntu/
+ubuntu http://ftp.usf.edu/pub/ubuntu/
+ubuntu ftp://ftp.usf.edu/pub/ubuntu/
+ubuntu http://mirror.cc.vt.edu/pub2/ubuntu/
+ubuntu ftp://mirror.cc.vt.edu/pub2/ubuntu/
+ubuntu http://mirror.clarkson.edu/ubuntu/
+ubuntu http://mirror.cogentco.com/pub/linux/ubuntu/
+ubuntu http://mirror.cs.jmu.edu/pub/ubuntu/
+ubuntu http://mirror.dal.nexril.net/ubuntu/
+ubuntu http://mirror.math.ucdavis.edu/ubuntu/
+ubuntu http://mirror.metrocast.net/ubuntu/
+ubuntu http://mirror.mia.velocihost.net/ubuntu/
+ubuntu http://mirror.mrjester.net/ubuntu/archive/
+ubuntu http://mirror.nerdmilio.com/ubuntu/
+ubuntu http://mirror.steadfastnet.com/ubuntu/
+ubuntu http://mirror.team-cymru.com/ubuntu/
+ubuntu ftp://mirror.team-cymru.com/ubuntu/
+ubuntu http://mirror.team-cymru.org/ubuntu/
+ubuntu ftp://mirror.team-cymru.org/ubuntu/
+ubuntu http://mirror.uoregon.edu/ubuntu/
+ubuntu ftp://mirror.uoregon.edu/ubuntu/
+ubuntu http://mirror.us-midwest-1.nexcess.net/ubuntu/
+ubuntu http://mirror.us-ny2.kamatera.com/ubuntu/
+ubuntu http://mirror.us-sc.kamatera.com/ubuntu/
+ubuntu http://mirror.us-tx.kamatera.com/ubuntu/
+ubuntu http://mirrors.accretive-networks.net/ubuntu/
+ubuntu http://mirrors.arpnetworks.com/Ubuntu/
+ubuntu http://mirrors.cat.pdx.edu/ubuntu/
+ubuntu http://mirrors.liquidweb.com/ubuntu/
+ubuntu http://mirrors.lug.mtu.edu/ubuntu/
+ubuntu ftp://mirrors.lug.mtu.edu/ubuntu/
+ubuntu http://mirrors.maine.edu/ubuntu/
+ubuntu http://mirrors.mit.edu/ubuntu/
+ubuntu http://mirrors.namecheap.com/ubuntu/
+ubuntu ftp://mirrors.namecheap.com/ubuntu/
+ubuntu http://mirrors.ocf.berkeley.edu/ubuntu/
+ubuntu ftp://mirrors.ocf.berkeley.edu/ubuntu/
+ubuntu http://mirrors.ocf.berkeley.edu/ubuntu-ports/
+ubuntu http://mirrors.sarak.as/ubuntu/
+ubuntu ftp://mirrors.sarak.as/ubuntu/
+ubuntu http://mirrors.sonic.net/ubuntu/
+ubuntu ftp://mirrors.sonic.net/ubuntu/
+ubuntu http://mirrors.xmission.com/ubuntu/
+ubuntu ftp://mirrors.xmission.com/ubuntu/
+ubuntu http://pubmirrors.dal.corespace.com/ubuntu/
+ubuntu ftp://pubmirrors.dal.corespace.com/ubuntu/
+ubuntu http://ubuntu.mirror.frontiernet.net/ubuntu/
+ubuntu ftp://ubuntu.mirror.frontiernet.net/ubuntu/
+ubuntu http://ubuntu.mirrors.pair.com/archive/
+ubuntu ftp://ubuntu.mirrors.pair.com/archive/
+ubuntu http://ubuntu.phoenixnap.com/ubuntu/
+ubuntu http://www.gtlib.gatech.edu/pub/ubuntu/
+ubuntu ftp://ftp.gtlib.gatech.edu/pub/ubuntu
+ubuntu http://mirror.d.umn.edu/ubuntu/
+ubuntu http://mirrors.vcea.wsu.edu/ubuntu/
+ubuntu http://ubuntu.securedservers.com/
+ubuntu http://ftp.ussg.iu.edu/linux/ubuntu/
+ubuntu http://mirror.vcu.edu/pub/gnu+linux/ubuntu/
+ubuntu ftp://mirror.vcu.edu/pub/gnu+linux/ubuntu/
+ubuntu http://ubuntu.repo.cure.edu.uy/ubuntu/
+ubuntu http://repos.interior.edu.uy/ubuntu/
+ubuntu http://mirror.dc.uz/ubuntu/
+ubuntu ftp://mirror.dc.uz/ubuntu/
+ubuntu http://mirror.azvps.vn/ubuntu/
+ubuntu http://ubuntu.vpsttt.com/ubuntu/
+ubuntu http://opensource.xtdv.net/ubuntu/
+ubuntu http://mirror.bizflycloud.vn/ubuntu/
+ubuntu http://mirror.clearsky.vn/ubuntu/
+ubuntu http://mirror.vietnix.vn/ubuntu/
+ubuntu http://mirror.viettelcloud.vn/ubuntu/
+ubuntu http://mirrors.tino.org/ubuntu/
+ubuntu http://vn-mirrors.techhost.vn/ubuntu/
+ubuntu http://vn-mirrors.vhost.vn/ubuntu/
+ubuntu http://mirrors.nhanhoa.com/ubuntu/
+EOFML
 }
 
 function getLogo()
@@ -1073,9 +2597,9 @@ EOF
   "1" "Edit Encrypted Config File" \
   "2" "Edit Plaintext Root Config File" \
   "3" "Edit Plaintext User Config File" \
-  "4" "Release All Locks" \
-  "5" "Check For IP Address Changes" \
-  "6" "Refresh Firewall" \
+  "4" "Update APT Mirror" \
+  "5" "Release All Locks" \
+  "6" "Update IP and Refresh Firewall" \
   "7" "Configure Simple Backup" \
   "8" "Uninstall and Remove Everything" \
   "9" "Exit" 3>&1 1>&2 2>&3)
@@ -1122,18 +2646,19 @@ EOF
       return 1 ;;
     4)
       set +e
+      refreshSudo
+      checkUpdateAptSources true
+      return 1 ;;
+    5)
+      set +e
       sudo -k
       USER_SUDO_PW=""
       refreshSudo
       releaseAllLocks
       return 1 ;;
-    5)
-      checkLoadConfig
-      checkHostAllInterfaceIPChanges true false User-Console
-      set +e
-      return 1 ;;
     6)
       checkLoadConfig
+      checkHostAllInterfaceIPChanges true false User-Console
       checkUpdateAllIPTables User-Console
       set +e
       return 1 ;;
@@ -1361,6 +2886,8 @@ function loadVersionVars()
   DISTRO_ID=$(cat /etc/*-release 2> /dev/null | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
   DISTRO_NAME=$(cat /etc/*-release 2> /dev/null | grep "^NAME=" | cut -d"=" -f2 | xargs)
   DISTRO_VERSION=$(cat /etc/*-release 2> /dev/null | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+  DISTRO_CODENAME=$(cat /etc/*-release 2> /dev/null | grep "^VERSION_CODENAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_ARCH=$(dpkg --print-architecture)
 }
 
 function checkSupportedHostOS()
@@ -8983,7 +10510,7 @@ Please address this issue, then press Retry to proceed or Cancel to exit.
 
 EOF
   )
-      if ! (whiptail --title "Login Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --no-button "Cancel" --yes-button "Retry"); then
+      if ! (whiptail --title "Login Error" --yesno "$errmenu" $MENU_HEIGHT $MENU_WIDTH --yes-button "Retry" --no-button "Cancel"); then
         return 1
       fi
     fi
