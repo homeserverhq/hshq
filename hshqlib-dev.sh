@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=168
+HSHQ_LIB_SCRIPT_VERSION=169
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5168,7 +5168,7 @@ function deleteListOfStacks()
       if [ "${cur_stack_name//\"}" = "$cur_stack" ]; then
         user_type=$(echo $curSVC | cut -d"=" -f2 | cut -d"," -f4)
         subdom=$(echo $curSVC | cut -d"=" -f2 | cut -d"," -f6)
-        disableSvcAll "${user_type//\"}" "https://${subdom//\"}.$HOMESERVER_DOMAIN" false
+        deleteSvcAll "${user_type//\"}" "https://${subdom//\"}.$HOMESERVER_DOMAIN" false
       fi
     done
   done
@@ -5802,20 +5802,20 @@ function updateHeimdallUptimeKumaRelayServer()
 {
   docker container stop heimdall > /dev/null 2>&1
   docker container stop uptimekuma > /dev/null 2>&1
-  insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false
+  insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false "$(getHeimdallOrderFromSub $SUB_ADGUARD.$INT_DOMAIN_PREFIX relayserver)"
   insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false
-  checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0
-  insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false
+  insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false "$(getHeimdallOrderFromSub $SUB_CLIENTDNS.$INT_DOMAIN_PREFIX relayserver)"
+  checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0 "$(getHeimdallOrderFromSub $SUB_CADDYDNS.$INT_DOMAIN_PREFIX relayserver)"
+  insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false "$(getHeimdallOrderFromSub $SUB_PORTAINER.$INT_DOMAIN_PREFIX relayserver)"
   insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false
+  insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false "$(getHeimdallOrderFromSub $SUB_RSPAMD.$INT_DOMAIN_PREFIX relayserver)"
   insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false
+  insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false "$(getHeimdallOrderFromSub $SUB_SYNCTHING.$INT_DOMAIN_PREFIX relayserver)"
   insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0
+  checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0 "$(getHeimdallOrderFromSub $SUB_WGPORTAL.$INT_DOMAIN_PREFIX relayserver)"
   insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
   checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
-  checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0
+  checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0 "$(getHeimdallOrderFromSub $SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX relayserver)"
   docker container start heimdall > /dev/null 2>&1
   docker container start uptimekuma > /dev/null 2>&1
 }
@@ -12432,7 +12432,7 @@ function performNetworkInvite()
       # Send ourself a copy
       sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body"
       insertEnableSvcUptimeKuma uptimekuma "${cur_hs_name}" homeservers "https://$SUB_HSHQSTATUS.$domain_name" true
-      insertEnableSvcHeimdall heimdall "$cur_hs_name" homeservers "https://$SUB_HSHQHOME.$domain_name" "hs2.png" true
+      insertEnableSvcHeimdall heimdall "$cur_hs_name" homeservers "https://$SUB_HSHQHOME.$domain_name" "hs2.png" true "$(getHeimdallOrderFromSub $SUB_HSHQHOME homeservers)"
       # Send update email to other HomeServers on our network
       notifyMyNetworkHomeServersDNSUpdate add "$cur_hs_name" "$domain_name"
       # Send update email to other users on our network
@@ -13092,7 +13092,7 @@ function removeMyNetworkPrimaryVPN()
     sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
     docker container restart syncthing
     # Remove any DNS entries resulting from our network.
-    sudo sqlite3 $HSHQ_DB "delete from hsvpn_dns where HostDomain='$HOMESERVER_DOMAIN';"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from hsvpn_dns where HostDomain='$HOMESERVER_DOMAIN';"
     vpn_arr=($(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType='homeserver_vpn' and NetworkType='mynetwork';"))
     for curID in "${vpn_arr[@]}"
     do
@@ -13112,26 +13112,26 @@ function removeMyNetworkPrimaryVPN()
     fi
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains;"
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from exposedomains;"
-    disableSvcAll relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcAll relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcAll relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcAll relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcAll relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcAll relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcHeimdall relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-    disableSvcHeimdall relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcAll relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcAll relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcAll relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcAll relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcAll relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcAll relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcHeimdall relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+    deleteSvcHeimdall relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
   elif [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     sudo rm -f $HSHQ_SSL_DIR/"$(getCACertificateNameFromDomain $domain_name)"
     sudo rm -f /usr/local/share/ca-certificates/"$(getCACertificateNameFromDomain $domain_name)"
     sudo update-ca-certificates
     dns_arr=($(sqlite3 $HSHQ_DB "select PeerDomain,PeerDomainExtPrefix from hsvpn_dns where HostDomain='$domain_name';"))
-    sudo sqlite3 $HSHQ_DB "delete from hsvpn_dns where HostDomain='$domain_name';"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from hsvpn_dns where HostDomain='$domain_name';"
     for cur_dns in "${dns_arr[@]}"
     do
       curPeerDomain=$(echo "$cur_dns" | cut -d "|" -f1)
       curPeerDomainExtPrefix=$(echo "$cur_dns" | cut -d "|" -f2)
       removeRevertDNS $curPeerDomain $curPeerDomainExtPrefix
-      disableSvcHeimdall homeservers https://$SUB_HSHQHOME.$curPeerDomain false
+      deleteSvcHeimdall homeservers https://$SUB_HSHQHOME.$curPeerDomain false
     done
   fi
   docker container start uptimekuma >/dev/null
@@ -13183,7 +13183,7 @@ function removeMyNetworkHomeServerVPNConnection()
     echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer, returning..."
     return
   fi
-  sudo sqlite3 $HSHQ_DB "delete from hsvpn_dns where HostDomain='$HOMESERVER_DOMAIN' and PeerDomain='$domain_name';"
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from hsvpn_dns where HostDomain='$HOMESERVER_DOMAIN' and PeerDomain='$domain_name';"
   removeRevertDNS $domain_name $domain_ext_prefix
   deleteDomainAndWildcardAdguardRS $domain_name
   deleteDomainAdguardRS "*.$domain_ext_prefix.$domain_name"
@@ -13288,7 +13288,7 @@ function disconnectOtherNetworkHomeServerVPNConnection()
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
   peer_list=($(sqlite3 $HSHQ_DB "select PeerDomain,PeerDomainExtPrefix,IsActive from hsvpn_dns where HostDomain='$domain_name';"))
-  sudo sqlite3 $HSHQ_DB "delete from hsvpn_dns where HostDomain='$domain_name';"
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from hsvpn_dns where HostDomain='$domain_name';"
   for cur_peer in "${peer_list[@]}"
   do
     curPeerDomain=$(echo "$cur_peer" | cut -d "|" -f1)
@@ -17210,7 +17210,7 @@ function removeLECertPathsFromRelayServer()
   rem_subdomains_Arr=($(echo $subdoms_le | tr "," "\n"))
   for rem_sub in "${rem_subdomains_Arr[@]}"
   do
-    sudo sqlite3 $HSHQ_DB "delete from lecertdomains where Domain='$rem_sub';"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from lecertdomains where Domain='$rem_sub';"
   done
 }
 
@@ -17290,7 +17290,7 @@ function removeExposeDomainPathsFromRelayServer()
   rem_subdomains_Arr=($(echo $subdoms_exp | tr "," "\n"))
   for rem_sub in "${rem_subdomains_Arr[@]}"
   do
-    sudo sqlite3 $HSHQ_DB "delete from exposedomains where Domain='$rem_sub';"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from exposedomains where Domain='$rem_sub';"
   done
 }
 
@@ -17797,7 +17797,7 @@ function updateHomeServerDNS()
         fi
         addDomainAndWildcardAdguardHS "$curPeerDomain" "$curIP"
         addDomainAdguardHS "*.$curExtPrefix.$curPeerDomain" "A"
-        insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://$SUB_HSHQHOME.$curPeerDomain" "hs2.png" true
+        insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://$SUB_HSHQHOME.$curPeerDomain" "hs2.png" true "$(getHeimdallOrderFromSub $SUB_HSHQHOME homeservers)"
       else
         if [ -z "$is_dns_exist" ]; then
           # No entry exists, add a new one
@@ -17839,12 +17839,12 @@ function updateHomeServerDNS()
       curPeerDomain=$(echo "$curdns" | cut -d "|" -f1)
       curExtPrefix=$(echo "$curdns" | cut -d "|" -f2)
       is_dns_active=$(sqlite3 $HSHQ_DB "select IsActive from hsvpn_dns where HostDomain='$cur_host' and PeerDomain='$curPeerDomain';")
-      sudo sqlite3 $HSHQ_DB "delete from hsvpn_dns where HostDomain='$cur_host' and PeerDomain='$curPeerDomain';"
+      sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from hsvpn_dns where HostDomain='$cur_host' and PeerDomain='$curPeerDomain';"
       if [ $is_dns_active = 1 ]; then
         removeRevertDNS $curPeerDomain $curExtPrefix
       fi
       if [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ] && [ "$primaryDomain" = "$cur_host" ]; then
-        disableSvcHeimdall homeservers "https://$SUB_HSHQHOME.$curPeerDomain" false
+        deleteSvcHeimdall homeservers "https://$SUB_HSHQHOME.$curPeerDomain" false
       fi
     done
   done
@@ -21595,7 +21595,7 @@ function version48Update()
     if [ $? -ne 0 ]; then
       hc_pw_hash=$(echo -n $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD | openssl dgst -sha256 | cut -d"=" -f2 | xargs)
       sed -i "/BASEPATH.*/a\    \"HASS_API\": \"\",\n    \"USERNAME\": \"$HOMEASSISTANT_CONFIGURATOR_USER\",\n    \"PASSWORD\": \"{sha256}$hc_pw_hash\"," $HSHQ_STACKS_DIR/homeassistant/configurator/settings.conf
-      disableSvcUptimeKuma "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN" true
+      deleteSvcUptimeKuma "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN" true
     fi
     echo "Restarting HomeAssistant stack (if running)..."
     restartStackIfRunning homeassistant 10
@@ -21896,7 +21896,7 @@ function version54Update()
   default_iface=$(getDefaultIface)
   sudo iptables -C INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT > /dev/null 2>&1 || sudo iptables -A INPUT -p tcp -m tcp -i $default_iface -s $HOMESERVER_HOST_RANGE --dport $SCRIPTSERVER_LOCALHOST_PORT -j ACCEPT
   generateCert script-server "script-server,host.docker.internal,localhost" "127.0.0.1,$HOMESERVER_HOST_IP"
-  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true
+  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
   HSHQ_VERSION=54
   updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   performExitFunctions
@@ -30935,107 +30935,26 @@ function insertServicesHeimdall()
   curdt=$(getCurrentDate)
   cur_id=1
   # Admin Tab
-  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1 "script-server.png"
-  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT" 1 "script-server.png"
-  insertIntoHeimdallDB "$FMLNAME_PORTAINER" $USERTYPE_PORTAINER "https://$SUB_PORTAINER.$HOMESERVER_DOMAIN" 1 "portainer.png"
-  insertIntoHeimdallDB "$FMLNAME_PORTAINER (IP)" $USERTYPE_PORTAINER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT" 1 "portainer.png"
-  insertIntoHeimdallDB "$FMLNAME_ADGUARD" $USERTYPE_ADGUARD "https://$SUB_ADGUARD.$HOMESERVER_DOMAIN" 1 "adguardhome.png"
+  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1 "script-server.png" "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
+  insertIntoHeimdallDB "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT" 1 "script-server.png" "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
+  insertIntoHeimdallDB "$FMLNAME_PORTAINER" $USERTYPE_PORTAINER "https://$SUB_PORTAINER.$HOMESERVER_DOMAIN" 1 "portainer.png" "$(getHeimdallOrderFromSub $SUB_PORTAINER $USERTYPE_PORTAINER)"
+  insertIntoHeimdallDB "$FMLNAME_PORTAINER (IP)" $USERTYPE_PORTAINER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT" 1 "portainer.png" "$(getHeimdallOrderFromSub $SUB_PORTAINER $USERTYPE_PORTAINER)"
+  insertIntoHeimdallDB "$FMLNAME_ADGUARD" $USERTYPE_ADGUARD "https://$SUB_ADGUARD.$HOMESERVER_DOMAIN" 1 "adguardhome.png" "$(getHeimdallOrderFromSub $SUB_ADGUARD $USERTYPE_ADGUARD)"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    insertIntoHeimdallDB "${FMLNAME_CLIENTDNS}-user1" $USERTYPE_CLIENTDNS "https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN" 1 "dnsmasq.png"
+    insertIntoHeimdallDB "${FMLNAME_CLIENTDNS}-user1" $USERTYPE_CLIENTDNS "https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN" 1 "dnsmasq.png" "$(getHeimdallOrderFromSub $SUB_CLIENTDNS $USERTYPE_CLIENTDNS)"
   fi
-  insertIntoHeimdallDB "$FMLNAME_OPENLDAP_PHP" $USERTYPE_OPENLDAP_PHP "https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN" 1 "ldapphp.png"
-  insertIntoHeimdallDB "$FMLNAME_WAZUH" $USERTYPE_WAZUH "https://$SUB_WAZUH.$HOMESERVER_DOMAIN" 0 "wazuh.png"
-  insertIntoHeimdallDB "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" 0 "grafana.png"
-  insertIntoHeimdallDB "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" 0 "prometheus.png"
-  insertIntoHeimdallDB "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" 0 "influxdb.png"
-  insertIntoHeimdallDB "$FMLNAME_DOZZLE" $USERTYPE_DOZZLE "https://$SUB_DOZZLE.$HOMESERVER_DOMAIN" 0 "dozzle.png"
-  insertIntoHeimdallDB "$FMLNAME_GUACAMOLE" $USERTYPE_GUACAMOLE "https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN" 0 "guacamole.png"
-  insertIntoHeimdallDB "$FMLNAME_UPTIMEKUMA" $USERTYPE_UPTIMEKUMA "https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN" 1 "uptimekuma.png"
-  insertIntoHeimdallDB "$FMLNAME_DUPLICATI" $USERTYPE_DUPLICATI "https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN" 1 "duplicati.png"
-  insertIntoHeimdallDB "$FMLNAME_SYNCTHING" $USERTYPE_SYNCTHING "https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN" 1 "syncthing.png"
-  insertIntoHeimdallDB "$FMLNAME_CODESERVER" $USERTYPE_CODESERVER "https://$SUB_CODESERVER.$HOMESERVER_DOMAIN" 0 "codeserver.png"
-  insertIntoHeimdallDB "$FMLNAME_SQLPAD" $USERTYPE_SQLPAD "https://$SUB_SQLPAD.$HOMESERVER_DOMAIN" 0 "sqlpad.png"
-  insertIntoHeimdallDB "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" 0 "homeassistant.png"
-  insertIntoHeimdallDB "$FMLNAME_SHLINK_WEB" $USERTYPE_SHLINK_WEB "https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN" 0 "shlink.png"
-  insertIntoHeimdallDB "$FMLNAME_FIREFLY_APP" $USERTYPE_FIREFLY_APP "https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN" 0 "firefly.png"
-  insertIntoHeimdallDB "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" 0 "firefly-importer.png"
-  insertIntoHeimdallDB "$FMLNAME_KASM_WIZARD" $USERTYPE_KASM_WIZARD "https://$SUB_KASM_WIZARD.$HOMESERVER_DOMAIN" 0 "kasm.png"
-  insertIntoHeimdallDB "$FMLNAME_VAULTWARDEN Admin" $USERTYPE_PORTAINER "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin" 0 "vaultwarden.png"
-  insertIntoHeimdallDB "$FMLNAME_COLLABORA Admin" $USERTYPE_PORTAINER "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/browser/dist/admin/admin.html" 0 "collabora.png"
-  insertIntoHeimdallDB "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" 0 "ntfy.png"
-  insertIntoHeimdallDB "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" 0 "ittools.png"
-  insertIntoHeimdallDB "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0 "remotely.png"
-  insertIntoHeimdallDB "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0 "calibre-server.png"
-  insertIntoHeimdallDB "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0 "netdata.png"
-  insertIntoHeimdallDB "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0 "jupyter.png"
-  insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
-  insertIntoHeimdallDB "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0 "speedtest-tracker.png"
-  insertIntoHeimdallDB "$FMLNAME_MATOMO" $USERTYPE_MATOMO "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0 "matomo.png"
-  insertIntoHeimdallDB "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" 0 "mindsdb.png"
-  insertIntoHeimdallDB "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" 0 "langfuse.png"
-  insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_PORTAINER "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
+  insertIntoHeimdallDB "$FMLNAME_OPENLDAP_PHP" $USERTYPE_OPENLDAP_PHP "https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN" 1 "ldapphp.png" "$(getHeimdallOrderFromSub $SUB_OPENLDAP_PHP $USERTYPE_OPENLDAP_PHP)"
+  insertIntoHeimdallDB "$FMLNAME_UPTIMEKUMA" $USERTYPE_UPTIMEKUMA "https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN" 1 "uptimekuma.png" "$(getHeimdallOrderFromSub $SUB_UPTIMEKUMA $USERTYPE_UPTIMEKUMA)"
+  insertIntoHeimdallDB "$FMLNAME_DUPLICATI" $USERTYPE_DUPLICATI "https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN" 1 "duplicati.png" "$(getHeimdallOrderFromSub $SUB_DUPLICATI $USERTYPE_DUPLICATI)"
+  insertIntoHeimdallDB "$FMLNAME_SYNCTHING" $USERTYPE_SYNCTHING "https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN" 1 "syncthing.png" "$(getHeimdallOrderFromSub $SUB_SYNCTHING $USERTYPE_SYNCTHING)"
+  insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" admin "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png" "$(getHeimdallOrderFromSub $SUB_AUTHELIA admin)"
   # Users Tab
-  insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png"
-  insertIntoHeimdallDB "$FMLNAME_OPENLDAP_MANAGER" $USERTYPE_OPENLDAP_MANAGER "https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN" 1 "ldapmanager.png"
-  insertIntoHeimdallDB "$FMLNAME_MAILU" $USERTYPE_MAILU "https://$SUB_MAILU.$HOMESERVER_DOMAIN" 1 "mailu.png"
-  insertIntoHeimdallDB "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" 0 "nextcloud.png"
-  insertIntoHeimdallDB "$FMLNAME_JITSI" $USERTYPE_JITSI "https://$SUB_JITSI.$HOMESERVER_DOMAIN" 0 "jitsi.png"
-  insertIntoHeimdallDB "$FMLNAME_MATRIX_ELEMENT_PRIVATE" $USERTYPE_MATRIX_ELEMENT_PRIVATE "https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN" 0 "element-private.png"
-  insertIntoHeimdallDB "$FMLNAME_MATRIX_ELEMENT_PUBLIC" $USERTYPE_MATRIX_ELEMENT_PUBLIC "https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN" 0 "element-public.png"
-  insertIntoHeimdallDB "$FMLNAME_MASTODON" $USERTYPE_MASTODON "https://$SUB_MASTODON.$HOMESERVER_DOMAIN" 0 "mastodon.png"
-  insertIntoHeimdallDB "$FMLNAME_PEERTUBE" $USERTYPE_PEERTUBE "https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN" 0 "peertube.png"
-  insertIntoHeimdallDB "$FMLNAME_SEARXNG" $USERTYPE_SEARXNG "https://$SUB_SEARXNG.$HOMESERVER_DOMAIN" 0 "searxng.png"
-  insertIntoHeimdallDB "$FMLNAME_PHOTOPRISM" $USERTYPE_PHOTOPRISM "https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN" 0 "photoprism.png"
-  insertIntoHeimdallDB "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" 0 "wikijs.png"
-  insertIntoHeimdallDB "$FMLNAME_WORDPRESS" $USERTYPE_WORDPRESS "https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN" 0 "wordpress.png"
-  insertIntoHeimdallDB "$FMLNAME_GHOST" $USERTYPE_GHOST "https://$SUB_GHOST.$HOMESERVER_DOMAIN" 0 "ghost.png"
-  insertIntoHeimdallDB "$FMLNAME_JELLYFIN" $USERTYPE_JELLYFIN "https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN" 0 "jellyfin.png"
-  insertIntoHeimdallDB "$FMLNAME_FILEBROWSER" $USERTYPE_FILEBROWSER "https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN" 0 "filebrowser.png"
-  insertIntoHeimdallDB "$FMLNAME_GITLAB" $USERTYPE_GITLAB "https://$SUB_GITLAB.$HOMESERVER_DOMAIN" 0 "gitlab.png"
-  insertIntoHeimdallDB "$FMLNAME_VAULTWARDEN" $USERTYPE_VAULTWARDEN "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN" 0 "vaultwarden.png"
-  insertIntoHeimdallDB "$FMLNAME_DISCOURSE" $USERTYPE_DISCOURSE "https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN" 0 "discourse.png"
-  insertIntoHeimdallDB "$FMLNAME_GITEA" $USERTYPE_GITEA "https://$SUB_GITEA.$HOMESERVER_DOMAIN" 0 "gitea.png"
-  insertIntoHeimdallDB "$FMLNAME_INVIDIOUS" $USERTYPE_INVIDIOUS "https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN" 0 "invidious.png"
-  insertIntoHeimdallDB "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" 0 "excalidraw.png"
-  insertIntoHeimdallDB "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" 0 "drawio.png"
-  insertIntoHeimdallDB "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" 0 "mealie.png"
-  insertIntoHeimdallDB "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" 0 "bar-assistant.png"
-  insertIntoHeimdallDB "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0 "kasm.png"
-  insertIntoHeimdallDB "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0 "calibre-web.png"
-  insertIntoHeimdallDB "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0 "linkwarden.png"
-  insertIntoHeimdallDB "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0 "stirlingpdf.png"
-  insertIntoHeimdallDB "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0 "freshrss.png"
-  insertIntoHeimdallDB "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0 "keila.png"
-  insertIntoHeimdallDB "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0 "wallabag.png"
-  insertIntoHeimdallDB "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0 "paperless.png"
-  insertIntoHeimdallDB "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0 "changedetection.png"
-  insertIntoHeimdallDB "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0 "huginn.png"
-  insertIntoHeimdallDB "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0 "filedrop.png"
-  insertIntoHeimdallDB "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0 "piped.png"
-  insertIntoHeimdallDB "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0 "grampsweb.png"
-  insertIntoHeimdallDB "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0 "penpot.png"
-  insertIntoHeimdallDB "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0 "espocrm.png"
-  insertIntoHeimdallDB "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0 "immich.png"
-  insertIntoHeimdallDB "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0 "homarr.png"
-  insertIntoHeimdallDB "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0 "pastefy.png"
-  insertIntoHeimdallDB "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0 "snippetbox.png"
-  insertIntoHeimdallDB "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0 "openwebui.png"
-  insertIntoHeimdallDB "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" 0 "pixelfed.png"
-  insertIntoHeimdallDB "$FMLNAME_YAMTRACK" $USERTYPE_YAMTRACK "https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN" 0 "yamtrack.png"
-  insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png"
+  insertIntoHeimdallDB "HomeServerHQ" $USERTYPE_AUTHELIA "https://www.homeserverhq.com" 1 "homeserverhq.png" "1"
+  insertIntoHeimdallDB "$FMLNAME_OPENLDAP_MANAGER" $USERTYPE_OPENLDAP_MANAGER "https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN" 1 "ldapmanager.png" "$(getHeimdallOrderFromSub $SUB_OPENLDAP_MANAGER $USERTYPE_OPENLDAP_MANAGER)"
+  insertIntoHeimdallDB "$FMLNAME_MAILU" $USERTYPE_MAILU "https://$SUB_MAILU.$HOMESERVER_DOMAIN" 1 "mailu.png" "$(getHeimdallOrderFromSub $SUB_MAILU $USERTYPE_MAILU)"
+  insertIntoHeimdallDB "Logout $FMLNAME_AUTHELIA" $USERTYPE_AUTHELIA "https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/logout" 1 "authelia.png" "$(getHeimdallOrderFromSub $SUB_AUTHELIA $USERTYPE_AUTHELIA)"
   # HomeServers Tab
-  insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png"
-  # RelayServer Tab
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    insertIntoHeimdallDB "$FMLNAME_ADGUARD" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "adguardhome.png"
-    insertIntoHeimdallDB "$FMLNAME_CLIENTDNS" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "dnsmasq.png"
-    insertIntoHeimdallDB "$FMLNAME_CADDYDNS" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "dnsmasq.png"
-    insertIntoHeimdallDB "$FMLNAME_PORTAINER" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "portainer.png"
-    insertIntoHeimdallDB "$FMLNAME_RSPAMD" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "rspamd.png"
-    insertIntoHeimdallDB "$FMLNAME_SYNCTHING" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "syncthing.png"
-    insertIntoHeimdallDB "$FMLNAME_WGPORTAL" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "wgportal.png"
-    insertIntoHeimdallDB "$FMLNAME_FILEBROWSER" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0 "filebrowser.png"
-  fi
+  insertIntoHeimdallDB "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQHOME.$HOMESERVER_DOMAIN" 1 "hs1.png" "$(getHeimdallOrderFromSub $SUB_HSHQHOME homeservers)"
 }
 
 function insertServicesUptimeKuma()
@@ -31048,91 +30967,297 @@ function insertServicesUptimeKuma()
   insertServiceUptimeKuma "$FMLNAME_OPENLDAP_PHP" $USERTYPE_OPENLDAP_PHP "https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN" 1
   insertServiceUptimeKuma "$FMLNAME_MAILU" $USERTYPE_MAILU "https://$SUB_MAILU.$HOMESERVER_DOMAIN" 1
   insertServiceUptimeKuma "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" 1
-  insertServiceUptimeKuma "$FMLNAME_WAZUH" $USERTYPE_WAZUH "https://$SUB_WAZUH.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_COLLABORA" $USERTYPE_COLLABORA "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_JITSI" $USERTYPE_JITSI "https://$SUB_JITSI.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_MATRIX_ELEMENT_PRIVATE" $USERTYPE_MATRIX_ELEMENT_PRIVATE "https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_MATRIX_ELEMENT_PUBLIC" $USERTYPE_MATRIX_ELEMENT_PUBLIC "https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_MASTODON" $USERTYPE_MASTODON "https://$SUB_MASTODON.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_DOZZLE" $USERTYPE_DOZZLE "https://$SUB_DOZZLE.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_SEARXNG" $USERTYPE_SEARXNG "https://$SUB_SEARXNG.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_JELLYFIN" $USERTYPE_JELLYFIN "https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_FILEBROWSER" $USERTYPE_FILEBROWSER "https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_PHOTOPRISM" $USERTYPE_PHOTOPRISM "https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_GUACAMOLE" $USERTYPE_GUACAMOLE "https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_HEIMDALL" $USERTYPE_HEIMDALL "https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN" 1
-  insertServiceUptimeKuma "$FMLNAME_WORDPRESS" $USERTYPE_WORDPRESS "https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_GHOST" $USERTYPE_GHOST "https://$SUB_GHOST.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$FMLNAME_DUPLICATI" $USERTYPE_DUPLICATI "https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN" 1
   insertServiceUptimeKuma "$FMLNAME_SYNCTHING" $USERTYPE_SYNCTHING "https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN" 1
-  insertServiceUptimeKuma "$FMLNAME_PEERTUBE" $USERTYPE_PEERTUBE "https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_SQLPAD" $USERTYPE_SQLPAD "https://$SUB_SQLPAD.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_CODESERVER" $USERTYPE_CODESERVER "https://$SUB_CODESERVER.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" $USERTYPE_HOMEASSISTANT_CONFIGURATOR "https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_HOMEASSISTANT_NODERED" $USERTYPE_HOMEASSISTANT_NODERED "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_GITEA" $USERTYPE_GITEA "https://$SUB_GITEA.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_GITLAB" $USERTYPE_GITLAB "https://$SUB_GITLAB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_VAULTWARDEN" $USERTYPE_VAULTWARDEN "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_DISCOURSE" $USERTYPE_DISCOURSE "https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_SHLINK_WEB" $USERTYPE_SHLINK_WEB "https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_FIREFLY_APP" $USERTYPE_FIREFLY_APP "https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "${FMLNAME_EXCALIDRAW_WEB}-Server" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_INVIDIOUS" $USERTYPE_INVIDIOUS "https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_MATOMO" $USERTYPE_HOMARR "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" 0
-  insertServiceUptimeKuma "$FMLNAME_YAMTRACK" $USERTYPE_YAMTRACK "https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN" 0
   insertServiceUptimeKuma "$HOMESERVER_NAME" homeservers "https://$SUB_HSHQSTATUS.$HOMESERVER_DOMAIN" 1
+}
 
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    insertServiceUptimeKuma "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
-    insertServiceUptimeKuma "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
-    insertServiceUptimeKuma "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
-    insertServiceUptimeKuma "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
-    insertServiceUptimeKuma "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
-    insertServiceUptimeKuma "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" 0
-  fi
+function getHeimdallOrderFromSub()
+{
+  ord_subdom="$1"
+  ord_usertype="$2"
+  order_num=999
+  order_uid=$(getHeimdallUserIDFromType $ord_usertype)
+  case "$ord_subdom" in
+    "$SUB_ADGUARD")
+      order_num=4
+      ;;
+    "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
+      order_num=100
+      ;;
+    "$SUB_AISTACK_LANGFUSE")
+      order_num=35
+      ;;
+    "$SUB_AISTACK_MINDSDB_APP")
+      order_num=34
+      ;;
+    "$SUB_AISTACK_OPENWEBUI")
+      order_num=81
+      ;;
+    "$SUB_AUTHELIA")
+      order_num=1001
+      ;;
+    "$SUB_BARASSISTANT")
+      order_num=61
+      ;;
+    "$SUB_CADDYDNS.$INT_DOMAIN_PREFIX")
+      order_num=105
+      ;;
+    "$SUB_CALIBRE_SERVER")
+      order_num=28
+      ;;
+    "$SUB_CALIBRE_WEB")
+      order_num=63
+      ;;
+    "$SUB_CHANGEDETECTION")
+      order_num=70
+      ;;
+    "$SUB_CLIENTDNS")
+      order_num=5
+      ;;
+    "$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX")
+      order_num=101
+      ;;
+    "$SUB_CODESERVER")
+      order_num=16
+      ;;
+    "$SUB_COLLABORA")
+      order_num=24
+      ;;
+    "$SUB_DISCOURSE")
+      order_num=55
+      ;;
+    "$SUB_DOZZLE")
+      order_num=11
+      ;;
+    "$SUB_DRAWIO_WEB")
+      order_num=59
+      ;;
+    "$SUB_DUPLICATI")
+      order_num=14
+      ;;
+    "$SUB_ESPOCRM")
+      order_num=76
+      ;;
+    "$SUB_EXAMPLESERVICE")
+      order_num=999
+      ;;
+    "$SUB_EXCALIDRAW_WEB")
+      order_num=58
+      ;;
+    "$SUB_FILEBROWSER")
+      order_num=52
+      ;;
+    "$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX")
+      order_num=107
+      ;;
+    "$SUB_FILEDROP")
+      order_num=72
+      ;;
+    "$SUB_FIREFLY_APP")
+      order_num=20
+      ;;
+    "$SUB_FIREFLY_IMPORTER")
+      order_num=21
+      ;;
+    "$SUB_FRESHRSS")
+      order_num=66
+      ;;
+    "$SUB_GHOST")
+      order_num=50
+      ;;
+    "$SUB_GITEA")
+      order_num=56
+      ;;
+    "$SUB_GITLAB")
+      order_num=53
+      ;;
+    "$SUB_GRAFANA")
+      order_num=8
+      ;;
+    "$SUB_GRAMPSWEB")
+      order_num=74
+      ;;
+    "$SUB_GUACAMOLE")
+      order_num=12
+      ;;
+    "$SUB_HOMARR")
+      order_num=78
+      ;;
+    "$SUB_HOMEASSISTANT_APP")
+      order_num=18
+      ;;
+    "$SUB_HSHQHOME")
+      order_num=85
+      ;;
+    "$SUB_HUGINN")
+      order_num=71
+      ;;
+    "$SUB_IMMICH")
+      order_num=77
+      ;;
+    "$SUB_INFLUXDB")
+      order_num=10
+      ;;
+    "$SUB_INVIDIOUS")
+      order_num=57
+      ;;
+    "$SUB_ITTOOLS")
+      order_num=26
+      ;;
+    "$SUB_JELLYFIN")
+      order_num=51
+      ;;
+    "$SUB_JITSI")
+      order_num=41
+      ;;
+    "$SUB_JUPYTER")
+      order_num=30
+      ;;
+    "$SUB_KASM")
+      order_num=62
+      ;;
+    "$SUB_KASM_WIZARD")
+      order_num=22
+      ;;
+    "$SUB_KEILA")
+      order_num=67
+      ;;
+    "$SUB_LINKWARDEN")
+      order_num=64
+      ;;
+    "$SUB_MAILU")
+      order_num=39
+      ;;
+    "$SUB_MASTODON")
+      order_num=44
+      ;;
+    "$SUB_MATOMO")
+      order_num=33
+      ;;
+    "$SUB_MATRIX_ELEMENT_PRIVATE")
+      order_num=42
+      ;;
+    "$SUB_MATRIX_ELEMENT_PUBLIC")
+      order_num=43
+      ;;
+    "$SUB_MEALIE")
+      order_num=60
+      ;;
+    "$SUB_NETDATA")
+      order_num=29
+      ;;
+    "$SUB_NEXTCLOUD")
+      order_num=40
+      ;;
+    "$SUB_NTFY")
+      order_num=25
+      ;;
+    "$SUB_OPENLDAP_MANAGER")
+      order_num=38
+      ;;
+    "$SUB_OPENLDAP_PHP")
+      order_num=6
+      ;;
+    "$SUB_PAPERLESS")
+      order_num=69
+      ;;
+    "$SUB_PASTEFY")
+      order_num=79
+      ;;
+    "$SUB_PEERTUBE")
+      order_num=45
+      ;;
+    "$SUB_PENPOT")
+      order_num=75
+      ;;
+    "$SUB_PHOTOPRISM")
+      order_num=47
+      ;;
+    "$SUB_PIPED_FRONTEND")
+      order_num=73
+      ;;
+    "$SUB_PIXELFED")
+      order_num=82
+      ;;
+    "$SUB_PORTAINER")
+      order_num=3
+      ;;
+    "$SUB_PORTAINER.$INT_DOMAIN_PREFIX")
+      order_num=102
+      ;;
+    "$SUB_PROMETHEUS")
+      order_num=9
+      ;;
+    "$SUB_REMOTELY")
+      order_num=27
+      ;;
+    "$SUB_RSPAMD.$INT_DOMAIN_PREFIX")
+      order_num=103
+      ;;
+    "$SUB_SCRIPTSERVER")
+      order_num=1
+      ;;
+    "$SUB_SEARXNG")
+      order_num=46
+      ;;
+    "$SUB_SHLINK_WEB")
+      order_num=19
+      ;;
+    "$SUB_SNIPPETBOX")
+      order_num=80
+      ;;
+    "$SUB_SPEEDTEST_TRACKER_LOCAL")
+      order_num=31
+      ;;
+    "$SUB_SPEEDTEST_TRACKER_VPN")
+      order_num=32
+      ;;
+    "$SUB_SQLPAD")
+      order_num=17
+      ;;
+    "$SUB_STIRLINGPDF")
+      order_num=65
+      ;;
+    "$SUB_SYNCTHING")
+      order_num=15
+      ;;
+    "$SUB_SYNCTHING.$INT_DOMAIN_PREFIX")
+      order_num=104
+      ;;
+    "$SUB_UPTIMEKUMA")
+      order_num=13
+      ;;
+    "$SUB_VAULTWARDEN")
+      if [ "$order_uid" = "1" ]; then
+        order_num=23
+      elif [ "$order_uid" = "2" ]; then
+        order_num=54
+      fi
+      ;;
+    "$SUB_WALLABAG")
+      order_num=68
+      ;;
+    "$SUB_WAZUH")
+      order_num=7
+      ;;
+    "$SUB_WGPORTAL.$INT_DOMAIN_PREFIX")
+      order_num=106
+      ;;
+    "$SUB_WIKIJS")
+      order_num=48
+      ;;
+    "$SUB_WORDPRESS")
+      order_num=49
+      ;;
+    "$SUB_YAMTRACK")
+      order_num=83
+      ;;
+    *)
+      ;;
+  esac
+  echo "$order_num"
 }
 
 function getLetsEncryptCertsDefault()
@@ -32788,9 +32913,9 @@ function installSysUtils()
   updateCaddyBlocks $SUB_INFLUXDB $MANAGETLS_INFLUXDB "$is_integrate_hshq" $NETDEFAULT_INFLUXDB "$inner_block"
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll sysutils "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" "grafana.png"
-    insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png"
-    insertEnableSvcAll sysutils "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" "influxdb.png"
+    insertEnableSvcAll sysutils "$FMLNAME_GRAFANA" $USERTYPE_GRAFANA "https://$SUB_GRAFANA.$HOMESERVER_DOMAIN" "grafana.png" "$(getHeimdallOrderFromSub $SUB_GRAFANA $USERTYPE_GRAFANA)"
+    insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png" "$(getHeimdallOrderFromSub $SUB_PROMETHEUS $USERTYPE_PROMETHEUS)"
+    insertEnableSvcAll sysutils "$FMLNAME_INFLUXDB" $USERTYPE_INFLUXDB "https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN" "influxdb.png" "$(getHeimdallOrderFromSub $SUB_INFLUXDB $USERTYPE_INFLUXDB)"
     restartAllCaddyContainers
   fi
 }
@@ -35450,7 +35575,7 @@ function mfAddPrometheusWeb()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PROMETHEUS $MANAGETLS_PROMETHEUS true $NETDEFAULT_PROMETHEUS "$inner_block"
-  insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png"
+  insertEnableSvcAll sysutils "$FMLNAME_PROMETHEUS" $USERTYPE_PROMETHEUS "https://$SUB_PROMETHEUS.$HOMESERVER_DOMAIN" "prometheus.png" "$(getHeimdallOrderFromSub $SUB_PROMETHEUS $USERTYPE_PROMETHEUS)"
   restartAllCaddyContainers
   grep "job_name: docker" $HSHQ_STACKS_DIR/sysutils/prometheus/prometheus.yml > /dev/null 2>&1
   if [ $? -ne 0 ]; then
@@ -37155,7 +37280,7 @@ EOFWZ
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_WAZUH $MANAGETLS_WAZUH "$is_integrate_hshq" $NETDEFAULT_WAZUH "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll wazuh "$FMLNAME_WAZUH" $USERTYPE_WAZUH "https://$SUB_WAZUH.$HOMESERVER_DOMAIN" "wazuh.png"
+    insertEnableSvcAll wazuh "$FMLNAME_WAZUH" $USERTYPE_WAZUH "https://$SUB_WAZUH.$HOMESERVER_DOMAIN" "wazuh.png" "$(getHeimdallOrderFromSub $SUB_WAZUH $USERTYPE_WAZUH)"
     restartAllCaddyContainers
   fi
 }
@@ -38103,7 +38228,7 @@ function installCollabora()
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcUptimeKuma collabora "$FMLNAME_COLLABORA" $USERTYPE_COLLABORA "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN" true
-    insertEnableSvcHeimdall collabora "$FMLNAME_COLLABORA Admin" admin "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/browser/dist/admin/admin.html" "collabora.png" true
+    insertEnableSvcHeimdall collabora "$FMLNAME_COLLABORA Admin" admin "https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/browser/dist/admin/admin.html" "collabora.png" true "$(getHeimdallOrderFromSub $SUB_COLLABORA admin)"
     restartAllCaddyContainers
   fi
 }
@@ -38564,7 +38689,7 @@ function installNextcloud()
   insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll nextcloud "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" "nextcloud.png"
+    insertEnableSvcAll nextcloud "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" "nextcloud.png" "$(getHeimdallOrderFromSub $SUB_NEXTCLOUD $USERTYPE_NEXTCLOUD)"
     restartAllCaddyContainers
   fi
   docker exec -u www-data nextcloud-app php occ app:enable notify_push
@@ -39689,7 +39814,7 @@ function installJitsi()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_JITSI $MANAGETLS_JITSI "$is_integrate_hshq" $NETDEFAULT_JITSI "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll jitsi "$FMLNAME_JITSI" $USERTYPE_JITSI "https://$SUB_JITSI.$HOMESERVER_DOMAIN" "jitsi.png"
+    insertEnableSvcAll jitsi "$FMLNAME_JITSI" $USERTYPE_JITSI "https://$SUB_JITSI.$HOMESERVER_DOMAIN" "jitsi.png" "$(getHeimdallOrderFromSub $SUB_JITSI $USERTYPE_JITSI)"
     restartAllCaddyContainers
   fi
 }
@@ -39998,8 +40123,8 @@ function installMatrix()
   updateCaddyBlocks $SUB_MATRIX_ELEMENT_PUBLIC $MANAGETLS_MATRIX_ELEMENT_PUBLIC "$is_integrate_hshq" $NETDEFAULT_MATRIX_ELEMENT_PUBLIC "$inner_block"
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll matrix "$FMLNAME_MATRIX_ELEMENT_PRIVATE" $USERTYPE_MATRIX_ELEMENT_PRIVATE "https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN" "element-private.png"
-    insertEnableSvcAll matrix "$FMLNAME_MATRIX_ELEMENT_PUBLIC" $USERTYPE_MATRIX_ELEMENT_PUBLIC "https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN" "element-public.png"
+    insertEnableSvcAll matrix "$FMLNAME_MATRIX_ELEMENT_PRIVATE" $USERTYPE_MATRIX_ELEMENT_PRIVATE "https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN" "element-private.png" "$(getHeimdallOrderFromSub $SUB_MATRIX_ELEMENT_PRIVATE $USERTYPE_MATRIX_ELEMENT_PRIVATE)"
+    insertEnableSvcAll matrix "$FMLNAME_MATRIX_ELEMENT_PUBLIC" $USERTYPE_MATRIX_ELEMENT_PUBLIC "https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN" "element-public.png" "$(getHeimdallOrderFromSub $SUB_MATRIX_ELEMENT_PUBLIC $USERTYPE_MATRIX_ELEMENT_PUBLIC)"
     restartAllCaddyContainers
   fi
 }
@@ -40544,7 +40669,7 @@ function installWikijs()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_WIKIJS $MANAGETLS_WIKIJS "$is_integrate_hshq" $NETDEFAULT_WIKIJS "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll wikijs "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" "wikijs.png"
+    insertEnableSvcAll wikijs "$FMLNAME_WIKIJS" $USERTYPE_WIKIJS "https://$SUB_WIKIJS.$HOMESERVER_DOMAIN" "wikijs.png" "$(getHeimdallOrderFromSub $SUB_WIKIJS $USERTYPE_WIKIJS)"
     restartAllCaddyContainers
   fi
 }
@@ -41019,7 +41144,7 @@ function installMastodon()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_MASTODON $MANAGETLS_MASTODON "$is_integrate_hshq" $NETDEFAULT_MASTODON "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll mastodon "$FMLNAME_MASTODON" $USERTYPE_MASTODON "https://$SUB_MASTODON.$HOMESERVER_DOMAIN" "mastodon.png"
+    insertEnableSvcAll mastodon "$FMLNAME_MASTODON" $USERTYPE_MASTODON "https://$SUB_MASTODON.$HOMESERVER_DOMAIN" "mastodon.png" "$(getHeimdallOrderFromSub $SUB_MASTODON $USERTYPE_MASTODON)"
     restartAllCaddyContainers
   fi
 }
@@ -41833,7 +41958,7 @@ function installDozzle()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_DOZZLE $MANAGETLS_DOZZLE "$is_integrate_hshq" $NETDEFAULT_DOZZLE "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll dozzle "$FMLNAME_DOZZLE" $USERTYPE_DOZZLE "https://$SUB_DOZZLE.$HOMESERVER_DOMAIN" "dozzle.png"
+    insertEnableSvcAll dozzle "$FMLNAME_DOZZLE" $USERTYPE_DOZZLE "https://$SUB_DOZZLE.$HOMESERVER_DOMAIN" "dozzle.png" "$(getHeimdallOrderFromSub $SUB_DOZZLE $USERTYPE_DOZZLE)"
     restartAllCaddyContainers
   fi
 }
@@ -41987,7 +42112,7 @@ function installSearxNG()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SEARXNG $MANAGETLS_SEARXNG "$is_integrate_hshq" $NETDEFAULT_SEARXNG "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll searxng "$FMLNAME_SEARXNG" $USERTYPE_SEARXNG "https://$SUB_SEARXNG.$HOMESERVER_DOMAIN" "searxng.png"
+    insertEnableSvcAll searxng "$FMLNAME_SEARXNG" $USERTYPE_SEARXNG "https://$SUB_SEARXNG.$HOMESERVER_DOMAIN" "searxng.png" "$(getHeimdallOrderFromSub $SUB_SEARXNG $USERTYPE_SEARXNG)"
     restartAllCaddyContainers
   fi
 }
@@ -42328,7 +42453,7 @@ function installJellyfin()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_JELLYFIN $MANAGETLS_JELLYFIN "$is_integrate_hshq" $NETDEFAULT_JELLYFIN "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll jellyfin "$FMLNAME_JELLYFIN" $USERTYPE_JELLYFIN "https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN" "jellyfin.png"
+    insertEnableSvcAll jellyfin "$FMLNAME_JELLYFIN" $USERTYPE_JELLYFIN "https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN" "jellyfin.png" "$(getHeimdallOrderFromSub $SUB_JELLYFIN $USERTYPE_JELLYFIN)"
     restartAllCaddyContainers
   fi
 }
@@ -42518,7 +42643,7 @@ function installFileBrowser()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_FILEBROWSER $MANAGETLS_FILEBROWSER "$is_integrate_hshq" $NETDEFAULT_FILEBROWSER "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll filebrowser "$FMLNAME_FILEBROWSER" $USERTYPE_FILEBROWSER "https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN" "filebrowser.png"
+    insertEnableSvcAll filebrowser "$FMLNAME_FILEBROWSER" $USERTYPE_FILEBROWSER "https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN" "filebrowser.png" "$(getHeimdallOrderFromSub $SUB_FILEBROWSER $USERTYPE_FILEBROWSER)"
     restartAllCaddyContainers
   fi
 }
@@ -42707,7 +42832,7 @@ function installPhotoPrism()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PHOTOPRISM $MANAGETLS_PHOTOPRISM "$is_integrate_hshq" $NETDEFAULT_PHOTOPRISM "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll photoprism "$FMLNAME_PHOTOPRISM" $USERTYPE_PHOTOPRISM "https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN" "photoprism.png"
+    insertEnableSvcAll photoprism "$FMLNAME_PHOTOPRISM" $USERTYPE_PHOTOPRISM "https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN" "photoprism.png" "$(getHeimdallOrderFromSub $SUB_PHOTOPRISM $USERTYPE_PHOTOPRISM)"
     restartAllCaddyContainers
   fi
 }
@@ -43080,7 +43205,7 @@ function installGuacamole()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_GUACAMOLE $MANAGETLS_GUACAMOLE "$is_integrate_hshq" $NETDEFAULT_GUACAMOLE "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll guacamole "$FMLNAME_GUACAMOLE" $USERTYPE_GUACAMOLE "https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN" "guacamole.png"
+    insertEnableSvcAll guacamole "$FMLNAME_GUACAMOLE" $USERTYPE_GUACAMOLE "https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN" "guacamole.png" "$(getHeimdallOrderFromSub $SUB_GUACAMOLE $USERTYPE_GUACAMOLE)"
     restartAllCaddyContainers
   fi
 }
@@ -43799,7 +43924,7 @@ function installWordPress()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_WORDPRESS $MANAGETLS_WORDPRESS "$is_integrate_hshq" $NETDEFAULT_WORDPRESS "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll wordpress "$FMLNAME_WORDPRESS" $USERTYPE_WORDPRESS "https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN" "wordpress.png"
+    insertEnableSvcAll wordpress "$FMLNAME_WORDPRESS" $USERTYPE_WORDPRESS "https://$SUB_WORDPRESS.$HOMESERVER_DOMAIN" "wordpress.png" "$(getHeimdallOrderFromSub $SUB_WORDPRESS $USERTYPE_WORDPRESS)"
     restartAllCaddyContainers
   fi
 }
@@ -43995,7 +44120,7 @@ function installGhost()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_GHOST $MANAGETLS_GHOST "$is_integrate_hshq" $NETDEFAULT_GHOST "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll ghost "$FMLNAME_GHOST" $USERTYPE_GHOST "https://$SUB_GHOST.$HOMESERVER_DOMAIN" "ghost.png"
+    insertEnableSvcAll ghost "$FMLNAME_GHOST" $USERTYPE_GHOST "https://$SUB_GHOST.$HOMESERVER_DOMAIN" "ghost.png" "$(getHeimdallOrderFromSub $SUB_GHOST $USERTYPE_GHOST)"
     restartAllCaddyContainers
   fi
 }
@@ -44252,7 +44377,7 @@ function installPeerTube()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PEERTUBE $MANAGETLS_PEERTUBE "$is_integrate_hshq" $NETDEFAULT_PEERTUBE "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll peertube "$FMLNAME_PEERTUBE" $USERTYPE_PEERTUBE "https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN" "peertube.png"
+    insertEnableSvcAll peertube "$FMLNAME_PEERTUBE" $USERTYPE_PEERTUBE "https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN" "peertube.png" "$(getHeimdallOrderFromSub $SUB_PEERTUBE $USERTYPE_PEERTUBE)"
     restartAllCaddyContainers
   fi
 }
@@ -44614,7 +44739,7 @@ function installHomeAssistant()
   updateCaddyBlocks $SUB_HOMEASSISTANT_TASMOADMIN $MANAGETLS_HOMEASSISTANT_TASMOADMIN "$is_integrate_hshq" $NETDEFAULT_HOMEASSISTANT_TASMOADMIN "$inner_block"
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll homeassistant "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" "homeassistant.png"
+    insertEnableSvcAll homeassistant "$FMLNAME_HOMEASSISTANT_APP" $USERTYPE_HOMEASSISTANT_APP "https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN" "homeassistant.png" "$(getHeimdallOrderFromSub $SUB_HOMEASSISTANT_APP $USERTYPE_HOMEASSISTANT_APP)"
     insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_NODERED" $USERTYPE_HOMEASSISTANT_NODERED "https://$SUB_HOMEASSISTANT_NODERED.$HOMESERVER_DOMAIN" true
     insertEnableSvcUptimeKuma homeassistant "$FMLNAME_HOMEASSISTANT_TASMOADMIN" $USERTYPE_HOMEASSISTANT_TASMOADMIN "https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
@@ -45160,7 +45285,7 @@ function installGitlab()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_GITLAB $MANAGETLS_GITLAB "$is_integrate_hshq" $NETDEFAULT_GITLAB "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll gitlab "$FMLNAME_GITLAB" $USERTYPE_GITLAB "https://$SUB_GITLAB.$HOMESERVER_DOMAIN" "gitlab.png"
+    insertEnableSvcAll gitlab "$FMLNAME_GITLAB" $USERTYPE_GITLAB "https://$SUB_GITLAB.$HOMESERVER_DOMAIN" "gitlab.png" "$(getHeimdallOrderFromSub $SUB_GITLAB $USERTYPE_GITLAB)"
     restartAllCaddyContainers
   fi
 }
@@ -45488,8 +45613,8 @@ function installVaultwarden()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_VAULTWARDEN $MANAGETLS_VAULTWARDEN "$is_integrate_hshq" $NETDEFAULT_VAULTWARDEN "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll vaultwarden "$FMLNAME_VAULTWARDEN" $USERTYPE_VAULTWARDEN "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN" "vaultwarden.png"
-    insertEnableSvcHeimdall vaultwarden "$FMLNAME_VAULTWARDEN Admin" admin "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin" "vaultwarden.png" true
+    insertEnableSvcAll vaultwarden "$FMLNAME_VAULTWARDEN" $USERTYPE_VAULTWARDEN "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN" "vaultwarden.png" "$(getHeimdallOrderFromSub $SUB_VAULTWARDEN $USERTYPE_VAULTWARDEN)"
+    insertEnableSvcHeimdall vaultwarden "$FMLNAME_VAULTWARDEN Admin" admin "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin" "vaultwarden.png" true "$(getHeimdallOrderFromSub $SUB_VAULTWARDEN admin)"
     restartAllCaddyContainers
   fi
   emailVaultwardenCredentials false
@@ -45797,7 +45922,7 @@ function installDiscourse()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_DISCOURSE $MANAGETLS_DISCOURSE "$is_integrate_hshq" $NETDEFAULT_DISCOURSE "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll discourse "$FMLNAME_DISCOURSE" $USERTYPE_DISCOURSE "https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN" "discourse.png"
+    insertEnableSvcAll discourse "$FMLNAME_DISCOURSE" $USERTYPE_DISCOURSE "https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN" "discourse.png" "$(getHeimdallOrderFromSub $SUB_DISCOURSE $USERTYPE_DISCOURSE)"
     restartAllCaddyContainers
   fi
 }
@@ -46294,7 +46419,7 @@ function installCodeServer()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_CODESERVER $MANAGETLS_CODESERVER "$is_integrate_hshq" $NETDEFAULT_CODESERVER "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll codeserver "$FMLNAME_CODESERVER" $USERTYPE_CODESERVER "https://$SUB_CODESERVER.$HOMESERVER_DOMAIN" "codeserver.png"
+    insertEnableSvcAll codeserver "$FMLNAME_CODESERVER" $USERTYPE_CODESERVER "https://$SUB_CODESERVER.$HOMESERVER_DOMAIN" "codeserver.png" "$(getHeimdallOrderFromSub $SUB_CODESERVER $USERTYPE_CODESERVER)"
     restartAllCaddyContainers
   fi
 }
@@ -46553,7 +46678,7 @@ function installShlink()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SHLINK_APP $MANAGETLS_SHLINK_APP "$is_integrate_hshq" $NETDEFAULT_SHLINK_APP "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll shlink "$FMLNAME_SHLINK_WEB" $USERTYPE_SHLINK_WEB "https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN" "shlink.png"
+    insertEnableSvcAll shlink "$FMLNAME_SHLINK_WEB" $USERTYPE_SHLINK_WEB "https://$SUB_SHLINK_WEB.$HOMESERVER_DOMAIN" "shlink.png" "$(getHeimdallOrderFromSub $SUB_SHLINK_WEB $USERTYPE_SHLINK_WEB)"
     restartAllCaddyContainers
   fi
 }
@@ -46921,8 +47046,8 @@ function installFirefly()
   updateCaddyBlocks $SUB_FIREFLY_IMPORTER $MANAGETLS_FIREFLY_IMPORTER "$is_integrate_hshq" $NETDEFAULT_FIREFLY_IMPORTER "$inner_block"
   insertSubAuthelia $SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll firefly "$FMLNAME_FIREFLY_APP" $USERTYPE_FIREFLY_APP "https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN" "firefly.png"
-    insertEnableSvcAll firefly "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" "firefly-importer.png"
+    insertEnableSvcAll firefly "$FMLNAME_FIREFLY_APP" $USERTYPE_FIREFLY_APP "https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN" "firefly.png" "$(getHeimdallOrderFromSub $SUB_FIREFLY_APP $USERTYPE_FIREFLY_APP)"
+    insertEnableSvcAll firefly "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" "firefly-importer.png" "$(getHeimdallOrderFromSub $SUB_FIREFLY_IMPORTER $USERTYPE_FIREFLY_IMPORTER)"
     restartAllCaddyContainers
   fi
 }
@@ -47225,7 +47350,7 @@ function mfFireflyAddImporterAndCron()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_FIREFLY_IMPORTER $MANAGETLS_FIREFLY_IMPORTER "$is_integrate_hshq" $NETDEFAULT_FIREFLY_IMPORTER "$inner_block"
   insertSubAuthelia $SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-  insertEnableSvcAll firefly "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" "firefly-importer.png"
+  insertEnableSvcAll firefly "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" "firefly-importer.png" "$(getHeimdallOrderFromSub $SUB_FIREFLY_IMPORTER $USERTYPE_FIREFLY_IMPORTER)"
   restartAllCaddyContainers
 }
 
@@ -47317,7 +47442,7 @@ function installExcalidraw()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_EXCALIDRAW_STORAGE $MANAGETLS_EXCALIDRAW_STORAGE "$is_integrate_hshq" $NETDEFAULT_EXCALIDRAW_STORAGE "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll excalidraw "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" "excalidraw.png"
+    insertEnableSvcAll excalidraw "$FMLNAME_EXCALIDRAW_WEB" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN" "excalidraw.png" "$(getHeimdallOrderFromSub $SUB_EXCALIDRAW_WEB $USERTYPE_EXCALIDRAW_WEB)"
     insertEnableSvcUptimeKuma excalidraw "$FMLNAME_EXCALIDRAW_WEB Server" $USERTYPE_EXCALIDRAW_WEB "https://$SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN" true
     restartAllCaddyContainers
   fi
@@ -47518,7 +47643,7 @@ function installDrawIO()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_DRAWIO_WEB $MANAGETLS_DRAWIO_WEB "$is_integrate_hshq" $NETDEFAULT_DRAWIO_WEB "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll drawio "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" "drawio.png"
+    insertEnableSvcAll drawio "$FMLNAME_DRAWIO_WEB" $USERTYPE_DRAWIO_WEB "https://$SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN" "drawio.png" "$(getHeimdallOrderFromSub $SUB_DRAWIO_WEB $USERTYPE_DRAWIO_WEB)"
     restartAllCaddyContainers
   fi
 }
@@ -47728,7 +47853,7 @@ function installInvidious()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_INVIDIOUS $MANAGETLS_INVIDIOUS "$is_integrate_hshq" $NETDEFAULT_INVIDIOUS "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll invidious "$FMLNAME_INVIDIOUS" $USERTYPE_INVIDIOUS "https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN" "invidious.png"
+    insertEnableSvcAll invidious "$FMLNAME_INVIDIOUS" $USERTYPE_INVIDIOUS "https://$SUB_INVIDIOUS.$HOMESERVER_DOMAIN" "invidious.png" "$(getHeimdallOrderFromSub $SUB_INVIDIOUS $USERTYPE_INVIDIOUS)"
     restartAllCaddyContainers
   fi
 }
@@ -48187,7 +48312,7 @@ function installGitea()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_GITEA $MANAGETLS_GITEA "$is_integrate_hshq" $NETDEFAULT_GITEA "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll gitea "$FMLNAME_GITEA" $USERTYPE_GITEA "https://$SUB_GITEA.$HOMESERVER_DOMAIN" "gitea.png"
+    insertEnableSvcAll gitea "$FMLNAME_GITEA" $USERTYPE_GITEA "https://$SUB_GITEA.$HOMESERVER_DOMAIN" "gitea.png" "$(getHeimdallOrderFromSub $SUB_GITEA $USERTYPE_GITEA)"
     restartAllCaddyContainers
   fi
 }
@@ -48440,7 +48565,7 @@ function installMealie()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_MEALIE $MANAGETLS_MEALIE "$is_integrate_hshq" $NETDEFAULT_MEALIE "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll mealie "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" "mealie.png"
+    insertEnableSvcAll mealie "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" "mealie.png" "$(getHeimdallOrderFromSub $SUB_MEALIE $USERTYPE_MEALIE)"
     restartAllCaddyContainers
 
     mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
@@ -48725,8 +48850,8 @@ function installKasm()
   updateCaddyBlocks $SUB_KASM_WIZARD $MANAGETLS_KASM_WIZARD "$is_integrate_hshq" $NETDEFAULT_KASM_WIZARD "$inner_block"
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcHeimdall kasm "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" "kasm.png" true
-    insertEnableSvcHeimdall kasm "$FMLNAME_KASM_WIZARD" $USERTYPE_KASM_WIZARD "https://$SUB_KASM_WIZARD.$HOMESERVER_DOMAIN" "kasm.png" true
+    insertEnableSvcHeimdall kasm "$FMLNAME_KASM" $USERTYPE_KASM "https://$SUB_KASM.$HOMESERVER_DOMAIN" "kasm.png" true "$(getHeimdallOrderFromSub $SUB_KASM $USERTYPE_KASM)"
+    insertEnableSvcHeimdall kasm "$FMLNAME_KASM_WIZARD" $USERTYPE_KASM_WIZARD "https://$SUB_KASM_WIZARD.$HOMESERVER_DOMAIN" "kasm.png" true "$(getHeimdallOrderFromSub $SUB_KASM_WIZARD $USERTYPE_KASM_WIZARD)"
     restartAllCaddyContainers
   fi
 }
@@ -48860,7 +48985,7 @@ function installNTFY()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NTFY $MANAGETLS_NTFY "$is_integrate_hshq" $NETDEFAULT_NTFY "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll ntfy "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" "ntfy.png"
+    insertEnableSvcAll ntfy "$FMLNAME_NTFY" $USERTYPE_NTFY "https://$SUB_NTFY.$HOMESERVER_DOMAIN" "ntfy.png" "$(getHeimdallOrderFromSub $SUB_NTFY $USERTYPE_NTFY)"
     restartAllCaddyContainers
   fi
 }
@@ -49353,7 +49478,7 @@ function installITTools()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_ITTOOLS $MANAGETLS_ITTOOLS "$is_integrate_hshq" $NETDEFAULT_ITTOOLS "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll ittools "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" "ittools.png"
+    insertEnableSvcAll ittools "$FMLNAME_ITTOOLS" $USERTYPE_ITTOOLS "https://$SUB_ITTOOLS.$HOMESERVER_DOMAIN" "ittools.png" "$(getHeimdallOrderFromSub $SUB_ITTOOLS $USERTYPE_ITTOOLS)"
     restartAllCaddyContainers
   fi
 }
@@ -49469,7 +49594,7 @@ function installRemotely()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_REMOTELY $MANAGETLS_REMOTELY "$is_integrate_hshq" $NETDEFAULT_REMOTELY "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll remotely "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" "remotely.png"
+    insertEnableSvcAll remotely "$FMLNAME_REMOTELY" $USERTYPE_REMOTELY "https://$SUB_REMOTELY.$HOMESERVER_DOMAIN" "remotely.png" "$(getHeimdallOrderFromSub $SUB_REMOTELY $USERTYPE_REMOTELY)"
     restartAllCaddyContainers
   fi
 }
@@ -49655,8 +49780,8 @@ function installCalibre()
   insertSubAuthelia $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll calibre "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" "calibre-server.png"
-    insertEnableSvcAll calibre "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" "calibre-web.png"
+    insertEnableSvcAll calibre "$FMLNAME_CALIBRE_SERVER" $USERTYPE_CALIBRE_SERVER "https://$SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN" "calibre-server.png" "$(getHeimdallOrderFromSub $SUB_CALIBRE_SERVER $USERTYPE_CALIBRE_SERVER)"
+    insertEnableSvcAll calibre "$FMLNAME_CALIBRE_WEB" $USERTYPE_CALIBRE_WEB "https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN" "calibre-web.png" "$(getHeimdallOrderFromSub $SUB_CALIBRE_WEB $USERTYPE_CALIBRE_WEB)"
     restartAllCaddyContainers
   fi
 }
@@ -49849,7 +49974,7 @@ function installNetdata()
   insertSubAuthelia $SUB_NETDATA.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll netdata "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" "netdata.png"
+    insertEnableSvcAll netdata "$FMLNAME_NETDATA" $USERTYPE_NETDATA "https://$SUB_NETDATA.$HOMESERVER_DOMAIN" "netdata.png" "$(getHeimdallOrderFromSub $SUB_NETDATA $USERTYPE_NETDATA)"
     restartAllCaddyContainers
   fi
 }
@@ -50033,7 +50158,7 @@ function installLinkwarden()
   insertSubAuthelia $SUB_LINKWARDEN.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png"
+    insertEnableSvcAll linkwarden "$FMLNAME_LINKWARDEN" $USERTYPE_LINKWARDEN "https://$SUB_LINKWARDEN.$HOMESERVER_DOMAIN" "linkwarden.png" "$(getHeimdallOrderFromSub $SUB_LINKWARDEN $USERTYPE_LINKWARDEN)"
     restartAllCaddyContainers
     checkAddDBConnection true linkwarden "$FMLNAME_LINKWARDEN" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
   fi
@@ -50266,7 +50391,7 @@ function installStirlingPDF()
   insertSubAuthelia $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll stirlingpdf "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" "stirlingpdf.png"
+    insertEnableSvcAll stirlingpdf "$FMLNAME_STIRLINGPDF" $USERTYPE_STIRLINGPDF "https://$SUB_STIRLINGPDF.$HOMESERVER_DOMAIN" "stirlingpdf.png" "$(getHeimdallOrderFromSub $SUB_STIRLINGPDF $USERTYPE_STIRLINGPDF)"
     restartAllCaddyContainers
   fi
 }
@@ -50429,7 +50554,7 @@ function installBarAssistant()
   insertSubAuthelia $SUB_BARASSISTANT.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll bar-assistant "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" "bar-assistant.png"
+    insertEnableSvcAll bar-assistant "$FMLNAME_BARASSISTANT" $USERTYPE_BARASSISTANT "https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN" "bar-assistant.png" "$(getHeimdallOrderFromSub $SUB_BARASSISTANT $USERTYPE_BARASSISTANT)"
     restartAllCaddyContainers
   fi
 }
@@ -50820,7 +50945,7 @@ function installFreshRSS()
   insertSubAuthelia $SUB_FRESHRSS.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png"
+    insertEnableSvcAll freshrss "$FMLNAME_FRESHRSS" $USERTYPE_FRESHRSS "https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN" "freshrss.png" "$(getHeimdallOrderFromSub $SUB_FRESHRSS $USERTYPE_FRESHRSS)"
     restartAllCaddyContainers
     checkAddDBConnection true freshrss "$FMLNAME_FRESHRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
   fi
@@ -51101,7 +51226,7 @@ function installKeila()
   insertSubAuthelia $SUB_KEILA.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png"
+    insertEnableSvcAll keila "$FMLNAME_KEILA" $USERTYPE_KEILA "https://$SUB_KEILA.$HOMESERVER_DOMAIN" "keila.png" "$(getHeimdallOrderFromSub $SUB_KEILA $USERTYPE_KEILA)"
     restartAllCaddyContainers
     checkAddDBConnection true keila "$FMLNAME_KEILA" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
   fi
@@ -51362,7 +51487,7 @@ function installWallabag()
   insertSubAuthelia $SUB_WALLABAG.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png"
+    insertEnableSvcAll wallabag "$FMLNAME_WALLABAG" $USERTYPE_WALLABAG "https://$SUB_WALLABAG.$HOMESERVER_DOMAIN" "wallabag.png" "$(getHeimdallOrderFromSub $SUB_WALLABAG $USERTYPE_WALLABAG)"
     restartAllCaddyContainers
     checkAddDBConnection true wallabag "$FMLNAME_WALLABAG" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
   fi
@@ -51604,7 +51729,7 @@ function installJupyter()
   insertSubAuthelia $SUB_JUPYTER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll jupyter "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" "jupyter.png"
+    insertEnableSvcAll jupyter "$FMLNAME_JUPYTER" $USERTYPE_JUPYTER "https://$SUB_JUPYTER.$HOMESERVER_DOMAIN" "jupyter.png" "$(getHeimdallOrderFromSub $SUB_JUPYTER $USERTYPE_JUPYTER)"
     restartAllCaddyContainers
   fi
 }
@@ -51779,7 +51904,7 @@ function installPaperless()
   insertSubAuthelia $SUB_PAPERLESS.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png"
+    insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS $USERTYPE_PAPERLESS)"
     restartAllCaddyContainers
     checkAddDBConnection true paperless "$FMLNAME_PAPERLESS" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
   fi
@@ -52141,7 +52266,7 @@ function installSpeedtestTrackerLocal()
   insertSubAuthelia $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
+    insertEnableSvcAll speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" $USERTYPE_SPEEDTEST_TRACKER_LOCAL "https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN" "speedtest-tracker.png" "$(getHeimdallOrderFromSub $SUB_SPEEDTEST_TRACKER_LOCAL $USERTYPE_SPEEDTEST_TRACKER_LOCAL)"
     restartAllCaddyContainers
     checkAddDBConnection true speedtest-tracker-local "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
   fi
@@ -52407,7 +52532,7 @@ function installSpeedtestTrackerVPN()
   insertSubAuthelia $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png"
+    insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png" "$(getHeimdallOrderFromSub $SUB_SPEEDTEST_TRACKER_VPN $USERTYPE_SPEEDTEST_TRACKER_VPN)"
     restartAllCaddyContainers
     checkAddDBConnection true speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
   fi
@@ -52674,7 +52799,7 @@ function installChangeDetection()
   insertSubAuthelia $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll changedetection "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" "changedetection.png"
+    insertEnableSvcAll changedetection "$FMLNAME_CHANGEDETECTION" $USERTYPE_CHANGEDETECTION "https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN" "changedetection.png" "$(getHeimdallOrderFromSub $SUB_CHANGEDETECTION $USERTYPE_CHANGEDETECTION)"
     restartAllCaddyContainers
   fi
 }
@@ -52892,7 +53017,7 @@ function installHuginn()
   insertSubAuthelia $SUB_HUGINN.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png"
+    insertEnableSvcAll huginn "$FMLNAME_HUGINN" $USERTYPE_HUGINN "https://$SUB_HUGINN.$HOMESERVER_DOMAIN" "huginn.png" "$(getHeimdallOrderFromSub $SUB_HUGINN $USERTYPE_HUGINN)"
     restartAllCaddyContainers
     checkAddDBConnection true huginn "$FMLNAME_HUGINN" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
   fi
@@ -53325,7 +53450,7 @@ function installFileDrop()
   insertSubAuthelia $SUB_FILEDROP.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll filedrop "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" "filedrop.png"
+    insertEnableSvcAll filedrop "$FMLNAME_FILEDROP" $USERTYPE_FILEDROP "https://$SUB_FILEDROP.$HOMESERVER_DOMAIN" "filedrop.png" "$(getHeimdallOrderFromSub $SUB_FILEDROP $USERTYPE_FILEDROP)"
     restartAllCaddyContainers
   fi
 }
@@ -53516,7 +53641,7 @@ function installPiped()
   insertSubAuthelia $SUB_PIPED_API.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png"
+    insertEnableSvcAll piped "$FMLNAME_PIPED_FRONTEND" $USERTYPE_PIPED_FRONTEND "https://$SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN" "piped.png" "$(getHeimdallOrderFromSub $SUB_PIPED_FRONTEND $USERTYPE_PIPED_FRONTEND)"
     restartAllCaddyContainers
     checkAddDBConnection true piped "$FMLNAME_PIPED_FRONTEND" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
   fi
@@ -53949,7 +54074,7 @@ function installGrampsWeb()
   insertSubAuthelia $SUB_GRAMPSWEB.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll grampsweb "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" "grampsweb.png"
+    insertEnableSvcAll grampsweb "$FMLNAME_GRAMPSWEB" $USERTYPE_GRAMPSWEB "https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN" "grampsweb.png" "$(getHeimdallOrderFromSub $SUB_GRAMPSWEB $USERTYPE_GRAMPSWEB)"
     restartAllCaddyContainers
   fi
 }
@@ -54235,7 +54360,7 @@ function installPenpot()
   insertSubAuthelia $SUB_PENPOT.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll penpot "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" "penpot.png"
+    insertEnableSvcAll penpot "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" "penpot.png" "$(getHeimdallOrderFromSub $SUB_PENPOT $USERTYPE_PENPOT)"
     restartAllCaddyContainers
     checkAddDBConnection true penpot "$FMLNAME_PENPOT" postgres penpot-db $PENPOT_DATABASE_NAME $PENPOT_DATABASE_USER $PENPOT_DATABASE_USER_PASSWORD
   fi
@@ -54568,7 +54693,7 @@ function installEspoCRM()
   insertSubAuthelia $SUB_ESPOCRM.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll espocrm "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" "espocrm.png"
+    insertEnableSvcAll espocrm "$FMLNAME_ESPOCRM" $USERTYPE_ESPOCRM "https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN" "espocrm.png" "$(getHeimdallOrderFromSub $SUB_ESPOCRM $USERTYPE_ESPOCRM)"
     restartAllCaddyContainers
     checkAddDBConnection true espocrm "$FMLNAME_ESPOCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
   fi
@@ -54875,7 +55000,7 @@ function installImmich()
   insertSubAuthelia $SUB_IMMICH.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll immich "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" "immich.png"
+    insertEnableSvcAll immich "$FMLNAME_IMMICH" $USERTYPE_IMMICH "https://$SUB_IMMICH.$HOMESERVER_DOMAIN" "immich.png" "$(getHeimdallOrderFromSub $SUB_IMMICH $USERTYPE_IMMICH)"
     restartAllCaddyContainers
     checkAddDBConnection true immich "$FMLNAME_IMMICH" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
   fi
@@ -55358,7 +55483,7 @@ function installHomarr()
   insertSubAuthelia $SUB_HOMARR.$HOMESERVER_DOMAIN bypass
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll homarr "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" "homarr.png"
+    insertEnableSvcAll homarr "$FMLNAME_HOMARR" $USERTYPE_HOMARR "https://$SUB_HOMARR.$HOMESERVER_DOMAIN" "homarr.png" "$(getHeimdallOrderFromSub $SUB_HOMARR $USERTYPE_HOMARR)"
     restartAllCaddyContainers
   fi
 }
@@ -55545,7 +55670,7 @@ function installMatomo()
   insertSubAuthelia $SUB_MATOMO.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll matomo "$FMLNAME_MATOMO" $USERTYPE_MATOMO "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" "matomo.png"
+    insertEnableSvcAll matomo "$FMLNAME_MATOMO" $USERTYPE_MATOMO "https://$SUB_MATOMO.$HOMESERVER_DOMAIN" "matomo.png" "$(getHeimdallOrderFromSub $SUB_MATOMO $USERTYPE_MATOMO)"
     restartAllCaddyContainers
     checkAddDBConnection true matomo "$FMLNAME_MATOMO" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
   fi
@@ -55838,7 +55963,7 @@ function installPastefy()
   insertSubAuthelia $SUB_PASTEFY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll pastefy "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" "pastefy.png"
+    insertEnableSvcAll pastefy "$FMLNAME_PASTEFY" $USERTYPE_PASTEFY "https://$SUB_PASTEFY.$HOMESERVER_DOMAIN" "pastefy.png" "$(getHeimdallOrderFromSub $SUB_PASTEFY $USERTYPE_PASTEFY)"
     restartAllCaddyContainers
     checkAddDBConnection true pastefy "$FMLNAME_PASTEFY" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
   fi
@@ -56020,7 +56145,7 @@ function installSnippetBox()
   insertSubAuthelia $SUB_SNIPPETBOX.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll snippetbox "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" "snippetbox.png"
+    insertEnableSvcAll snippetbox "$FMLNAME_SNIPPETBOX" $USERTYPE_SNIPPETBOX "https://$SUB_SNIPPETBOX.$HOMESERVER_DOMAIN" "snippetbox.png" "$(getHeimdallOrderFromSub $SUB_SNIPPETBOX $USERTYPE_SNIPPETBOX)"
     restartAllCaddyContainers
   fi
 }
@@ -56256,9 +56381,9 @@ function installAIStack()
   insertSubAuthelia $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll aistack "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" "mindsdb.png"
-    insertEnableSvcAll aistack "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" "langfuse.png"
-    insertEnableSvcAll aistack "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" "openwebui.png"
+    insertEnableSvcAll aistack "$FMLNAME_AISTACK_MINDSDB_APP" $USERTYPE_AISTACK_MINDSDB_APP "https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN" "mindsdb.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_MINDSDB_APP $USERTYPE_AISTACK_MINDSDB_APP)"
+    insertEnableSvcAll aistack "$FMLNAME_AISTACK_LANGFUSE" $USERTYPE_AISTACK_LANGFUSE "https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN" "langfuse.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_LANGFUSE $USERTYPE_AISTACK_LANGFUSE)"
+    insertEnableSvcAll aistack "$FMLNAME_AISTACK_OPENWEBUI" $USERTYPE_AISTACK_OPENWEBUI "https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN" "openwebui.png" "$(getHeimdallOrderFromSub $SUB_AISTACK_OPENWEBUI $USERTYPE_AISTACK_OPENWEBUI)"
     restartAllCaddyContainers
     checkAddDBConnection false aistack-mindsdb "$FMLNAME_AISTACK_MINDSDB_APP" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
     checkAddDBConnection false aistack-langfuse "$FMLNAME_AISTACK_LANGFUSE" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
@@ -57035,7 +57160,7 @@ function installPixelfed()
   updateCaddyBlocks $SUB_PIXELFED $MANAGETLS_PIXELFED "$is_integrate_hshq" $NETDEFAULT_PIXELFED "$inner_block"
   insertSubAuthelia $SUB_PIXELFED.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll pixelfed "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" "pixelfed.png"
+    insertEnableSvcAll pixelfed "$FMLNAME_PIXELFED" $USERTYPE_PIXELFED "https://$SUB_PIXELFED.$HOMESERVER_DOMAIN" "pixelfed.png" "$(getHeimdallOrderFromSub $SUB_PIXELFED $USERTYPE_PIXELFED)"
     restartAllCaddyContainers
     checkAddDBConnection true pixelfed "$FMLNAME_PIXELFED" mysql pixelfed-db $PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_USER $PIXELFED_DATABASE_USER_PASSWORD
   fi
@@ -58486,7 +58611,7 @@ function installYamtrack()
   insertSubAuthelia $SUB_YAMTRACK.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll yamtrack "$FMLNAME_YAMTRACK" $USERTYPE_YAMTRACK "https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN" "yamtrack.png"
+    insertEnableSvcAll yamtrack "$FMLNAME_YAMTRACK" $USERTYPE_YAMTRACK "https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN" "yamtrack.png" "$(getHeimdallOrderFromSub $SUB_YAMTRACK $USERTYPE_YAMTRACK)"
     restartAllCaddyContainers
     checkAddDBConnection true yamtrack "$FMLNAME_YAMTRACK" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD
   fi
@@ -58730,7 +58855,7 @@ function installExampleService()
   insertSubAuthelia $SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE" $USERTYPE_EXAMPLESERVICE "https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN" "exampleservice.png"
+    insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE" $USERTYPE_EXAMPLESERVICE "https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN" "exampleservice.png" "$(getHeimdallOrderFromSub $SUB_EXAMPLESERVICE $USERTYPE_EXAMPLESERVICE)"
     restartAllCaddyContainers
     checkAddDBConnection true exampleservice "$FMLNAME_EXAMPLESERVICE" mysql exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
   fi
@@ -59035,8 +59160,8 @@ function installScriptServer()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SCRIPTSERVER $MANAGETLS_SCRIPTSERVER "$is_integrate_hshq" $NETDEFAULT_SCRIPTSERVER "$inner_block"
   insertSubAuthelia $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-  insertEnableSvcAll script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png"
-  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true
+  insertEnableSvcAll script-server "$FMLNAME_SCRIPTSERVER" $USERTYPE_SCRIPTSERVER "https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN" "script-server.png" "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
+  insertEnableSvcHeimdall script-server "$FMLNAME_SCRIPTSERVER (IP)" $USERTYPE_SCRIPTSERVER "https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT" "script-server.png" true "$(getHeimdallOrderFromSub $SUB_SCRIPTSERVER $USERTYPE_SCRIPTSERVER)"
   restartAllCaddyContainers
   sudo systemctl daemon-reload
   sudo systemctl enable runScriptServer
@@ -66794,7 +66919,7 @@ function installSQLPad()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SQLPAD $MANAGETLS_SQLPAD "$is_integrate_hshq" $NETDEFAULT_SQLPAD "$inner_block"
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll sqlpad "$FMLNAME_SQLPAD" $USERTYPE_SQLPAD "https://$SUB_SQLPAD.$HOMESERVER_DOMAIN" "sqlpad.png"
+    insertEnableSvcAll sqlpad "$FMLNAME_SQLPAD" $USERTYPE_SQLPAD "https://$SUB_SQLPAD.$HOMESERVER_DOMAIN" "sqlpad.png" "$(getHeimdallOrderFromSub $SUB_SQLPAD $USERTYPE_SQLPAD)"
     restartAllCaddyContainers
   fi
 }
@@ -67310,7 +67435,7 @@ function installHeimdall()
   rs_password_hash=$(htpasswd -nbBC 10 $HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_PASSWORD | cut -d":" -f2-)
   curdt=$(getCurrentDate)
 
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "DELETE FROM users;"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "PRAGMA foreign_keys=ON;DELETE FROM users;"
   cp $HSHQ_ASSETS_DIR/images/admin.png $HSHQ_STACKS_DIR/heimdall/config/www/avatars/
   cp $HSHQ_ASSETS_DIR/images/users.png $HSHQ_STACKS_DIR/heimdall/config/www/avatars/
   cp $HSHQ_ASSETS_DIR/images/homeserver.png $HSHQ_STACKS_DIR/heimdall/config/www/avatars/
@@ -67758,17 +67883,8 @@ EOFHC
 
 function insertEnableSvcAll()
 {
-  insertEnableSvcHeimdall "$1" "$2" "$3" "$4" "$5" true
+  insertEnableSvcHeimdall "$1" "$2" "$3" "$4" "$5" true "$6"
   insertEnableSvcUptimeKuma "$1" "$2" "$3" "$4" true
-}
-
-function disableSvcAll()
-{
-  user_type=$1
-  svc_url=$2
-  is_manage_container=$3
-  disableSvcHeimdall "$1" "$2" "$3"
-  disableSvcUptimeKuma "$2" "$3"
 }
 
 function deleteSvcAll()
@@ -67799,19 +67915,20 @@ function getHeimdallUserIDFromType()
 
 function checkInsertServiceHeimdall()
 {
-  svc_stack_name=$1
-  svc_proper_name=$2
-  user_type=$3
-  svc_url=$4
-  svc_img=$5
-  is_restart=$6
-  svc_is_active=$7
+  svc_stack_name="$1"
+  svc_proper_name="$2"
+  user_type="$3"
+  svc_url="$4"
+  svc_img="$5"
+  is_restart="$6"
+  svc_is_active="$7"
+  svc_order="$8"
 
   user_id=$(getHeimdallUserIDFromType $user_type)
   docker container stop heimdall > /dev/null 2>&1
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
   if [ -z "$insert_id" ]; then
-    insertIntoHeimdallDB "$svc_proper_name" "$user_type" "$svc_url" "$svc_is_active" "$svc_img"
+    insertIntoHeimdallDB "$svc_proper_name" "$user_type" "$svc_url" "$svc_is_active" "$svc_img" "$svc_order"
   else
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set pinned=$svc_is_active where user_id='$user_id' and url='$svc_url';"
     sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set deleted_at=NULL where user_id='$user_id' and url='$svc_url';"
@@ -67823,24 +67940,7 @@ function checkInsertServiceHeimdall()
 
 function insertEnableSvcHeimdall()
 {
-  checkInsertServiceHeimdall "$1" "$2" "$3" "$4" "$5" "$6" 1
-}
-
-function disableSvcHeimdall()
-{
-  user_type=$1
-  svc_url=$2
-  is_manage_container=$3
-  user_id=$(getHeimdallUserIDFromType $user_type)
-  if [ "$IS_INSTALLED" = "true" ] && [ -f $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite ]; then
-    if [ "$is_manage_container" = "true" ]; then
-      docker container stop heimdall >/dev/null
-    fi
-    sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "update items set pinned=0 where user_id='$user_id' and url='$svc_url';"
-    if [ "$is_manage_container" = "true" ]; then
-      docker container start heimdall >/dev/null
-    fi
-  fi
+  checkInsertServiceHeimdall "$1" "$2" "$3" "$4" "$5" "$6" 1 "$7"
 }
 
 function deleteSvcHeimdall()
@@ -67853,7 +67953,7 @@ function deleteSvcHeimdall()
     if [ "$is_manage_container" = "true" ]; then
       docker container stop heimdall >/dev/null
     fi
-    sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "delete from items where user_id='$user_id' and url='$svc_url';"
+    sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "PRAGMA foreign_keys=ON;delete from items where url like '${svc_url}%';"
     if [ "$is_manage_container" = "true" ]; then
       docker container start heimdall >/dev/null
     fi
@@ -67862,11 +67962,12 @@ function deleteSvcHeimdall()
 
 function insertIntoHeimdallDB()
 {
-  svc_proper_name=$1
-  user_type=$2
-  svc_url=$3
-  svc_is_active=$4
-  svc_img=$5
+  svc_proper_name="$1"
+  user_type="$2"
+  svc_url="$3"
+  svc_is_active="$4"
+  svc_img="$5"
+  svc_order="$6"
 
   curdt=$(getCurrentDate)
   user_id=$(getHeimdallUserIDFromType $user_type)
@@ -67886,14 +67987,7 @@ function insertIntoHeimdallDB()
   else
     cp -f $HSHQ_ASSETS_DIR/images/heimdall.png $HSHQ_STACKS_DIR/heimdall/config/www/icons/$svc_img
   fi
-  # Ensure we always add the next item at the end
-  lastOrder=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select max(\"order\") from items;")
-  if [ -z "$lastOrder" ]; then
-    thisOrder=1
-  else
-    thisOrder=$(($lastOrder + 1))
-  fi
-  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO items(id,title,colour,icon,url,description,pinned,\"order\",deleted_at,created_at,updated_at,type,user_id,class,appid,appdescription) VALUES(NULL,'$svc_proper_name','$color_string','icons/$svc_img','$svc_url',NULL,$svc_is_active,$thisOrder,NULL,'$curdt','$curdt',0,$user_id,NULL,'null',NULL);"
+  sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO items(id,title,colour,icon,url,description,pinned,\"order\",deleted_at,created_at,updated_at,type,user_id,class,appid,appdescription) VALUES(NULL,'$svc_proper_name','$color_string','icons/$svc_img','$svc_url',NULL,$svc_is_active,$svc_order,NULL,'$curdt','$curdt',0,$user_id,NULL,'null',NULL);"
   insert_id=$(sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "select id from items where user_id='$user_id' and url='$svc_url';")
   sqlite3 $HSHQ_STACKS_DIR/heimdall/config/www/app.sqlite "INSERT INTO item_tag(item_id,tag_id,created_at,updated_at) VALUES($insert_id,0,NULL,NULL);"
 }
@@ -67912,7 +68006,7 @@ function bulkImportHomeServerLinksHeimdall()
     curHSName=$(echo "$curLine" | cut -d "|" -f1)
     curDomain=$(echo "$curLine" | cut -d "|" -f2)
     if ! [ -z "$curDomain" ]; then
-      insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://$SUB_HSHQHOME.${curDomain}" "hs2.png" false
+      insertEnableSvcHeimdall heimdall "$curHSName" homeservers "https://$SUB_HSHQHOME.${curDomain}" "hs2.png" false "$(getHeimdallOrderFromSub $SUB_HSHQHOME homeservers)"
     fi
   done
   IFS=$OLDIFS
@@ -68747,7 +68841,7 @@ function installClientDNS()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks ${SUB_CLIENTDNS}-${cdns_stack_name} $MANAGETLS_CLIENTDNS "true" $NETDEFAULT_CLIENTDNS "$inner_block"
-  insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}-${cdns_stack_name}" $USERTYPE_CLIENTDNS "https://${SUB_CLIENTDNS}-${cdns_stack_name}.$HOMESERVER_DOMAIN" "dnsmasq.png" true
+  insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}-${cdns_stack_name}" $USERTYPE_CLIENTDNS "https://${SUB_CLIENTDNS}-${cdns_stack_name}.$HOMESERVER_DOMAIN" "dnsmasq.png" true "$(getHeimdallOrderFromSub $SUB_CLIENTDNS $USERTYPE_CLIENTDNS)"
   restartAllCaddyContainers
 }
 
@@ -69060,7 +69154,7 @@ function checkInsertServiceUptimeKuma()
   if [ -z "$svc_id" ]; then
     insertServiceUptimeKuma "$svc_proper_name" "$user_type" "$svc_url" "$svc_is_active"
   else
-    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set active=$svc_is_active where url='$svc_url';"
+    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "update monitor set active=$svc_is_active where url='$svc_url';"
   fi
   set +e
   if [ "$is_restart" = "true" ]; then
@@ -69074,21 +69168,6 @@ function insertEnableSvcUptimeKuma()
   checkInsertServiceUptimeKuma "$1" "$2" "$3" "$4" "$5" 1
 }
 
-function disableSvcUptimeKuma()
-{
-  svc_url=$1
-  is_manage_container=$2
-  if [ "$IS_INSTALLED" = "true" ] && [ -f $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db ]; then
-    if [ "$is_manage_container" = "true" ]; then
-      docker container stop uptimekuma >/dev/null
-    fi
-    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Update monitor set active=0 where url='$svc_url';"
-    if [ "$is_manage_container" = "true" ]; then
-      docker container start uptimekuma >/dev/null
-    fi
-  fi
-}
-
 function deleteSvcUptimeKuma()
 {
   svc_url=$1
@@ -69097,7 +69176,7 @@ function deleteSvcUptimeKuma()
     if [ "$is_manage_container" = "true" ]; then
       docker container stop uptimekuma >/dev/null
     fi
-    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "Delete from monitor where url='$svc_url';"
+    sqlite3 $HSHQ_STACKS_DIR/uptimekuma/app/kuma.db "PRAGMA foreign_keys=ON;delete from monitor where url like '${svc_url}%';"
     if [ "$is_manage_container" = "true" ]; then
       docker container start uptimekuma >/dev/null
     fi
