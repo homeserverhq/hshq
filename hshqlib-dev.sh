@@ -6375,9 +6375,7 @@ function checkPerformPreInstall()
   if [ \$? -ne 0 ]; then
     source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
     if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
-      echo "------------------------------------------------------------------------------------"
-      echo " Docker must be installed and the system rebooted before starting the installation."
-      echo "------------------------------------------------------------------------------------"
+      echo " Installing docker and rebooting..."
       # Must install docker and reboot
       touch /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
       scName=hshqPreInstall
