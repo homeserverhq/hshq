@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=167
+HSHQ_LIB_SCRIPT_VERSION=168
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -118,6 +118,7 @@ function init()
   SYNCTHING_DISC_PORT=21027
   SYNCTHING_SYNC_PORT=22000
   UPNP_PORT=1900
+  VNC_SERVER_PORT=5901
   WAZUH_PORT_1=1514
   WAZUH_PORT_2=1515
   WAZUH_PORT_3=514
@@ -19901,6 +19902,129 @@ EOFUS
   rm -f $HOME/user.js
 }
 
+function addVNCServer()
+{
+  set +e
+  sudo systemctl list-unit-files x11vnc.service > /dev/null 2>&1
+  if [ $? -eq 0 ] || sudo test -f /lib/systemd/system/x11vnc.service; then
+    echo "There is already an existing x11vnc service installed. Please remove it, then retry."
+    return
+  fi
+  echo "Installing x11vnc..."
+  performAptUpdate true > /dev/null 2>&1
+  performAptInstall x11vnc > /dev/null 2>&1
+  echo "Configuring x11vnc..."
+  sudo x11vnc -storepasswd "$USER_SUDO_PW" /etc/x11vnc.pass > /dev/null 2>&1
+  sudo tee /lib/systemd/system/x11vnc.service >/dev/null <<EOFVN
+[Unit]
+Description=x11vnc service
+After=display-manager.service network.target syslog.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/x11vnc -shared -display :0 -auth guess -rfbauth /etc/x11vnc.pass -rfbport $VNC_SERVER_PORT -geometry 1600x900 -xkb -noxrecord -noxdamage
+ExecStop=/usr/bin/killall x11vnc
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOFVN
+  sudo systemctl daemon-reload > /dev/null 2>&1
+  sudo systemctl enable --now x11vnc.service > /dev/null 2>&1
+  echo "Updating firewall..."
+  # Allow dock-ext network access (for Guacamole)
+  ruleName="dock-ext-net"
+  subnet="${NET_EXTERNAL_SUBNET_PREFIX}.0/24"
+  addFirewallSubnet "$ruleName" "${NET_EXTERNAL_SUBNET_PREFIX}.0" "24" > /dev/null 2>&1
+  custNetID=$(sqlite3 $HSHQ_DB "select ID from customfwsubnet where Name='$ruleName' and Subnet='$subnet';")
+  curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from customfwsubnet where ID=$custNetID;")
+  echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    if [ -z "$curPortsList" ]; then
+      curPortsList="${VNC_SERVER_PORT}/both"
+    else
+      curPortsList="${curPortsList},${VNC_SERVER_PORT}/both"
+    fi
+  fi
+  updateExposedPortsLists INPUT "$custNetID (Custom)" "$curPortsList" > /dev/null 2>&1
+  # Allow local network access
+  primaryIfaceDBID=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType = 'primary' and NetworkType = 'home_network';")
+  primaryIfaceBaseName=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$primaryIfaceDBID;")
+  primaryIfaceIFName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$primaryIfaceDBID;")
+  curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where ID=$primaryIfaceDBID;")
+  echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    if [ -z "$curPortsList" ]; then
+      curPortsList="${VNC_SERVER_PORT}/both"
+    else
+      curPortsList="${curPortsList},${VNC_SERVER_PORT}/both"
+    fi
+  fi
+  updateExposedPortsLists INPUT "$primaryIfaceIFName ($primaryIfaceBaseName)" "$curPortsList" > /dev/null 2>&1
+  echo "x11vnc installation complete!"
+}
+
+function removeVNCServer()
+{
+  set +e
+  echo "Removing x11vnc..."
+  sudo systemctl disable --now x11vnc.service > /dev/null 2>&1
+  sudo rm -f /lib/systemd/system/x11vnc.service > /dev/null 2>&1
+  sudo systemctl daemon-reload > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y x11vnc > /dev/null 2>&1
+  echo "Updating firewall..."
+  # dock-ext network
+  ruleName="dock-ext-net"
+  subnet="${NET_EXTERNAL_SUBNET_PREFIX}.0/24"
+  custNetID=$(sqlite3 $HSHQ_DB "select ID from customfwsubnet where Name='$ruleName' and Subnet='$subnet';")
+  if ! [ -z "$custNetID" ]; then
+    curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from customfwsubnet where ID=$custNetID;")
+    echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      newPortsList=""
+      portsListArr=($(echo "$curPortsList" | tr "," "\n"))
+      for curPort in "${portsListArr[@]}"
+      do
+        chkPort=$(echo $curPort | cut -d"/" -f1)
+        if [ "$chkPort" = "$VNC_SERVER_PORT" ]; then
+          continue
+        fi
+        if [ -z "$newPortsList" ]; then
+          newPortsList="$curPort"
+        else
+          newPortsList="${newPortsList},$curPort"
+        fi
+      done
+      updateExposedPortsLists "INPUT" "$custNetID (Custom)" "$newPortsList" > /dev/null 2>&1
+    fi
+  fi
+  # Local network
+  primaryIfaceDBID=$(sqlite3 $HSHQ_DB "select ID from connections where ConnectionType = 'primary' and NetworkType = 'home_network';")
+  primaryIfaceBaseName=$(sqlite3 $HSHQ_DB "select Name from connections where ID=$primaryIfaceDBID;")
+  primaryIfaceIFName=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$primaryIfaceDBID;")
+  curPortsList=$(sqlite3 $HSHQ_DB "select InputAllowPorts from connections where ID=$primaryIfaceDBID;")
+  echo "$curPortsList" | grep -q "$VNC_SERVER_PORT" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    newPortsList=""
+    portsListArr=($(echo "$curPortsList" | tr "," "\n"))
+    for curPort in "${portsListArr[@]}"
+    do
+      chkPort=$(echo $curPort | cut -d"/" -f1)
+      if [ "$chkPort" = "$VNC_SERVER_PORT" ]; then
+        continue
+      fi
+      if [ -z "$newPortsList" ]; then
+        newPortsList="$curPort"
+      else
+        newPortsList="${newPortsList},$curPort"
+      fi
+    done
+    updateExposedPortsLists INPUT "$primaryIfaceIFName ($primaryIfaceBaseName)" "$newPortsList" > /dev/null 2>&1
+  fi
+  echo "x11vnc removal complete!"
+}
+
 # Initialization
 function createInitialEnv()
 {
@@ -26566,9 +26690,14 @@ function addFirewallSubnet()
   subnet="${2}/${3}"
   if [ $(checkValidStringUpperLowerNumbers "$ruleName" "-") = "false" ]; then
     strMsg="The rule name is invalid. It must consist of a-z (lowercase), 0-9, and/or -, no spaces."
-    logHSHQEvent error "addFirewallSubnet - $strMsg"
     echo "ERROR: $strMsg"
     return 1
+  fi
+  chkExist=$(sqlite3 $HSHQ_DB "select Name from customfwsubnet where Name='$ruleName' and Subnet='$subnet';")
+  if ! [ -z "$chkExist" ]; then
+    strMsg="This rule name and subnet combo already exists..."
+    echo "ERROR: $strMsg"
+    return 2
   fi
   sudo sqlite3 $HSHQ_DB "insert into customfwsubnet(Name,Subnet) values('$ruleName','$subnet');"
 }
@@ -26693,7 +26822,9 @@ function updateExposedPortsLists()
   selectedChain="$1"
   selectedList="$2"
   selectedPorts="$3"
-  checkValidPortsList "$selectedPorts"
+  if ! [ -z "$selectedPorts" ]; then
+    checkValidPortsList "$selectedPorts"
+  fi
   if [ $? -ne 0 ]; then
     strMsg="There was an error with the ports list: $selectedPorts"
     logHSHQEvent error "updateExposedPortsLists (checkValidPortsList) - $strMsg"
@@ -31707,7 +31838,7 @@ function importDBs()
 
 function getHomeServerPortsList()
 {
-  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
+  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
   echo "$portsList"
 }
 
@@ -59371,7 +59502,7 @@ EOFSC
 {
   "name": "01 Restart Authelia",
   "script_path": "conf/scripts/restartAuthelia.sh",
-  "description": "Restarts Authelia container. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is typically useful after updates have been applied to the configuration.",
+  "description": "Restarts Authelia container. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is typically useful after updates have been applied to the configuration.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": []
 }
@@ -59474,7 +59605,7 @@ EOFSC
 {
   "name": "04 Restart Portainer",
   "script_path": "conf/scripts/restartPortainerStack.sh",
-  "description": "Restarts Portainer stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function restarts the Portainer stack.",
+  "description": "Restarts Portainer stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function restarts the Portainer stack.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": []
 }
@@ -61001,7 +61132,7 @@ EOFSC
 {
   "name": "01 Check Update HSHQ",
   "script_path": "conf/scripts/checkUpdateHSHQ.sh",
-  "description": "Check for updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.<br/><br/>Github Releases: https://github.com/homeserverhq/hshq/releases<br/>Changelog: https://homeserverhq.com/changelog.txt",
+  "description": "Check for updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.<br/><br/>Github Releases: https://github.com/homeserverhq/hshq/releases<br/>Changelog: https://homeserverhq.com/changelog.txt<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": []
 }
@@ -61577,7 +61708,7 @@ EOFSC
 {
   "name": "08 Display All Connections",
   "script_path": "conf/scripts/displayAllConnections.sh",
-  "description": "Display all network connections. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all network connections to the console. If you are hosting a VPN, the output will include all connections that you manage.",
+  "description": "Display all network connections. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all network connections to the console. If you are hosting a VPN, the output will include all connections that you manage.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils"
 }
 
@@ -61670,9 +61801,98 @@ EOFSC
 {
   "name": "10 Update HomeServer Logos",
   "script_path": "conf/scripts/updateHomeServerLogoImages.sh",
-  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page. If you wish to set the logo image for your own HomeServer, then run the 04 System Utils -> 09 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager(s) run this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).",
+  "description": "Updates HomeServer Logos. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function downloads the logo images for each of the HomeServers shown in the HomeServers section of the home page. If you wish to set the logo image for your own HomeServer, then run the 04 System Utils -> 09 Upload HomeServer Logo function and select the image of your choice, and your logo will be displayed on other networks accordingly (given that the other manager(s) run this function). The downloaded images must be in .png format and can be no larger than 1MB (1024 KB).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": []
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addRemoveVNCServer.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts
+
+set +e
+isAddRem=\$(getArgumentValue addremvnc "\$@")
+if [ "\$isAddRem" = "Add" ]; then
+  addVNCServer
+elif [ "\$isAddRem" = "Remove" ]; then
+  removeVNCServer
+else
+  echo "Unknown option, returning..."
+fi
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addRemoveVNCServer.json
+{
+  "name": "11 Add/Remove VNC Server",
+  "script_path": "conf/scripts/addRemoveVNCServer.sh",
+  "description": "Add or Remove Host VNC Server. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add (or remove) an [x11vnc](https://github.com/LibVNC/x11vnc) server on the Linux host. It will bind the service to port $VNC_SERVER_PORT, and it will expose this port on the local network. It will also allow this port to be accessed on the dock-ext docker network, which is needed for setting up a connection profile in [Guacmole](https://wiki.homeserverhq.com/en/foss-projects/guacamole) (access the desktop from anywhere in a web-browser). You must have a desktop environment installed in order for this service to be functional. The default password is your sudo password. To access your server with a VNC client on the local network, use the following IP address/port combo: $HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$VNC_SERVER_PORT. You can also use the hostname, i.e.: $HOMESERVER_DOMAIN:$VNC_SERVER_PORT.<br/>\nItems of note:\n1. This services fails to work on the GNOME desktop environment. If you attempt to do so, you will have to log out of that desktop instance directly on this physical server, so that the VNC server can (automatically) restore itself to a healthy state. It does not have any (known) issues with Cinnamon, KDE, XFCE, MATE, or Budgie.\n2. This service is configured with the -shared option, meaning multiple clients can connect to the same shared session. It also attaches directly to an X display environment. Thus, if you log in remotely, it will also log in on the physical machine as well.\n3. Finally, if you attempt to open a Guacamole web instance directly on this server's desktop environment, it will cause a paradox that could implode the universe onto itself (or just cause some cool screen effects, it depends).\n\n<hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_systemutils",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Add/Remove",
+      "required": true,
+      "param": "-addremvnc=",
+      "same_arg_param": true,
+      "type": "list",
+      "default": "Add",
+      "values": [
+        "Add",
+        "Remove"
+      ],
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
 }
 
 EOFSC
@@ -61779,7 +61999,7 @@ EOFSC
 {
   "name": "03 Check Mutex Lock Status",
   "script_path": "conf/scripts/checkMutexLockStatus.sh",
-  "description": "Checks the status of a mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance doing a certain thing at a time.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>This function does not perform any actions, it only reports the status. If you need to reset one of them, go to Reset Mutex Lock in System Utils.",
+  "description": "Checks the status of a mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance doing a certain thing at a time.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>This function does not perform any actions, it only reports the status. If you need to reset one of them, go to Reset Mutex Lock in System Utils.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -63860,7 +64080,7 @@ EOFSC
 {
   "name": "03 User Device Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.\n\n<hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -64553,7 +64773,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).\n\n<hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -65079,7 +65299,7 @@ EOFSC
 {
   "name": "06 Remove Exposed Subdomain",
   "script_path": "conf/scripts/removeExposeDomainFromRelayServer.sh",
-  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/> <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -65539,7 +65759,7 @@ EOFSC
 {
   "name": "10 Display Port Forwarding Rules",
   "script_path": "conf/scripts/displayAllPortforwards.sh",
-  "description": "Display all port forwarding rules. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all port forwarding rules and System Reserved ports on the RelayServer to the console.",
+  "description": "Display all port forwarding rules. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all port forwarding rules and System Reserved ports on the RelayServer to the console.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver"
 }
 
@@ -65564,7 +65784,7 @@ EOFSC
 {
   "name": "01 Display Host Interfaces",
   "script_path": "conf/scripts/displayAllHomeServerHostInterfaces.sh",
-  "description": "Displays all network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function displays all of the network interfaces on the host system. It will not show Docker network or HSHQ-based WireGuard interfaces, but will display everything else. You can use this function to obtain the exact name of an interface that you may want to add.",
+  "description": "Displays all network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function displays all of the network interfaces on the host system. It will not show Docker network or HSHQ-based WireGuard interfaces, but will display everything else. You can use this function to obtain the exact name of an interface that you may want to add.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": []
 }
@@ -66272,7 +66492,7 @@ EOFSC
 {
   "name": "07 Edit Exposed Ports",
   "script_path": "conf/scripts/editExposedPorts.sh",
-  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list.<br/><br/>All ports must be comma-separated with no spaces.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Edit the exposed ports on the firewall. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function allows you to edit the exposed ports for a particular interface. The list of ports are the ones that are allowed by the firewall. If a port is added to any (non-DEFAULT) list, then it will be automatically dropped in all other cases. If a port is exposed via docker, then select the DOCKER-USER chain, otherwise select the INPUT chain. If you add your own custom docker-based service and expose a particular port not yet listed, then that port will be accessible on ALL interfaces. So specify at least one interface on which it should be exposed, thus causing it to be (safely) inaccessible on all other interfaces.<br/><br/>When specifying ports for the INPUT chain, you must also indicate the protocol(s), i.e. tcp, udp, or both. For example, if you wanted to add port 12345 for udp, then add 12345/udp to the list. All ports must be comma-separated with no spaces.<br/><br/>Ensure to refresh this page if performing multiple actions, to allow the auto-computing functions on the input fields to properly reflect the correct up-to-date info.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": [
     {
