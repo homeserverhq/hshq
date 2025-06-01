@@ -59502,7 +59502,7 @@ EOFSC
 {
   "name": "01 Restart Authelia",
   "script_path": "conf/scripts/restartAuthelia.sh",
-  "description": "Restarts Authelia container. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is typically useful after updates have been applied to the configuration.",
+  "description": "Restarts Authelia container. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is typically useful after updates have been applied to the configuration.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": []
 }
@@ -59605,7 +59605,7 @@ EOFSC
 {
   "name": "04 Restart Portainer",
   "script_path": "conf/scripts/restartPortainerStack.sh",
-  "description": "Restarts Portainer stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function restarts the Portainer stack.",
+  "description": "Restarts Portainer stack. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function restarts the Portainer stack.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": []
 }
@@ -61132,7 +61132,7 @@ EOFSC
 {
   "name": "01 Check Update HSHQ",
   "script_path": "conf/scripts/checkUpdateHSHQ.sh",
-  "description": "Check for updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.<br/><br/>Github Releases: https://github.com/homeserverhq/hshq/releases<br/>Changelog: https://homeserverhq.com/changelog.txt",
+  "description": "Check for updates. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>Checks for updates to either the wrapper script ($HSHQ_WRAP_FILENAME) or the lib script ($HSHQ_LIB_FILENAME). Does not perform any actions, just simply informs if there is an update available.<br/><br/>Github Releases: https://github.com/homeserverhq/hshq/releases<br/>Changelog: https://homeserverhq.com/changelog.txt<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils",
   "parameters": []
 }
@@ -61708,7 +61708,7 @@ EOFSC
 {
   "name": "08 Display All Connections",
   "script_path": "conf/scripts/displayAllConnections.sh",
-  "description": "Display all network connections. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all network connections to the console. If you are hosting a VPN, the output will include all connections that you manage.",
+  "description": "Display all network connections. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all network connections to the console. If you are hosting a VPN, the output will include all connections that you manage.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_systemutils"
 }
 
@@ -61999,7 +61999,7 @@ EOFSC
 {
   "name": "03 Check Mutex Lock Status",
   "script_path": "conf/scripts/checkMutexLockStatus.sh",
-  "description": "Checks the status of a mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance doing a certain thing at a time.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>This function does not perform any actions, it only reports the status. If you need to reset one of them, go to Reset Mutex Lock in System Utils.",
+  "description": "Checks the status of a mutex lock. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This is a safeguard to ensure only <ins>***ONE***</ins> instance doing a certain thing at a time.<br/><br/>There are only two locks in use in this infrastructure - hshqopen and networkchecks. The hshqopen lock is primarily for script functions, such as those in this Script-server web utility or the console-based utility. The networkchecks lock is primarily for the background network monitoring processes. The hshqopen lock might need to be reset on occasion. The networkchecks should rarely, if ever, require a reset.<br/><br/>This function does not perform any actions, it only reports the status. If you need to reset one of them, go to Reset Mutex Lock in System Utils.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_testing",
   "parameters": [
     {
@@ -64080,7 +64080,7 @@ EOFSC
 {
   "name": "03 User Device Application",
   "script_path": "conf/scripts/applyUserConnection.sh",
-  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Generates and sends a user device application to the recipient email address. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>A user device application is specifically for a client device (desktop, laptop, mobile, etc.) to access the private network to which you are applying. The recipient email should be the network administrator of that network. Ensure to double check all of the inputs, as this will automatically send the application upon execution. Also ensure the client device has access to the requesting email in order to be notified of updates to the network. If this is a new profile with no provided public key, then take the proper precautions as this method will generate and email the <ins>***ACTUAL***</ins> private key to the requesting email, i.e. <ins>***DO NOT***</ins> send this to an email address of a centralized email provider, nor share it over any other public channels. Treat it as <ins>***HIGHLY CONFIDENTIAL***</ins>. If you request public internet IP masquerade and it is approved, then you can masquerade your internet traffic for the device via the RelayServer of that network. The description field is to convey what the connection will be used for, i.e. My cellphone, Home desktop, etc.<br/>\nIf you are requesting a new profile: \n1. Leave the interface IP address blank.\n2. If the public key is left blank, then a key pair will be generated and the private key will be sent to the requesting email. \n3. If the public key is provided, then the requestor must marry their private key back into the provided WireGuard configuration (replacing the one provided).\n\nIf you are making a request on an existing profile:\n1. Include both the interface IP address and the public key of the existing profile.\n2. When the WireGuard configuration is received via email, append the peer configuration to the existing WireGuard profile.\n\n<hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_othernetworks",
   "parameters": [
     {
@@ -64773,7 +64773,7 @@ EOFSC
 {
   "name": "01 Add Secondary Domain",
   "script_path": "conf/scripts/addDomainToRelayServer.sh",
-  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Adds a new secondary domain to the RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will add the domain entered below to the RelayServer. It will forward the mail sent to this domain to the selected mail subdomain, and configure the internal DNS records to point to the same corresponding HomeServer. Only HomeServers that use this network as their primary network can be selected.<br/>\nAdding a secondary domain requires three steps:\n1. Add the domain using <ins>this</ins> function. Upon execution, the DNS info will be sent to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS).\n2. Using the DNS info from Step 1, update the DNS records at the domain name provider for the new domain.\n3. Add the domain to Mailu, in order to send/receive email on this domain. Using Mailu web interface: Sign in Admin -> Mail domains (left sidebar) -> New domain (top right corner).\n\n<hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -65299,7 +65299,7 @@ EOFSC
 {
   "name": "06 Remove Exposed Subdomain",
   "script_path": "conf/scripts/removeExposeDomainFromRelayServer.sh",
-  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/> <br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Removes an exposed (sub)domain from RelayServer. [Need Help?](https://forum.homeserverhq.com/)<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver",
   "parameters": [
     {
@@ -65759,7 +65759,7 @@ EOFSC
 {
   "name": "10 Display Port Forwarding Rules",
   "script_path": "conf/scripts/displayAllPortforwards.sh",
-  "description": "Display all port forwarding rules. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all port forwarding rules and System Reserved ports on the RelayServer to the console.",
+  "description": "Display all port forwarding rules. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all port forwarding rules and System Reserved ports on the RelayServer to the console.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver"
 }
 
@@ -65784,7 +65784,7 @@ EOFSC
 {
   "name": "01 Display Host Interfaces",
   "script_path": "conf/scripts/displayAllHomeServerHostInterfaces.sh",
-  "description": "Displays all network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function displays all of the network interfaces on the host system. It will not show Docker network or HSHQ-based WireGuard interfaces, but will display everything else. You can use this function to obtain the exact name of an interface that you may want to add.",
+  "description": "Displays all network interface on host. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function displays all of the network interfaces on the host system. It will not show Docker network or HSHQ-based WireGuard interfaces, but will display everything else. You can use this function to obtain the exact name of an interface that you may want to add.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_homenetwork",
   "parameters": []
 }
