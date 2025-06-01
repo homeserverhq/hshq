@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=169
+HSHQ_LIB_SCRIPT_VERSION=170
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -395,8 +395,11 @@ EOF
     1)
       checkWorkingInternet
       checkUpdateAptSources false
+      clear
       checkDockerPre
       set -e
+      clear
+      echo "Please wait..."
       checkLoadConfig
       initConfig
       initCertificateAuthority
@@ -3648,13 +3651,13 @@ function initConfig()
       TZ=""
     else
       set +e
-      sudo timedatectl set-timezone "$TZ"
+      sudo timedatectl set-timezone "$TZ" > /dev/null 2>&1
       if [ $? -ne 0 ]; then
         showMessageBox "Invalid Time Zone" "The time zone is invalid. Please enter a valid time zone."
         TZ=""
-        sudo timedatectl set-timezone "$priorTZ"
+        sudo timedatectl set-timezone "$priorTZ" > /dev/null 2>&1
       else
-        echo "$TZ" | sudo tee /etc/timezone
+        echo "$TZ" | sudo tee /etc/timezone > /dev/null 2>&1
         updatePlaintextRootConfigVar TZ $TZ
       fi
       set -e
