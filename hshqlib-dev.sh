@@ -22981,6 +22981,8 @@ function version171Update()
   cat <<EOFRS > $HOME/rsUpdateScript.sh
 #!/bin/bash
 
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+
 function main()
 {
   rm -f \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/scripts/addRelayedMailDomains.sh
