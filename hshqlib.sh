@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=170
+HSHQ_LIB_SCRIPT_VERSION=171
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -32,7 +32,7 @@ function init()
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   PRIOR_HSHQ_VERSION=0
-  LAST_RELAYSERVER_VERSION_UPDATE=121
+  LAST_RELAYSERVER_VERSION_UPDATE=171
   IS_DESKTOP_ENV=false
   if [ -d $HOME/Desktop ]; then
     IS_DESKTOP_ENV=true
@@ -2168,7 +2168,7 @@ EOF
   setSudoTimeoutInstall
   checkCreateNonbackupDirs
   # Set hostname
-  new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
+  new_hostname="HomeServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
     echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
   fi
@@ -3567,7 +3567,7 @@ function initConfig()
 	fi
   done
 
-  new_hostname="HomeServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
+  new_hostname="HomeServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
     echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
   fi
@@ -5305,6 +5305,16 @@ function webSetupHostedVPN()
       return
     ;;
   esac
+  pullImage $IMG_WIREGUARD
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was a problem pulling the WireGuard docker image..."
+    return
+  fi
+  pullImage $IMG_DNSMASQ
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was a problem pulling the DNSMasq docker image..."
+    return
+  fi
   RELAYSERVER_WG_VPN_NETNAME="vpn-"${HOMESERVER_ABBREV:0:6}
   curNum=1
   while [ "$(checkInterfaceNameExists $RELAYSERVER_WG_VPN_NETNAME)" = "true" ] && [ $curNum -lt 100 ]
@@ -5442,16 +5452,7 @@ function webSetupHostedVPN()
     echo "ERROR: There was a problem with the RelayServer, see above."
     return
   fi
-  pullImage $IMG_WIREGUARD
-  if [ $? -ne 0 ]; then
-    echo "ERROR: There was a problem pulling the WireGuard docker image..."
-    return
-  fi
-  pullImage $IMG_DNSMASQ
-  if [ $? -ne 0 ]; then
-    echo "ERROR: There was a problem pulling the DNSMasq docker image..."
-    return
-  fi
+  echo "All is good, assigning values..."
   RELAYSERVER_HSHQ_BASE_DIR=/home/$RELAYSERVER_REMOTE_USERNAME/hshq
   RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_BASE_DIR/data
   RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_BASE_DIR/nonbackup
@@ -5459,8 +5460,6 @@ function webSetupHostedVPN()
   RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/secrets
   RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_DATA_DIR/stacks
   RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_DATA_DIR/ssl
-  echo "All is good, assigning values..."
-  # Everything is good, let's begin
   resetRelayServerData
   updatePlaintextRootConfigVar PRIMARY_VPN_SETUP_TYPE "$PRIMARY_VPN_SETUP_TYPE"
   updateConfigVar RELAYSERVER_SSH_PORT $RELAYSERVER_SSH_PORT
@@ -5513,6 +5512,10 @@ function webSetupHostedVPN()
   initRelayServerCredentials
   outputHostedVPNConfigs
   insertSQLHostedVPN
+  # This upload must take place as soon as possible after the
+  # validation check, as the RelayServer might be installing
+  # docker and reboooting (required for debian 12 atm)
+  # See "Performing pre-installation checks" comment above.
   echo "Generating RelayServer install scripts..."
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
@@ -6506,7 +6509,7 @@ function main()
   init
   echo "Running setup script..."
   outputNukeScript
-  new_hostname="RelayServer-$(getDomainNoTLD $HOMESERVER_DOMAIN)-$(getDomainTLD $HOMESERVER_DOMAIN)"
+  new_hostname="RelayServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
     echo "127.0.1.1 \$new_hostname" | sudo tee -a /etc/hosts
   fi
@@ -9463,10 +9466,7 @@ if [ -z "\\\$domains_to_add" ] || [ -z "\\\$deliver_to_host" ]; then
   exit 1
 fi
 
-deliver_to_host_dom=\\\$(echo \\\$deliver_to_host | rev | cut -d"." -f2 | rev)
-deliver_to_host_tld=\\\$(echo \\\$deliver_to_host | rev | cut -d"." -f1 | rev)
-deliver_to_host_username=\\\$deliver_to_host_dom.\\\$deliver_to_host_tld
-
+deliver_to_host_username=\\\$(echo \\\$deliver_to_host | cut -d"." -f2-)
 domains_to_add_Arr=(\\\$(echo \\\$domains_to_add | tr "," "\n"))
 
 for curDomain in "\\\${domains_to_add_Arr[@]}"
@@ -9988,7 +9988,7 @@ function installCaddy()
 function outputConfigCaddy()
 {
   cat <<EOFCC > \$HOME/caddy-compose.yml
-$STACK_VERSION_PREFIX caddy $(getScriptStackVersion caddy)
+$STACK_VERSION_PREFIX caddy-rs $(getScriptStackVersion caddy-rs)
 
 services:
   caddy:
@@ -13744,12 +13744,6 @@ function getCurrentDate()
   date '+%Y-%m-%d %H:%M:%S'
 }
 
-function getDomainNoTLD()
-{
-  domain_name=$1
-  echo $domain_name | rev | cut -d"." -f2 | rev
-}
-
 function getDomainTLD()
 {
   domain_name=$1
@@ -13759,19 +13753,13 @@ function getDomainTLD()
 function getBaseDomain()
 {
   domain_name=$1
-  echo "$(getDomainNoTLD $domain_name)"."$(getDomainTLD $domain_name)"
+  echo $domain_name | cut -d"." -f2- 
 }
 
 function getSubDomain()
 {
   domain_name=$1
-  echo $domain_name | rev | cut -d"." -f 3- | rev
-}
-
-function getSubDomainNoTLD()
-{
-  domain_name=$1
-  echo $domain_name | rev | cut -d"." -f 2- | rev
+  echo $domain_name | cut -d"." -f1 
 }
 
 function getAdminEmailName()
@@ -15968,15 +15956,11 @@ function checkValidBaseDomain()
     echo "false"
     return
   fi
-  if ! [ -z "$(getSubDomain $check_domain)" ]; then
-    echo "false"
-    return
-  fi
   if [ -z "$(getDomainTLD $check_domain)" ]; then
     echo "false"
     return
   fi
-  if [ -z "$(getDomainNoTLD $check_domain)" ]; then
+  if [ -z "$(echo $check_domain | cut -d"." -f1)" ]; then
     echo "false"
     return
   fi
@@ -20531,6 +20515,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=165
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 171 ]; then
+    echo "Updating to Version 171..."
+    version171Update
+    HSHQ_VERSION=171
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -22981,6 +22971,56 @@ function version164Update()
 function version165Update()
 {
   outputLockUtilsScript
+}
+
+function version171Update()
+{
+  # Fixes the annoying excess space at the bottom of Firefox browser windows in Heimdall
+  sed -i '/\.sidenav ul {/{:a;N;/}/!ba;s/\.sidenav ul {.*}/\.sidenav ul {\n  list-style: none;\n  margin: 0;\n  padding: 20px;\n  overflow-y: auto;\n}/g}' $HSHQ_STACKS_DIR/heimdall/html/public/css/app.css
+  rm -f $HOME/rsUpdateScript.sh
+  cat <<EOFRS > $HOME/rsUpdateScript.sh
+#!/bin/bash
+
+RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+
+function main()
+{
+  rm -f \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/scripts/addRelayedMailDomains.sh
+  cat <<EOFCS > \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/scripts/addRelayedMailDomains.sh
+#!/bin/bash
+set -e
+domains_to_add=\\\$1
+deliver_to_host=\\\$2
+
+if [ -z "\\\$domains_to_add" ] || [ -z "\\\$deliver_to_host" ]; then
+  echo "Empty Parameters"
+  exit 1
+fi
+
+deliver_to_host_username=\\\$(echo \\\$deliver_to_host | cut -d"." -f2-)
+domains_to_add_Arr=(\\\$(echo \\\$domains_to_add | tr "," "\n"))
+
+for curDomain in "\\\${domains_to_add_Arr[@]}"
+do
+  sed -i "/^@\\\$curDomain /d" /etc/postfix/config/sasl_senders
+  sed -i "/\\\$curDomain/d" /etc/postfix/config/transport
+  sed -i "/^\\\$curDomain /d" /etc/postfix/config/relay
+  echo "@\\\${curDomain}     \\\${deliver_to_host_username}@mail-relay-postfix" >> /etc/postfix/config/sasl_senders
+  sed -i "1s/^/\\\${curDomain}     relay:[\\\${deliver_to_host}]:25\n/" /etc/postfix/config/transport
+  echo "\\\${curDomain}     OK" >> /etc/postfix/config/relay
+done
+
+postmap /etc/postfix/config/transport
+postmap /etc/postfix/config/sasl_senders
+postmap /etc/postfix/config/relay
+postfix reload
+EOFCS
+  chmod 544 \$RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/postfix/scripts/addRelayedMailDomains.sh
+}
+
+main "\$@"
+EOFRS
+  updateRelayServerWithScript
 }
 
 function updateRelayServerWithScript()
@@ -40863,7 +40903,6 @@ function installDuplicati()
     exit 1
   fi
   set -e
-  domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
   mkdir $HSHQ_STACKS_DIR/duplicati
   mkdir $HSHQ_STACKS_DIR/duplicati/config
   mkdir $HSHQ_NONBACKUP_DIR/duplicati
@@ -67429,6 +67468,8 @@ function installHeimdall()
   # https://github.com/linuxserver/Heimdall/issues/840
   sed -i "s|^SESSION_LIFETIME=.*|SESSION_LIFETIME=5256000|g" $HSHQ_STACKS_DIR/heimdall/config/www/.env
   echo "SESSION_SECURE_COOKIE=true" >> $HSHQ_STACKS_DIR/heimdall/config/www/.env
+  # Fixes the annoying excess space at the bottom of Firefox browser windows
+  sed -i '/\.sidenav ul {/{:a;N;/}/!ba;s/\.sidenav ul {.*}/\.sidenav ul {\n  list-style: none;\n  margin: 0;\n  padding: 20px;\n  overflow-y: auto;\n}/g}' $HSHQ_STACKS_DIR/heimdall/html/public/css/app.css
 
   admin_password_hash=$(htpasswd -nbBC 10 $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD | cut -d":" -f2-)
   user_password_hash=$(htpasswd -nbBC 10 $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD | cut -d":" -f2-)
@@ -67446,8 +67487,7 @@ function installHeimdall()
   cp $HSHQ_ASSETS_DIR/images/wghomeserversbackground.jpg $HSHQ_STACKS_DIR/heimdall/config/www/backgrounds/
   cp $HSHQ_ASSETS_DIR/images/relayserverbackground.jpg $HSHQ_STACKS_DIR/heimdall/config/www/backgrounds/
 
-  org_name_no_spaces=$(echo "$HOMESERVER_NAME" | sed 's| ||g')
-  domain_noext=$(getDomainNoTLD $HOMESERVER_DOMAIN)
+  domain_noext=$(echo $HOMESERVER_DOMAIN | cut -d"." -f1)
   search_provider="\n${domain_noext}:\n   id: ${domain_noext}\n   url: https://$SUB_SEARXNG.$HOMESERVER_DOMAIN\n   name: \"$HOMESERVER_NAME\"\n   method: get\n   target: _blank\n   query: q"
   echo -e "$search_provider" >> $HSHQ_STACKS_DIR/heimdall/config/www/searchproviders.yaml
 
