@@ -2168,7 +2168,7 @@ EOF
   setSudoTimeoutInstall
   checkCreateNonbackupDirs
   # Set hostname
-  new_hostname="HomeServer-$HOMESERVER_DOMAIN"
+  new_hostname="HomeServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
     echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
   fi
@@ -3567,7 +3567,7 @@ function initConfig()
 	fi
   done
 
-  new_hostname="HomeServer-$HOMESERVER_DOMAIN"
+  new_hostname="HomeServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
     echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
   fi
@@ -6509,7 +6509,7 @@ function main()
   init
   echo "Running setup script..."
   outputNukeScript
-  new_hostname="RelayServer-$HOMESERVER_DOMAIN"
+  new_hostname="RelayServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
     echo "127.0.1.1 \$new_hostname" | sudo tee -a /etc/hosts
   fi
