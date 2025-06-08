@@ -69,7 +69,7 @@ function init()
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
   MINDSDB_IMPORT_FILENAME=DBCImport.txt
-  DNS_ZONE_FILENAME=DNSZone.txt
+  DNS_ZONE_FILENAME_BASE=DNSZoneInfo
   DOCKER_VERSION_UBUNTU_2204=5:25.0.5-1~ubuntu.22.04~jammy
   DOCKER_VERSION_UBUNTU_2404=5:27.4.0-1~ubuntu.24.04~noble
   DOCKER_VERSION_DEBIAN_12=5:27.4.0-1~debian.12~bookworm
@@ -12429,9 +12429,9 @@ function performNetworkInvite()
         echo -e "  You will have to transfer your MGR copy"
         echo -e "  to them through alternative means."
         echo -e "########################################\n"
-        outputDNSZoneFile $domain_name /tmp/$DNS_ZONE_FILENAME
+        outputDNSZoneFile $domain_name /tmp/${DNS_ZONE_FILENAME_BASE}_${domain_name}.txt
         # Send ourself a copy
-        sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" -a /tmp/$DNS_ZONE_FILENAME
+        sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" -a /tmp/${DNS_ZONE_FILENAME_BASE}_${domain_name}.txt
       else
         sendEmail -s "$mail_subj" -b "$mail_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
         # Send ourself a copy
@@ -12443,7 +12443,7 @@ function performNetworkInvite()
       notifyMyNetworkHomeServersDNSUpdate add "$cur_hs_name" "$domain_name"
       # Send update email to other users on our network
       notifyMyNetworkUsersDNSUpdate add "$cur_hs_name" "$domain_name" "$external_prefix" "$new_ip"
-      rm -f /tmp/$DNS_ZONE_FILENAME
+      rm -f /tmp/${DNS_ZONE_FILENAME_BASE}_${domain_name}.txt
     ;;
     "HomeServer Internet")
       mail_subj="HomeServer Internet Invitation from $HOMESERVER_NAME, RequestID: $request_id"
@@ -16338,10 +16338,10 @@ EOFDZ
 function sendDNSRecordsEmail()
 {
   email_dns_domain=$1
-  outputDNSZoneFile $email_dns_domain /tmp/$DNS_ZONE_FILENAME
-  sendEmail -s "DNS Info for $email_dns_domain" -b "$(getDNSRecordsInfo $email_dns_domain)" -a /tmp/$DNS_ZONE_FILENAME
+  outputDNSZoneFile $email_dns_domain /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
+  sendEmail -s "DNS Info for $email_dns_domain" -b "$(getDNSRecordsInfo $email_dns_domain)" -a /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
   sleep 1
-  rm -f /tmp/$DNS_ZONE_FILENAME
+  rm -f /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
 }
 
 function sendEmail()
@@ -66052,8 +66052,12 @@ EOFSC
       "same_arg_param": true,
       "type": "text",
       "ui": {
-        "width_weight": 2
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
       },
+      "default": "$HOMESERVER_DOMAIN",
       "secure": false,
       "pass_as": "argument"
     },
@@ -66064,10 +66068,7 @@ EOFSC
       "same_arg_param": true,
       "type": "ip4",
       "ui": {
-        "width_weight": 2,
-        "separator_before": {
-          "type": "new_line"
-        }
+        "width_weight": 2
       },
       "secure": false,
       "pass_as": "argument"
