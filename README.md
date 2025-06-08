@@ -36,7 +36,7 @@
  - Mint 22 (Wilma)
 
 ## Installation
-The easiest method is to use on of the provided custom ISOs with a desktop environment (see below). However, if the webserver is down, and/or you want to install directly via GitHub, run the following commands as the first non-root user (ID=1000) on a fresh Linux installation:
+The easiest method is to use one of the provided custom ISOs with a desktop environment (see below). However, if the webserver is down, or you prefer headless, and/or you want to install directly via GitHub, run the following commands as the first non-root user (ID=1000) on a fresh Linux installation:
 ```
 cd ~
 mkdir -p hshq/data/lib
