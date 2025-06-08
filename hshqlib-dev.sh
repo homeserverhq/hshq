@@ -6383,7 +6383,7 @@ function checkPerformPreInstall()
   if [ \$? -ne 0 ]; then
     source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
     if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
-      echo " Installing docker and rebooting..."
+      echo "Installing docker on RelayServer and rebooting it..."
       # Must install docker and reboot
       touch /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
       scName=hshqPreInstall
@@ -10811,7 +10811,11 @@ function connectVPN()
           echo "************************************************************************************"
           return
         fi
-        echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
+        if [ $total_attempts -lt 10 ]; then
+          echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
+        else
+          echo "($total_attempts of $max_attempts) RelayServer installation has not completed, it could be a firewall issue with the provider. Ensure that the port $RELAYSERVER_SSH_PORT (SSH) is open and accessible. Retrying in 30 seconds..."
+        fi
         refreshSudo
         sleep 30
         total_attempts=$((total_attempts + 1))
@@ -16339,7 +16343,7 @@ function sendDNSRecordsEmail()
 {
   email_dns_domain=$1
   outputDNSZoneFile $email_dns_domain /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
-  sendEmail -s "DNS Info for $email_dns_domain" -b "$(getDNSRecordsInfo $email_dns_domain)" -a /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
+  sendEmail -s "DNS Info for $email_dns_domain" -b "Below are the DNS records for the domain $email_dns_domain. There is also a DNS Zone file attachment, which is compatible with most DNS providers. Unless you are doing some sort of advanced setup and/or you know what you are doing, you should delete any other preexisting A, MX, CNAME, or TXT records that may have been created by your domain name provider. Just ensure that you do NOT edit/delete the nameserver (NS) or Start of Authority (SOA) records. \n\n$(getDNSRecordsInfo $email_dns_domain)" -a /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
   sleep 1
   rm -f /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
 }
@@ -63766,7 +63770,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details.<br/><br/> <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. You can use the function 08 RelayServer Utils -> 11 Email DNS Records to obtain the necessary info. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details.<br/><br/>The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
