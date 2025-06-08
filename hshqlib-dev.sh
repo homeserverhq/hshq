@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=171
+HSHQ_LIB_SCRIPT_VERSION=172
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -69,6 +69,7 @@ function init()
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
   MINDSDB_IMPORT_FILENAME=DBCImport.txt
+  DNS_ZONE_FILENAME=DNSZone.txt
   DOCKER_VERSION_UBUNTU_2204=5:25.0.5-1~ubuntu.22.04~jammy
   DOCKER_VERSION_UBUNTU_2404=5:27.4.0-1~ubuntu.24.04~noble
   DOCKER_VERSION_DEBIAN_12=5:27.4.0-1~debian.12~bookworm
@@ -3557,7 +3558,7 @@ function initConfig()
       showMessageBox "Invalid Character(s)" "The domain contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or -."
       HOMESERVER_DOMAIN=""
     elif [ $(checkValidBaseDomain "$HOMESERVER_DOMAIN") = "false" ]; then
-      showMessageBox "Invalid Domain Name" "Invalid domain name. The base domain must be of the format 'example.com'. It cannot be a subdomain."
+      showMessageBox "Invalid Domain Name" "Invalid domain name. The base domain must be of the format 'example.com'. It cannot start or end with a period."
       HOMESERVER_DOMAIN=""
     elif [ $(getDomainTLD "$HOMESERVER_DOMAIN") = "test" ]; then
       showMessageBox "Invalid Domain" "The specific TLD .test actually causes some issues. Change it to .tester or something else."
@@ -3952,7 +3953,7 @@ function initInstallation()
   done
   while true;
   do
-    echo -e "\n\n________________________________________________________________________\n"
+    echo -e "\n________________________________________________________________________\n"
     read -r -p "$final_prompt" is_install
     if [ "$is_install" = "install" ]; then
       break
@@ -5527,10 +5528,12 @@ function webSetupHostedVPN()
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   unloadSSHKey
   set +e
+  sendDNSRecordsEmail $HOMESERVER_DOMAIN
+  sleep 2
   prepSvcsHostedVPN
   set +e
   startStopStack mailu stop
-  sleep 2
+  sleep 1
   echo "Generating mailu certs..."
   generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
   echo "Setting mailu relay creds..."
@@ -5581,7 +5584,6 @@ function webSetupHostedVPN()
   fi
   rm -f $wgconfigfile
   echo -e "$wgconfig" > $wgconfigfile
-  sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
   echo "Emailing credentials..."
   emailVaultwardenCredentials true
 }
@@ -12421,23 +12423,27 @@ function performNetworkInvite()
       fi
       mail_body=$mail_body"\n$INVITATION_LAST_LINE\n\n"
       if [ "$is_primary" = "true" ]; then
-        echo -e "\n\n\n\n########################################"
-        echo -e "This is a primary VPN request."
-        echo -e "No email will be sent to $email_address."
-        echo -e "You will have to transfer your MGR copy"
-        echo -e "to them through alternative means."
+        echo -e "\n\n\n########################################"
+        echo -e "  This is a primary VPN request."
+        echo -e "  No email will be sent to $email_address."
+        echo -e "  You will have to transfer your MGR copy"
+        echo -e "  to them through alternative means."
         echo -e "########################################\n"
+        outputDNSZoneFile $domain_name /tmp/$DNS_ZONE_FILENAME
+        # Send ourself a copy
+        sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" -a /tmp/$DNS_ZONE_FILENAME
       else
         sendEmail -s "$mail_subj" -b "$mail_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
+        # Send ourself a copy
+        sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body"
       fi
-      # Send ourself a copy
-      sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body"
       insertEnableSvcUptimeKuma uptimekuma "${cur_hs_name}" homeservers "https://$SUB_HSHQSTATUS.$domain_name" true
       insertEnableSvcHeimdall heimdall "$cur_hs_name" homeservers "https://$SUB_HSHQHOME.$domain_name" "hs2.png" true "$(getHeimdallOrderFromSub $SUB_HSHQHOME homeservers)"
       # Send update email to other HomeServers on our network
       notifyMyNetworkHomeServersDNSUpdate add "$cur_hs_name" "$domain_name"
       # Send update email to other users on our network
       notifyMyNetworkUsersDNSUpdate add "$cur_hs_name" "$domain_name" "$external_prefix" "$new_ip"
+      rm -f /tmp/$DNS_ZONE_FILENAME
     ;;
     "HomeServer Internet")
       mail_subj="HomeServer Internet Invitation from $HOMESERVER_NAME, RequestID: $request_id"
@@ -16305,6 +16311,39 @@ function getDNSRecordsInfo()
   echo "$str_res"
 }
 
+function outputDNSZoneFile()
+{
+  cur_domain="$1"
+  strFilename="$2"
+  tee $strFilename >/dev/null <<EOFDZ
+; Domain: $cur_domain
+
+\$ORIGIN ${cur_domain}.
+
+; A Record
+@	600	 IN 	A	$RELAYSERVER_SERVER_IP
+*	600	 IN 	A	$RELAYSERVER_SERVER_IP
+
+; TXT Record
+@	3600	 IN 	TXT	"v=spf1 mx -all"
+*	3600	 IN 	TXT	"v=spf1 -all"
+${cur_domain}._report._dmarc	3600	 IN 	TXT	"v=DMARC1"
+_dmarc	3600	 IN 	TXT	"v=DMARC1;p=reject;rua=mailto:$EMAIL_ADMIN_EMAIL_ADDRESS;ruf=mailto:$EMAIL_ADMIN_EMAIL_ADDRESS;adkim=s;aspf=s"
+
+; MX Record
+@	3600	 IN 	MX	0	${RELAYSERVER_EXT_EMAIL_HOSTNAME}.
+EOFDZ
+}
+
+function sendDNSRecordsEmail()
+{
+  email_dns_domain=$1
+  outputDNSZoneFile $email_dns_domain /tmp/$DNS_ZONE_FILENAME
+  sendEmail -s "DNS Info for $email_dns_domain" -b "$(getDNSRecordsInfo $email_dns_domain)" -a /tmp/$DNS_ZONE_FILENAME
+  sleep 1
+  rm -f /tmp/$DNS_ZONE_FILENAME
+}
+
 function sendEmail()
 {
   email_attachments=""
@@ -16949,7 +16988,7 @@ EOF
   for curDomain in "${domains_to_add_Arr[@]}"
   do
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values($mail_host_id,'$curDomain',false);"
-    sendEmail -s "DNS Info for $curDomain" -b "$(getDNSRecordsInfo $curDomain)"
+    sendDNSRecordsEmail $curDomain
   done
   set -e
 }
@@ -17043,7 +17082,7 @@ function addSecondaryDomainToRelayServer()
     return 5
   fi
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values($mail_host_id,'$add_domain',false);"
-  sendEmail -s "DNS Info for $add_domain" -b "$(getDNSRecordsInfo $add_domain)"
+  sendDNSRecordsEmail $add_domain
 }
 
 function removeSecondaryDomainFromRelayServer()
@@ -65926,6 +65965,114 @@ EOFSC
   "script_path": "conf/scripts/displayAllPortforwards.sh",
   "description": "Display all port forwarding rules. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all port forwarding rules and System Reserved ports on the RelayServer to the console.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver"
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailDNSRecords.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts
+
+dnsdomain=\$(getArgumentValue dnsdomain "\$@")
+rs_external_ip=\$(getArgumentValue rs_external_ip "\$@")
+
+# This is a bit hackish, we need to save the current
+# RelayServer IP, and then restore it back. It is likely
+# unneccesary, due to the life of the variable, but we'll
+# do it anyways.
+cur_RSIP=\$RELAYSERVER_SERVER_IP
+RELAYSERVER_SERVER_IP=\$rs_external_ip
+if [ -z "\$EXT_DOMAIN_PREFIX" ]; then
+  EXT_DOMAIN_PREFIX=external
+fi
+if [ -z "\$RELAYSERVER_EXT_EMAIL_HOSTNAME" ]; then
+  RELAYSERVER_EXT_EMAIL_HOSTNAME=\$SUB_POSTFIX.\$EXT_DOMAIN_PREFIX.\$HOMESERVER_DOMAIN
+fi
+sendDNSRecordsEmail \$dnsdomain
+RELAYSERVER_SERVER_IP=\$cur_RSIP
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailDNSRecords.json
+{
+  "name": "11 Email DNS Records",
+  "script_path": "conf/scripts/emailDNSRecords.sh",
+  "description": "Email DNS records to manager. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will email the DNS records for the indicated domain and IP to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). It will also contain a DNS Zone file attachement, which is compatible with most DNS providers.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_relayserver",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter the domain name",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9.-]*\\\\.[a-z]{2,}\$",
+        "description": "Only lowercase, numbers, hyphens, periods"
+      },
+      "required": true,
+      "param": "-dnsdomain=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter the RelayServer IP",
+      "required": true,
+      "param": "-rs_external_ip=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
 }
 
 EOFSC
