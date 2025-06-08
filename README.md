@@ -11,8 +11,7 @@
 ## Table of Contents
 - [Quick Start](#quick-start)
 - [Supported Distributions](#supported-distributions)
-- [One-line Start Installation](#one-line-start-installation)
-- [Manual Installation](#manual-installation)
+- [Installation](#installation)
 - [Setup A Demo](#setup-a-demo)
 - [Custom ISOs](#custom-isos)
 - [Comparison of Features](#comparison-of-features)
@@ -36,13 +35,8 @@
  - Ubuntu 24.04 (Noble Numbat)
  - Mint 22 (Wilma)
 
-## One-line Start Installation
-```
-wget -q4N https://homeserverhq.com/hshq.sh && bash hshq.sh
-```
-
-## Manual Installation
-To perform the installation directly via GitHub (in case the webserver is unavailable), run the following commands as the first non-root user (ID=1000) on a fresh Linux installation:
+## Installation
+The easiest method is to use on of the provided custom ISOs with a desktop environment (see below). However, if the webserver is down, and/or you want to install directly via GitHub, run the following commands as the first non-root user (ID=1000) on a fresh Linux installation:
 ```
 cd ~
 mkdir -p hshq/data/lib
