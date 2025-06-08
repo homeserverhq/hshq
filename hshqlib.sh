@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=171
+HSHQ_LIB_SCRIPT_VERSION=172
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -69,6 +69,7 @@ function init()
   SCRIPTSERVER_UPDATE_STACKLIST_FILENAME=updateStackList.txt
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
   MINDSDB_IMPORT_FILENAME=DBCImport.txt
+  DNS_ZONE_FILENAME_BASE=DNSZoneInfo
   DOCKER_VERSION_UBUNTU_2204=5:25.0.5-1~ubuntu.22.04~jammy
   DOCKER_VERSION_UBUNTU_2404=5:27.4.0-1~ubuntu.24.04~noble
   DOCKER_VERSION_DEBIAN_12=5:27.4.0-1~debian.12~bookworm
@@ -3557,7 +3558,7 @@ function initConfig()
       showMessageBox "Invalid Character(s)" "The domain contains invalid character(s). It must consist of a-z (lowercase), 0-9, and/or -."
       HOMESERVER_DOMAIN=""
     elif [ $(checkValidBaseDomain "$HOMESERVER_DOMAIN") = "false" ]; then
-      showMessageBox "Invalid Domain Name" "Invalid domain name. The base domain must be of the format 'example.com'. It cannot be a subdomain."
+      showMessageBox "Invalid Domain Name" "Invalid domain name. The base domain must be of the format 'example.com'. It cannot start or end with a period."
       HOMESERVER_DOMAIN=""
     elif [ $(getDomainTLD "$HOMESERVER_DOMAIN") = "test" ]; then
       showMessageBox "Invalid Domain" "The specific TLD .test actually causes some issues. Change it to .tester or something else."
@@ -3952,7 +3953,7 @@ function initInstallation()
   done
   while true;
   do
-    echo -e "\n\n________________________________________________________________________\n"
+    echo -e "\n________________________________________________________________________\n"
     read -r -p "$final_prompt" is_install
     if [ "$is_install" = "install" ]; then
       break
@@ -5527,10 +5528,12 @@ function webSetupHostedVPN()
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   unloadSSHKey
   set +e
+  sendDNSRecordsEmail $HOMESERVER_DOMAIN
+  sleep 2
   prepSvcsHostedVPN
   set +e
   startStopStack mailu stop
-  sleep 2
+  sleep 1
   echo "Generating mailu certs..."
   generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
   echo "Setting mailu relay creds..."
@@ -5581,7 +5584,6 @@ function webSetupHostedVPN()
   fi
   rm -f $wgconfigfile
   echo -e "$wgconfig" > $wgconfigfile
-  sendEmail -s "DNS Info for $HOMESERVER_DOMAIN" -b "$(getDNSRecordsInfo $HOMESERVER_DOMAIN)"
   echo "Emailing credentials..."
   emailVaultwardenCredentials true
 }
@@ -6381,7 +6383,7 @@ function checkPerformPreInstall()
   if [ \$? -ne 0 ]; then
     source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
     if [ "\$DISTRO_ID" = "debian" ] && [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
-      echo " Installing docker and rebooting..."
+      echo "Installing docker on RelayServer and rebooting it..."
       # Must install docker and reboot
       touch /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
       scName=hshqPreInstall
@@ -10809,7 +10811,11 @@ function connectVPN()
           echo "************************************************************************************"
           return
         fi
-        echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
+        if [ $total_attempts -lt 10 ]; then
+          echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
+        else
+          echo "($total_attempts of $max_attempts) RelayServer installation has not completed, it could be a firewall issue with the provider. Ensure that the port $RELAYSERVER_SSH_PORT (SSH) is open and accessible. Retrying in 30 seconds..."
+        fi
         refreshSudo
         sleep 30
         total_attempts=$((total_attempts + 1))
@@ -12421,23 +12427,27 @@ function performNetworkInvite()
       fi
       mail_body=$mail_body"\n$INVITATION_LAST_LINE\n\n"
       if [ "$is_primary" = "true" ]; then
-        echo -e "\n\n\n\n########################################"
-        echo -e "This is a primary VPN request."
-        echo -e "No email will be sent to $email_address."
-        echo -e "You will have to transfer your MGR copy"
-        echo -e "to them through alternative means."
+        echo -e "\n\n\n########################################"
+        echo -e "  This is a primary VPN request."
+        echo -e "  No email will be sent to $email_address."
+        echo -e "  You will have to transfer your MGR copy"
+        echo -e "  to them through alternative means."
         echo -e "########################################\n"
+        outputDNSZoneFile $domain_name /tmp/${DNS_ZONE_FILENAME_BASE}_${domain_name}.txt
+        # Send ourself a copy
+        sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body" -a /tmp/${DNS_ZONE_FILENAME_BASE}_${domain_name}.txt
       else
         sendEmail -s "$mail_subj" -b "$mail_body" -f "$(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>" -t "$email_address"
+        # Send ourself a copy
+        sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body"
       fi
-      # Send ourself a copy
-      sendEmail -s "(MGR COPY)$mail_subj" -b "$mail_body"
       insertEnableSvcUptimeKuma uptimekuma "${cur_hs_name}" homeservers "https://$SUB_HSHQSTATUS.$domain_name" true
       insertEnableSvcHeimdall heimdall "$cur_hs_name" homeservers "https://$SUB_HSHQHOME.$domain_name" "hs2.png" true "$(getHeimdallOrderFromSub $SUB_HSHQHOME homeservers)"
       # Send update email to other HomeServers on our network
       notifyMyNetworkHomeServersDNSUpdate add "$cur_hs_name" "$domain_name"
       # Send update email to other users on our network
       notifyMyNetworkUsersDNSUpdate add "$cur_hs_name" "$domain_name" "$external_prefix" "$new_ip"
+      rm -f /tmp/${DNS_ZONE_FILENAME_BASE}_${domain_name}.txt
     ;;
     "HomeServer Internet")
       mail_subj="HomeServer Internet Invitation from $HOMESERVER_NAME, RequestID: $request_id"
@@ -16305,6 +16315,39 @@ function getDNSRecordsInfo()
   echo "$str_res"
 }
 
+function outputDNSZoneFile()
+{
+  cur_domain="$1"
+  strFilename="$2"
+  tee $strFilename >/dev/null <<EOFDZ
+; Domain: $cur_domain
+
+\$ORIGIN ${cur_domain}.
+
+; A Record
+@	600	 IN 	A	$RELAYSERVER_SERVER_IP
+*	600	 IN 	A	$RELAYSERVER_SERVER_IP
+
+; TXT Record
+@	3600	 IN 	TXT	"v=spf1 mx -all"
+*	3600	 IN 	TXT	"v=spf1 -all"
+${cur_domain}._report._dmarc	3600	 IN 	TXT	"v=DMARC1"
+_dmarc	3600	 IN 	TXT	"v=DMARC1;p=reject;rua=mailto:$EMAIL_ADMIN_EMAIL_ADDRESS;ruf=mailto:$EMAIL_ADMIN_EMAIL_ADDRESS;adkim=s;aspf=s"
+
+; MX Record
+@	3600	 IN 	MX	0	${RELAYSERVER_EXT_EMAIL_HOSTNAME}.
+EOFDZ
+}
+
+function sendDNSRecordsEmail()
+{
+  email_dns_domain=$1
+  outputDNSZoneFile $email_dns_domain /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
+  sendEmail -s "DNS Info for $email_dns_domain" -b "Below are the DNS records for the domain $email_dns_domain. There is also a DNS Zone file attachment, which is compatible with most DNS providers. Unless you are doing some sort of advanced setup and/or you know what you are doing, you should delete any other preexisting A, MX, CNAME, or TXT records that may have been created by your domain name provider. Just ensure that you do NOT edit/delete the nameserver (NS) or Start of Authority (SOA) records. \n\n$(getDNSRecordsInfo $email_dns_domain)" -a /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
+  sleep 1
+  rm -f /tmp/${DNS_ZONE_FILENAME_BASE}_${email_dns_domain}.txt
+}
+
 function sendEmail()
 {
   email_attachments=""
@@ -16949,7 +16992,7 @@ EOF
   for curDomain in "${domains_to_add_Arr[@]}"
   do
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values($mail_host_id,'$curDomain',false);"
-    sendEmail -s "DNS Info for $curDomain" -b "$(getDNSRecordsInfo $curDomain)"
+    sendDNSRecordsEmail $curDomain
   done
   set -e
 }
@@ -17043,7 +17086,7 @@ function addSecondaryDomainToRelayServer()
     return 5
   fi
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values($mail_host_id,'$add_domain',false);"
-  sendEmail -s "DNS Info for $add_domain" -b "$(getDNSRecordsInfo $add_domain)"
+  sendDNSRecordsEmail $add_domain
 }
 
 function removeSecondaryDomainFromRelayServer()
@@ -63727,7 +63770,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details. <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details. The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details.<br/><br/> <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. You can use the function 08 RelayServer Utils -> 11 Email DNS Records to obtain the necessary info. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details.<br/><br/>The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
@@ -65926,6 +65969,115 @@ EOFSC
   "script_path": "conf/scripts/displayAllPortforwards.sh",
   "description": "Display all port forwarding rules. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function outputs all port forwarding rules and System Reserved ports on the RelayServer to the console.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_relayserver"
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/emailDNSRecords.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts
+
+dnsdomain=\$(getArgumentValue dnsdomain "\$@")
+rs_external_ip=\$(getArgumentValue rs_external_ip "\$@")
+
+# This is a bit hackish, we need to save the current
+# RelayServer IP, and then restore it back. It is likely
+# unneccesary, due to the life of the variable, but we'll
+# do it anyways.
+cur_RSIP=\$RELAYSERVER_SERVER_IP
+RELAYSERVER_SERVER_IP=\$rs_external_ip
+if [ -z "\$EXT_DOMAIN_PREFIX" ]; then
+  EXT_DOMAIN_PREFIX=external
+fi
+if [ -z "\$RELAYSERVER_EXT_EMAIL_HOSTNAME" ]; then
+  RELAYSERVER_EXT_EMAIL_HOSTNAME=\$SUB_POSTFIX.\$EXT_DOMAIN_PREFIX.\$HOMESERVER_DOMAIN
+fi
+sendDNSRecordsEmail \$dnsdomain
+RELAYSERVER_SERVER_IP=\$cur_RSIP
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/emailDNSRecords.json
+{
+  "name": "11 Email DNS Records",
+  "script_path": "conf/scripts/emailDNSRecords.sh",
+  "description": "Email DNS records to manager. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will email the DNS records for the indicated domain and IP to the email manager's mailbox ($EMAIL_ADMIN_EMAIL_ADDRESS). It will also contain a DNS Zone file attachement, which is compatible with most DNS providers.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_relayserver",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter the domain name",
+      "regex": {
+        "pattern": "^[a-z0-9][a-z0-9.-]*\\\\.[a-z]{2,}\$",
+        "description": "Only lowercase, numbers, hyphens, periods"
+      },
+      "required": true,
+      "param": "-dnsdomain=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "default": "$HOMESERVER_DOMAIN",
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter the RelayServer IP",
+      "required": true,
+      "param": "-rs_external_ip=",
+      "same_arg_param": true,
+      "type": "ip4",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": false,
+      "pass_as": "argument"
+    }
+  ]
 }
 
 EOFSC
