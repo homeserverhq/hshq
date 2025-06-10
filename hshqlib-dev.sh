@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=172
+HSHQ_LIB_SCRIPT_VERSION=173
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -16156,6 +16156,43 @@ function checkValidPortsList()
   fi
 }
 
+function checkValidINPUTChainPortsList()
+{
+  check_string="$1"
+  portListArr=($(echo "$check_string" | tr "," "\n"))
+  for curPort in "${portListArr[@]}"
+  do
+    port_no=$(echo "$curPort" | cut -d"/" -f1 | xargs)
+    if [[ $curPort =~ "/" ]]; then
+      port_prot=$(echo "$curPort" | cut -d"/" -f2- | xargs)
+    else
+      echo "One of the ports in the list did not specify a protocol, which is required for the INPUT chain. It must be either tcp, udp, or both: $curPort"
+      return 1
+    fi
+    if ! [[ $port_no =~ ^[0-9:]+$ ]]; then
+      echo "One of the port numbers in the list is invalid ($port_no). It must consist of 0-9, and/or colons(:) with no spaces. Full string: $check_string"
+      return 2
+    fi
+    if [[ $port_no =~ ":" ]]; then
+      port_begin=$(echo "$port_no" | cut -d":" -f1 | xargs)
+      port_end=$(echo "$port_no" | cut -d":" -f2- | xargs)
+      if ! [[ $port_begin =~ ^[0-9]+$ ]] || ! [[ $port_end =~ ^[0-9]+$ ]]; then
+        echo "One of the port numbers in the list is invalid [$port_begin:$port_end]. It must consist of 0-9, and/or colons(:) with no spaces."
+        return 3
+      fi
+    fi
+    case "$port_prot" in
+      tcp|udp|both)
+        continue
+      ;;
+      *)
+        echo "One of the port protocols in the list is invalid. It must be either tcp, udp, or both: $port_prot"
+        return 4
+      ;;
+    esac
+  done
+}
+
 function getStringLength()
 {
   echo "${#1}"
@@ -26908,14 +26945,22 @@ function updateExposedPortsLists()
   selectedPorts="$3"
   if ! [ -z "$selectedPorts" ]; then
     checkValidPortsList "$selectedPorts"
+    if [ $? -ne 0 ]; then
+      strMsg="There was an error with the ports list: $selectedPorts"
+      logHSHQEvent error "updateExposedPortsLists (checkValidPortsList) - $strMsg"
+      echo "ERROR: $strMsg"
+      return 1
+    fi
   fi
-  if [ $? -ne 0 ]; then
-    strMsg="There was an error with the ports list: $selectedPorts"
-    logHSHQEvent error "updateExposedPortsLists (checkValidPortsList) - $strMsg"
-    echo "ERROR: $strMsg"
-    return 1
+  if [ "$selectedChain" = "INPUT" ] && ! [ -z "$selectedPorts" ]; then
+    checkValidINPUTChainPortsList "$selectedPorts"
+    if [ $? -ne 0 ]; then
+      strMsg="There was an error with the INPUT chain ports list: $selectedPorts"
+      logHSHQEvent error "updateExposedPortsLists INPUT chain (checkValidPortsList) - $strMsg"
+      echo "ERROR: $strMsg"
+      return 2
+    fi
   fi
-  #echo "selectedChain: $selectedChain, selectedList: $selectedList, selectedPorts: $selectedPorts"
   checkCustom=$(echo "$selectedList" | cut -d" " -f2 | xargs)
   if [ "${selectedList: -8}" = "_DEFAULT" ]; then
     echo "Default list updated - $selectedList"
@@ -63770,7 +63815,7 @@ EOFSC
 {
   "name": "14 Set Up Hosted VPN",
   "script_path": "conf/scripts/hostVPN.sh",
-  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details.<br/><br/> <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. You can use the function 08 RelayServer Utils -> 11 Email DNS Records to obtain the necessary info. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details.<br/><br/>The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Set up a hosted VPN. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function will set up a personal hosted VPN. It is one of the core architectural elements of this infrastructure, i.e. the RelayServer. This server must have a public static IP address and publically accessible ports. If the provider has their own firewall, ensure that the following ports are open: 25 (Email), 80(http), 443(https), ${RELAYSERVER_WG_PORT}(WireGuard), Current SSH Port AND New SSH Port. See [this page](https://wiki.homeserverhq.com/en/getting-started/setup-relayserver) for more details.<br/><br/> <ins>***BEFORE***</ins> you run this function, ensure to point the DNS records for your domain to the IP address of your RelayServer. You can use the function 08 RelayServer Utils -> 11 Email DNS Records to obtain the necessary info. See Step 1 [at this link](https://wiki.homeserverhq.com/en/getting-started/installation) for more details.<br/><br/>The installation will take around 10-15 minutes to complete. Also note that during parts of the installation, the console output below will appear to freeze at times, output duplicate messages, overwrite previous output, etc. This is due to the usage of the Linux [screen](https://www.gnu.org/software/screen/manual/screen.html) utility. Just be patient and allow the process to run its course. If it hangs for longer than 30 minutes, then something may have gone wrong, and you may have to remove the VPN (see 06 My Network -> 15 Remove Primary VPN) and try again. <br/><br/>If you have not yet set up a non-root user on this server, then likely the only account is the root account. So ensure a new Linux username is provided as well as a password (at least 16 characters). If the current Linux username is not root, then the new username and corresponding password will be ignored (even though all password fields require a value). The default SSH port is likely 22, unless you have changed it. The VPN subnet can only be in the 10.0.0.0/8 range, and it can only be of size /24. Thus, only the first three octets of the provided value matter. A random subnet has been generated for you. If you don't know what any of this means, just use the provided value.<br/><br/>Upon completion, the mail DNS records will be emailed to the admin account ($EMAIL_ADMIN_EMAIL_ADDRESS), and the first user WireGuard configuration will be saved to the home directory (/home/$USERNAME), or Desktop (/home/$USERNAME/Desktop), if applicable. This WireGuard configuration is strictly for a client device, i.e. anything but <ins>this</ins> server. It is generated merely as a convenience, and you should permanently delete the config file as soon as you are finished with it.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_mynetwork",
   "parameters": [
     {
