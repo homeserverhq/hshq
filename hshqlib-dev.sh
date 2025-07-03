@@ -30511,13 +30511,13 @@ function initServiceVars()
   checkAddSvc "SVCD_REMOTELY=remotely,remotely,primary,admin,Remotely,remotely,hshq"
   checkAddSvc "SVCD_RSPAMD=mail-relay,rspamd,primary,admin,Rspamd,rspamd,hshq"
   checkAddSvc "SVCD_SEARXNG=searxng,searxng,primary,user,SearxNG,searxng,hshq"
-  checkAddSvc "SVCD_SERVARR_SONARR=servarr,sonarr,primary,user,Sonarr,sonarr,hshq"
-  checkAddSvc "SVCD_SERVARR_RADARR=servarr,radarr,primary,user,Radarr,radarr,hshq"
-  checkAddSvc "SVCD_SERVARR_LIDARR=servarr,lidarr,primary,user,Lidarr,lidarr,hshq"
-  checkAddSvc "SVCD_SERVARR_READARR=servarr,readarr,primary,user,Readarr,readarr,hshq"
-  checkAddSvc "SVCD_SERVARR_BAZARR=servarr,bazarr,primary,user,Bazarr,bazarr,hshq"
-  checkAddSvc "SVCD_SERVARR_MYLAR3=servarr,mylar3,primary,user,Mylar3,mylar3,hshq"
-  checkAddSvc "SVCD_SERVARR_PROWLARR=servarr,prowlarr,primary,user,Prowlarr,prowlarr,hshq"
+  checkAddSvc "SVCD_SERVARR_SONARR=servarr,sonarr,primary,admin,Sonarr,sonarr,hshq"
+  checkAddSvc "SVCD_SERVARR_RADARR=servarr,radarr,primary,admin,Radarr,radarr,hshq"
+  checkAddSvc "SVCD_SERVARR_LIDARR=servarr,lidarr,primary,admin,Lidarr,lidarr,hshq"
+  checkAddSvc "SVCD_SERVARR_READARR=servarr,readarr,primary,admin,Readarr,readarr,hshq"
+  checkAddSvc "SVCD_SERVARR_BAZARR=servarr,bazarr,primary,admin,Bazarr,bazarr,hshq"
+  checkAddSvc "SVCD_SERVARR_MYLAR3=servarr,mylar3,primary,admin,Mylar3,mylar3,hshq"
+  checkAddSvc "SVCD_SERVARR_PROWLARR=servarr,prowlarr,primary,admin,Prowlarr,prowlarr,hshq"
   checkAddSvc "SVCD_SHLINK_APP=shlink,shlink-app,other,user,Shlink App,links,hshq"
   checkAddSvc "SVCD_SHLINK_WEB=shlink,shlink-web,primary,admin,Shlink,shlink,hshq"
   checkAddSvc "SVCD_SNIPPETBOX=snippetbox,snippetbox,primary,user,SnippetBox,snippetbox,hshq"
@@ -30923,13 +30923,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SERVARR_READARR.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
@@ -30982,6 +30975,13 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PORTAINER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PROMETHEUS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_READARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN\n"
@@ -59522,7 +59522,7 @@ EOFCF
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SERVARR_SONARR $MANAGETLS_SERVARR_SONARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_SONARR "$inner_block"
-  insertSubAuthelia $SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN {\n"
@@ -59538,7 +59538,7 @@ EOFCF
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SERVARR_RADARR $MANAGETLS_SERVARR_RADARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_RADARR "$inner_block"
-  insertSubAuthelia $SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN {\n"
@@ -59554,7 +59554,7 @@ EOFCF
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SERVARR_LIDARR $MANAGETLS_SERVARR_LIDARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_LIDARR "$inner_block"
-  insertSubAuthelia $SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SERVARR_READARR.$HOMESERVER_DOMAIN {\n"
@@ -59570,7 +59570,7 @@ EOFCF
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SERVARR_READARR $MANAGETLS_SERVARR_READARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_READARR "$inner_block"
-  insertSubAuthelia $SUB_SERVARR_READARR.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_SERVARR_READARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN {\n"
@@ -59586,7 +59586,7 @@ EOFCF
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SERVARR_BAZARR $MANAGETLS_SERVARR_BAZARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_BAZARR "$inner_block"
-  insertSubAuthelia $SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN {\n"
@@ -59602,7 +59602,7 @@ EOFCF
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SERVARR_MYLAR3 $MANAGETLS_SERVARR_MYLAR3 "$is_integrate_hshq" $NETDEFAULT_SERVARR_MYLAR3 "$inner_block"
-  insertSubAuthelia $SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN {\n"
@@ -59618,7 +59618,7 @@ EOFCF
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SERVARR_PROWLARR $MANAGETLS_SERVARR_PROWLARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_PROWLARR "$inner_block"
-  insertSubAuthelia $SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll servarr "$FMLNAME_SERVARR_SONARR" $USERTYPE_SERVARR_SONARR "https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN" "sonarr.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_SONARR $USERTYPE_SERVARR_SONARR)"
