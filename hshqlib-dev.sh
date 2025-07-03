@@ -59230,6 +59230,7 @@ EOFPY
   sonarr_pw_hash=$(echo "$sonarr_hashes" | cut -d" " -f1 | cut -d"'" -f2)
   sonarr_salt_hash=$(echo "$sonarr_hashes" | cut -d" " -f2 | cut -d"'" -f2)
   sqlite3 $HSHQ_STACKS_DIR/servarr/sonarr/config/sonarr.db "insert into Users("Id","Identifier","Username","Password","Salt","Iterations") values(1,'$(uuidgen)','$SONARR_ADMIN_USERNAME','$sonarr_pw_hash','$sonarr_salt_hash',10000);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/sonarr/config/sonarr.db "insert into RootFolders("Path") values('/data/media/tv/');"
   sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/sonarr/config/config.xml
   sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/sonarr/config/config.xml
   cat <<EOFPY > /tmp/hashtmp.py
@@ -59246,6 +59247,7 @@ EOFPY
   radarr_pw_hash=$(echo "$radarr_hashes" | cut -d" " -f1 | cut -d"'" -f2)
   radarr_salt_hash=$(echo "$radarr_hashes" | cut -d" " -f2 | cut -d"'" -f2)
   sqlite3 $HSHQ_STACKS_DIR/servarr/radarr/config/radarr.db "insert into Users("Id","Identifier","Username","Password","Salt","Iterations") values(1,'$(uuidgen)','$RADARR_ADMIN_USERNAME','$radarr_pw_hash','$radarr_salt_hash',10000);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/radarr/config/radarr.db "insert into RootFolders("Path") values('/data/media/movies/');"
   sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/radarr/config/config.xml
   sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/radarr/config/config.xml
   cat <<EOFPY > /tmp/hashtmp.py
@@ -59262,10 +59264,14 @@ EOFPY
   lidarr_pw_hash=$(echo "$lidarr_hashes" | cut -d" " -f1 | cut -d"'" -f2)
   lidarr_salt_hash=$(echo "$lidarr_hashes" | cut -d" " -f2 | cut -d"'" -f2)
   sqlite3 $HSHQ_STACKS_DIR/servarr/lidarr/config/lidarr.db "insert into Users("Id","Identifier","Username","Password","Salt","Iterations") values(1,'$(uuidgen)','$LIDARR_ADMIN_USERNAME','$lidarr_pw_hash','$lidarr_salt_hash',10000);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/lidarr/config/lidarr.db "insert into RootFolders("Path","Name","DefaultMetadataProfileId","DefaultQualityProfileId","DefaultMonitorOption","DefaultTags","DefaultNewItemMonitorOption") values('/data/media/music/','Music',1,1,0,'[]',0);"
   sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/lidarr/config/config.xml
   sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/lidarr/config/config.xml
   readarr_pw_hash=$(echo -n "$READARR_ADMIN_PASSWORD" | sha256sum | xargs | cut -d" " -f1)
   sqlite3 $HSHQ_STACKS_DIR/servarr/readarr/config/readarr.db "insert into Users("Id","Identifier","Username","Password") values(1,'$(uuidgen)','$READARR_ADMIN_USERNAME','$readarr_pw_hash');"
+
+  sqlite3 $HSHQ_STACKS_DIR/servarr/readarr/config/readarr.db "insert into RootFolders("Path","Name","DefaultMetadataProfileId","DefaultQualityProfileId","DefaultMonitorOption","DefaultTags","IsCalibreLibrary","DefaultNewItemMonitorOption") values('/data/media/books/','Books',1,1,0,'[]',0,0);"
+
   sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/readarr/config/config.xml
   sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/readarr/config/config.xml
   bazarr_pw_hash=$(echo -n "$BAZARR_ADMIN_PASSWORD" | md5sum | xargs | cut -d" " -f1)
