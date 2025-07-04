@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=173
+HSHQ_LIB_SCRIPT_VERSION=174
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -116,6 +116,7 @@ function init()
   MAILU_PORT_6=993
   MAILU_PORT_7=995
   PEERTUBE_RDP_PORT=1935
+  QBITTORRENT_PORT=6881
   SYNCTHING_DISC_PORT=21027
   SYNCTHING_SYNC_PORT=22000
   UPNP_PORT=1900
@@ -15692,6 +15693,34 @@ function waitForStack()
   fi
 }
 
+function waitForContainerLogString()
+{
+  container_name="$1"
+  sleep_interval="$2"
+  max_checks="$3"
+  search_string="$4"
+  isFound=false
+  curCheckIter=0
+  totalWait=0
+  set +e
+  echo "Checking container log ($container_name)..."
+  while [ $curCheckIter -le $max_checks ]
+  do
+    findtext=$(docker logs $container_name 2>&1 | grep "$search_string")
+    if ! [ -z "$findtext" ]; then
+      isFound=true
+      break
+    fi
+    echo "Container not ready, sleeping $sleep_interval seconds, total wait=$totalWait seconds..."
+    sleep $sleep_interval
+    totalWait=$(($totalWait+$sleep_interval))
+  done
+  if ! [ "$isFound" = "true" ]; then
+    echo "String not found within alotted time for container $container_name: $search_string"
+    return 1
+  fi
+}
+
 function showMessageBox()
 {
   msgmenu=$(cat << EOF
@@ -27857,9 +27886,18 @@ function loadPinnedDockerImages()
   IMG_PORTAINER=portainer/portainer-ce:2.21.4-alpine
   IMG_POSTGRES=postgres:15.0-bullseye
   IMG_PROMETHEUS=prom/prometheus:v3.2.1
+  IMG_QBITTORRENT=linuxserver/qbittorrent:5.1.2
   IMG_REDIS=bitnami/redis:7.4.2
   IMG_REMOTELY=immybot/remotely:1037
+  IMG_SABNZBD=linuxserver/sabnzbd:4.5.1
   IMG_SEARXNG=searxng/searxng:2025.4.1-e6308b816
+  IMG_SERVARR_SONARR=linuxserver/sonarr:4.0.15
+  IMG_SERVARR_RADARR=linuxserver/radarr:5.27.1-nightly
+  IMG_SERVARR_LIDARR=linuxserver/lidarr:2.13.1-nightly
+  IMG_SERVARR_READARR=linuxserver/readarr:0.4.19-nightly
+  IMG_SERVARR_BAZARR=linuxserver/bazarr:1.5.2
+  IMG_SERVARR_MYLAR3=linuxserver/mylar3:0.8.2
+  IMG_SERVARR_PROWLARR=linuxserver/prowlarr:2.0.1-nightly
   IMG_SHLINK_APP=shlinkio/shlink:4.4.6
   IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.3.0
   IMG_SNIPPETBOX=pawelmalak/snippet-box:latest
@@ -28024,6 +28062,12 @@ function getScriptStackVersion()
       echo "v1" ;;
     yamtrack)
       echo "v1" ;;
+    servarr)
+      echo "v1" ;;
+    sabnzbd)
+      echo "v1" ;;
+    qbittorrent)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -28171,6 +28215,15 @@ function pullDockerImages()
   pullImage $IMG_AISTACK_OPENWEBUI
   pullImage $IMG_PIXELFED_APP
   pullImage $IMG_YAMTRACK_APP
+  pullImage $IMG_SERVARR_SONARR
+  pullImage $IMG_SERVARR_RADARR
+  pullImage $IMG_SERVARR_LIDARR
+  pullImage $IMG_SERVARR_READARR
+  pullImage $IMG_SERVARR_BAZARR
+  pullImage $IMG_SERVARR_MYLAR3
+  pullImage $IMG_SERVARR_PROWLARR
+  pullImage $IMG_SABNZBD
+  pullImage $IMG_QBITTORRENT
 }
 
 function pullImagesUpdatePB()
@@ -28981,6 +29034,36 @@ YAMTRACK_OIDC_CLIENT_ID=
 YAMTRACK_OIDC_CLIENT_SECRET=
 # Yamtrack (Service Details) END
 
+# Servarr (Service Details) BEGIN
+SERVARR_INIT_ENV=true
+SONARR_ADMIN_USERNAME=
+SONARR_ADMIN_PASSWORD=
+RADARR_ADMIN_USERNAME=
+RADARR_ADMIN_PASSWORD=
+LIDARR_ADMIN_USERNAME=
+LIDARR_ADMIN_PASSWORD=
+READARR_ADMIN_USERNAME=
+READARR_ADMIN_PASSWORD=
+BAZARR_ADMIN_USERNAME=
+BAZARR_ADMIN_PASSWORD=
+MYLAR3_ADMIN_USERNAME=
+MYLAR3_ADMIN_PASSWORD=
+PROWLARR_ADMIN_USERNAME=
+PROWLARR_ADMIN_PASSWORD=
+# Servarr (Service Details) END
+
+# SABnzbd (Service Details) BEGIN
+SABNZBD_INIT_ENV=true
+SABNZBD_ADMIN_USERNAME=
+SABNZBD_ADMIN_PASSWORD=
+# SABnzbd (Service Details) END
+
+# qBittorrent (Service Details) BEGIN
+QBITTORRENT_INIT_ENV=true
+QBITTORRENT_ADMIN_USERNAME=
+QBITTORRENT_ADMIN_PASSWORD=
+# qBittorrent (Service Details) END
+
 # Service Details END
 EOFCF
 
@@ -29085,7 +29168,7 @@ INPUT_OTHER_VPN_ALLOW_PORTS_DEFAULT=
 # INPUT Chain Defaults END
 
 # DOCKER-USER Chain Defaults BEGIN
-DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
+DOCKERUSER_HOMESERVER_HOST_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$UPNP_PORT,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$JELLYFIN_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
 DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT=$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$JITSI_MEET_PORT,$JITSI_JVB_PORT,$JITSI_COLIBRI_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
 DOCKERUSER_OTHER_VPN_ALLOW_PORTS_DEFAULT=$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,${COTURN_COMMS_MIN_PORT}:${COTURN_COMMS_MAX_PORT}
 # DOCKER-USER Chain Defaults END
@@ -30235,6 +30318,78 @@ function initServicesCredentials()
     YAMTRACK_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
     updateConfigVar YAMTRACK_OIDC_CLIENT_SECRET $YAMTRACK_OIDC_CLIENT_SECRET
   fi
+  if [ -z "$SONARR_ADMIN_USERNAME" ]; then
+    SONARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_sonarr"
+    updateConfigVar SONARR_ADMIN_USERNAME $SONARR_ADMIN_USERNAME
+  fi
+  if [ -z "$SONARR_ADMIN_PASSWORD" ]; then
+    SONARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SONARR_ADMIN_PASSWORD $SONARR_ADMIN_PASSWORD
+  fi
+  if [ -z "$RADARR_ADMIN_USERNAME" ]; then
+    RADARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_radarr"
+    updateConfigVar RADARR_ADMIN_USERNAME $RADARR_ADMIN_USERNAME
+  fi
+  if [ -z "$RADARR_ADMIN_PASSWORD" ]; then
+    RADARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RADARR_ADMIN_PASSWORD $RADARR_ADMIN_PASSWORD
+  fi
+  if [ -z "$LIDARR_ADMIN_USERNAME" ]; then
+    LIDARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_lidarr"
+    updateConfigVar LIDARR_ADMIN_USERNAME $LIDARR_ADMIN_USERNAME
+  fi
+  if [ -z "$LIDARR_ADMIN_PASSWORD" ]; then
+    LIDARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar LIDARR_ADMIN_PASSWORD $LIDARR_ADMIN_PASSWORD
+  fi
+  if [ -z "$READARR_ADMIN_USERNAME" ]; then
+    READARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_readarr"
+    updateConfigVar READARR_ADMIN_USERNAME $READARR_ADMIN_USERNAME
+  fi
+  if [ -z "$READARR_ADMIN_PASSWORD" ]; then
+    READARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar READARR_ADMIN_PASSWORD $READARR_ADMIN_PASSWORD
+  fi
+  if [ -z "$BAZARR_ADMIN_USERNAME" ]; then
+    BAZARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_bazarr"
+    updateConfigVar BAZARR_ADMIN_USERNAME $BAZARR_ADMIN_USERNAME
+  fi
+  if [ -z "$BAZARR_ADMIN_PASSWORD" ]; then
+    BAZARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BAZARR_ADMIN_PASSWORD $BAZARR_ADMIN_PASSWORD
+  fi
+  if [ -z "$MYLAR3_ADMIN_USERNAME" ]; then
+    MYLAR3_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_mylar3"
+    updateConfigVar MYLAR3_ADMIN_USERNAME $MYLAR3_ADMIN_USERNAME
+  fi
+  if [ -z "$MYLAR3_ADMIN_PASSWORD" ]; then
+    MYLAR3_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MYLAR3_ADMIN_PASSWORD $MYLAR3_ADMIN_PASSWORD
+  fi
+  if [ -z "$PROWLARR_ADMIN_USERNAME" ]; then
+    PROWLARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_prowlarr"
+    updateConfigVar PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_USERNAME
+  fi
+  if [ -z "$PROWLARR_ADMIN_PASSWORD" ]; then
+    PROWLARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar PROWLARR_ADMIN_PASSWORD $PROWLARR_ADMIN_PASSWORD
+  fi
+  if [ -z "$SABNZBD_ADMIN_USERNAME" ]; then
+    SABNZBD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_sabnzbd"
+    updateConfigVar SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_USERNAME
+  fi
+  if [ -z "$SABNZBD_ADMIN_PASSWORD" ]; then
+    SABNZBD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar SABNZBD_ADMIN_PASSWORD $SABNZBD_ADMIN_PASSWORD
+  fi
+  if [ -z "$QBITTORRENT_ADMIN_USERNAME" ]; then
+    QBITTORRENT_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_qbittorrent"
+    updateConfigVar QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_USERNAME
+  fi
+  if [ -z "$QBITTORRENT_ADMIN_PASSWORD" ]; then
+    QBITTORRENT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar QBITTORRENT_ADMIN_PASSWORD $QBITTORRENT_ADMIN_PASSWORD
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -30390,9 +30545,18 @@ function initServiceVars()
   checkAddSvc "SVCD_PORTAINER=portainer,portainer,primary,admin,Portainer,portainer,hshq"
   checkAddSvc "SVCD_POSTFIX=mail-relay,mail,primary,admin,Mail,mail,hshq"
   checkAddSvc "SVCD_PROMETHEUS=sysutils,prometheus,primary,admin,Prometheus,prometheus,hshq"
+  checkAddSvc "SVCD_QBITTORRENT=qbittorrent,qbittorrent,primary,admin,qBittorrent,qbittorrent,hshq"
   checkAddSvc "SVCD_REMOTELY=remotely,remotely,primary,admin,Remotely,remotely,hshq"
   checkAddSvc "SVCD_RSPAMD=mail-relay,rspamd,primary,admin,Rspamd,rspamd,hshq"
+  checkAddSvc "SVCD_SABNZBD=sabnzbd,sabnzbd,primary,admin,SABnzbd,sabnzbd,hshq"
   checkAddSvc "SVCD_SEARXNG=searxng,searxng,primary,user,SearxNG,searxng,hshq"
+  checkAddSvc "SVCD_SERVARR_SONARR=servarr,sonarr,primary,admin,Sonarr,sonarr,hshq"
+  checkAddSvc "SVCD_SERVARR_RADARR=servarr,radarr,primary,admin,Radarr,radarr,hshq"
+  checkAddSvc "SVCD_SERVARR_LIDARR=servarr,lidarr,primary,admin,Lidarr,lidarr,hshq"
+  checkAddSvc "SVCD_SERVARR_READARR=servarr,readarr,primary,admin,Readarr,readarr,hshq"
+  checkAddSvc "SVCD_SERVARR_BAZARR=servarr,bazarr,primary,admin,Bazarr,bazarr,hshq"
+  checkAddSvc "SVCD_SERVARR_MYLAR3=servarr,mylar3,primary,admin,Mylar3,mylar3,hshq"
+  checkAddSvc "SVCD_SERVARR_PROWLARR=servarr,prowlarr,primary,admin,Prowlarr,prowlarr,hshq"
   checkAddSvc "SVCD_SHLINK_APP=shlink,shlink-app,other,user,Shlink App,links,hshq"
   checkAddSvc "SVCD_SHLINK_WEB=shlink,shlink-web,primary,admin,Shlink,shlink,hshq"
   checkAddSvc "SVCD_SNIPPETBOX=snippetbox,snippetbox,primary,user,SnippetBox,snippetbox,hshq"
@@ -30557,6 +30721,12 @@ function installStackByName()
       installPixelfed $is_integrate ;;
     yamtrack)
       installYamtrack $is_integrate ;;
+    servarr)
+      installServarr $is_integrate ;;
+    sabnzbd)
+      installSABnzbd $is_integrate ;;
+    qbittorrent)
+      installqBittorrent $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -30719,6 +30889,12 @@ function performUpdateStackByName()
       performUpdatePixelfed "$portainerToken" ;;
     yamtrack)
       performUpdateYamtrack "$portainerToken" ;;
+    servarr)
+      performUpdateServarr "$portainerToken" ;;
+    sabnzbd)
+      performUpdateSABnzbd "$portainerToken" ;;
+    qbittorrent)
+      performUpdateqBittorrent "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -30846,6 +31022,15 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PORTAINER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PROMETHEUS.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_QBITTORRENT.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SABNZBD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_READARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN\n"
@@ -30935,6 +31120,15 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_RADARR}-Admin" https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RADARR_ADMIN_USERNAME $RADARR_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_LIDARR}-Admin" https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIDARR_ADMIN_USERNAME $LIDARR_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_READARR}-Admin" https://$SUB_READARR_READARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $READARR_ADMIN_USERNAME $READARR_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_BAZARR}-Admin" https://$SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BAZARR_ADMIN_USERNAME $BAZARR_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_MYLAR3}-Admin" https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $MYLAR3_ADMIN_USERNAME $MYLAR3_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -31043,6 +31237,15 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_RADARR}-Admin" https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RADARR_ADMIN_USERNAME $RADARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_LIDARR}-Admin" https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIDARR_ADMIN_USERNAME $LIDARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_READARR}-Admin" https://$SUB_READARR_READARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $READARR_ADMIN_USERNAME $READARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_BAZARR}-Admin" https://$SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BAZARR_ADMIN_USERNAME $BAZARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_MYLAR3}-Admin" https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $MYLAR3_ADMIN_USERNAME $MYLAR3_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -31383,6 +31586,33 @@ function getHeimdallOrderFromSub()
     "$SUB_YAMTRACK")
       order_num=83
       ;;
+    "$SUB_SERVARR_SONARR")
+      order_num=84
+      ;;
+    "$SUB_SERVARR_RADARR")
+      order_num=85
+      ;;
+    "$SUB_SERVARR_LIDARR")
+      order_num=86
+      ;;
+    "$SUB_SERVARR_READARR")
+      order_num=87
+      ;;
+    "$SUB_SERVARR_BAZARR")
+      order_num=88
+      ;;
+    "$SUB_SERVARR_MYLAR3")
+      order_num=89
+      ;;
+    "$SUB_SERVARR_PROWLARR")
+      order_num=90
+      ;;
+    "$SUB_SABNZBD")
+      order_num=91
+      ;;
+    "$SUB_QBITTORRENT")
+      order_num=92
+      ;;
     *)
       ;;
   esac
@@ -31397,13 +31627,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack
-  DS_MEM_HIGH=netdata,photoprism,aistack
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent
 }
 
 function getScriptImageByContainerName()
@@ -32009,6 +32239,33 @@ function getScriptImageByContainerName()
     "yamtrack-redis")
       container_image=$IMG_REDIS
       ;;
+    "servarr-sonarr")
+      container_image=$IMG_SERVARR_SONARR
+      ;;
+    "servarr-radarr")
+      container_image=$IMG_SERVARR_RADARR
+      ;;
+    "servarr-lidarr")
+      container_image=$IMG_SERVARR_LIDARR
+      ;;
+    "servarr-readarr")
+      container_image=$IMG_SERVARR_READARR
+      ;;
+    "servarr-bazarr")
+      container_image=$IMG_SERVARR_BAZARR
+      ;;
+    "servarr-mylar3")
+      container_image=$IMG_SERVARR_MYLAR3
+      ;;
+    "servarr-prowlarr")
+      container_image=$IMG_SERVARR_PROWLARR
+      ;;
+    "sabnzbd")
+      container_image=$IMG_SABNZBD
+      ;;
+    "qbittorrent")
+      container_image=$IMG_QBITTORRENT
+      ;;
     *)
       ;;
   esac
@@ -32057,7 +32314,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD="
   checkAddServiceToConfig "Pixelfed" "PIXELFED_INIT_ENV=false,PIXELFED_DATABASE_NAME=,PIXELFED_DATABASE_ROOT_PASSWORD=,PIXELFED_DATABASE_USER=,PIXELFED_DATABASE_USER_PASSWORD=,PIXELFED_REDIS_PASSWORD=,PIXELFED_APP_KEY="
   checkAddServiceToConfig "Yamtrack" "YAMTRACK_INIT_ENV=false,YAMTRACK_ADMIN_USERNAME=,YAMTRACK_ADMIN_PASSWORD=,YAMTRACK_REDIS_PASSWORD=,YAMTRACK_DATABASE_NAME=,YAMTRACK_DATABASE_USER=,YAMTRACK_DATABASE_USER_PASSWORD=,YAMTRACK_SECRET_KEY=,YAMTRACK_OIDC_CLIENT_ID=,YAMTRACK_OIDC_CLIENT_SECRET="
-
+  checkAddServiceToConfig "Servarr" "SERVARR_INIT_ENV=false,SONARR_ADMIN_USERNAME=,SONARR_ADMIN_PASSWORD=,RADARR_ADMIN_USERNAME=,RADARR_ADMIN_PASSWORD=,LIDARR_ADMIN_USERNAME=,LIDARR_ADMIN_PASSWORD=,READARR_ADMIN_USERNAME=,READARR_ADMIN_PASSWORD=,BAZARR_ADMIN_USERNAME=,BAZARR_ADMIN_PASSWORD=,MYLAR3_ADMIN_USERNAME=,MYLAR3_ADMIN_PASSWORD=,PROWLARR_ADMIN_USERNAME=,PROWLARR_ADMIN_PASSWORD="
+  checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD="
+  checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD="
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
@@ -32080,7 +32339,6 @@ function checkAddAllNewSvcs()
   checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
   checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
   checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET="
-
 }
 
 function importDBs()
@@ -32092,7 +32350,7 @@ function importDBs()
 
 function getHomeServerPortsList()
 {
-  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
+  portsList="$ADGUARD_DNS_PORT,$CADDY_HTTP_PORT,$CADDY_HTTPS_PORT,$COTURN_PRIMARY_PORT,$COTURN_SECONDARY_PORT,$COTURN_COMMS_MIN_PORT:$COTURN_COMMS_MAX_PORT,$JELLYFIN_PORT,$JITSI_COLIBRI_PORT,$JITSI_JVB_PORT,$JITSI_MEET_PORT,$MAILU_PORT_1,$MAILU_PORT_2,$MAILU_PORT_3,$MAILU_PORT_4,$MAILU_PORT_5,$MAILU_PORT_6,$MAILU_PORT_7,$PEERTUBE_RDP_PORT,$QBITTORRENT_PORT,$SYNCTHING_DISC_PORT,$SYNCTHING_SYNC_PORT,$UPNP_PORT,$VNC_SERVER_PORT,$WAZUH_PORT_1,$WAZUH_PORT_2,$WAZUH_PORT_3,$WAZUH_PORT_4,$WAZUH_PORT_5"
   echo "$portsList"
 }
 
@@ -58913,6 +59171,1121 @@ function performUpdateYamtrack()
       newVer=v1
       curImageList=exampleimage
       image_update_map[0]="exampleimage,exampleimage"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Servarr
+function installServarr()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory servarr "Servarr"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName servarr-sonarr)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName servarr-radarr)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName servarr-lidarr)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName servarr-readarr)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName servarr-bazarr)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName servarr-mylar3)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName servarr-prowlarr)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/media/{audio,books,comics,misc,movies,software,tv}
+  mkdir -p $HSHQ_STACKS_DIR/servarr/sonarr/config
+  mkdir -p $HSHQ_STACKS_DIR/servarr/radarr/config
+  mkdir -p $HSHQ_STACKS_DIR/servarr/lidarr/config
+  mkdir -p $HSHQ_STACKS_DIR/servarr/readarr/config
+  mkdir -p $HSHQ_STACKS_DIR/servarr/bazarr/config
+  mkdir -p $HSHQ_STACKS_DIR/servarr/mylar3/config
+  mkdir -p $HSHQ_STACKS_DIR/servarr/prowlarr/config
+  initServicesCredentials
+  set +e
+  outputConfigServarr
+  installStack servarr servarr-sonarr "\[ls.io-init\] done" $HOME/servarr.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString servarr-sonarr 1 300 "\[ls.io-init\] done"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString servarr-radarr 1 300 "\[ls.io-init\] done"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString servarr-lidarr 1 300 "\[ls.io-init\] done"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString servarr-readarr 1 300 "\[ls.io-init\] done"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString servarr-bazarr 1 300 "\[ls.io-init\] done"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString servarr-mylar3 1 300 "\[ls.io-init\] done"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  waitForContainerLogString servarr-prowlarr 1 300 "\[ls.io-init\] done"
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 5
+  echo "Stopping servarr stack..."
+  startStopStack servarr stop
+  sonarr_api_key=$(cat $HSHQ_STACKS_DIR/servarr/sonarr/config/config.xml | grep ApiKey | cut -d">" -f2 | cut -d"<" -f1)
+  radarr_api_key=$(cat $HSHQ_STACKS_DIR/servarr/radarr/config/config.xml | grep ApiKey | cut -d">" -f2 | cut -d"<" -f1)
+  lidarr_api_key=$(cat $HSHQ_STACKS_DIR/servarr/lidarr/config/config.xml | grep ApiKey | cut -d">" -f2 | cut -d"<" -f1)
+  readarr_api_key=$(cat $HSHQ_STACKS_DIR/servarr/readarr/config/config.xml | grep ApiKey | cut -d">" -f2 | cut -d"<" -f1)
+  mylar3_api_key=$(uuidgen | sed "s/-//g")
+  cat <<EOFPY > /tmp/hashtmp.py
+import base64
+import hashlib
+import secrets
+password='$SONARR_ADMIN_PASSWORD'
+salt='$(pwgen -c -n 16 1)'
+iterations=10000
+key = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt.encode('utf-8'), iterations, dklen=32)
+print(base64.b64encode(key),base64.b64encode(salt.encode('utf-8')));
+EOFPY
+  sonarr_hashes=$(python3 /tmp/hashtmp.py)
+  sonarr_pw_hash=$(echo "$sonarr_hashes" | cut -d" " -f1 | cut -d"'" -f2)
+  sonarr_salt_hash=$(echo "$sonarr_hashes" | cut -d" " -f2 | cut -d"'" -f2)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/sonarr/config/sonarr.db "insert into Users("Id","Identifier","Username","Password","Salt","Iterations") values(1,'$(uuidgen)','$SONARR_ADMIN_USERNAME','$sonarr_pw_hash','$sonarr_salt_hash',10000);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/sonarr/config/sonarr.db "insert into RootFolders("Path") values('/data/media/tv/');"
+  sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/sonarr/config/config.xml
+  sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/sonarr/config/config.xml
+  cat <<EOFPY > /tmp/hashtmp.py
+import base64
+import hashlib
+import secrets
+password='$RADARR_ADMIN_PASSWORD'
+salt='$(pwgen -c -n 16 1)'
+iterations=10000
+key = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt.encode('utf-8'), iterations, dklen=32)
+print(base64.b64encode(key),base64.b64encode(salt.encode('utf-8')));
+EOFPY
+  radarr_hashes=$(python3 /tmp/hashtmp.py)
+  radarr_pw_hash=$(echo "$radarr_hashes" | cut -d" " -f1 | cut -d"'" -f2)
+  radarr_salt_hash=$(echo "$radarr_hashes" | cut -d" " -f2 | cut -d"'" -f2)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/radarr/config/radarr.db "insert into Users("Id","Identifier","Username","Password","Salt","Iterations") values(1,'$(uuidgen)','$RADARR_ADMIN_USERNAME','$radarr_pw_hash','$radarr_salt_hash',10000);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/radarr/config/radarr.db "insert into RootFolders("Path") values('/data/media/movies/');"
+  sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/radarr/config/config.xml
+  sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/radarr/config/config.xml
+  cat <<EOFPY > /tmp/hashtmp.py
+import base64
+import hashlib
+import secrets
+password='$LIDARR_ADMIN_PASSWORD'
+salt='$(pwgen -c -n 16 1)'
+iterations=10000
+key = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt.encode('utf-8'), iterations, dklen=32)
+print(base64.b64encode(key),base64.b64encode(salt.encode('utf-8')));
+EOFPY
+  lidarr_hashes=$(python3 /tmp/hashtmp.py)
+  lidarr_pw_hash=$(echo "$lidarr_hashes" | cut -d" " -f1 | cut -d"'" -f2)
+  lidarr_salt_hash=$(echo "$lidarr_hashes" | cut -d" " -f2 | cut -d"'" -f2)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/lidarr/config/lidarr.db "insert into Users("Id","Identifier","Username","Password","Salt","Iterations") values(1,'$(uuidgen)','$LIDARR_ADMIN_USERNAME','$lidarr_pw_hash','$lidarr_salt_hash',10000);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/lidarr/config/lidarr.db "insert into RootFolders("Path","Name","DefaultMetadataProfileId","DefaultQualityProfileId","DefaultMonitorOption","DefaultTags","DefaultNewItemMonitorOption") values('/data/media/audio/','Audio',1,1,0,'[]',0);"
+  sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/lidarr/config/config.xml
+  sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/lidarr/config/config.xml
+  readarr_pw_hash=$(echo -n "$READARR_ADMIN_PASSWORD" | sha256sum | xargs | cut -d" " -f1)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/readarr/config/readarr.db "insert into Users("Id","Identifier","Username","Password") values(1,'$(uuidgen)','$READARR_ADMIN_USERNAME','$readarr_pw_hash');"
+
+  sqlite3 $HSHQ_STACKS_DIR/servarr/readarr/config/readarr.db "insert into RootFolders("Path","Name","DefaultMetadataProfileId","DefaultQualityProfileId","DefaultMonitorOption","DefaultTags","IsCalibreLibrary","DefaultNewItemMonitorOption") values('/data/media/books/','Books',1,1,0,'[]',0,0);"
+
+  sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/readarr/config/config.xml
+  sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/readarr/config/config.xml
+  bazarr_pw_hash=$(echo -n "$BAZARR_ADMIN_PASSWORD" | md5sum | xargs | cut -d" " -f1)
+  yq -r -i ".analytics.enabled = false" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".auth.password = \"$bazarr_pw_hash\"" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".auth.type = \"form\"" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".auth.username = \"$BAZARR_ADMIN_USERNAME\"" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".general.use_sonarr = true" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".sonarr.apikey = \"$sonarr_api_key\"" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".sonarr.ip = \"$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN\"" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".sonarr.port = 443" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".sonarr.ssl = true" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".general.use_radarr = true" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".radarr.apikey = \"$radarr_api_key\"" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".radarr.ip = \"$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN\"" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".radarr.port = 443" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  yq -r -i ".radarr.ssl = true" $HSHQ_STACKS_DIR/servarr/bazarr/config/config/config.yaml
+  sed -i "s/^destination_dir.*/destination_dir = \/data\/media\/comics/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^replace_char.*/replace_char = \./" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^zero_level_n.*/zero_level_n = none/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "/^config_version.*/a\minimal_ini = False/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^http_username.*/http_username = $MYLAR3_ADMIN_USERNAME/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^http_password.*/http_password = $MYLAR3_ADMIN_PASSWORD/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^authentication.*/authentication = 2/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^api_enabled.*/api_enabled = True/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^api_key.*/api_key = $mylar3_api_key/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^log_dir.*/log_dir = \/config\/mylar\/logs/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^provider_order.*/provider_order = None/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^nzbget_priority.*/nzbget_priority = Default/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "/^extra_torznabs.*/a torznab_name = None\ntorznab_host = None\ntorznab_apikey = None\ntorznab_category = None\ntorznab_verify = False/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^email_enabled.*/email_enabled = True/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^email_from.*/email_from = $EMAIL_ADMIN_EMAIL_ADDRESS/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^email_to.*/email_to = $EMAIL_ADMIN_EMAIL_ADDRESS/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^email_server.*/email_server = $SMTP_HOSTNAME/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^email_port.*/email_port = $SMTP_HOSTPORT/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  sed -i "s/^email_enc.*/email_enc = 2/" $HSHQ_STACKS_DIR/servarr/mylar3/config/mylar/config.ini
+  cat <<EOFPY > /tmp/hashtmp.py
+import base64
+import hashlib
+import secrets
+password='$PROWLARR_ADMIN_PASSWORD'
+salt='$(pwgen -c -n 16 1)'
+iterations=10000
+key = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt.encode('utf-8'), iterations, dklen=32)
+print(base64.b64encode(key),base64.b64encode(salt.encode('utf-8')));
+EOFPY
+  prowlarr_hashes=$(python3 /tmp/hashtmp.py)
+  prowlarr_pw_hash=$(echo "$prowlarr_hashes" | cut -d" " -f1 | cut -d"'" -f2)
+  prowlarr_salt_hash=$(echo "$prowlarr_hashes" | cut -d" " -f2 | cut -d"'" -f2)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/prowlarr/config/prowlarr.db "insert into Users("Id","Identifier","Username","Password","Salt","Iterations") values(1,'$(uuidgen)','$PROWLARR_ADMIN_USERNAME','$prowlarr_pw_hash','$prowlarr_salt_hash',10000);"
+  sed -i 's/^.*AuthenticationMethod.*$/  <AuthenticationMethod>Forms<\/AuthenticationMethod>/' $HSHQ_STACKS_DIR/servarr/prowlarr/config/config.xml
+  sed -i 's/<\/Config>/\  <AnalyticsEnabled>False<\/AnalyticsEnabled>\n<\/Config>/' $HSHQ_STACKS_DIR/servarr/prowlarr/config/config.xml
+  rm -f /tmp/hashtmp.py
+  config_settings=$(cat <<EOFCF
+{
+  "prowlarrUrl": "https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN",
+  "baseUrl": "https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN",
+  "apiKey": "$sonarr_api_key",
+  "syncCategories": [
+    5000,
+    5010,
+    5020,
+    5030,
+    5040,
+    5045,
+    5050,
+    5090
+  ],
+  "animeSyncCategories": [
+    5070
+  ],
+  "syncAnimeStandardFormatSearch": true,
+  "syncRejectBlocklistedTorrentHashesWhileGrabbing": false
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/prowlarr/config/prowlarr.db "insert into Applications("Id","Name","Implementation","Settings","ConfigContract","SyncLevel","Tags") values(1,'Sonarr','Sonarr','$config_settings','SonarrSettings',2,'[]');"
+  config_settings=$(cat <<EOFCF
+{
+  "prowlarrUrl": "https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN",
+  "baseUrl": "https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN",
+  "apiKey": "$radarr_api_key",
+  "syncCategories": [
+    2000,
+    2010,
+    2020,
+    2030,
+    2040,
+    2045,
+    2050,
+    2060,
+    2070,
+    2080,
+    2090
+  ],
+  "syncRejectBlocklistedTorrentHashesWhileGrabbing": false
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/prowlarr/config/prowlarr.db "insert into Applications("Id","Name","Implementation","Settings","ConfigContract","SyncLevel","Tags") values(2,'Radarr','Radarr','$config_settings','RadarrSettings',2,'[]');"
+  config_settings=$(cat <<EOFCF
+{
+  "prowlarrUrl": "https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN",
+  "baseUrl": "https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN",
+  "apiKey": "$lidarr_api_key",
+  "syncCategories": [
+    3000,
+    3010,
+    3030,
+    3040,
+    3050,
+    3060
+  ],
+  "syncRejectBlocklistedTorrentHashesWhileGrabbing": false
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/prowlarr/config/prowlarr.db "insert into Applications("Id","Name","Implementation","Settings","ConfigContract","SyncLevel","Tags") values(3,'Lidarr','Lidarr','$config_settings','LidarrSettings',2,'[]');"
+  config_settings=$(cat <<EOFCF
+{
+  "prowlarrUrl": "https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN",
+  "baseUrl": "https://$SUB_SERVARR_READARR.$HOMESERVER_DOMAIN",
+  "apiKey": "$readarr_api_key",
+  "syncCategories": [
+    3030,
+    7000,
+    7010,
+    7020,
+    7030,
+    7040,
+    7050,
+    7060
+  ],
+  "syncRejectBlocklistedTorrentHashesWhileGrabbing": false
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/prowlarr/config/prowlarr.db "insert into Applications("Id","Name","Implementation","Settings","ConfigContract","SyncLevel","Tags") values(4,'Readarr','Readarr','$config_settings','ReadarrSettings',2,'[]');"
+  config_settings=$(cat <<EOFCF
+{
+  "prowlarrUrl": "https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN",
+  "baseUrl": "https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN",
+  "apiKey": "$mylar3_api_key",
+  "syncCategories": [
+    7030
+  ]
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/prowlarr/config/prowlarr.db "insert into Applications("Id","Name","Implementation","Settings","ConfigContract","SyncLevel","Tags") values(5,'Mylar','Mylar','$config_settings','MylarSettings',2,'[]');"
+  mail_settings=$(cat <<EOFCF
+{
+  "server": "$SMTP_HOSTNAME",
+  "port": $SMTP_HOSTPORT,
+  "useEncryption": 2,
+  "from": "Sonarr $(getAdminEmailName) \u003C$EMAIL_ADMIN_EMAIL_ADDRESS\u003E",
+  "to": [
+    "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  ],
+  "cc": [],
+  "bcc": []
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/sonarr/config/sonarr.db "insert into Notifications("Name","OnGrab","OnDownload","Settings","Implementation","ConfigContract","OnUpgrade","Tags","OnRename","OnHealthIssue","IncludeHealthWarnings","OnSeriesDelete","OnEpisodeFileDelete","OnEpisodeFileDeleteForUpgrade","OnApplicationUpdate","OnManualInteractionRequired","OnSeriesAdd","OnHealthRestored","OnImportComplete") values('Email',1,1,'$mail_settings','Email','EmailSettings',1,'[]',0,0,0,1,1,1,1,1,1,0,1);"
+  mail_settings=$(cat <<EOFCF
+{
+  "server": "$SMTP_HOSTNAME",
+  "port": $SMTP_HOSTPORT,
+  "useEncryption": 2,
+  "from": "Radarr $(getAdminEmailName) \u003C$EMAIL_ADMIN_EMAIL_ADDRESS\u003E",
+  "to": [
+    "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  ],
+  "cc": [],
+  "bcc": []
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/radarr/config/radarr.db "insert into Notifications("Name","OnGrab","OnDownload","Settings","Implementation","ConfigContract","OnUpgrade","Tags","OnRename","OnHealthIssue","IncludeHealthWarnings","OnMovieDelete","OnMovieFileDelete","OnMovieFileDeleteForUpgrade","OnApplicationUpdate","OnMovieAdded","OnHealthRestored","OnManualInteractionRequired") values('Email',1,1,'$mail_settings','Email','EmailSettings',1,'[]',0,0,0,1,1,1,1,1,0,1);"
+  mail_settings=$(cat <<EOFCF
+{
+  "server": "$SMTP_HOSTNAME",
+  "port": $SMTP_HOSTPORT,
+  "useEncryption": 2,
+  "from": "Lidarr $(getAdminEmailName) \u003C$EMAIL_ADMIN_EMAIL_ADDRESS\u003E",
+  "to": [
+    "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  ],
+  "cc": [],
+  "bcc": []
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/lidarr/config/lidarr.db "insert into Notifications("Name","OnGrab","Settings","Implementation","ConfigContract","OnUpgrade","Tags","OnRename","OnReleaseImport","OnHealthIssue","IncludeHealthWarnings","OnDownloadFailure","OnImportFailure","OnTrackRetag","OnApplicationUpdate","OnArtistDelete","OnAlbumDelete","OnHealthRestored","OnArtistAdd") values('Email',1,'$mail_settings','Email','EmailSettings',1,'[]',0,1,0,0,1,1,0,1,1,0,0,1);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/lidarr/config/lidarr.db "insert into Config("Key","Value") values('certificatevalidation','DisabledForLocalAddresses');"
+  mail_settings=$(cat <<EOFCF
+{
+  "server": "$SMTP_HOSTNAME",
+  "port": $SMTP_HOSTPORT,
+  "useEncryption": 2,
+  "from": "Readarr $(getAdminEmailName) \u003C$EMAIL_ADMIN_EMAIL_ADDRESS\u003E",
+  "to": [
+    "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  ],
+  "cc": [],
+  "bcc": []
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/readarr/config/readarr.db "insert into Notifications("Name","OnGrab","Settings","Implementation","ConfigContract","OnUpgrade","Tags","OnRename","OnReleaseImport","OnHealthIssue","IncludeHealthWarnings","OnDownloadFailure","OnImportFailure","OnBookRetag","OnAuthorDelete","OnBookDelete","OnBookFileDelete","OnBookFileDeleteForUpgrade","OnApplicationUpdate","OnAuthorAdded") values('Email',1,'$mail_settings','Email','EmailSettings',1,'[]',0,1,0,0,1,1,0,1,1,1,1,1,1);"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/readarr/config/readarr.db "insert into Config("Key","Value") values('certificatevalidation','DisabledForLocalAddresses');"
+  sqlite3 $HSHQ_STACKS_DIR/servarr/bazarr/config/db/bazarr.db "update table_settings_notifier set enabled=1,url='mailto://$SMTP_HOSTNAME:$SMTP_HOSTPORT?from=Bazarr $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>&to=$EMAIL_ADMIN_EMAIL_ADDRESS' where name='E-Mail';"
+  mail_settings=$(cat <<EOFCF
+{
+  "server": "$SMTP_HOSTNAME",
+  "port": $SMTP_HOSTPORT,
+  "useEncryption": 2,
+  "from": "Prowlarr $(getAdminEmailName) \u003C$EMAIL_ADMIN_EMAIL_ADDRESS\u003E",
+  "to": [
+    "$EMAIL_ADMIN_EMAIL_ADDRESS"
+  ],
+  "cc": [],
+  "bcc": []
+}
+EOFCF
+)
+  sqlite3 $HSHQ_STACKS_DIR/servarr/prowlarr/config/prowlarr.db "insert into Notifications("Name","Settings","Implementation","ConfigContract","Tags","OnHealthIssue","IncludeHealthWarnings","OnApplicationUpdate","OnGrab","IncludeManualGrabs","OnHealthRestored") values('Email','$mail_settings','Email','EmailSettings','[]',0,0,1,1,0,0);"
+  echo "Starting servarr stack..."
+  startStopStack servarr start
+  if ! [ "$SERVARR_INIT_ENV" = "true" ]; then
+    sendEmail -s "Servarr Admin Login Info" -b "Sonarr Admin Username: $SONARR_ADMIN_USERNAME\nSonarr Admin Password: $SONARR_ADMIN_PASSWORD\n\nRadarr Admin Username: $RADARR_ADMIN_USERNAME\nRadarr Admin Password: $RADARR_ADMIN_PASSWORD\n\nLidarr Admin Username: $LIDARR_ADMIN_USERNAME\nLidarr Admin Password: $LIDARR_ADMIN_PASSWORD\n\nReadarr Admin Username: $READARR_ADMIN_USERNAME\nReadarr Admin Password: $READARR_ADMIN_PASSWORD\n\nBazarr Admin Username: $BAZARR_ADMIN_USERNAME\nBazarr Admin Password: $BAZARR_ADMIN_PASSWORD\n\nMylar3 Admin Username: $MYLAR3_ADMIN_USERNAME\nMylar3 Admin Password: $MYLAR3_ADMIN_PASSWORD\n\nProwlarr Admin Username: $PROWLARR_ADMIN_USERNAME\nProwlarr Admin Password: $PROWLARR_ADMIN_PASSWORD\n\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    SERVARR_INIT_ENV=true
+    updateConfigVar SERVARR_INIT_ENV $SERVARR_INIT_ENV
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://servarr-sonarr:8989 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SERVARR_SONARR $MANAGETLS_SERVARR_SONARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_SONARR "$inner_block"
+  insertSubAuthelia $SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://servarr-radarr:7878 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SERVARR_RADARR $MANAGETLS_SERVARR_RADARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_RADARR "$inner_block"
+  insertSubAuthelia $SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://servarr-lidarr:8686 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SERVARR_LIDARR $MANAGETLS_SERVARR_LIDARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_LIDARR "$inner_block"
+  insertSubAuthelia $SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SERVARR_READARR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://servarr-readarr:8787 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SERVARR_READARR $MANAGETLS_SERVARR_READARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_READARR "$inner_block"
+  insertSubAuthelia $SUB_SERVARR_READARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://servarr-bazarr:6767 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SERVARR_BAZARR $MANAGETLS_SERVARR_BAZARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_BAZARR "$inner_block"
+  insertSubAuthelia $SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://servarr-mylar3:8090 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SERVARR_MYLAR3 $MANAGETLS_SERVARR_MYLAR3 "$is_integrate_hshq" $NETDEFAULT_SERVARR_MYLAR3 "$inner_block"
+  insertSubAuthelia $SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://servarr-prowlarr:9696 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SERVARR_PROWLARR $MANAGETLS_SERVARR_PROWLARR "$is_integrate_hshq" $NETDEFAULT_SERVARR_PROWLARR "$inner_block"
+  insertSubAuthelia $SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll servarr "$FMLNAME_SERVARR_SONARR" $USERTYPE_SERVARR_SONARR "https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN" "sonarr.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_SONARR $USERTYPE_SERVARR_SONARR)"
+    insertEnableSvcAll servarr "$FMLNAME_SERVARR_RADARR" $USERTYPE_SERVARR_RADARR "https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN" "radarr.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_RADARR $USERTYPE_SERVARR_RADARR)"
+    insertEnableSvcAll servarr "$FMLNAME_SERVARR_LIDARR" $USERTYPE_SERVARR_LIDARR "https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN" "lidarr.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_LIDARR $USERTYPE_SERVARR_LIDARR)"
+    insertEnableSvcAll servarr "$FMLNAME_SERVARR_READARR" $USERTYPE_SERVARR_READARR "https://$SUB_SERVARR_READARR.$HOMESERVER_DOMAIN" "readarr.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_READARR $USERTYPE_SERVARR_READARR)"
+    insertEnableSvcAll servarr "$FMLNAME_SERVARR_BAZARR" $USERTYPE_SERVARR_BAZARR "https://$SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN" "bazarr.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_BAZARR $USERTYPE_SERVARR_BAZARR)"
+    insertEnableSvcAll servarr "$FMLNAME_SERVARR_MYLAR3" $USERTYPE_SERVARR_MYLAR3 "https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN" "mylar3.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_MYLAR3 $USERTYPE_SERVARR_MYLAR3)"
+    insertEnableSvcAll servarr "$FMLNAME_SERVARR_PROWLARR" $USERTYPE_SERVARR_PROWLARR "https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN" "prowlarr.png" "$(getHeimdallOrderFromSub $SUB_SERVARR_PROWLARR $USERTYPE_SERVARR_PROWLARR)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigServarr()
+{
+  cat <<EOFMT > $HOME/servarr-compose.yml
+$STACK_VERSION_PREFIX servarr $(getScriptStackVersion servarr)
+
+services:
+  servarr-sonarr:
+    image: $(getScriptImageByContainerName servarr-sonarr)
+    container_name: servarr-sonarr
+    hostname: servarr-sonarr
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${HSHQ_STACKS_DIR}/servarr/sonarr/config:/config
+
+  servarr-radarr:
+    image: $(getScriptImageByContainerName servarr-radarr)
+    container_name: servarr-radarr
+    hostname: servarr-radarr
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${HSHQ_STACKS_DIR}/servarr/radarr/config:/config
+
+  servarr-lidarr:
+    image: $(getScriptImageByContainerName servarr-lidarr)
+    container_name: servarr-lidarr
+    hostname: servarr-lidarr
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${HSHQ_STACKS_DIR}/servarr/lidarr/config:/config
+
+  servarr-readarr:
+    image: $(getScriptImageByContainerName servarr-readarr)
+    container_name: servarr-readarr
+    hostname: servarr-readarr
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${HSHQ_STACKS_DIR}/servarr/readarr/config:/config
+
+  servarr-bazarr:
+    image: $(getScriptImageByContainerName servarr-bazarr)
+    container_name: servarr-bazarr
+    hostname: servarr-bazarr
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${HSHQ_STACKS_DIR}/servarr/bazarr/config:/config
+
+  servarr-mylar3:
+    image: $(getScriptImageByContainerName servarr-mylar3)
+    container_name: servarr-mylar3
+    hostname: servarr-mylar3
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${HSHQ_STACKS_DIR}/servarr/mylar3/config:/config
+
+  servarr-prowlarr:
+    image: $(getScriptImageByContainerName servarr-prowlarr)
+    container_name: servarr-prowlarr
+    hostname: servarr-prowlarr
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/servarr/prowlarr/config:/config
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+
+EOFMT
+
+  cat <<EOFMT > $HOME/servarr.env
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
+EOFMT
+
+}
+
+function performUpdateServarr()
+{
+  perform_stack_name=servarr
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=linuxserver/sonarr:4.0.15,linuxserver/radarr:5.27.1-nightly,linuxserver/lidarr:2.13.1-nightly,linuxserver/readarr:0.4.19-nightly,linuxserver/bazarr:1.5.2,linuxserver/mylar3:0.8.2,linuxserver/prowlarr:2.0.1-nightly
+      image_update_map[0]="linuxserver/sonarr:4.0.15,linuxserver/sonarr:4.0.15"
+      image_update_map[1]="linuxserver/radarr:5.27.1-nightly,linuxserver/radarr:5.27.1-nightly"
+      image_update_map[2]="linuxserver/lidarr:2.13.1-nightly,linuxserver/lidarr:2.13.1-nightly"
+      image_update_map[3]="linuxserver/readarr:0.4.19-nightly,linuxserver/readarr:0.4.19-nightly"
+      image_update_map[4]="linuxserver/bazarr:1.5.2,linuxserver/bazarr:1.5.2"
+      image_update_map[5]="linuxserver/mylar3:0.8.2,linuxserver/mylar3:0.8.2"
+      image_update_map[6]="linuxserver/prowlarr:2.0.1-nightly,linuxserver/prowlarr:2.0.1-nightly"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# SABnzbd
+function installSABnzbd()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory sabnzbd "SABnzbd"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName sabnzbd)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/sabnzbd
+  mkdir $HSHQ_STACKS_DIR/sabnzbd/config
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/usenet/incomplete
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/usenet/complete/{audio,books,comics,misc,movies,software,tv}
+  initServicesCredentials
+  set +e
+  outputConfigSABnzbd
+  installStack sabnzbd sabnzbd "Serving SSDP" $HOME/sabnzbd.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$SABNZBD_INIT_ENV" = "true" ]; then
+    sendEmail -s "SABnzbd Admin Login Info" -b "SABnzbd Admin Username: $SABNZBD_ADMIN_USERNAME\nSABnzbd Admin Password: $SABNZBD_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    SABNZBD_INIT_ENV=true
+    updateConfigVar SABNZBD_INIT_ENV $SABNZBD_INIT_ENV
+  fi
+  sleep 3
+  startStopStack sabnzbd stop
+  sed -i "s/^refresh_rate =.*/refresh_rate = 1/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^username =.*/username = $SABNZBD_ADMIN_USERNAME/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^password =.*/password = $SABNZBD_ADMIN_PASSWORD/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^web_color =.*/web_color = Night/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^download_dir =.*/download_dir = \/data\/usenet\/incomplete/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^complete_dir =.*/complete_dir = \/data\/usenet\/complete/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^history_retention_number =.*/history_retention_number = 1/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^host_whitelist =.*/host_whitelist = sabnzbd, $SUB_SABNZBD.$HOMESERVER_DOMAIN/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^email_server =.*/email_server = $SMTP_HOSTNAME/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^email_to =.*/email_to = $EMAIL_ADMIN_EMAIL_ADDRESS,/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^email_from =.*/email_from = $EMAIL_ADMIN_EMAIL_ADDRESS/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^email_full =.*/email_full = 1/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^email_rss =.*/email_rss = 1/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ncenter_prio_complete =.*/ncenter_prio_complete = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ncenter_prio_failed =.*/ncenter_prio_failed = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ncenter_prio_disk_full =.*/ncenter_prio_disk_full = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ncenter_prio_other =.*/ncenter_prio_other = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^acenter_prio_complete =.*/acenter_prio_complete = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^acenter_prio_failed =.*/acenter_prio_failed = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^acenter_prio_disk_full =.*/acenter_prio_disk_full = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^acenter_prio_other =.*/acenter_prio_other = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ntfosd_enable =.*/ntfosd_enable = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ntfosd_prio_complete =.*/ntfosd_prio_complete = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ntfosd_prio_failed =.*/ntfosd_prio_failed = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ntfosd_prio_disk_full =.*/ntfosd_prio_disk_full = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^ntfosd_prio_other =.*/ntfosd_prio_other = 0/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^prowl_prio_complete =.*/prowl_prio_complete = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^prowl_prio_failed =.*/prowl_prio_failed = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^prowl_prio_disk_full =.*/prowl_prio_disk_full = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^prowl_prio_other =.*/prowl_prio_other = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_download =.*/pushover_prio_download = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_pause_resume =.*/pushover_prio_pause_resume = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_complete =.*/pushover_prio_complete = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_failed =.*/pushover_prio_failed = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_disk_full =.*/pushover_prio_disk_full = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_warning =.*/pushover_prio_warning = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_error =.*/pushover_prio_error = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^pushover_prio_other =.*/pushover_prio_other = -3/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^nscript_script =.*/nscript_script = None/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  sed -i "s/^nscript_prio_other =.*/nscript_prio_other = 1/" $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini
+  tee -a $HSHQ_STACKS_DIR/sabnzbd/config/sabnzbd.ini >/dev/null <<EOFSZ
+[categories]
+[[*]]
+name = *
+order = 0
+pp = 3
+script = None
+dir = ""
+newzbin = ""
+priority = 0
+[[tv]]
+name = tv
+order = 6
+pp = ""
+script = Default
+dir = tv
+newzbin = ""
+priority = -100
+[[software]]
+name = software
+order = 5
+pp = ""
+script = Default
+dir = software
+newzbin = ""
+priority = -100
+[[movies]]
+name = movies
+order = 4
+pp = ""
+script = Default
+dir = movies
+newzbin = ""
+priority = -100
+[[misc]]
+name = misc
+order = 3
+pp = ""
+script = Default
+dir = misc
+newzbin = ""
+priority = -100
+[[comics]]
+name = comics
+order = 2
+pp = ""
+script = Default
+dir = comics
+newzbin = ""
+priority = -100
+[[books]]
+name = books
+order = 1
+pp = ""
+script = Default
+dir = books
+newzbin = ""
+priority = -100
+[[audio]]
+name = audio
+order = 0
+pp = ""
+script = Default
+dir = audio
+newzbin = ""
+priority = -100
+EOFSZ
+  startStopStack sabnzbd start
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_SABNZBD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://sabnzbd:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_SABNZBD $MANAGETLS_SABNZBD "$is_integrate_hshq" $NETDEFAULT_SABNZBD "$inner_block"
+  insertSubAuthelia $SUB_SABNZBD.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll sabnzbd "$FMLNAME_SABNZBD" $USERTYPE_SABNZBD "https://$SUB_SABNZBD.$HOMESERVER_DOMAIN" "sabnzbd.png" "$(getHeimdallOrderFromSub $SUB_SABNZBD $USERTYPE_SABNZBD)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigSABnzbd()
+{
+  cat <<EOFMT > $HOME/sabnzbd-compose.yml
+$STACK_VERSION_PREFIX sabnzbd $(getScriptStackVersion sabnzbd)
+
+services:
+  sabnzbd:
+    image: $(getScriptImageByContainerName sabnzbd)
+    container_name: sabnzbd
+    hostname: sabnzbd
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/sabnzbd/config:/config
+      - \${HSHQ_STACKS_DIR}/shared/rdata/usenet:/data/usenet
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+EOFMT
+
+  cat <<EOFMT > $HOME/sabnzbd.env
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
+EOFMT
+
+}
+
+function performUpdateSABnzbd()
+{
+  perform_stack_name=sabnzbd
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=linuxserver/sabnzbd:4.5.1
+      image_update_map[0]="linuxserver/sabnzbd:4.5.1,linuxserver/sabnzbd:4.5.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# qBittorrent
+function installqBittorrent()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory qbittorrent "qBittorrent"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName qbittorrent)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/qbittorrent
+  mkdir $HSHQ_STACKS_DIR/qbittorrent/config
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/torrents/{audio,books,comics,misc,movies,software,tv}
+  initServicesCredentials
+  set +e
+  outputConfigqBittorrent
+  installStack qbittorrent qbittorrent "\[ls.io-init\] done" $HOME/qbittorrent.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$QBITTORRENT_INIT_ENV" = "true" ]; then
+    sendEmail -s "qBittorrent Admin Login Info" -b "qBittorrent Admin Username: $QBITTORRENT_ADMIN_USERNAME\nqBittorrent Admin Password: $QBITTORRENT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    QBITTORRENT_INIT_ENV=true
+    updateConfigVar QBITTORRENT_INIT_ENV $QBITTORRENT_INIT_ENV
+  fi
+  sleep 3
+  echo "Stopping qbittorrent stack..."
+  startStopStack qbittorrent stop
+  set +e
+  sed -i "/^\[BitTorrent\].*/a Session\\\\Preallocation=true" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  grep -q AutoDeleteAddedTorrentFile $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  if [ $? -eq 0 ]; then
+    sed -i "s/^AutoDeleteAddedTorrentFile=.*/AutoDeleteAddedTorrentFile=IfAdded/" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  else
+    echo -e "\n[Core]\nAutoDeleteAddedTorrentFile=IfAdded\n" >> $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  fi
+  sed -i "s/^Session\\\\DefaultSavePath=.*/Session\\\\DefaultSavePath=\/data\/torrents\//" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[BitTorrent\].*/a Session\\\\DisableAutoTMMByDefault=false" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[BitTorrent\].*/a Session\\\\DisableAutoTMMTriggers\\\\CategorySavePathChanged=false" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[BitTorrent\].*/a Session\\\\DisableAutoTMMTriggers\\\\DefaultSavePathChanged=false" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[Preferences\].*/a MailNotification\\\\email=$EMAIL_ADMIN_EMAIL_ADDRESS" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[Preferences\].*/a MailNotification\\\\enabled=true" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[Preferences\].*/a MailNotification\\\\req_auth=false" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[Preferences\].*/a MailNotification\\\\req_ssl=false" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[Preferences\].*/a MailNotification\\\\sender=$EMAIL_ADMIN_EMAIL_ADDRESS" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[Preferences\].*/a MailNotification\\\\smtp_server=$SMTP_HOSTNAME" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  cat <<EOFPY > /tmp/hashtmp.py
+import base64
+import hashlib
+import secrets
+password='$QBITTORRENT_ADMIN_PASSWORD'
+salt='$(pwgen -c -n 16 1)'
+iterations=100000
+key = hashlib.pbkdf2_hmac('sha512', password.encode('utf-8'), salt.encode('utf-8'), iterations, dklen=64)
+print(base64.b64encode(key),base64.b64encode(salt.encode('utf-8')));
+EOFPY
+  qbittorrent_hashes=$(python3 /tmp/hashtmp.py)
+  qbittorrent_pw_hash=$(echo "$qbittorrent_hashes" | cut -d" " -f1 | cut -d"'" -f2)
+  qbittorrent_salt_hash=$(echo "$qbittorrent_hashes" | cut -d" " -f2 | cut -d"'" -f2)
+  rm -f /tmp/hashtmp.py
+  sed -i "/^\[Preferences\].*/a WebUI\\\\Password_PBKDF2=\"@ByteArray($qbittorrent_salt_hash:$qbittorrent_pw_hash)\"" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  sed -i "/^\[Preferences\].*/a WebUI\\\\Username=$QBITTORRENT_ADMIN_USERNAME" $HSHQ_STACKS_DIR/qbittorrent/config/qBittorrent/qBittorrent.conf
+  echo "Starting qbittorrent stack..."
+  startStopStack qbittorrent start
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://qbittorrent:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_QBITTORRENT $MANAGETLS_QBITTORRENT "$is_integrate_hshq" $NETDEFAULT_QBITTORRENT "$inner_block"
+  insertSubAuthelia $SUB_QBITTORRENT.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll qbittorrent "$FMLNAME_QBITTORRENT" $USERTYPE_QBITTORRENT "https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN" "qbittorrent.png" "$(getHeimdallOrderFromSub $SUB_QBITTORRENT $USERTYPE_QBITTORRENT)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigqBittorrent()
+{
+  cat <<EOFMT > $HOME/qbittorrent-compose.yml
+$STACK_VERSION_PREFIX qbittorrent $(getScriptStackVersion qbittorrent)
+
+services:
+  qbittorrent:
+    image: $(getScriptImageByContainerName qbittorrent)
+    container_name: qbittorrent
+    hostname: qbittorrent
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    ports:
+      - "$QBITTORRENT_PORT:$QBITTORRENT_PORT"
+      - "$QBITTORRENT_PORT:$QBITTORRENT_PORT/udp"
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/qbittorrent/config:/config
+      - \${HSHQ_STACKS_DIR}/shared/rdata/torrents:/data/torrents
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+EOFMT
+
+  cat <<EOFMT > $HOME/qbittorrent.env
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
+EOFMT
+}
+
+function performUpdateqBittorrent()
+{
+  perform_stack_name=qbittorrent
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=linuxserver/qbittorrent:5.1.2
+      image_update_map[0]="linuxserver/qbittorrent:5.1.2,linuxserver/qbittorrent:5.1.2"
     ;;
     *)
       is_upgrade_error=true
