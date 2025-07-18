@@ -10379,7 +10379,7 @@ function installSyncthing()
   rm -f \$HOME/syncthing-compose-tmp.yml
   alltext=\$(sudo cat \$RELAYSERVER_HSHQ_STACKS_DIR/syncthing/config/config.xml)
   pwhash=\$(htpasswd -bnBC 10 "" $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/')
-  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT</address>\n        <user>'$RELAYSERVER_SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'\$pwhash'</password>\n        <apikey>'$RELAYSERVER_SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
+  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:'$SYNCTHING_LOCAL_WEB_PORT'</address>\n        <user>'$RELAYSERVER_SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'\$pwhash'</password>\n        <apikey>'$RELAYSERVER_SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
   echo -e "\${alltext%%<gui*}\${replacetext}\${alltext##*</gui>}" > \$HOME/st_config.xml
   alltext=\$(cat \$HOME/st_config.xml)
   replacetext='<globalAnnounceEnabled>false</globalAnnounceEnabled>'
