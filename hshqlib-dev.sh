@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=175
+HSHQ_LIB_SCRIPT_VERSION=176
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -119,6 +119,7 @@ function init()
   QBITTORRENT_PORT=6881
   SYNCTHING_DISC_PORT=21027
   SYNCTHING_SYNC_PORT=22000
+  SYNCTHING_LOCAL_WEB_PORT=8384
   UPNP_PORT=1900
   VNC_SERVER_PORT=5901
   WAZUH_PORT_1=1514
@@ -3238,7 +3239,7 @@ function installMailUtils()
   performAptInstall mailutils
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
-mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
+mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:$MAILU_PORT_5
 hostname=$(cat /etc/hostname)
 TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
 UseSTARTTLS=yes
@@ -5706,7 +5707,7 @@ function initRelayServerCredentials()
   RELAYSERVER_WG_USER_PRIVATEKEY=$(wg genkey)
   RELAYSERVER_WG_USER_PRESHAREDKEY=$(wg genpsk)
   RELAYSERVER_WG_USER_PUBLICKEY=$(echo $RELAYSERVER_WG_USER_PRIVATEKEY | wg pubkey)
-  SMTP_RELAY_HOST="[$SUB_POSTFIX.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:587"
+  SMTP_RELAY_HOST="[$SUB_POSTFIX.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$MAILU_PORT_5"
   updateConfigVar SMTP_RELAY_HOST $SMTP_RELAY_HOST
   SMTP_RELAY_USERNAME=$HOMESERVER_DOMAIN
   updateConfigVar SMTP_RELAY_USERNAME $SMTP_RELAY_USERNAME
@@ -6136,7 +6137,7 @@ function transferHostedVPN()
   setSystemState $SS_TRANSFERRING
   # Pause syncthing RelayServer
   jsonbody="{\"paused\": true}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   outputRelayServerInstallSetupScript
   outputRelayServerInstallTransferScript
   sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
@@ -6206,7 +6207,7 @@ function transferHostedVPN()
   fi
   # Resume syncthing RelayServer
   jsonbody="{\"paused\": false}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   docker container restart syncthing
   loadSSHKey
   echo "Test login to new RelayServer: $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
@@ -6282,6 +6283,7 @@ function startValidation()
     fi
     checkForHSHQ
     checkForRunningDockerContainers
+    checkForBoundPorts
     sudo useradd -m -G sudo -s /bin/bash "\$newUsername" > /dev/null 2>&1
     echo "\$newUsername:\$USER_RELAY_SUDO_PW" | sudo chpasswd > /dev/null 2>&1
   else
@@ -6305,6 +6307,11 @@ function startValidation()
       exit 2
     fi
     sudo bash -c "\$(declare -f checkForRunningDockerContainers); checkForRunningDockerContainers" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkForBoundPorts); checkForBoundPorts" 2> /dev/null
     if [ \$? -ne 0 ]; then
       removeMyself
       exit 2
@@ -6356,6 +6363,35 @@ function checkForRunningDockerContainers()
     echo "  of all activity."
     echo "------------------------------------------------------------------------------------"
     exit 6
+  fi
+}
+
+function checkForBoundPorts()
+{
+  checkPort $MAILU_PORT_1
+  checkPort $MAILU_PORT_5
+  checkPort $CADDY_HTTP_PORT
+  checkPort $CADDY_HTTPS_PORT
+  checkPort $SYNCTHING_SYNC_PORT
+  checkPort $SYNCTHING_DISC_PORT
+  checkPort $SYNCTHING_LOCAL_WEB_PORT
+  checkPort $RELAYSERVER_WG_PORTAL_PORT
+  checkPort $RELAYSERVER_WG_PORT
+}
+
+function checkPort()
+{
+  chkPort=\$1
+  set +e
+  sudo netstat -tulpn | grep :\$chkPort > /dev/null 2>&1
+  if [ \$? -eq 0 ]; then
+    echo "------------------------------------------------------------------------------------"
+    echo "  A needed port is bound by another service: \$chkPort"
+    echo "  The server must be clear of all services on the following port lists:"
+    echo "  External - $MAILU_PORT_1, $CADDY_HTTP_PORT, $CADDY_HTTPS_PORT, $RELAYSERVER_WG_PORT"
+    echo "  Internal - $MAILU_PORT_5, $SYNCTHING_SYNC_PORT, $SYNCTHING_DISC_PORT, $SYNCTHING_LOCAL_WEB_PORT, $RELAYSERVER_WG_PORTAL_PORT"
+    echo "------------------------------------------------------------------------------------"
+    exit 7
   fi
 }
 
@@ -6731,7 +6767,7 @@ function installDependencies()
   performAptInstall ssmtp
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
-mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
+mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:$MAILU_PORT_5
 hostname=\$(cat /etc/hostname)
 TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
 UseSTARTTLS=yes
@@ -7998,7 +8034,7 @@ function outputScripts()
 
 function outputBootScripts()
 {
-  exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  exposedPortsList=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
 set +e
@@ -8017,7 +8053,7 @@ EOFBS
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   sudo iptables -t filter -F DOCKER-USER > /dev/null
   sudo iptables -t filter -X DOCKER-USER > /dev/null
@@ -8147,7 +8183,7 @@ fi
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
   for cur_port in "\\\${portsArr[@]}"
@@ -9185,8 +9221,8 @@ services:
       - dock-ext-net
       - dock-mailrelay-net
     ports:
-      - "25:25"
-      - "587:587"
+      - "$MAILU_PORT_1:$MAILU_PORT_1"
+      - "$MAILU_PORT_5:$MAILU_PORT_5"
     dns:
       - \\\${SUBNET_PREFIX}.253
     depends_on:
@@ -9211,7 +9247,7 @@ services:
       - "ofelia.job-exec.mailcerts-daily.schedule=0 0 8 * * *"
       - "ofelia.job-exec.mailcerts-daily.command=/etc/postfix/scripts/copycerts.sh"
       - "ofelia.job-exec.mailcerts-daily.smtp-host=$SUB_POSTFIX.$HOMESERVER_DOMAIN"
-      - "ofelia.job-exec.mailcerts-daily.smtp-port=587"
+      - "ofelia.job-exec.mailcerts-daily.smtp-port=$MAILU_PORT_5"
       - "ofelia.job-exec.mailcerts-daily.smtp-user=$EMAIL_SMTP_EMAIL_ADDRESS"
       - "ofelia.job-exec.mailcerts-daily.smtp-password=$EMAIL_SMTP_PASSWORD"
       - "ofelia.job-exec.mailcerts-daily.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
@@ -9800,7 +9836,7 @@ database:
   database: data/wg_portal.db
 email:
   host: $SUB_POSTFIX.$HOMESERVER_DOMAIN
-  port: 587
+  port: $MAILU_PORT_5
   tls: true
   user: $EMAIL_SMTP_EMAIL_ADDRESS
   pass: $EMAIL_SMTP_PASSWORD
@@ -10235,7 +10271,7 @@ https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
 https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
   import rip-private-tls-$HOMESERVER_ABBREV
   handle @subnet {
-    reverse_proxy https://syncthing:8384 {
+    reverse_proxy https://syncthing:$SYNCTHING_LOCAL_WEB_PORT {
       import $CADDY_SNIPPET_TRUSTEDPROXIES
     }
   }
@@ -10343,7 +10379,7 @@ function installSyncthing()
   rm -f \$HOME/syncthing-compose-tmp.yml
   alltext=\$(sudo cat \$RELAYSERVER_HSHQ_STACKS_DIR/syncthing/config/config.xml)
   pwhash=\$(htpasswd -bnBC 10 "" $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/')
-  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:8384</address>\n        <user>'$RELAYSERVER_SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'\$pwhash'</password>\n        <apikey>'$RELAYSERVER_SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
+  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT</address>\n        <user>'$RELAYSERVER_SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'\$pwhash'</password>\n        <apikey>'$RELAYSERVER_SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
   echo -e "\${alltext%%<gui*}\${replacetext}\${alltext##*</gui>}" > \$HOME/st_config.xml
   alltext=\$(cat \$HOME/st_config.xml)
   replacetext='<globalAnnounceEnabled>false</globalAnnounceEnabled>'
@@ -10367,7 +10403,7 @@ function installSyncthing()
   installStack syncthing syncthing "Access the GUI via the following URL" \$HOME/syncthing.env
 
   sleep 3
-  curl -s -H "X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/default
+  curl -s -H "X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders/default
 }
 
 function outputConfigSyncthing()
@@ -10389,7 +10425,7 @@ services:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
       - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
-      - "127.0.0.1:8384:8384"
+      - "127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT:$SYNCTHING_LOCAL_WEB_PORT"
     environment:
       - PUID=0
       - PGID=0
@@ -10435,7 +10471,7 @@ services:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
       - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
-      - "127.0.0.1:8384:8384"
+      - "127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT:$SYNCTHING_LOCAL_WEB_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -10885,11 +10921,11 @@ function connectVPN()
     loadSSHKey
     # Setup syncthing link
     echo "Setting up Syncthing..."
-    SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
+    SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
     updateConfigVar SYNCTHING_DEVICE_ID $SYNCTHING_DEVICE_ID
     # Remote Syncthing
     echo "Getting RelayServer syncthing device ID..."
-    runCommandOnRelayServer true "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID'"
+    runCommandOnRelayServer true "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices | jq '.[0]' | jq -r '.deviceID'"
     if [ $? -ne 0 ]; then
       echo "There was an error obtaining the remote RelayServer Synchthing device ID. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
@@ -10901,7 +10937,7 @@ function connectVPN()
     updateConfigVar RELAYSERVER_SYNCTHING_DEVICE_ID $RELAYSERVER_SYNCTHING_DEVICE_ID
     jsonbody="{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\", \\\"name\\\": \\\"$HOMESERVER_NAME HomeServer\\\",\\\"addresses\\\": [\\\"tcp://$SUB_SYNCTHING.$HOMESERVER_DOMAIN:$SYNCTHING_SYNC_PORT\\\"], \\\"compression\\\": \\\"metadata\\\", \\\"certName\\\": \\\"\\\", \\\"skipIntroductionRemovals\\\": false,\\\"introducedBy\\\": \\\"\\\",\\\"paused\\\": false,\\\"allowedNetworks\\\": [],\\\"autoAcceptFolders\\\": false,\\\"maxSendKbps\\\": 0,\\\"maxRecvKbps\\\": 0,\\\"ignoredFolders\\\": [],\\\"maxRequestKiB\\\": 0,\\\"untrusted\\\": false,\\\"remoteGUIPort\\\": 0}"
     echo "Adding HomeServer device to RelayServer syncthing..."
-    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
+    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices"
     if [ $? -ne 0 ]; then
       echo "There was an error setting up Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
@@ -10911,7 +10947,7 @@ function connectVPN()
     fi
     jsonbody="{\\\"id\\\": \\\"$RELAYSERVER_SYNCTHING_FOLDER_ID\\\", \\\"label\\\": \\\"RelayServer Backup\\\",\\\"filesystemType\\\": \\\"basic\\\", \\\"path\\\": \\\"/relayserver/\\\", \\\"type\\\": \\\"sendonly\\\",\\\"devices\\\": [{\\\"deviceID\\\": \\\"$RELAYSERVER_SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"},{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"}], \\\"rescanIntervalS\\\": 3600,\\\"fsWatcherEnabled\\\": true,\\\"fsWatcherDelayS\\\": 10,\\\"ignorePerms\\\": false,\\\"autoNormalize\\\": true,\\\"minDiskFree\\\": {\\\"value\\\": 1,\\\"unit\\\": \\\"%\\\"},\\\"versioning\\\": {\\\"type\\\": \\\"\\\",\\\"params\\\": {},\\\"cleanupIntervalS\\\": 3600,\\\"fsPath\\\": \\\"\\\",\\\"fsType\\\": \\\"basic\\\"},\\\"copiers\\\": 0,\\\"pullerMaxPendingKiB\\\": 0,\\\"hashers\\\": 0,\\\"order\\\": \\\"random\\\",\\\"ignoreDelete\\\": false,\\\"scanProgressIntervalS\\\": 0,\\\"pullerPauseS\\\": 0,\\\"maxConflicts\\\": 10,\\\"disableSparseFiles\\\": false,\\\"disableTempIndexes\\\": false,\\\"paused\\\": false,\\\"weakHashThresholdPct\\\": 25,\\\"markerName\\\": \\\".stfolder\\\",\\\"copyOwnershipFromParent\\\": false,\\\"modTimeWindowS\\\": 0,\\\"maxConcurrentWrites\\\": 2,\\\"disableFsync\\\": false,\\\"blockPullOrder\\\": \\\"standard\\\",\\\"copyRangeMethod\\\": \\\"standard\\\",\\\"caseSensitiveFS\\\": false,\\\"junctionsAsDirs\\\": false,\\\"syncOwnership\\\": false,\\\"sendOwnership\\\": true,\\\"syncXattrs\\\": false,\\\"sendXattrs\\\": false,\\\"xattrFilter\\\": {\\\"entries\\\": [],\\\"maxSingleEntrySize\\\": 1024,\\\"maxTotalSize\\\": 4096}}"
     echo "Setting up backup directory on RelayServer syncthing..."
-    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
+    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders"
     if [ $? -ne 0 ]; then
       echo "There was an error configuring Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
@@ -10925,19 +10961,19 @@ function connectVPN()
     if [ "$LOG_LEVEL" = "debug" ]; then
       echo -e "Running this command on HomeServer:"
       echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
+      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices"
       echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
     fi
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices
     jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
     echo "Setting up backup directory on HomeServer syncthing..."
     if [ "$LOG_LEVEL" = "debug" ]; then
       echo -e "Running this command on HomeServer:"
       echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
+      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders"
       echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
     fi
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/folders
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders
     echo "Restarting caddy instance on RelayServer..."
     runCommandOnRelayServer false "docker container restart caddy"
     if [ $? -ne 0 ]; then
@@ -13090,8 +13126,8 @@ function removeMyNetworkPrimaryVPN()
     sudo sqlite3 $HSHQ_DB "drop table portforwarding;"
     removeRelayServerAgentFromWazuhManager
     echo "Removing Syncthing backup..."
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID > /dev/null 2>&1
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID > /dev/null 2>&1
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID > /dev/null 2>&1
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID > /dev/null 2>&1
     echo "Removing ClientDNS instances..."
     cdns_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
     for cur_cdns in "${cdns_arr[@]}"
@@ -18239,13 +18275,13 @@ function setupPortForwardingDB()
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-HTTPS', 443, 443, 0, 0, 'both','','','$curdt');"
 
     # Email Submission (do both protocols, even though only need TCP)
-    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-EmailSubmit', 587, 587, 0, 0, 'both','','','$curdt');"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-EmailSubmit', $MAILU_PORT_5, $MAILU_PORT_5, 0, 0, 'both','','','$curdt');"
 
     # WireGuard Portal (do both protocols, even though only need TCP)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-WGPortal', 8323, 8323, 0, 0, 'both','','','$curdt');"
 
     # Syncthing Web (do both protocols, even though only need TCP)
-    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingWeb', 8384, 8384, 0, 0, 'both','','','$curdt');"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingWeb', $SYNCTHING_LOCAL_WEB_PORT, $SYNCTHING_LOCAL_WEB_PORT, 0, 0, 'both','','','$curdt');"
 
     # Syncthing Sync (need both)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingSync', $SYNCTHING_SYNC_PORT, $SYNCTHING_SYNC_PORT, 0, 0, 'both','','','$curdt');"
@@ -21774,7 +21810,7 @@ EOFSC
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\$(echo \$ports_list | tr "," "\n"))
   for cur_port in "\${portsArr[@]}"
@@ -21882,7 +21918,7 @@ EOFSC
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\$(echo \$ports_list | tr "," "\n"))
   for cur_port in "\${portsArr[@]}"
@@ -22603,7 +22639,7 @@ function main()
   read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   RELAYSERVER_HSHQ_SCRIPTS_DIR=\$HOME/hshq/data/scripts
-  exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  exposedPortsList=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
   sudo rm -f \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -22624,7 +22660,7 @@ EOFBS
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   sudo iptables -t filter -F DOCKER-USER > /dev/null
   sudo iptables -t filter -X DOCKER-USER > /dev/null
@@ -36585,7 +36621,7 @@ function installMailu()
   fi
   if [ -z "$SMTP_RELAY_HOST" ] || [ -z "$SMTP_RELAY_USERNAME" ]; then
     # Set these to something
-    SMTP_RELAY_HOST="[$SUB_POSTFIX.internal.$HOMESERVER_DOMAIN]:587"
+    SMTP_RELAY_HOST="[$SUB_POSTFIX.internal.$HOMESERVER_DOMAIN]:$MAILU_PORT_5"
     SMTP_RELAY_USERNAME=$HOMESERVER_DOMAIN
     SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   fi
@@ -46593,7 +46629,7 @@ function installSyncthing()
   sleep 3
   startStopStack syncthing stop
   alltext=$(sudo cat $HSHQ_STACKS_DIR/syncthing/config/config.xml)
-  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:8384</address>\n        <user>'$SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'$SYNCTHING_ADMIN_PASSWORD_HASH'</password>\n        <apikey>'$SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
+  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:'$SYNCTHING_LOCAL_WEB_PORT'</address>\n        <user>'$SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'$SYNCTHING_ADMIN_PASSWORD_HASH'</password>\n        <apikey>'$SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
   echo -e "${alltext%%<gui*}${replacetext}${alltext##*</gui>}" > $HOME/st_config.xml
   alltext=$(cat $HOME/st_config.xml)
   replacetext='<globalAnnounceEnabled>false</globalAnnounceEnabled>'
@@ -46610,7 +46646,7 @@ function installSyncthing()
   sudo mv $HOME/st_config.xml $HSHQ_STACKS_DIR/syncthing/config/config.xml
   startStopStack syncthing start
   sleep 3
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/default
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders/default
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -46618,7 +46654,7 @@ function installSyncthing()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy https://syncthing:8384 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://syncthing:$SYNCTHING_LOCAL_WEB_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -46648,7 +46684,7 @@ services:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
       - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
-      - "127.0.0.1:8384:8384"
+      - "127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT:$SYNCTHING_LOCAL_WEB_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -49087,7 +49123,7 @@ POSTGRES_PORT=5432
 POSTGRES_DB=$MEALIE_DATABASE_NAME
 TOKEN_TIME=168
 SMTP_HOST=$SMTP_HOSTNAME
-SMTP_PORT=587
+SMTP_PORT=$MAILU_PORT_5
 SMTP_FROM_NAME=Mealie $(getAdminEmailName)
 SMTP_AUTH_STRATEGY=TLS
 SMTP_FROM_EMAIL=$EMAIL_SMTP_EMAIL_ADDRESS
