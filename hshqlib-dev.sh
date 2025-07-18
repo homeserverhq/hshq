@@ -6457,8 +6457,8 @@ function performDebian12PreInstall()
   done
   echo "Scripts found, rebooting..."
   rm -f /home/\$newUsername/$RELAYSERVER_SCRIPTS_UPLOADED_FILE
-  rm -f /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
   removeMyself
+  rm -f /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
   reboot
 }
 
