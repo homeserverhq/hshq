@@ -6311,7 +6311,7 @@ function startValidation()
       removeMyself
       exit 2
     fi
-    sudo bash -c "\$(declare -f checkForBoundPorts); checkForBoundPorts" 2> /dev/null
+    sudo bash -c "\$(declare -f checkBoundPort; declare -f checkForBoundPorts); checkForBoundPorts" 2> /dev/null
     if [ \$? -ne 0 ]; then
       removeMyself
       exit 2
@@ -6368,18 +6368,18 @@ function checkForRunningDockerContainers()
 
 function checkForBoundPorts()
 {
-  checkPort $MAILU_PORT_1
-  checkPort $MAILU_PORT_5
-  checkPort $CADDY_HTTP_PORT
-  checkPort $CADDY_HTTPS_PORT
-  checkPort $SYNCTHING_SYNC_PORT
-  checkPort $SYNCTHING_DISC_PORT
-  checkPort $SYNCTHING_LOCAL_WEB_PORT
-  checkPort $RELAYSERVER_WG_PORTAL_PORT
-  checkPort $RELAYSERVER_WG_PORT
+  checkBoundPort $MAILU_PORT_1
+  checkBoundPort $MAILU_PORT_5
+  checkBoundPort $CADDY_HTTP_PORT
+  checkBoundPort $CADDY_HTTPS_PORT
+  checkBoundPort $SYNCTHING_SYNC_PORT
+  checkBoundPort $SYNCTHING_DISC_PORT
+  checkBoundPort $SYNCTHING_LOCAL_WEB_PORT
+  checkBoundPort $RELAYSERVER_WG_PORTAL_PORT
+  checkBoundPort $RELAYSERVER_WG_PORT
 }
 
-function checkPort()
+function checkBoundPort()
 {
   chkPort=\$1
   set +e
