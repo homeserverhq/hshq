@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=175
+HSHQ_LIB_SCRIPT_VERSION=176
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -59,6 +59,7 @@ function init()
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
   RELAYSERVER_NOT_READY_FILE=notready
+  RELAYSERVER_SCRIPTS_UPLOADED_FILE=uploaded
   RELAYSERVER_INSTALL_COMPLETE_FILE=installed
   RELAYSERVER_INSTALL_FAILED_FILE=failed
   RELAYSERVER_SWAP_SIZE=2G
@@ -119,6 +120,7 @@ function init()
   QBITTORRENT_PORT=6881
   SYNCTHING_DISC_PORT=21027
   SYNCTHING_SYNC_PORT=22000
+  SYNCTHING_LOCAL_WEB_PORT=8384
   UPNP_PORT=1900
   VNC_SERVER_PORT=5901
   WAZUH_PORT_1=1514
@@ -676,7 +678,7 @@ EOF
     fi
     ((curNum++))
   done
-  while true
+  while true;
     do
     selItem=$(whiptail "${uas_menu_items[@]}" 3>&1 1>&2 2>&3)
     if [ $? -ne 0 ]; then
@@ -714,7 +716,7 @@ EOF
       echo -e "========================================================================\n"
       echo -e "The selected mirror appears to be in good working order. (See above)\n"
       isBreakMainLoop=false
-      while true
+      while true;
       do
         echo "Enter 'confirm': To proceed with this option"
         echo "        'retry': To select a different mirror from the list"
@@ -2350,7 +2352,7 @@ EOF
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
     return
   fi
-  while true
+  while true;
   do
     selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
     if [ $? -ne 0 ]; then
@@ -3238,7 +3240,7 @@ function installMailUtils()
   performAptInstall mailutils
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
-mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
+mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:$MAILU_PORT_5
 hostname=$(cat /etc/hostname)
 TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
 UseSTARTTLS=yes
@@ -4372,7 +4374,7 @@ EOF
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
     return
   fi
-  while true
+  while true;
   do
     selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
     if [ $? -ne 0 ]; then
@@ -4676,7 +4678,7 @@ EOF
     showMessageBox "ERROR" "There are no available disks for this operation, returning..."
     return
   fi
-  while true
+  while true;
   do
     selDiskItem=$(whiptail "${scsbm_menu_items[@]}" 3>&1 1>&2 2>&3)
     if [ $? -ne 0 ]; then
@@ -5274,6 +5276,256 @@ EOF
   esac
 }
 
+function initRelayServerCredentials()
+{
+  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
+    RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
+    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_PORTAINER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_PASSWORD $RELAYSERVER_PORTAINER_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_USERNAME" ]; then
+    RELAYSERVER_ADGUARD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_adguard"
+    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_ADGUARD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_PASSWORD $RELAYSERVER_ADGUARD_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_USERNAME" ]; then
+    RELAYSERVER_CADDYDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_caddydns"
+    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_CADDYDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_PASSWORD $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_USERNAME" ]; then
+    RELAYSERVER_WGPORTAL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_wgportal"
+    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_USERNAME $RELAYSERVER_WGPORTAL_ADMIN_USERNAME
+    RELAYSERVER_WGPORTAL_ADMIN_EMAIL=$RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_EMAIL
+  fi
+  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_WGPORTAL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_PASSWORD $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_USERNAME" ]; then
+    RELAYSERVER_CLIENTDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_clientdns"
+    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_USERNAME" ]; then
+    RELAYSERVER_RSPAMD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_rspamd"
+    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_RSPAMD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_PASSWORD $RELAYSERVER_RSPAMD_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_USERNAME" ]; then
+    RELAYSERVER_FILEBROWSER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_filebrowser"
+    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_USERNAME" ]; then
+    RELAYSERVER_SYNCTHING_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_syncthing"
+    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_SYNCTHING_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_PASSWORD $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_API_KEY" ]; then
+    RELAYSERVER_SYNCTHING_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_SYNCTHING_API_KEY $RELAYSERVER_SYNCTHING_API_KEY
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_FOLDER_ID" ]; then
+    RELAYSERVER_SYNCTHING_FOLDER_ID=$(pwgen -c -n 5 1)-$(pwgen -c -n 5 1)
+    updateConfigVar RELAYSERVER_SYNCTHING_FOLDER_ID $RELAYSERVER_SYNCTHING_FOLDER_ID
+  fi
+  RELAYSERVER_WG_SV_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
+  updateConfigVar RELAYSERVER_WG_SV_IP $RELAYSERVER_WG_SV_IP
+  if [ -z "$RELAYSERVER_WG_SV_PRIVATEKEY" ]; then
+    RELAYSERVER_WG_SV_PRIVATEKEY=$(wg genkey)
+    updateConfigVar RELAYSERVER_WG_SV_PRIVATEKEY $RELAYSERVER_WG_SV_PRIVATEKEY
+    RELAYSERVER_WG_SV_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_PRIVATEKEY | wg pubkey)
+    updateConfigVar RELAYSERVER_WG_SV_PUBLICKEY $RELAYSERVER_WG_SV_PUBLICKEY
+  fi
+  RELAYSERVER_WG_SV_PRESHAREDKEY=$(wg genpsk)
+  updateConfigVar RELAYSERVER_WG_SV_PRESHAREDKEY $RELAYSERVER_WG_SV_PRESHAREDKEY
+  RELAYSERVER_WG_SV_CLIENTDNS_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-1))
+  updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_IP $RELAYSERVER_WG_SV_CLIENTDNS_IP
+  RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY=$(wg genkey)
+  updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY
+  RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
+  updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY
+  RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY | wg pubkey)
+  RELAYSERVER_WG_HS_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-2))
+  updateConfigVar RELAYSERVER_WG_HS_IP $RELAYSERVER_WG_HS_IP
+  RELAYSERVER_WG_HS_PRIVATEKEY=$(wg genkey)
+  updateConfigVar RELAYSERVER_WG_HS_PRIVATEKEY $RELAYSERVER_WG_HS_PRIVATEKEY
+  RELAYSERVER_WG_HS_PRESHAREDKEY=$(wg genpsk)
+  updateConfigVar RELAYSERVER_WG_HS_PRESHAREDKEY $RELAYSERVER_WG_HS_PRESHAREDKEY
+  RELAYSERVER_WG_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_PRIVATEKEY | wg pubkey)
+  RELAYSERVER_WG_HS_CLIENTDNS_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-3))
+  updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_IP $RELAYSERVER_WG_HS_CLIENTDNS_IP
+  RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY=$(wg genkey)
+  updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY
+  RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
+  updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
+  RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY | wg pubkey)
+  RELAYSERVER_WG_INTERNET_HS_IP=$(getRandomWireGuardIP)
+  RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY=$(wg genkey)
+  updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY
+  RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY=$(wg genpsk)
+  updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY $RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY
+  RELAYSERVER_WG_INTERNET_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY | wg pubkey)
+  RELAYSERVER_WG_USER_IP=$(getRandomWireGuardIP)
+  RELAYSERVER_WG_USER_PRIVATEKEY=$(wg genkey)
+  RELAYSERVER_WG_USER_PRESHAREDKEY=$(wg genpsk)
+  RELAYSERVER_WG_USER_PUBLICKEY=$(echo $RELAYSERVER_WG_USER_PRIVATEKEY | wg pubkey)
+  SMTP_RELAY_HOST="[$SUB_POSTFIX.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$MAILU_PORT_5"
+  updateConfigVar SMTP_RELAY_HOST $SMTP_RELAY_HOST
+  SMTP_RELAY_USERNAME=$HOMESERVER_DOMAIN
+  updateConfigVar SMTP_RELAY_USERNAME $SMTP_RELAY_USERNAME
+  SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
+  updateConfigVar SMTP_RELAY_PASSWORD $SMTP_RELAY_PASSWORD
+}
+
+function outputHostedVPNConfigs()
+{
+  sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
+  sudo tee $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf >/dev/null <<EOFCF
+[Interface]
+PrivateKey = $RELAYSERVER_WG_HS_PRIVATEKEY
+Address = ${RELAYSERVER_WG_HS_IP}/32
+MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
+
+[Peer]
+PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
+PresharedKey = $RELAYSERVER_WG_HS_PRESHAREDKEY
+AllowedIPs = $PRIMARY_VPN_SUBNET
+Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
+PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
+EOFCF
+  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
+  sudo cp $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf /etc/wireguard/${RELAYSERVER_WG_VPN_NETNAME}.conf
+  sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
+  tableid=$(getNextWGRoutingTableID)
+  dockerNetworkName="dwg-${RELAYSERVER_WG_INTERNET_NETNAME}"
+  sudo tee $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf >/dev/null <<EOFCF
+#NETNAME=$RELAYSERVER_WG_INTERNET_NETNAME
+#ROUTING_TABLE_ID=$tableid
+#DOCKER_NETWORK_NAME=$dockerNetworkName
+#DOCKER_NETWORK_SUBNET=
+#CLIENT_ADDRESS=${RELAYSERVER_WG_INTERNET_HS_IP}/32
+#MTU=$RELAYSERVER_CLIENT_DEFAULT_MTU
+#IS_ENABLED=true
+#EXT_DOMAIN=$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
+
+[Interface]
+PrivateKey = $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY
+
+[Peer]
+PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
+PresharedKey = $RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY
+AllowedIPs = $(getAllowedPublicIPs)
+Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
+PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
+EOFCF
+  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
+  sudo rm -f $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
+  sudo tee $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf >/dev/null <<EOFCF
+[Interface]
+PrivateKey = $RELAYSERVER_WG_USER_PRIVATEKEY
+Address = ${RELAYSERVER_WG_USER_IP}/32
+MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
+# DNS Servers (Use only one at a time)
+# Home Network DNS Server
+DNS = $RELAYSERVER_WG_HS_CLIENTDNS_IP
+# VPN DNS Server
+#DNS = $RELAYSERVER_WG_SV_CLIENTDNS_IP
+
+[Peer]
+PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
+PresharedKey = $RELAYSERVER_WG_USER_PRESHAREDKEY
+AllowedIPs = $(getAllowedPublicIPs $PRIMARY_VPN_SUBNET)
+Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
+PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
+EOFCF
+  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
+  sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
+  sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf >/dev/null <<EOFCF
+[Interface]
+PrivateKey = $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY
+Address = ${RELAYSERVER_WG_HS_CLIENTDNS_IP}/32
+MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
+
+[Peer]
+PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
+PresharedKey = $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
+AllowedIPs = $PRIMARY_VPN_SUBNET
+Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
+PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
+EOFCF
+  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
+}
+
+function insertSQLHostedVPN()
+{
+  curdt=$(getCurrentDate)
+  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_PRESHAREDKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt','$PRIMARY_VPN_SUBNET',true,'$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT','$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT');select last_insert_rowid();")
+  mail_host_id=$(sudo sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_SV_IP');"
+  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
+  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
+}
+
+function updateHeimdallUptimeKumaRelayServer()
+{
+  docker container stop heimdall > /dev/null 2>&1
+  docker container stop uptimekuma > /dev/null 2>&1
+  insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false "$(getHeimdallOrderFromSub $SUB_ADGUARD.$INT_DOMAIN_PREFIX relayserver)"
+  insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false "$(getHeimdallOrderFromSub $SUB_CLIENTDNS.$INT_DOMAIN_PREFIX relayserver)"
+  checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0 "$(getHeimdallOrderFromSub $SUB_CADDYDNS.$INT_DOMAIN_PREFIX relayserver)"
+  insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false "$(getHeimdallOrderFromSub $SUB_PORTAINER.$INT_DOMAIN_PREFIX relayserver)"
+  insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false "$(getHeimdallOrderFromSub $SUB_RSPAMD.$INT_DOMAIN_PREFIX relayserver)"
+  insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false "$(getHeimdallOrderFromSub $SUB_SYNCTHING.$INT_DOMAIN_PREFIX relayserver)"
+  insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0 "$(getHeimdallOrderFromSub $SUB_WGPORTAL.$INT_DOMAIN_PREFIX relayserver)"
+  insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
+  checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
+  checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0 "$(getHeimdallOrderFromSub $SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX relayserver)"
+  docker container start heimdall > /dev/null 2>&1
+  docker container start uptimekuma > /dev/null 2>&1
+}
+
+function prepSvcsHostedVPN()
+{
+  set +e
+  echo "Updating Portainer and Jitsi..."
+  updateSvcsIPChanges
+  set +e
+  echo "Updating IP tables..."
+  checkUpdateAllIPTables prepSvcsHostedVPN
+}
+
 function webSetupHostedVPN()
 {
   set +e
@@ -5525,6 +5777,7 @@ function webSetupHostedVPN()
   loadSSHKey
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE"
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   unloadSSHKey
@@ -5587,256 +5840,6 @@ function webSetupHostedVPN()
   echo -e "$wgconfig" > $wgconfigfile
   echo "Emailing credentials..."
   emailVaultwardenCredentials true
-}
-
-function initRelayServerCredentials()
-{
-  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
-    RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
-    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_PORTAINER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_PASSWORD $RELAYSERVER_PORTAINER_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_USERNAME" ]; then
-    RELAYSERVER_ADGUARD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_adguard"
-    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_ADGUARD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_PASSWORD $RELAYSERVER_ADGUARD_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_USERNAME" ]; then
-    RELAYSERVER_CADDYDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_caddydns"
-    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_CADDYDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_PASSWORD $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_USERNAME" ]; then
-    RELAYSERVER_WGPORTAL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_wgportal"
-    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_USERNAME $RELAYSERVER_WGPORTAL_ADMIN_USERNAME
-    RELAYSERVER_WGPORTAL_ADMIN_EMAIL=$RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_EMAIL
-  fi
-  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_WGPORTAL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_PASSWORD $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_USERNAME" ]; then
-    RELAYSERVER_CLIENTDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_clientdns"
-    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_USERNAME" ]; then
-    RELAYSERVER_RSPAMD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_rspamd"
-    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_RSPAMD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_PASSWORD $RELAYSERVER_RSPAMD_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_USERNAME" ]; then
-    RELAYSERVER_FILEBROWSER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_filebrowser"
-    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_USERNAME" ]; then
-    RELAYSERVER_SYNCTHING_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_syncthing"
-    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_SYNCTHING_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_PASSWORD $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_API_KEY" ]; then
-    RELAYSERVER_SYNCTHING_API_KEY=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_SYNCTHING_API_KEY $RELAYSERVER_SYNCTHING_API_KEY
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_FOLDER_ID" ]; then
-    RELAYSERVER_SYNCTHING_FOLDER_ID=$(pwgen -c -n 5 1)-$(pwgen -c -n 5 1)
-    updateConfigVar RELAYSERVER_SYNCTHING_FOLDER_ID $RELAYSERVER_SYNCTHING_FOLDER_ID
-  fi
-  RELAYSERVER_WG_SV_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
-  updateConfigVar RELAYSERVER_WG_SV_IP $RELAYSERVER_WG_SV_IP
-  if [ -z "$RELAYSERVER_WG_SV_PRIVATEKEY" ]; then
-    RELAYSERVER_WG_SV_PRIVATEKEY=$(wg genkey)
-    updateConfigVar RELAYSERVER_WG_SV_PRIVATEKEY $RELAYSERVER_WG_SV_PRIVATEKEY
-    RELAYSERVER_WG_SV_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_PRIVATEKEY | wg pubkey)
-    updateConfigVar RELAYSERVER_WG_SV_PUBLICKEY $RELAYSERVER_WG_SV_PUBLICKEY
-  fi
-  RELAYSERVER_WG_SV_PRESHAREDKEY=$(wg genpsk)
-  updateConfigVar RELAYSERVER_WG_SV_PRESHAREDKEY $RELAYSERVER_WG_SV_PRESHAREDKEY
-  RELAYSERVER_WG_SV_CLIENTDNS_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-1))
-  updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_IP $RELAYSERVER_WG_SV_CLIENTDNS_IP
-  RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY=$(wg genkey)
-  updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY
-  RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
-  updateConfigVar RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY
-  RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_SV_CLIENTDNS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_HS_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-2))
-  updateConfigVar RELAYSERVER_WG_HS_IP $RELAYSERVER_WG_HS_IP
-  RELAYSERVER_WG_HS_PRIVATEKEY=$(wg genkey)
-  updateConfigVar RELAYSERVER_WG_HS_PRIVATEKEY $RELAYSERVER_WG_HS_PRIVATEKEY
-  RELAYSERVER_WG_HS_PRESHAREDKEY=$(wg genpsk)
-  updateConfigVar RELAYSERVER_WG_HS_PRESHAREDKEY $RELAYSERVER_WG_HS_PRESHAREDKEY
-  RELAYSERVER_WG_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_HS_CLIENTDNS_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)-3))
-  updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_IP $RELAYSERVER_WG_HS_CLIENTDNS_IP
-  RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY=$(wg genkey)
-  updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY
-  RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY=$(wg genpsk)
-  updateConfigVar RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
-  RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY=$(echo $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_INTERNET_HS_IP=$(getRandomWireGuardIP)
-  RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY=$(wg genkey)
-  updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY
-  RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY=$(wg genpsk)
-  updateConfigVar RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY $RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY
-  RELAYSERVER_WG_INTERNET_HS_PUBLICKEY=$(echo $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY | wg pubkey)
-  RELAYSERVER_WG_USER_IP=$(getRandomWireGuardIP)
-  RELAYSERVER_WG_USER_PRIVATEKEY=$(wg genkey)
-  RELAYSERVER_WG_USER_PRESHAREDKEY=$(wg genpsk)
-  RELAYSERVER_WG_USER_PUBLICKEY=$(echo $RELAYSERVER_WG_USER_PRIVATEKEY | wg pubkey)
-  SMTP_RELAY_HOST="[$SUB_POSTFIX.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:587"
-  updateConfigVar SMTP_RELAY_HOST $SMTP_RELAY_HOST
-  SMTP_RELAY_USERNAME=$HOMESERVER_DOMAIN
-  updateConfigVar SMTP_RELAY_USERNAME $SMTP_RELAY_USERNAME
-  SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
-  updateConfigVar SMTP_RELAY_PASSWORD $SMTP_RELAY_PASSWORD
-}
-
-function outputHostedVPNConfigs()
-{
-  sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
-  sudo tee $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf >/dev/null <<EOFCF
-[Interface]
-PrivateKey = $RELAYSERVER_WG_HS_PRIVATEKEY
-Address = ${RELAYSERVER_WG_HS_IP}/32
-MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
-
-[Peer]
-PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
-PresharedKey = $RELAYSERVER_WG_HS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
-Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
-PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
-EOFCF
-  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf
-  sudo cp $HSHQ_WIREGUARD_DIR/vpn/${RELAYSERVER_WG_VPN_NETNAME}.conf /etc/wireguard/${RELAYSERVER_WG_VPN_NETNAME}.conf
-  sudo rm -f $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
-  tableid=$(getNextWGRoutingTableID)
-  dockerNetworkName="dwg-${RELAYSERVER_WG_INTERNET_NETNAME}"
-  sudo tee $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf >/dev/null <<EOFCF
-#NETNAME=$RELAYSERVER_WG_INTERNET_NETNAME
-#ROUTING_TABLE_ID=$tableid
-#DOCKER_NETWORK_NAME=$dockerNetworkName
-#DOCKER_NETWORK_SUBNET=
-#CLIENT_ADDRESS=${RELAYSERVER_WG_INTERNET_HS_IP}/32
-#MTU=$RELAYSERVER_CLIENT_DEFAULT_MTU
-#IS_ENABLED=true
-#EXT_DOMAIN=$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN
-
-[Interface]
-PrivateKey = $RELAYSERVER_WG_INTERNET_HS_PRIVATEKEY
-
-[Peer]
-PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
-PresharedKey = $RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY
-AllowedIPs = $(getAllowedPublicIPs)
-Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
-PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
-EOFCF
-  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/internet/${RELAYSERVER_WG_INTERNET_NETNAME}.conf
-  sudo rm -f $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
-  sudo tee $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf >/dev/null <<EOFCF
-[Interface]
-PrivateKey = $RELAYSERVER_WG_USER_PRIVATEKEY
-Address = ${RELAYSERVER_WG_USER_IP}/32
-MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
-# DNS Servers (Use only one at a time)
-# Home Network DNS Server
-DNS = $RELAYSERVER_WG_HS_CLIENTDNS_IP
-# VPN DNS Server
-#DNS = $RELAYSERVER_WG_SV_CLIENTDNS_IP
-
-[Peer]
-PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
-PresharedKey = $RELAYSERVER_WG_USER_PRESHAREDKEY
-AllowedIPs = $(getAllowedPublicIPs $PRIMARY_VPN_SUBNET)
-Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
-PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
-EOFCF
-  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/${RELAYSERVER_WG_VPN_NETNAME}-user1.conf
-  sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
-  sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf >/dev/null <<EOFCF
-[Interface]
-PrivateKey = $RELAYSERVER_WG_HS_CLIENTDNS_PRIVATEKEY
-Address = ${RELAYSERVER_WG_HS_CLIENTDNS_IP}/32
-MTU = $RELAYSERVER_CLIENT_DEFAULT_MTU
-
-[Peer]
-PublicKey = $RELAYSERVER_WG_SV_PUBLICKEY
-PresharedKey = $RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY
-AllowedIPs = $PRIMARY_VPN_SUBNET
-Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT
-PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
-EOFCF
-  sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-user1.conf
-}
-
-function insertSQLHostedVPN()
-{
-  curdt=$(getCurrentDate)
-  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('WireGuardServer','$EMAIL_ADMIN_EMAIL_ADDRESS','wgserver','relayserver','$RELAYSERVER_WG_SV_PUBLICKEY','$RELAYSERVER_WG_SV_PRESHAREDKEY','$RELAYSERVER_WG_SV_IP',false,'$RELAYSERVER_WG_INTERFACE_NAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('RelayServerClientDNS','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','relayserver','$RELAYSERVER_WG_SV_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_SV_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_SV_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated,Network_Subnet,IsExposeToNetwork,InputAllowPorts,DockerUserAllowPorts) values('Primary-VPN-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_vpn','primary','$RELAYSERVER_WG_HS_PUBLICKEY','$RELAYSERVER_WG_HS_PRESHAREDKEY','$RELAYSERVER_WG_HS_IP',false,'$RELAYSERVER_WG_VPN_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt','$PRIMARY_VPN_SUBNET',true,'$INPUT_PRIMARY_VPN_ALLOW_PORTS_DEFAULT','$DOCKERUSER_PRIMARY_VPN_ALLOW_PORTS_DEFAULT');select last_insert_rowid();")
-  mail_host_id=$(sudo sqlite3 $HSHQ_DB "insert into mailhosts(MailHost) values('$SUB_POSTFIX.$HOMESERVER_DOMAIN');select last_insert_rowid();")
-  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into hsvpn_connections(ID,HomeServerName,IsPrimary,DomainName,ExternalPrefix,InternalPrefix,MailHostID,CA_Abbrev,CA_IP,CA_Subdomain,CA_URL,RS_VPN_IP) values($db_id,'$HOMESERVER_NAME',1,'$HOMESERVER_DOMAIN','$EXT_DOMAIN_PREFIX','$INT_DOMAIN_PREFIX',$mail_host_id,'$HOMESERVER_ABBREV','$RELAYSERVER_WG_HS_IP','$SUB_CADDY.$HOMESERVER_DOMAIN','https://$SUB_CADDY.$HOMESERVER_DOMAIN/acme/$HOMESERVER_ABBREV/directory' ,'$RELAYSERVER_WG_SV_IP');"
-  sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$HOMESERVER_DOMAIN',true);"
-  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-user1','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','primary','$RELAYSERVER_WG_HS_CLIENTDNS_PUBLICKEY','$RELAYSERVER_WG_HS_CLIENTDNS_PRESHAREDKEY','$RELAYSERVER_WG_HS_CLIENTDNS_IP',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('Primary-Internet-${HOMESERVER_DOMAIN}','$EMAIL_ADMIN_EMAIL_ADDRESS','homeserver_internet','primary','$RELAYSERVER_WG_INTERNET_HS_PUBLICKEY','$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY','$RELAYSERVER_WG_INTERNET_HS_IP',true,'$RELAYSERVER_WG_INTERNET_NETNAME','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-  sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,EndpointHostname,LastUpdated) values('User-$LDAP_PRIMARY_USER_USERNAME','$LDAP_PRIMARY_USER_EMAIL_ADDRESS','user','mynetwork','$RELAYSERVER_WG_USER_PUBLICKEY','$RELAYSERVER_WG_USER_PRESHAREDKEY','$RELAYSERVER_WG_USER_IP',true,'$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');"
-}
-
-function updateHeimdallUptimeKumaRelayServer()
-{
-  docker container stop heimdall > /dev/null 2>&1
-  docker container stop uptimekuma > /dev/null 2>&1
-  insertEnableSvcHeimdall adguard "${FMLNAME_ADGUARD}" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "adguardhome.png" false "$(getHeimdallOrderFromSub $SUB_ADGUARD.$INT_DOMAIN_PREFIX relayserver)"
-  insertEnableSvcUptimeKuma adguard "${FMLNAME_ADGUARD}-RelayServer" relayserver "https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  insertEnableSvcHeimdall clientdns "${FMLNAME_CLIENTDNS}" relayserver "https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false "$(getHeimdallOrderFromSub $SUB_CLIENTDNS.$INT_DOMAIN_PREFIX relayserver)"
-  checkInsertServiceHeimdall caddy-dns "${FMLNAME_CADDYDNS}" relayserver "https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "dnsmasq.png" false 0 "$(getHeimdallOrderFromSub $SUB_CADDYDNS.$INT_DOMAIN_PREFIX relayserver)"
-  insertEnableSvcHeimdall portainer "${FMLNAME_PORTAINER}" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "portainer.png" false "$(getHeimdallOrderFromSub $SUB_PORTAINER.$INT_DOMAIN_PREFIX relayserver)"
-  insertEnableSvcUptimeKuma portainer "${FMLNAME_PORTAINER}-RelayServer" relayserver "https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  insertEnableSvcHeimdall rspamd "${FMLNAME_RSPAMD}" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "rspamd.png" false "$(getHeimdallOrderFromSub $SUB_RSPAMD.$INT_DOMAIN_PREFIX relayserver)"
-  insertEnableSvcUptimeKuma rspamd "${FMLNAME_RSPAMD}-RelayServer" relayserver "https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  insertEnableSvcHeimdall syncthing "${FMLNAME_SYNCTHING}" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "syncthing.png" false "$(getHeimdallOrderFromSub $SUB_SYNCTHING.$INT_DOMAIN_PREFIX relayserver)"
-  insertEnableSvcUptimeKuma syncthing "${FMLNAME_SYNCTHING}-RelayServer" relayserver "https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  checkInsertServiceHeimdall wgportal "${FMLNAME_WGPORTAL}" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "wgportal.png" false 0 "$(getHeimdallOrderFromSub $SUB_WGPORTAL.$INT_DOMAIN_PREFIX relayserver)"
-  insertEnableSvcUptimeKuma wgportal "${FMLNAME_WGPORTAL}-RelayServer" relayserver "https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false
-  checkInsertServiceUptimeKuma filebrowser "${FMLNAME_FILEBROWSER}-RelayServer" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" false 0
-  checkInsertServiceHeimdall filebrowser "${FMLNAME_FILEBROWSER}" relayserver "https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "filebrowser.png" false 0 "$(getHeimdallOrderFromSub $SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX relayserver)"
-  docker container start heimdall > /dev/null 2>&1
-  docker container start uptimekuma > /dev/null 2>&1
-}
-
-function prepSvcsHostedVPN()
-{
-  set +e
-  echo "Updating Portainer and Jitsi..."
-  updateSvcsIPChanges
-  set +e
-  echo "Updating IP tables..."
-  checkUpdateAllIPTables prepSvcsHostedVPN
 }
 
 function setupHostedVPN()
@@ -6136,7 +6139,7 @@ function transferHostedVPN()
   setSystemState $SS_TRANSFERRING
   # Pause syncthing RelayServer
   jsonbody="{\"paused\": true}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   outputRelayServerInstallSetupScript
   outputRelayServerInstallTransferScript
   sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
@@ -6206,7 +6209,7 @@ function transferHostedVPN()
   fi
   # Resume syncthing RelayServer
   jsonbody="{\"paused\": false}"
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   docker container restart syncthing
   loadSSHKey
   echo "Test login to new RelayServer: $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
@@ -6244,7 +6247,7 @@ function main()
       p)
         getSuper ;;
       i)
-        performPreInstall ;;
+        performDebian12PreInstall ;;
       ?|h)
         echo "Usage: \$(basename \$0)"
         exit 1 ;;
@@ -6282,6 +6285,7 @@ function startValidation()
     fi
     checkForHSHQ
     checkForRunningDockerContainers
+    checkForBoundPorts
     sudo useradd -m -G sudo -s /bin/bash "\$newUsername" > /dev/null 2>&1
     echo "\$newUsername:\$USER_RELAY_SUDO_PW" | sudo chpasswd > /dev/null 2>&1
   else
@@ -6305,6 +6309,11 @@ function startValidation()
       exit 2
     fi
     sudo bash -c "\$(declare -f checkForRunningDockerContainers); checkForRunningDockerContainers" 2> /dev/null
+    if [ \$? -ne 0 ]; then
+      removeMyself
+      exit 2
+    fi
+    sudo bash -c "\$(declare -f checkBoundPort; declare -f checkForBoundPorts); checkForBoundPorts" 2> /dev/null
     if [ \$? -ne 0 ]; then
       removeMyself
       exit 2
@@ -6359,6 +6368,35 @@ function checkForRunningDockerContainers()
   fi
 }
 
+function checkForBoundPorts()
+{
+  checkBoundPort $MAILU_PORT_1
+  checkBoundPort $MAILU_PORT_5
+  checkBoundPort $CADDY_HTTP_PORT
+  checkBoundPort $CADDY_HTTPS_PORT
+  checkBoundPort $SYNCTHING_SYNC_PORT
+  checkBoundPort $SYNCTHING_DISC_PORT
+  checkBoundPort $SYNCTHING_LOCAL_WEB_PORT
+  checkBoundPort $RELAYSERVER_WG_PORTAL_PORT
+  checkBoundPort $RELAYSERVER_WG_PORT
+}
+
+function checkBoundPort()
+{
+  chkPort=\$1
+  set +e
+  sudo netstat -tulpn 2>/dev/null | grep :\$chkPort > /dev/null 2>&1
+  if [ \$? -eq 0 ]; then
+    echo "------------------------------------------------------------------------------------"
+    echo "  A needed port is bound by another service: \$chkPort"
+    echo "  The server must be clear of all services on the following port lists:"
+    echo "  External - $MAILU_PORT_1, $CADDY_HTTP_PORT, $CADDY_HTTPS_PORT, $RELAYSERVER_WG_PORT"
+    echo "  Internal - $MAILU_PORT_5, $SYNCTHING_SYNC_PORT, $SYNCTHING_DISC_PORT, $SYNCTHING_LOCAL_WEB_PORT, $RELAYSERVER_WG_PORTAL_PORT"
+    echo "------------------------------------------------------------------------------------"
+    exit 7
+  fi
+}
+
 function removeMyself()
 {
   rm -f ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
@@ -6376,9 +6414,11 @@ function checkPerformPreInstall()
   fi
   which pwgen > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
-    DEBIAN_FRONTEND=noninteractive sudo apt update > /dev/null 2>&1
-    sudo dpkg --configure -a > /dev/null 2>&1
     DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' pwgen > /dev/null 2>&1
+  fi
+  which netstat > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive sudo apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' net-tools > /dev/null 2>&1
   fi
   docker ps > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
@@ -6396,14 +6436,29 @@ function checkPerformPreInstall()
   removeMyself
 }
 
-function performPreInstall()
+function performDebian12PreInstall()
 {
   sudo DEBIAN_FRONTEND=noninteractive apt update
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
   sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  source ~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME lib
   installDocker
-  rm -f /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
+  echo "Checking for uploaded scripts..."
+  # Need to ensure other files have been uploading before rebooting.
+  maxCount=120
+  curCount=0
+  while [ \$curCount -lt \$maxCount ]
+  do
+    if [ -f /home/\$newUsername/$RELAYSERVER_SCRIPTS_UPLOADED_FILE ]; then
+      break
+    fi
+    sleep 5
+    ((curCount++))
+  done
+  echo "Scripts found, rebooting..."
+  rm -f /home/\$newUsername/$RELAYSERVER_SCRIPTS_UPLOADED_FILE
   removeMyself
+  rm -f /home/\$newUsername/$RELAYSERVER_NOT_READY_FILE
   reboot
 }
 
@@ -6511,6 +6566,7 @@ function main()
 {
   init
   echo "Running setup script..."
+  rm -f ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE
   outputNukeScript
   new_hostname="RelayServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "\$(cat /etc/hosts | grep \$new_hostname)" ]; then
@@ -6731,7 +6787,7 @@ function installDependencies()
   performAptInstall ssmtp
   sudo tee /etc/ssmtp/ssmtp.conf >/dev/null <<EOFSM
 root=$EMAIL_ADMIN_EMAIL_ADDRESS
-mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:587
+mailhub=${SUB_POSTFIX}.${HOMESERVER_DOMAIN}:$MAILU_PORT_5
 hostname=\$(cat /etc/hostname)
 TLS_CA_FILE=/etc/ssl/certs/ca-certificates.crt
 UseSTARTTLS=yes
@@ -7998,7 +8054,7 @@ function outputScripts()
 
 function outputBootScripts()
 {
-  exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  exposedPortsList=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
 set +e
@@ -8017,7 +8073,7 @@ EOFBS
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   sudo iptables -t filter -F DOCKER-USER > /dev/null
   sudo iptables -t filter -X DOCKER-USER > /dev/null
@@ -8147,7 +8203,7 @@ fi
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\\\$(echo \\\$ports_list | tr "," "\n"))
   for cur_port in "\\\${portsArr[@]}"
@@ -9185,8 +9241,8 @@ services:
       - dock-ext-net
       - dock-mailrelay-net
     ports:
-      - "25:25"
-      - "587:587"
+      - "$MAILU_PORT_1:$MAILU_PORT_1"
+      - "$MAILU_PORT_5:$MAILU_PORT_5"
     dns:
       - \\\${SUBNET_PREFIX}.253
     depends_on:
@@ -9211,7 +9267,7 @@ services:
       - "ofelia.job-exec.mailcerts-daily.schedule=0 0 8 * * *"
       - "ofelia.job-exec.mailcerts-daily.command=/etc/postfix/scripts/copycerts.sh"
       - "ofelia.job-exec.mailcerts-daily.smtp-host=$SUB_POSTFIX.$HOMESERVER_DOMAIN"
-      - "ofelia.job-exec.mailcerts-daily.smtp-port=587"
+      - "ofelia.job-exec.mailcerts-daily.smtp-port=$MAILU_PORT_5"
       - "ofelia.job-exec.mailcerts-daily.smtp-user=$EMAIL_SMTP_EMAIL_ADDRESS"
       - "ofelia.job-exec.mailcerts-daily.smtp-password=$EMAIL_SMTP_PASSWORD"
       - "ofelia.job-exec.mailcerts-daily.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
@@ -9800,7 +9856,7 @@ database:
   database: data/wg_portal.db
 email:
   host: $SUB_POSTFIX.$HOMESERVER_DOMAIN
-  port: 587
+  port: $MAILU_PORT_5
   tls: true
   user: $EMAIL_SMTP_EMAIL_ADDRESS
   pass: $EMAIL_SMTP_PASSWORD
@@ -10235,7 +10291,7 @@ https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
 https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN {
   import rip-private-tls-$HOMESERVER_ABBREV
   handle @subnet {
-    reverse_proxy https://syncthing:8384 {
+    reverse_proxy https://syncthing:$SYNCTHING_LOCAL_WEB_PORT {
       import $CADDY_SNIPPET_TRUSTEDPROXIES
     }
   }
@@ -10343,7 +10399,7 @@ function installSyncthing()
   rm -f \$HOME/syncthing-compose-tmp.yml
   alltext=\$(sudo cat \$RELAYSERVER_HSHQ_STACKS_DIR/syncthing/config/config.xml)
   pwhash=\$(htpasswd -bnBC 10 "" $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/')
-  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:8384</address>\n        <user>'$RELAYSERVER_SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'\$pwhash'</password>\n        <apikey>'$RELAYSERVER_SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
+  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:'$SYNCTHING_LOCAL_WEB_PORT'</address>\n        <user>'$RELAYSERVER_SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'\$pwhash'</password>\n        <apikey>'$RELAYSERVER_SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
   echo -e "\${alltext%%<gui*}\${replacetext}\${alltext##*</gui>}" > \$HOME/st_config.xml
   alltext=\$(cat \$HOME/st_config.xml)
   replacetext='<globalAnnounceEnabled>false</globalAnnounceEnabled>'
@@ -10367,7 +10423,7 @@ function installSyncthing()
   installStack syncthing syncthing "Access the GUI via the following URL" \$HOME/syncthing.env
 
   sleep 3
-  curl -s -H "X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/default
+  curl -s -H "X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders/default
 }
 
 function outputConfigSyncthing()
@@ -10389,7 +10445,7 @@ services:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
       - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
-      - "127.0.0.1:8384:8384"
+      - "127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT:$SYNCTHING_LOCAL_WEB_PORT"
     environment:
       - PUID=0
       - PGID=0
@@ -10435,7 +10491,7 @@ services:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
       - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
-      - "127.0.0.1:8384:8384"
+      - "127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT:$SYNCTHING_LOCAL_WEB_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -10707,6 +10763,7 @@ EOF
     scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
     rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   fi
+  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE"
   unloadSSHKey
 }
 
@@ -10885,11 +10942,11 @@ function connectVPN()
     loadSSHKey
     # Setup syncthing link
     echo "Setting up Syncthing..."
-    SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
+    SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
     updateConfigVar SYNCTHING_DEVICE_ID $SYNCTHING_DEVICE_ID
     # Remote Syncthing
     echo "Getting RelayServer syncthing device ID..."
-    runCommandOnRelayServer true "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:8384/rest/config/devices | jq '.[0]' | jq -r '.deviceID'"
+    runCommandOnRelayServer true "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices | jq '.[0]' | jq -r '.deviceID'"
     if [ $? -ne 0 ]; then
       echo "There was an error obtaining the remote RelayServer Synchthing device ID. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
@@ -10901,7 +10958,7 @@ function connectVPN()
     updateConfigVar RELAYSERVER_SYNCTHING_DEVICE_ID $RELAYSERVER_SYNCTHING_DEVICE_ID
     jsonbody="{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\", \\\"name\\\": \\\"$HOMESERVER_NAME HomeServer\\\",\\\"addresses\\\": [\\\"tcp://$SUB_SYNCTHING.$HOMESERVER_DOMAIN:$SYNCTHING_SYNC_PORT\\\"], \\\"compression\\\": \\\"metadata\\\", \\\"certName\\\": \\\"\\\", \\\"skipIntroductionRemovals\\\": false,\\\"introducedBy\\\": \\\"\\\",\\\"paused\\\": false,\\\"allowedNetworks\\\": [],\\\"autoAcceptFolders\\\": false,\\\"maxSendKbps\\\": 0,\\\"maxRecvKbps\\\": 0,\\\"ignoredFolders\\\": [],\\\"maxRequestKiB\\\": 0,\\\"untrusted\\\": false,\\\"remoteGUIPort\\\": 0}"
     echo "Adding HomeServer device to RelayServer syncthing..."
-    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
+    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices"
     if [ $? -ne 0 ]; then
       echo "There was an error setting up Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
@@ -10911,7 +10968,7 @@ function connectVPN()
     fi
     jsonbody="{\\\"id\\\": \\\"$RELAYSERVER_SYNCTHING_FOLDER_ID\\\", \\\"label\\\": \\\"RelayServer Backup\\\",\\\"filesystemType\\\": \\\"basic\\\", \\\"path\\\": \\\"/relayserver/\\\", \\\"type\\\": \\\"sendonly\\\",\\\"devices\\\": [{\\\"deviceID\\\": \\\"$RELAYSERVER_SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"},{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"}], \\\"rescanIntervalS\\\": 3600,\\\"fsWatcherEnabled\\\": true,\\\"fsWatcherDelayS\\\": 10,\\\"ignorePerms\\\": false,\\\"autoNormalize\\\": true,\\\"minDiskFree\\\": {\\\"value\\\": 1,\\\"unit\\\": \\\"%\\\"},\\\"versioning\\\": {\\\"type\\\": \\\"\\\",\\\"params\\\": {},\\\"cleanupIntervalS\\\": 3600,\\\"fsPath\\\": \\\"\\\",\\\"fsType\\\": \\\"basic\\\"},\\\"copiers\\\": 0,\\\"pullerMaxPendingKiB\\\": 0,\\\"hashers\\\": 0,\\\"order\\\": \\\"random\\\",\\\"ignoreDelete\\\": false,\\\"scanProgressIntervalS\\\": 0,\\\"pullerPauseS\\\": 0,\\\"maxConflicts\\\": 10,\\\"disableSparseFiles\\\": false,\\\"disableTempIndexes\\\": false,\\\"paused\\\": false,\\\"weakHashThresholdPct\\\": 25,\\\"markerName\\\": \\\".stfolder\\\",\\\"copyOwnershipFromParent\\\": false,\\\"modTimeWindowS\\\": 0,\\\"maxConcurrentWrites\\\": 2,\\\"disableFsync\\\": false,\\\"blockPullOrder\\\": \\\"standard\\\",\\\"copyRangeMethod\\\": \\\"standard\\\",\\\"caseSensitiveFS\\\": false,\\\"junctionsAsDirs\\\": false,\\\"syncOwnership\\\": false,\\\"sendOwnership\\\": true,\\\"syncXattrs\\\": false,\\\"sendXattrs\\\": false,\\\"xattrFilter\\\": {\\\"entries\\\": [],\\\"maxSingleEntrySize\\\": 1024,\\\"maxTotalSize\\\": 4096}}"
     echo "Setting up backup directory on RelayServer syncthing..."
-    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
+    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders"
     if [ $? -ne 0 ]; then
       echo "There was an error configuring Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
@@ -10925,19 +10982,19 @@ function connectVPN()
     if [ "$LOG_LEVEL" = "debug" ]; then
       echo -e "Running this command on HomeServer:"
       echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/devices"
+      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices"
       echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
     fi
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/devices
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices
     jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
     echo "Setting up backup directory on HomeServer syncthing..."
     if [ "$LOG_LEVEL" = "debug" ]; then
       echo -e "Running this command on HomeServer:"
       echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:8384/rest/config/folders"
+      echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders"
       echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
     fi
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:8384/rest/config/folders
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders
     echo "Restarting caddy instance on RelayServer..."
     runCommandOnRelayServer false "docker container restart caddy"
     if [ $? -ne 0 ]; then
@@ -13090,8 +13147,8 @@ function removeMyNetworkPrimaryVPN()
     sudo sqlite3 $HSHQ_DB "drop table portforwarding;"
     removeRelayServerAgentFromWazuhManager
     echo "Removing Syncthing backup..."
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID > /dev/null 2>&1
-    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID > /dev/null 2>&1
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders/$RELAYSERVER_SYNCTHING_FOLDER_ID > /dev/null 2>&1
+    curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID > /dev/null 2>&1
     echo "Removing ClientDNS instances..."
     cdns_arr=($(sqlite3 $HSHQ_DB "select ID,Name from connections where ConnectionType='clientdns' and NetworkType in ('primary','mynetwork');"))
     for cur_cdns in "${cdns_arr[@]}"
@@ -18239,13 +18296,13 @@ function setupPortForwardingDB()
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-HTTPS', 443, 443, 0, 0, 'both','','','$curdt');"
 
     # Email Submission (do both protocols, even though only need TCP)
-    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-EmailSubmit', 587, 587, 0, 0, 'both','','','$curdt');"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-EmailSubmit', $MAILU_PORT_5, $MAILU_PORT_5, 0, 0, 'both','','','$curdt');"
 
     # WireGuard Portal (do both protocols, even though only need TCP)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-WGPortal', 8323, 8323, 0, 0, 'both','','','$curdt');"
 
     # Syncthing Web (do both protocols, even though only need TCP)
-    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingWeb', 8384, 8384, 0, 0, 'both','','','$curdt');"
+    sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingWeb', $SYNCTHING_LOCAL_WEB_PORT, $SYNCTHING_LOCAL_WEB_PORT, 0, 0, 'both','','','$curdt');"
 
     # Syncthing Sync (need both)
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('System', 'RS-SyncthingSync', $SYNCTHING_SYNC_PORT, $SYNCTHING_SYNC_PORT, 0, 0, 'both','','','$curdt');"
@@ -21774,7 +21831,7 @@ EOFSC
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\$(echo \$ports_list | tr "," "\n"))
   for cur_port in "\${portsArr[@]}"
@@ -21882,7 +21939,7 @@ EOFSC
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   portsArr=(\$(echo \$ports_list | tr "," "\n"))
   for cur_port in "\${portsArr[@]}"
@@ -22603,7 +22660,7 @@ function main()
   read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   RELAYSERVER_HSHQ_SCRIPTS_DIR=\$HOME/hshq/data/scripts
-  exposedPortsList=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  exposedPortsList=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$RELAYSERVER_WG_PORTAL_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
   sudo rm -f \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh
   sudo tee \$RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
@@ -22624,7 +22681,7 @@ EOFBS
   WG_CON_PORT=$RELAYSERVER_WG_PORT
   WG_PORTAL_PORT=$RELAYSERVER_WG_PORTAL_PORT
   DOCK_EXT_NET=$NET_EXTERNAL_SUBNET
-  ports_list=53,587,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
+  ports_list=53,$MAILU_PORT_5,$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT,$SYNCTHING_SYNC_PORT,$SYNCTHING_DISC_PORT
 
   sudo iptables -t filter -F DOCKER-USER > /dev/null
   sudo iptables -t filter -X DOCKER-USER > /dev/null
@@ -36585,7 +36642,7 @@ function installMailu()
   fi
   if [ -z "$SMTP_RELAY_HOST" ] || [ -z "$SMTP_RELAY_USERNAME" ]; then
     # Set these to something
-    SMTP_RELAY_HOST="[$SUB_POSTFIX.internal.$HOMESERVER_DOMAIN]:587"
+    SMTP_RELAY_HOST="[$SUB_POSTFIX.internal.$HOMESERVER_DOMAIN]:$MAILU_PORT_5"
     SMTP_RELAY_USERNAME=$HOMESERVER_DOMAIN
     SMTP_RELAY_PASSWORD=$(pwgen -c -n 32 1)
   fi
@@ -46593,7 +46650,7 @@ function installSyncthing()
   sleep 3
   startStopStack syncthing stop
   alltext=$(sudo cat $HSHQ_STACKS_DIR/syncthing/config/config.xml)
-  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:8384</address>\n        <user>'$SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'$SYNCTHING_ADMIN_PASSWORD_HASH'</password>\n        <apikey>'$SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
+  replacetext='<gui enabled="true" tls="true" debugging="false">\n        <address>127.0.0.1:'$SYNCTHING_LOCAL_WEB_PORT'</address>\n        <user>'$SYNCTHING_ADMIN_USERNAME'</user>\n        <password>'$SYNCTHING_ADMIN_PASSWORD_HASH'</password>\n        <apikey>'$SYNCTHING_API_KEY'</apikey>\n        <theme>dark</theme>\n    </gui>'
   echo -e "${alltext%%<gui*}${replacetext}${alltext##*</gui>}" > $HOME/st_config.xml
   alltext=$(cat $HOME/st_config.xml)
   replacetext='<globalAnnounceEnabled>false</globalAnnounceEnabled>'
@@ -46610,7 +46667,7 @@ function installSyncthing()
   sudo mv $HOME/st_config.xml $HSHQ_STACKS_DIR/syncthing/config/config.xml
   startStopStack syncthing start
   sleep 3
-  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:8384/rest/config/folders/default
+  curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X DELETE -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders/default
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -46618,7 +46675,7 @@ function installSyncthing()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy https://syncthing:8384 {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://syncthing:$SYNCTHING_LOCAL_WEB_PORT {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -46648,7 +46705,7 @@ services:
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/tcp"
       - "$SYNCTHING_SYNC_PORT:$SYNCTHING_SYNC_PORT/udp"
       - "$SYNCTHING_DISC_PORT:$SYNCTHING_DISC_PORT/udp"
-      - "127.0.0.1:8384:8384"
+      - "127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT:$SYNCTHING_LOCAL_WEB_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
@@ -49087,7 +49144,7 @@ POSTGRES_PORT=5432
 POSTGRES_DB=$MEALIE_DATABASE_NAME
 TOKEN_TIME=168
 SMTP_HOST=$SMTP_HOSTNAME
-SMTP_PORT=587
+SMTP_PORT=$MAILU_PORT_5
 SMTP_FROM_NAME=Mealie $(getAdminEmailName)
 SMTP_AUTH_STRATEGY=TLS
 SMTP_FROM_EMAIL=$EMAIL_SMTP_EMAIL_ADDRESS
