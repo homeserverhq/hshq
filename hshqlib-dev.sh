@@ -6256,21 +6256,7 @@ function main()
 
 function startValidation()
 {
-  set +e
-  which sudo > /dev/null 2>&1
-  if [ \$? -ne 0 ]; then
-    if [ "\$curUsername" = "root" ]; then
-      DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-      dpkg --configure -a > /dev/null 2>&1
-      DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
-    else
-      echo "------------------------------------------------------------------------------------"
-      echo "  Sudo is not installed."
-      echo "  Please either log in with the root account or install it manually."
-      echo "------------------------------------------------------------------------------------"
-      exit 2
-    fi
-  fi
+  installDependencies
   if [ "\$curUsername" = "root" ]; then
     read -r -s -p "" USER_RELAY_SUDO_PW
     id "\$newUsername" > /dev/null 2>&1
@@ -6330,6 +6316,29 @@ function startValidation()
   rm -f /home/\$newUsername/$RS_INSTALL_SETUP_SCRIPT_NAME
   rm -f /home/\$newUsername/$RS_INSTALL_FRESH_SCRIPT_NAME
   checkPerformPreInstall
+}
+
+function installDependencies()
+{
+  set +e
+  DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  dpkg --configure -a > /dev/null 2>&1
+  which sudo > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    if [ "\$curUsername" = "root" ]; then
+      DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
+    else
+      echo "------------------------------------------------------------------------------------"
+      echo "  Sudo is not installed."
+      echo "  Please either log in with the root account or install it manually."
+      echo "------------------------------------------------------------------------------------"
+      exit 2
+    fi
+  fi
+  which netstat > /dev/null 2>&1
+  if [ \$? -ne 0 ]; then
+    DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' net-tools > /dev/null 2>&1
+  fi
 }
 
 function checkForValidOSVersion()
