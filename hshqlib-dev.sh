@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=176
+HSHQ_LIB_SCRIPT_VERSION=177
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -27930,6 +27930,7 @@ function loadPinnedDockerImages()
   IMG_NTFY=binwiederhier/ntfy:v2.11.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.9.1
   IMG_OFELIA=mcuadros/ofelia:0.3.16
+  IMG_OMBI_APP=linuxserver/ombi:4.47.1
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
@@ -28133,6 +28134,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     qbittorrent)
       echo "v1" ;;
+    ombi)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -28289,6 +28292,7 @@ function pullDockerImages()
   pullImage $IMG_SERVARR_PROWLARR
   pullImage $IMG_SABNZBD
   pullImage $IMG_QBITTORRENT
+  pullImage $IMG_OMBI_APP
 }
 
 function pullImagesUpdatePB()
@@ -29128,6 +29132,17 @@ QBITTORRENT_INIT_ENV=true
 QBITTORRENT_ADMIN_USERNAME=
 QBITTORRENT_ADMIN_PASSWORD=
 # qBittorrent (Service Details) END
+
+# Ombi (Service Details) BEGIN
+OMBI_INIT_ENV=true
+OMBI_ADMIN_USERNAME=
+OMBI_ADMIN_PASSWORD=
+OMBI_ADMIN_EMAIL_ADDRESS=
+OMBI_DATABASE_NAME=
+OMBI_DATABASE_ROOT_PASSWORD=
+OMBI_DATABASE_USER=
+OMBI_DATABASE_USER_PASSWORD=
+# Ombi (Service Details) END
 
 # Service Details END
 EOFCF
@@ -30455,6 +30470,34 @@ function initServicesCredentials()
     QBITTORRENT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar QBITTORRENT_ADMIN_PASSWORD $QBITTORRENT_ADMIN_PASSWORD
   fi
+  if [ -z "$OMBI_ADMIN_USERNAME" ]; then
+    OMBI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_ombi"
+    updateConfigVar OMBI_ADMIN_USERNAME $OMBI_ADMIN_USERNAME
+  fi
+  if [ -z "$OMBI_ADMIN_PASSWORD" ]; then
+    OMBI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OMBI_ADMIN_PASSWORD $OMBI_ADMIN_PASSWORD
+  fi
+  if [ -z "$OMBI_ADMIN_EMAIL_ADDRESS" ]; then
+    OMBI_ADMIN_EMAIL_ADDRESS=$OMBI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar OMBI_ADMIN_EMAIL_ADDRESS $OMBI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$OMBI_DATABASE_NAME" ]; then
+    OMBI_DATABASE_NAME=ombidb
+    updateConfigVar OMBI_DATABASE_NAME $OMBI_DATABASE_NAME
+  fi
+  if [ -z "$OMBI_DATABASE_ROOT_PASSWORD" ]; then
+    OMBI_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OMBI_DATABASE_ROOT_PASSWORD $OMBI_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$OMBI_DATABASE_USER" ]; then
+    OMBI_DATABASE_USER=ombi-user
+    updateConfigVar OMBI_DATABASE_USER $OMBI_DATABASE_USER
+  fi
+  if [ -z "$OMBI_DATABASE_USER_PASSWORD" ]; then
+    OMBI_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OMBI_DATABASE_USER_PASSWORD $OMBI_DATABASE_USER_PASSWORD
+  fi
 }
 
 function checkCreateNonbackupDirs()
@@ -30596,6 +30639,7 @@ function initServiceVars()
   checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
   checkAddSvc "SVCD_NCTALKRECORD=nextcloud,nctalk-record,other,user,Nextcloud Talk Recording,nctalk-record,hshq"
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
+  checkAddSvc "SVCD_OMBI_APP=ombi,ombi,primary,user,Ombi,ombi,le"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
   checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
@@ -30792,6 +30836,8 @@ function installStackByName()
       installSABnzbd $is_integrate ;;
     qbittorrent)
       installqBittorrent $is_integrate ;;
+    ombi)
+      installOmbi $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -30960,6 +31006,8 @@ function performUpdateStackByName()
       performUpdateSABnzbd "$portainerToken" ;;
     qbittorrent)
       performUpdateqBittorrent "$portainerToken" ;;
+    ombi)
+      performUpdateOmbi "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -31024,6 +31072,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OMBI_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PENPOT.$HOMESERVER_DOMAIN\n"
@@ -31194,6 +31243,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OMBI_APP}-Admin" https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -31311,6 +31361,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OMBI_APP}-Admin" https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -31678,6 +31729,9 @@ function getHeimdallOrderFromSub()
     "$SUB_QBITTORRENT")
       order_num=92
       ;;
+    "$SUB_OMBI_APP")
+      order_num=93
+      ;;
     *)
       ;;
   esac
@@ -31686,19 +31740,19 @@ function getHeimdallOrderFromSub()
 
 function getLetsEncryptCertsDefault()
 {
-  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN,$SUB_IMMICH.$HOMESERVER_DOMAIN"
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN,$SUB_IMMICH.$HOMESERVER_DOMAIN,$SUB_OMBI_APP.$HOMESERVER_DOMAIN"
 }
 
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi
 }
 
 function getScriptImageByContainerName()
@@ -32331,6 +32385,12 @@ function getScriptImageByContainerName()
     "qbittorrent")
       container_image=$IMG_QBITTORRENT
       ;;
+    "ombi-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "ombi-app")
+      container_image=$IMG_OMBI_APP
+      ;;
     *)
       ;;
   esac
@@ -32382,6 +32442,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Servarr" "SERVARR_INIT_ENV=false,SONARR_ADMIN_USERNAME=,SONARR_ADMIN_PASSWORD=,RADARR_ADMIN_USERNAME=,RADARR_ADMIN_PASSWORD=,LIDARR_ADMIN_USERNAME=,LIDARR_ADMIN_PASSWORD=,READARR_ADMIN_USERNAME=,READARR_ADMIN_PASSWORD=,BAZARR_ADMIN_USERNAME=,BAZARR_ADMIN_PASSWORD=,MYLAR3_ADMIN_USERNAME=,MYLAR3_ADMIN_PASSWORD=,PROWLARR_ADMIN_USERNAME=,PROWLARR_ADMIN_PASSWORD="
   checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD="
   checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD="
+  checkAddServiceToConfig "Ombi" "OMBI_INIT_ENV=false,OMBI_ADMIN_USERNAME=,OMBI_ADMIN_PASSWORD=,OMBI_ADMIN_EMAIL_ADDRESS=,OMBI_DATABASE_NAME=,OMBI_DATABASE_ROOT_PASSWORD=,OMBI_DATABASE_USER=,OMBI_DATABASE_USER_PASSWORD="
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
@@ -57410,6 +57471,7 @@ EOFOT
 "Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD
 "Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
+"Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
 "Pastefy" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
 "PeerTube" postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER_PASSWORD
@@ -60351,6 +60413,214 @@ function performUpdateqBittorrent()
       newVer=v1
       curImageList=linuxserver/qbittorrent:5.1.2
       image_update_map[0]="linuxserver/qbittorrent:5.1.2,linuxserver/qbittorrent:5.1.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Ombi
+function installOmbi()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ombi "Ombi"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ombi-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/ombi
+  mkdir $HSHQ_STACKS_DIR/ombi/config
+  mkdir $HSHQ_STACKS_DIR/ombi/db
+  mkdir $HSHQ_STACKS_DIR/ombi/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/ombi/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $OMBI_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $OMBI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  OMBI_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OMBI_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigOmbi
+  installStack ombi ombi-app "\[ls.io-init\] done" $HOME/ombi.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OMBI_INIT_ENV" = "true" ]; then
+    sendEmail -s "Ombi Admin Login Info" -b "Ombi Admin Username: $OMBI_ADMIN_USERNAME\nOmbi Admin Password: $OMBI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    OMBI_INIT_ENV=true
+    updateConfigVar OMBI_INIT_ENV $OMBI_INIT_ENV
+  fi
+  sleep 3
+  apik=$(docker exec -i ombi-db mysql -N -u $OMBI_DATABASE_USER -p$OMBI_DATABASE_USER_PASSWORD -e "use $OMBI_DATABASE_NAME; select Content from GlobalSettings where SettingsName='OmbiSettings';" | jq -r .ApiKey)
+  curl -X "POST" -H "ApiKey: $apik" "https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/api/v1/Settings/notifications/email" -H "accept: application/json" -H "Content-Type: application/json" -d "{\"notificationTemplates\": [],\"enabled\": true,\"host\": \"$SMTP_HOSTNAME\",\"port\": \"$SMTP_HOSTPORT\",\"senderName\":\"Ombi $(getAdminEmailName)\",\"senderAddress\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"authentication\": false,\"disableTLS\": false,\"disableCertificateChecking\": true}" > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ombi-app:3579 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OMBI_APP $MANAGETLS_OMBI_APP "$is_integrate_hshq" $NETDEFAULT_OMBI_APP "$inner_block"
+  insertSubAuthelia $SUB_OMBI_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll ombi "$FMLNAME_OMBI_APP" $USERTYPE_OMBI_APP "https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN" "ombi.png" "$(getHeimdallOrderFromSub $SUB_OMBI_APP $USERTYPE_OMBI_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true ombi "$FMLNAME_OMBI_APP" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigOmbi()
+{
+  cat <<EOFMT > $HOME/ombi-compose.yml
+$STACK_VERSION_PREFIX ombi $(getScriptStackVersion ombi)
+
+services:
+  ombi-db:
+    image: $(getScriptImageByContainerName ombi-db)
+    container_name: ombi-db
+    hostname: ombi-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-ombi-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ombi-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/ombi/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.ombi-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.ombi-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ombi-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ombi-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ombi-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ombi-hourly-db.email-from=Ombi Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ombi-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.ombi-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.ombi-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ombi-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ombi-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ombi-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ombi-monthly-db.email-from=Ombi Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ombi-monthly-db.mail-only-on-error=false"
+
+  ombi-app:
+    image: $(getScriptImageByContainerName ombi-app)
+    container_name: ombi-app
+    hostname: ombi-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ombi-db
+    networks:
+      - int-ombi-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/ombi/config:/config
+
+volumes:
+  v-ombi-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/ombi/db
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-ombi-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/ombi.env
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
+MYSQL_DATABASE=$OMBI_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$OMBI_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$OMBI_DATABASE_USER
+MYSQL_PASSWORD=$OMBI_DATABASE_USER_PASSWORD
+EOFMT
+
+  cat <<EOFOB > $HSHQ_STACKS_DIR/ombi/config/database.json
+{
+  "OmbiDatabase": {
+    "Type": "MySQL",
+    "ConnectionString": "Server=ombi-db;Port=3306;User ID=$OMBI_DATABASE_USER;Password=$OMBI_DATABASE_USER_PASSWORD;Database=$OMBI_DATABASE_NAME"
+  },
+  "SettingsDatabase": {
+    "Type": "MySQL",
+    "ConnectionString": "Server=ombi-db;Port=3306;User ID=$OMBI_DATABASE_USER;Password=$OMBI_DATABASE_USER_PASSWORD;Database=$OMBI_DATABASE_NAME"
+  },
+  "ExternalDatabase": {
+    "Type": "MySQL",
+    "ConnectionString": "Server=ombi-db;Port=3306;User ID=$OMBI_DATABASE_USER;Password=$OMBI_DATABASE_USER_PASSWORD;Database=$OMBI_DATABASE_NAME"
+  }
+}
+EOFOB
+}
+
+function performUpdateOmbi()
+{
+  perform_stack_name=ombi
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mariadb:10.7.3,linuxserver/ombi:4.47.1
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="linuxserver/ombi:4.47.1,linuxserver/ombi:4.47.1"
     ;;
     *)
       is_upgrade_error=true
@@ -68813,6 +69083,14 @@ SQLPAD_CONNECTIONS__nextcloud__username=$NEXTCLOUD_DATABASE_USER
 SQLPAD_CONNECTIONS__nextcloud__password=$NEXTCLOUD_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__nextcloud__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__nextcloud__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__ombi__name=Ombi
+SQLPAD_CONNECTIONS__ombi__driver=mysql
+SQLPAD_CONNECTIONS__ombi__host=ombi-db
+SQLPAD_CONNECTIONS__ombi__database=$OMBI_DATABASE_NAME
+SQLPAD_CONNECTIONS__ombi__username=$OMBI_DATABASE_USER
+SQLPAD_CONNECTIONS__ombi__password=$OMBI_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__ombi__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__ombi__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__paperless__name=Paperless
 SQLPAD_CONNECTIONS__paperless__driver=postgres
 SQLPAD_CONNECTIONS__paperless__host=paperless-db
