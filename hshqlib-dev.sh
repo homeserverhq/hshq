@@ -2567,7 +2567,7 @@ function createClientDNSNetworksOnRestore()
   rstackIDsQry=""
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -14952,7 +14952,7 @@ function getPortainerToken()
     if [ $ptok_retVal -eq 0 ] && ! [ -z "$ptok_full" ]; then
       # Do a sample query
       ptok=$(echo $ptok_full | jq -r .jwt)
-      qry=$(http --check-status --ignore-stdin --verify=no --timeout=$cur_timeout --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $ptok" endpointId==1)
+      qry=$(http --check-status --ignore-stdin --verify=no --timeout=$cur_timeout --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $ptok" endpointId==$PORTAINER_ENDPOINT_ID)
       if [ $? -eq 0 ]; then
         break
       fi
@@ -14985,7 +14985,7 @@ function getStackID()
   qry=""
   while [ $gsid_numTries -le $gsid_totalTries ]
   do
-    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     gsid_retVal=$?
     if [ $gsid_retVal -eq 0 ]; then
       break
@@ -15025,7 +15025,7 @@ function updateStackByID()
   usid_retVal=1
   while [ $usid_numTries -le $usid_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
     usid_retVal=$?
     if [ $usid_retVal -eq 0 ]; then
       break
@@ -15066,7 +15066,7 @@ function restartAllStacks()
   rstackIDsQry=""
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -15507,9 +15507,9 @@ function installStack()
   while [ $ins_numTries -le $ins_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $ins_numTries -eq $ins_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/$stack_name-json.tmp
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/$stack_name-json.tmp >/dev/null
     fi
     ins_retVal=$?
     if [ $ins_retVal -eq 0 ]; then
@@ -15577,9 +15577,9 @@ function startStopStackByID()
   while [ $sss_numTries -le $sss_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $sss_numTries -eq $sss_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     fi
     sss_retVal=$?
     if [ $sss_retVal -eq 0 ]; then
@@ -15658,7 +15658,7 @@ function getStackStatusByID()
   stackStatus=""
   while [ $gss_numTries -le $gss_totalTries ]
   do
-    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1)
+    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     gss_retVal=$?
     if [ $gss_retVal -eq 0 ]; then
       break
@@ -15703,7 +15703,7 @@ function deleteStack()
   ds_retVal=1
   while [ $ds_numTries -le $ds_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     ds_retVal=$?
     if [ $ds_retVal -eq 0 ]; then
       break
@@ -20695,6 +20695,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=171
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 177 ]; then
+    echo "Updating to Version 177..."
+    version177Update
+    HSHQ_VERSION=177
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20809,8 +20815,8 @@ function version22Update()
   mailuStackID=$(getStackID mailu "$portainerToken")
   cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
 
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]}-1))
 
   for curID in $(seq 0 $numItems);
@@ -21134,7 +21140,7 @@ EOFMC
   sed -i "s|^SUBNET=.*|SUBNET=${NET_MAILU_EXT_SUBNET}|g" $HOME/mailu.env
   sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${NET_MAILU_EXT_SUBNET_PREFIX}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2>&1
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
 
   if ! [ -z "$cdnsStackID" ]; then
@@ -21208,7 +21214,7 @@ EOFCF
     updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
     sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
     echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
     rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
   fi
 
@@ -21255,7 +21261,7 @@ EOFCF
     num_tries=1
     while [ $num_tries -lt $total_tries ]
     do
-      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
       if [ $? -eq 0 ]; then
         break
       else
@@ -23197,6 +23203,12 @@ EOFRS
   updateRelayServerWithScript
 }
 
+function version177Update()
+{
+  PORTAINER_ENDPOINT_ID=1
+  outputMaintenanceScripts
+}
+
 function updateRelayServerWithScript()
 {
   # This function assumes that a script file
@@ -24269,7 +24281,7 @@ function setVersionOnStacks()
     strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
   done
   # Special case for Caddy
-  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
   caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("caddy-")) | .Id'))
   caddy_stack_names=($(echo $qry | jq -r '.[] | select (.Name | startswith("caddy-")) | .Name'))
   i=-1
@@ -24359,9 +24371,15 @@ function checkAddServiceToConfig()
 {
   casc_curE=${-//[^e]/}
   service_name="$1"
-  variable_list=$2
+  variable_list="$2"
+  conf_file="$3"
+  isRoot="$4"
   set +e
-  grep "# $service_name (Service Details)" $CONFIG_FILE > /dev/null 2>&1
+  if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+    sudo grep "# $service_name (Service Details)" $conf_file > /dev/null 2>&1
+  else
+    grep "# $service_name (Service Details)" $conf_file > /dev/null 2>&1
+  fi
   if [ $? -ne 0 ]; then
     replace_block="# $service_name (Service Details) BEGIN\n"
     varListArr=($(echo $variable_list | tr "," "\n"))
@@ -24370,7 +24388,11 @@ function checkAddServiceToConfig()
       replace_block=$replace_block"${curVar}\n"
     done
     replace_block=$replace_block"# $service_name (Service Details) END\n\n# Service Details END"
-    sed -i "s|# Service Details END|$replace_block|g" $CONFIG_FILE
+    if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+      sudo sed -i "s|# Service Details END|$replace_block|g" $conf_file
+    else
+      sed -i "s|# Service Details END|$replace_block|g" $conf_file
+    fi
   fi
   set +e
   if ! [ -z "$casc_curE" ]; then
@@ -24383,15 +24405,25 @@ function checkAddVarsToServiceConfig()
   cavc_curE=${-//[^e]/}
   service_name="$1"
   variable_list="$2"
+  conf_file="$3"
+  isRoot="$4"
   set +e
   varListArr=($(echo $variable_list | tr "," "\n"))
   for curVar in "${varListArr[@]}"
   do
     curVarCheck=$(echo $curVar | cut -d"=" -f1)"="
-    grep "$curVarCheck" $CONFIG_FILE > /dev/null 2>&1
+    if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+      sudo grep "$curVarCheck" $conf_file > /dev/null 2>&1
+    else
+      grep "$curVarCheck" $conf_file > /dev/null 2>&1
+    fi
     if [ $? -ne 0 ]; then
       replace_block="$curVar\n# $service_name (Service Details) END"
-      sed -i "s|# $service_name (Service Details) END|$replace_block|g" $CONFIG_FILE
+      if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+        sudo sed -i "s|# $service_name (Service Details) END|$replace_block|g" $conf_file
+      else
+        sed -i "s|# $service_name (Service Details) END|$replace_block|g" $conf_file
+      fi
     fi
   done
   set +e
@@ -25347,7 +25379,7 @@ function startStopStack()
     portainerToken="\$(getPortainerToken)"
   fi
   stackID=\$(getStackID \$stackname "\$portainerToken")
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==1 > /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID > /dev/null
 }
 
 function getPortainerToken()
@@ -25361,7 +25393,7 @@ function getStackID()
   stackName=\$1
   stackName="\${stackName//.}"
   portainerToken=\$2
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -29207,6 +29239,7 @@ CERTS_INTERNAL_CA_DAYS=15330
 PORTAINER_ADMIN_USERNAME=
 PORTAINER_ADMIN_PASSWORD=
 PORTAINER_LOCAL_HTTPS_PORT=
+PORTAINER_ENDPOINT_ID=1
 # Portainer (Service Details) END
 
 # Script-server (Service Details) BEGIN
@@ -32410,61 +32443,62 @@ function performPostStackRemoval()
 
 function checkAddAllNewSvcs()
 {
-  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=,LINKWARDEN_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD=,FRESHRSS_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY="
-  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
-  checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Script-server" "SCRIPTSERVER_INIT_ENV=false,SCRIPTSERVER_LOCALHOST_PORT=8008,SCRIPTSERVER_ADMIN_USERNAME=,SCRIPTSERVER_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
-  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
-  checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
-  checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_EMAIL_ADDRESS=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD="
-  checkAddServiceToConfig "Pixelfed" "PIXELFED_INIT_ENV=false,PIXELFED_DATABASE_NAME=,PIXELFED_DATABASE_ROOT_PASSWORD=,PIXELFED_DATABASE_USER=,PIXELFED_DATABASE_USER_PASSWORD=,PIXELFED_REDIS_PASSWORD=,PIXELFED_APP_KEY="
-  checkAddServiceToConfig "Yamtrack" "YAMTRACK_INIT_ENV=false,YAMTRACK_ADMIN_USERNAME=,YAMTRACK_ADMIN_PASSWORD=,YAMTRACK_REDIS_PASSWORD=,YAMTRACK_DATABASE_NAME=,YAMTRACK_DATABASE_USER=,YAMTRACK_DATABASE_USER_PASSWORD=,YAMTRACK_SECRET_KEY=,YAMTRACK_OIDC_CLIENT_ID=,YAMTRACK_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Servarr" "SERVARR_INIT_ENV=false,SONARR_ADMIN_USERNAME=,SONARR_ADMIN_PASSWORD=,RADARR_ADMIN_USERNAME=,RADARR_ADMIN_PASSWORD=,LIDARR_ADMIN_USERNAME=,LIDARR_ADMIN_PASSWORD=,READARR_ADMIN_USERNAME=,READARR_ADMIN_PASSWORD=,BAZARR_ADMIN_USERNAME=,BAZARR_ADMIN_PASSWORD=,MYLAR3_ADMIN_USERNAME=,MYLAR3_ADMIN_PASSWORD=,PROWLARR_ADMIN_USERNAME=,PROWLARR_ADMIN_PASSWORD="
-  checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD="
-  checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Ombi" "OMBI_INIT_ENV=false,OMBI_ADMIN_USERNAME=,OMBI_ADMIN_PASSWORD=,OMBI_ADMIN_EMAIL_ADDRESS=,OMBI_DATABASE_NAME=,OMBI_DATABASE_ROOT_PASSWORD=,OMBI_DATABASE_USER=,OMBI_DATABASE_USER_PASSWORD="
-  checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_PASSWORD="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_DETERMINISTIC_KEY="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
-  checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
-  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
-  checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false"
-  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Wazuh" "WAZUH_MANAGER_AUTH_PASSWORD="
-  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET="
-  checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET="
-  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET="
-  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}"
-  checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
-  checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
-  checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
-  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET="
+  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=,LINKWARDEN_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD=,FRESHRSS_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Script-server" "SCRIPTSERVER_INIT_ENV=false,SCRIPTSERVER_LOCALHOST_PORT=8008,SCRIPTSERVER_ADMIN_USERNAME=,SCRIPTSERVER_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_EMAIL_ADDRESS=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Pixelfed" "PIXELFED_INIT_ENV=false,PIXELFED_DATABASE_NAME=,PIXELFED_DATABASE_ROOT_PASSWORD=,PIXELFED_DATABASE_USER=,PIXELFED_DATABASE_USER_PASSWORD=,PIXELFED_REDIS_PASSWORD=,PIXELFED_APP_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Yamtrack" "YAMTRACK_INIT_ENV=false,YAMTRACK_ADMIN_USERNAME=,YAMTRACK_ADMIN_PASSWORD=,YAMTRACK_REDIS_PASSWORD=,YAMTRACK_DATABASE_NAME=,YAMTRACK_DATABASE_USER=,YAMTRACK_DATABASE_USER_PASSWORD=,YAMTRACK_SECRET_KEY=,YAMTRACK_OIDC_CLIENT_ID=,YAMTRACK_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Servarr" "SERVARR_INIT_ENV=false,SONARR_ADMIN_USERNAME=,SONARR_ADMIN_PASSWORD=,RADARR_ADMIN_USERNAME=,RADARR_ADMIN_PASSWORD=,LIDARR_ADMIN_USERNAME=,LIDARR_ADMIN_PASSWORD=,READARR_ADMIN_USERNAME=,READARR_ADMIN_PASSWORD=,BAZARR_ADMIN_USERNAME=,BAZARR_ADMIN_PASSWORD=,MYLAR3_ADMIN_USERNAME=,MYLAR3_ADMIN_PASSWORD=,PROWLARR_ADMIN_USERNAME=,PROWLARR_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Ombi" "OMBI_INIT_ENV=false,OMBI_ADMIN_USERNAME=,OMBI_ADMIN_PASSWORD=,OMBI_ADMIN_EMAIL_ADDRESS=,OMBI_DATABASE_NAME=,OMBI_DATABASE_ROOT_PASSWORD=,OMBI_DATABASE_USER=,OMBI_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_DETERMINISTIC_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wazuh" "WAZUH_MANAGER_AUTH_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Portainer" "PORTAINER_ENDPOINT_ID=1" $HSHQ_PLAINTEXT_ROOT_CONFIG true
 }
 
 function importDBs()
@@ -46270,7 +46304,6 @@ APP_LDAP_SEARCH_BASE_DN=$LDAP_BASE_DN
 APP_LDAP_STARTTLS=true
 APP_LDAP_NO_TLS_VERIFY=true
 APP_VAULTWARDEN_ROOT_CERT_FILE=/cacert/rootca.der
-APP_LDAP_SEARCH_BASE_DN=$LDAP_BASE_DN
 APP_LDAP_SEARCH_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
 APP_LDAP_SYNC_INTERVAL_SECONDS=300
 
@@ -64178,7 +64211,7 @@ echo "Getting auth token..."
 portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
 if [ \$? -eq 0 ]; then
   echo "Querying stacks..."
-  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
   if [ \$? -eq 0 ]; then
     echo "Succesfully executed query, connection is good!"
   else
@@ -70766,7 +70799,7 @@ function installClientDNS()
 
   mkdir -p $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}
   cdns_stack_name_upper=$(echo $cdns_stack_name | tr '[:lower:]' '[:upper:]')
-  checkAddServiceToConfig "clientdns-${cdns_stack_name}" "CLIENTDNS_${cdns_stack_name_upper}_ADMIN_USERNAME=$CUR_CLIENTDNS_ADMIN_USERNAME,CLIENTDNS_${cdns_stack_name_upper}_ADMIN_PASSWORD=$CUR_CLIENTDNS_ADMIN_PASSWORD"
+  checkAddServiceToConfig "clientdns-${cdns_stack_name}" "CLIENTDNS_${cdns_stack_name_upper}_ADMIN_USERNAME=$CUR_CLIENTDNS_ADMIN_USERNAME,CLIENTDNS_${cdns_stack_name_upper}_ADMIN_PASSWORD=$CUR_CLIENTDNS_ADMIN_PASSWORD" $CONFIG_FILE false
   docker network create --driver=bridge tmpnet >/dev/null
   clientdns_subnet=$(getDockerSubnet tmpnet)
   clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
