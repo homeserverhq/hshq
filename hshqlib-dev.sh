@@ -17332,7 +17332,7 @@ function addLECertPathsToRelayServer()
     return
   fi
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add this subdomain to be managed by LetsEncrypt: $subdoms_le" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     return
   fi
 
@@ -31276,7 +31276,7 @@ function emailVaultwardenCredentials()
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
     strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OMBI_APP}-Admin" https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
+    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   fi
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
@@ -31394,7 +31394,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OMBI_APP}-Admin" https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   # RelayServer
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -60496,8 +60496,6 @@ function installOmbi()
     updateConfigVar OMBI_INIT_ENV $OMBI_INIT_ENV
   fi
   sleep 3
-  apik=$(docker exec -i ombi-db mysql -N -u $OMBI_DATABASE_USER -p$OMBI_DATABASE_USER_PASSWORD -e "use $OMBI_DATABASE_NAME; select Content from GlobalSettings where SettingsName='OmbiSettings';" | jq -r .ApiKey)
-  curl -X "POST" -H "ApiKey: $apik" "https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/api/v1/Settings/notifications/email" -H "accept: application/json" -H "Content-Type: application/json" -d "{\"notificationTemplates\": [],\"enabled\": true,\"host\": \"$SMTP_HOSTNAME\",\"port\": \"$SMTP_HOSTPORT\",\"senderName\":\"Ombi $(getAdminEmailName)\",\"senderAddress\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"authentication\": false,\"disableTLS\": false,\"disableCertificateChecking\": true}" > /dev/null 2>&1
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN {\n"
@@ -60519,6 +60517,10 @@ function installOmbi()
     restartAllCaddyContainers
     checkAddDBConnection true ombi "$FMLNAME_OMBI_APP" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
   fi
+  set +e
+  apik=$(docker exec -i ombi-db mysql -N -u $OMBI_DATABASE_USER -p$OMBI_DATABASE_USER_PASSWORD -e "use $OMBI_DATABASE_NAME; select Content from GlobalSettings where SettingsName='OmbiSettings';" | jq -r .ApiKey)
+  curl -X "POST" -H "ApiKey: $apik" "https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/api/v1/Settings/notifications/email" -H "accept: application/json" -H "Content-Type: application/json" -d "{\"notificationTemplates\": [],\"enabled\": true,\"host\": \"$SMTP_HOSTNAME\",\"port\": \"$SMTP_HOSTPORT\",\"senderName\":\"Ombi $(getAdminEmailName)\",\"senderAddress\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"authentication\": false,\"disableTLS\": false,\"disableCertificateChecking\": true}" > /dev/null 2>&1
+  set -e
 }
 
 function outputConfigOmbi()
