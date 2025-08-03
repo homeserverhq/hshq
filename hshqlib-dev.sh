@@ -173,6 +173,7 @@ function init()
   HSHQ_LIB_FILENAME=hshqlib.sh
   HSHQ_NEW_LIB_FILENAME=hshqlib.new
   HSHQ_WRAP_FILENAME=hshq.sh
+  HSHQ_ASSETS_GIT_REPO=https://github.com/homeserverhq/assets.git
   APPLICATION_FIRST_LINE="###################### Application Begin #######################"
   APPLICATION_LAST_LINE="####################### Application End ########################"
   INVITATION_FIRST_LINE="####################### Invitation Begin #######################"
@@ -2307,25 +2308,6 @@ function restorePullDockerImages()
   done
 }
 
-function buildOrPullImage()
-{
-  curImg="$1"
-  # At some point need to rework this function to be more generalized.
-  # But at the moment, there are only 3 custom images, so a simple case statement will do.
-  # The mindsdb image in the AIStack is still an issue. Still need a solution for it.
-  case "$curImg" in
-    "filedrop/filedrop:1")
-      buildImageFileDrop
-      ;;
-    "hshq/pixelfed:v1")
-      buildImagePixelfed
-      ;;
-    *)
-      pullImage "$curImg"
-      ;;
-  esac
-}
-
 function showRestoreMountDriveMenu()
 {
   findmnt | grep $HSHQ_BACKUP_DIR > /dev/null 2>&1
@@ -4094,6 +4076,10 @@ function performBaseInstallation()
   initDHParams
   draw_progress_bar 53
   getUpdateAssets
+  if [ $? -ne 0 ]; then
+    echo "FATAL: Could not update image assets, exiting..."
+    exit 9
+  fi
   draw_progress_bar 55
   logHSHQEvent info "performBaseInstallation - Starting Stack Installs"
   installBaseStacks
@@ -4838,18 +4824,22 @@ EOF
     0)
 	  return 0 ;;
     1)
+      getUpdateAssets
       installStacksFromList
       set +e
       return 1 ;;
     2)
+      getUpdateAssets
       installAllAvailableStacks true
       set +e
       return 1 ;;
     3)
+      getUpdateAssets
       performStackUpdatesFromList
       set +e
       return 1 ;;
     4)
+      getUpdateAssets
       performAllAvailableStackUpdates true
       set +e
       return 1 ;;
@@ -4903,7 +4893,6 @@ EOF
     return
   fi
   setSudoTimeoutInstall
-  getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
   do
     installStackByName ${cur_svc//\"} $is_integrate
@@ -4919,7 +4908,6 @@ function installListOfServices()
   setSystemState $SS_INSTALLING
   stackListArr=($(echo "$1" | tr "," "\n"))
   setSudoTimeoutInstall
-  getUpdateAssets
   for curStack in "${stackListArr[@]}"
   do
     installStackByName $curStack true
@@ -4972,7 +4960,6 @@ function installAllAvailableStacks()
   fi
   set -e
   setSudoTimeoutInstall
-  getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
   do
     installStackByName $cur_svc $is_integrate
@@ -5097,7 +5084,6 @@ function updateListOfStacks()
   stackListArr=($(echo "$1" | tr "," "\n"))
   stacks_need_update_list="$(getStacksToUpdate)"
   setSudoTimeoutInstall
-  getUpdateAssets
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   report_start_time=$(date)
   full_update_report=""
@@ -23086,6 +23072,7 @@ function version126Update()
   outputWireGuardScripts
   initCronJobs
   updateMOTD
+  getUpdateAssets
   outputScriptServerTheme
 }
 
@@ -27649,10 +27636,30 @@ function generateCertDialog()
 
 function getUpdateAssets()
 {
+  isGitExist=false
   if [ -d $HSHQ_ASSETS_DIR/.git ]; then
-    git -C $HSHQ_ASSETS_DIR pull > /dev/null
-  else
-    git clone https://github.com/homeserverhq/assets.git $HSHQ_ASSETS_DIR
+    isGitExist=true
+  fi
+  curGitTries=0
+  maxGitTries=5
+  while [ $curGitTries -le $maxGitTries ]
+  do
+    if [ "$isGitExist" = "true" ]; then
+      git -C $HSHQ_ASSETS_DIR pull > /dev/null
+    else
+      rm -fr $HSHQ_ASSETS_DIR
+      git clone $HSHQ_ASSETS_GIT_REPO $HSHQ_ASSETS_DIR
+    fi
+    if [ $? -eq 0 ]; then
+      curGitTries=0
+      break
+    fi
+    echo "($((curGitTries+1)) of $maxGitTries) There was an error pulling the contents from the HSHQ assets Github repository, trying again in 5 seconds..."
+    sleep 5
+    ((curGitTries++))
+  done
+  if [ $curGitTries -ge $maxGitTries ]; then
+    return 1
   fi
 }
 
@@ -32584,6 +32591,24 @@ function getHomeServerPortsList()
   echo "$portsList"
 }
 
+function buildOrPullImage()
+{
+  curImg="$1"
+  # At some point need to rework this function to be more generalized.
+  # But at the moment, there are only 3 custom images, so a simple case statement will do.
+  # The mindsdb image in the AIStack is still an issue, need a solution for it.
+  case "$curImg" in
+    "filedrop/filedrop:1")
+      buildImageFileDrop
+      ;;
+    "hshq/pixelfed:v1")
+      buildImagePixelfed
+      ;;
+    *)
+      pullImage "$curImg"
+      ;;
+  esac
+}
 # Stacks Installation/Update Functions
 
 # Portainer
@@ -58043,6 +58068,7 @@ EOFPF
 
 function buildImagePixelfed()
 {
+  echo "The Pixelfed image is being built. It can take up to 15 minutes for the process to complete, so please be patient."
   img_ver=v0.12.5.tar.gz
   cd $HSHQ_BUILD_DIR
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
@@ -58617,7 +58643,8 @@ ARG PHP_EXTENSIONS_EXTRA=""
 ARG PHP_EXTENSIONS_DATABASE="pdo_pgsql pdo_mysql pdo_sqlite"
 
 # GPG key for nginx apt repository
-ARG NGINX_GPGKEY="573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62"
+# ARG NGINX_GPGKEY="573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62"
+ARG NGINX_GPGKEY="8540A6F18833A80E9C1653A42FD21310B49F6B46"
 
 # GPP key path for nginx apt repository
 ARG NGINX_GPGKEY_PATH="/usr/share/keyrings/nginx-archive-keyring.gpg"
@@ -59135,7 +59162,7 @@ EOFPF
   DOCKER_BUILDKIT=1 docker build -t $(getScriptImageByContainerName pixelfed-app) .
   buildRetVal=$?
   cd ~
-  sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
+  #sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
   return $buildRetVal
 }
 
@@ -61181,7 +61208,6 @@ EOFHS
 
 function outputScriptServerTheme()
 {
-  getUpdateAssets
   rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-ApplyJoin.png
   rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-Invite.png
   cp $HSHQ_ASSETS_DIR/images/HSHQ-ApplyJoin.png $HSHQ_STACKS_DIR/script-server/web/img/
@@ -62296,7 +62322,12 @@ decryptConfigFileAndLoadEnvNoPrompts
 services=\$(getArgumentValue services "\$@")
 
 set +e
-installListOfServices "\$services"
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  installListOfServices "\$services"
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
 set -e
 performExitFunctions false
 
@@ -62379,7 +62410,13 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-installAllAvailableStacks false
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  installAllAvailableStacks false
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
+
 set -e
 performExitFunctions false
 
@@ -62445,7 +62482,12 @@ decryptConfigFileAndLoadEnvNoPrompts
 USER_RELAY_SUDO_PW="\$TMP_USER_RELAY_SUDO_PW"
 services=\$(getArgumentValue services "\$@")
 set +e
-updateListOfStacks "\$services"
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  updateListOfStacks "\$services"
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
 set -e
 performExitFunctions false
 
@@ -62545,7 +62587,12 @@ TMP_USER_RELAY_SUDO_PW="\$USER_RELAY_SUDO_PW"
 decryptConfigFileAndLoadEnvNoPrompts
 USER_RELAY_SUDO_PW="\$TMP_USER_RELAY_SUDO_PW"
 set +e
-performAllAvailableStackUpdates false
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  performAllAvailableStackUpdates false
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
 set -e
 performExitFunctions false
 
