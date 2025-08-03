@@ -4823,29 +4823,31 @@ EOF
   "4" "Update All Available Services" \
   "5" "Remove Service(s) From List" \
   "6" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ] || [ $menures -eq 6 ]; then
+    return
+  fi
+  set +e
+  getUpdateAssets
   if [ $? -ne 0 ]; then
-    menures=0
+    showMessageBox "ERROR" "ERROR: Could not update image assets, returning..."
+    return
   fi
   case $menures in
     0)
 	  return 0 ;;
     1)
-      getUpdateAssets
       installStacksFromList
       set +e
       return 1 ;;
     2)
-      getUpdateAssets
       installAllAvailableStacks true
       set +e
       return 1 ;;
     3)
-      getUpdateAssets
       performStackUpdatesFromList
       set +e
       return 1 ;;
     4)
-      getUpdateAssets
       performAllAvailableStackUpdates true
       set +e
       return 1 ;;
