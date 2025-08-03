@@ -32963,15 +32963,16 @@ function installAdGuard()
   set +e
   while [ $i -le 300 ]
   do
-    checkDNS1=$(dig +short api.ipify.org | head -n 1)
-    checkDNS2=$(dig +short registry-1.docker.io | head -n 1)
-    if ! [ -z "$checkDNS1" ] && [ "$(checkValidIPAddress $checkDNS1)" = "true" ] &&  ! [ -z "$checkDNS2" ] && [ "$(checkValidIPAddress $checkDNS2)" = "true" ]; then
+    checkDNS1=$(dig +short api.ipify.org | grep '^[.0-9]*$' | tail -n 1)
+    checkDNS2=$(dig +short registry-1.docker.io | grep '^[.0-9]*$' | tail -n 1)
+    checkDNS3=$(dig +short mirror.gcr.io | grep '^[.0-9]*$' | tail -n 1)
+    if ! [ -z "$checkDNS1" ] && [ "$(checkValidIPAddress $checkDNS1)" = "true" ] &&  ! [ -z "$checkDNS2" ] && [ "$(checkValidIPAddress $checkDNS2)" = "true" ] &&  ! [ -z "$checkDNS3" ] && [ "$(checkValidIPAddress $checkDNS3)" = "true" ]; then
       isSuccess=true
       break
     fi
-    echo "Adguard not ready, sleeping 3 seconds, total wait=$i seconds..."
-    sleep 3
-    i=$((i+3))
+    echo "Adguard not ready, sleeping 5 seconds, total wait=$i seconds..."
+    sleep 5
+    i=$((i+5))
   done
   if ! [ "$isSuccess" = "true" ]; then
     echo "Adguard did not install correctly, exiting..."
