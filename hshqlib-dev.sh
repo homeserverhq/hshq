@@ -8827,6 +8827,12 @@ function installPortainer()
   echo "{\"theme\":{\"color\":\"dark\"}}" > portainer-json.tmp
   http --verify=no --timeout=300 PUT https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/users/\$RELAYSERVER_PORTAINER_ADMIN_USERID "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" @portainer-json.tmp > /dev/null
   rm portainer-json.tmp
+
+  # Add gcr registry
+  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > portainer-json.tmp
+  http --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" @portainer-json.tmp > /dev/null
+  rm portainer-json.tmp
+
 }
 
 function outputConfigPortainer()
@@ -27673,6 +27679,10 @@ function pullImage()
 {
   img_and_version=$1
   secs_mult=60
+  # Check if registry is indicated, if not, then add mirror.gcr.io to front
+  if [ $(grep -o "/" <<< "$img_and_version" | wc -l) -lt 2 ]; then
+    img_and_version="mirror.gcr.io/$img_and_version"
+  fi
   logHSHQEvent info "Pulling Image: $img_and_version"
   echo "Pulling Image: $img_and_version"
   is_success=1
@@ -27693,6 +27703,10 @@ function pullImage()
       is_success=1
     fi
     ((num_tries++))
+    if [ $is_success -ne 0 ]; then
+      echo "There was an error pulling the image, retrying in 5 seconds..."
+      sleep 5
+    fi
   done
   if [ $is_success -ne 0 ]; then
     echo "Error pulling docker image: $img_and_version"
@@ -32690,6 +32704,11 @@ function installPortainer()
   # Enable dark mode because it looks better
   echo "{\"theme\":{\"color\":\"dark\"}}" > $HOME/portainer-json.tmp
   http --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/$PORTAINER_ADMIN_USERID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
+  rm $HOME/portainer-json.tmp
+
+  # Add gcr registry
+  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
+  http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
 
   inner_block=""
@@ -53862,7 +53881,7 @@ function installCoturn()
   pullImage $(getScriptImageByContainerName coturn)
   retVal=$?
   if [ $retVal -ne 0 ]; then
-    return 1 $retVal
+    return $retVal
   fi
   set -e
 
