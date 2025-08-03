@@ -2232,7 +2232,7 @@ EOF
   performClearIPTables true
   checkUpdateAllIPTables performFullRestore
   outputScripts
-  sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
+  sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/ > /dev/null 2>&1
   performAptInstall python3-tornado > /dev/null 2>&1
   sudo rm -f /etc/systemd/system/runScriptServer.service
   sudo ln -s $HSHQ_SCRIPTS_DIR/root/runScriptServer.service /etc/systemd/system/runScriptServer.service
@@ -2244,8 +2244,8 @@ EOF
     installWazuhAgent
   fi
   set +e
-  sudo docker ps -q | xargs sudo docker stop
-  sudo docker container prune -f
+  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
+  sudo docker container prune -f > /dev/null 2>&1
   createDockerNetworks
   enableAllWGVPNInterfaces
   createWGDockerNetworks
