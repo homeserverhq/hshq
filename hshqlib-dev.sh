@@ -32957,13 +32957,15 @@ function installAdGuard()
     echo "ERROR: There was a problem installing AdGuard"
     exit $retval
   fi
+  sleep 5
   isSuccess=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
-    checkDNS=$(dig +short api.ipify.org | head -n 1)
-    if ! [ -z "$checkDNS" ] && [ "$(checkValidIPAddress $checkDNS)" = "true" ]; then
+    checkDNS1=$(dig +short api.ipify.org | head -n 1)
+    checkDNS2=$(dig +short registry-1.docker.io | head -n 1)
+    if ! [ -z "$checkDNS1" ] && [ "$(checkValidIPAddress $checkDNS1)" = "true" ] &&  ! [ -z "$checkDNS2" ] && [ "$(checkValidIPAddress $checkDNS2)" = "true" ]; then
       isSuccess=true
       break
     fi
