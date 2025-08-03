@@ -2147,6 +2147,7 @@ function performFullRestore()
   setSystemState $SS_RESTORING
   IS_INSTALLED=false
   IS_INSTALLING=true
+  is_draw_pb=false
   set +e
   origUsername=$(echo $HSHQ_BASE_DIR | cut -d"/" -f3)
   curUID=$(id -u)
@@ -2262,9 +2263,8 @@ EOF
     ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successfully connected to RelayServer!'
     unloadSSHKey
   fi
-  removeSudoTimeoutInstall
   wgDockInternetUpAll
-  initCronJobs
+  postInstallation restore
   setSystemState $SS_RUNNING
   performExitFunctions
   releaseLock networkchecks performFullRestore false
@@ -4115,12 +4115,8 @@ function performBaseInstallation()
   draw_progress_bar 86
   checkUpdateAllIPTables performBaseInstallation-Late
   set -e
-  draw_progress_bar 88
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-autoipd > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove --purge -y
   draw_progress_bar 90
-  postInstallation
+  postInstallation install
 }
 
 function trustDesktopIcon()
@@ -4139,21 +4135,26 @@ function trustDesktopIcon()
 
 function postInstallation()
 {
+  isInstallOrRestore="$1"
   refreshSudo
   echo "Performing post-installation tasks..."
-  echo "Emailing Root CA..."
-  sendRootCAEmail true
-  draw_progress_bar 91
-  emailFormattedCredentials
-  draw_progress_bar 93
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-autoipd > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove --purge -y
+  if [ "$isInstallOrRestore" = "install" ]; then
+    echo "Emailing Root CA..."
+    sendRootCAEmail true
+    draw_progress_bar 91
+    emailFormattedCredentials
+    draw_progress_bar 95
+    IS_INSTALLED=true
+    updateConfigVar IS_INSTALLED $IS_INSTALLED
+    IS_INSTALLING=false
+    updateConfigVar IS_INSTALLING $IS_INSTALLING
+  fi
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
-  draw_progress_bar 95
   sudo rm -f /etc/skel/hshq.sh
-  IS_INSTALLED=true
-  updateConfigVar IS_INSTALLED $IS_INSTALLED
-  IS_INSTALLING=false
-  updateConfigVar IS_INSTALLING $IS_INSTALLING
   if [ "$IS_DESKTOP_ENV" = "true" ]; then
     echo "Configuring Desktop environment..."
     set +e
@@ -4250,22 +4251,24 @@ EOFHP
   fi
   draw_progress_bar 99
   initCronJobs
-  encryptConfigFile
-  draw_progress_bar 100
-  destroy_scroll_area
-  releaseLock hshqopen "postInstallation" false
   removeSudoTimeoutInstall
   rm -f ~/dead.letter
   rm -f $HSHQ_BASE_DIR/cip.txt
-  sanitizeHSHQLog
-  setSystemState $SS_RUNNING
-  echo -e "\n\n\n\n################################################################\n"
-  echo "               HomeServer Installation Complete!"
-  echo "     The system will automatically reboot in 60 seconds..."
-  echo -e "\n################################################################\n\n"
-  sleep 60
-  logHSHQEvent info "postInstallation - Rebooting"
-  sudo reboot
+  if [ "$isInstallOrRestore" = "install" ]; then
+    encryptConfigFile
+    draw_progress_bar 100
+    destroy_scroll_area
+    releaseLock hshqopen "postInstallation" false
+    sanitizeHSHQLog
+    setSystemState $SS_RUNNING
+    echo -e "\n\n\n\n################################################################\n"
+    echo "               HomeServer Installation Complete!"
+    echo "     The system will automatically reboot in 60 seconds..."
+    echo -e "\n################################################################\n\n"
+    sleep 60
+    logHSHQEvent info "postInstallation - Rebooting"
+    sudo reboot
+  fi
 }
 
 function sanitizeHSHQLog()
