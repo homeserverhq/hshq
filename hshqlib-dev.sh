@@ -59195,7 +59195,7 @@ EOFPF
   DOCKER_BUILDKIT=1 docker build -t $(getScriptImageByContainerName pixelfed-app) .
   buildRetVal=$?
   cd ~
-  #sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
+  sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
   return $buildRetVal
 }
 
