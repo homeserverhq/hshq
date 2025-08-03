@@ -2269,19 +2269,25 @@ EOF
   performExitFunctions
   releaseLock networkchecks performFullRestore false
   clear
-  echo -e "\n\n\n\n##########################################\n"
-  echo -e "HomeServer Restore Process Complete!\n"
-  echo -e "The duplicati and syncthing stacks have"
-  echo -e "been intentionally skipped from the stack"
-  echo -e "restart process, as you may still need"
-  echo -e "to re-configure your backup drives, etc.\n"
-  echo -e "You may also have to manually restart some"
-  echo -e "stacks due to some bugs in the docker"
-  echo -e "startup process.\n"
-  echo -e "Log in to Portainer via the following URL: \n"
-  echo -e "  https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT"
-  echo -e "\n##########################################\n\n"
-  read -r -p "Press enter to continue."
+  echo -e "\n\n\n\n################################################################\n"
+  echo -e "  HomeServer Restore Process Complete! \n"
+  echo -e "  The Duplicati and Syncthing stacks have been intentionally"
+  echo -e "  skipped from the stack restart process, as you may still"
+  echo -e "  need to re-configure your backup drives, etc.\n"
+  echo -e "                  ***** IMPORTANT *****                  \n"
+  echo -e "  If you use Duplicati as your primary backup method, then"
+  echo -e "  the first thing you need to do after starting the Duplicati"
+  echo -e "  stack is to run the 'Recreate (delete and repair)' function."
+  echo -e "  This can be found by going to your HSHQ Backup, then go to"
+  echo -e "  Advanced -> Database. DO NOT run the 'Repair' function,"
+  echo -e "  even if prompted. It will cause permanent data loss to your"
+  echo -e "  backup history, and you will have to either recover the"
+  echo -e "  missing files or start a fresh new backup profile.\n" 
+  echo -e "  You may also have to manually restart some stacks due to"
+  echo -e "  some bugs in the docker startup process. Double check"
+  echo -e "  everything is working correctly in Portainer.\n"
+  echo -e "\n################################################################\n\n"
+  read -r -p "  Press enter to continue."
 }
 
 function restorePullDockerImages()
@@ -32603,6 +32609,9 @@ function buildOrPullImage()
       ;;
     "hshq/pixelfed:v1")
       buildImagePixelfed
+      ;;
+    "hshq/mindsdb:v1")
+      echo "hshq/mindsdb:v1 - This image must be rebuilt by user."
       ;;
     *)
       pullImage "$curImg"
