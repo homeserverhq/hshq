@@ -32701,11 +32701,6 @@ function installPortainer()
   http --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/$PORTAINER_ADMIN_USERID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
 
-  # Add gcr registry
-  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
-  http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
-  rm $HOME/portainer-json.tmp
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PORTAINER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -32992,6 +32987,11 @@ function installAdGuard()
     echo "Adguard did not install correctly, exiting..."
     exit 1
   fi
+  # Add gcr registry
+  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
+  http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
+  rm $HOME/portainer-json.tmp
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
