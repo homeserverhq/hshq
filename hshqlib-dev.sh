@@ -2124,7 +2124,7 @@ function showRestoreUnencryptedMenu()
   rm -fr $HSHQ_RESTORE_DIR
   # Only restore hshqlib script if version is less than 85
   hshqlib_orig_version=$(sed -n 2p $HSHQ_LIB_SCRIPT | cut -d"=" -f2)
-  if [ $hshqlib_orig_version -lt 85 ] || [ $hshqlib_orig_version -eq 177 ]; then
+  if [ $hshqlib_orig_version -lt 85 ]; then
     mv $HOME/$HSHQ_LIB_FILENAME $HSHQ_LIB_SCRIPT
   else
     rm -f $HOME/$HSHQ_LIB_FILENAME
