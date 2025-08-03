@@ -2171,7 +2171,8 @@ EOF
     return
   fi
   setSudoTimeoutInstall
-  checkCreateNonbackupDirs
+  mkdir -p $HSHQ_NONBACKUP_DIR
+  mkdir -p $HSHQ_BUILD_DIR
   # Set hostname
   new_hostname="HomeServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
@@ -2215,7 +2216,6 @@ EOF
   updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_NAME $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
   HOMESERVER_HOST_PRIMARY_INTERFACE_IP=$curPrimaryIfaceIP
   updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
-
   find $HSHQ_SSL_DIR -name "*-ca.crt" -print0 | xargs -0 -I {} sudo cp {} /usr/local/share/ca-certificates/
   sudo update-ca-certificates
   CURRENT_SSH_PORT=$(sudo grep "^Port\|^#Port" /etc/ssh/sshd_config | cut -d" " -f2)
@@ -2297,14 +2297,33 @@ function restorePullDockerImages()
   uniqs_arr=($(for tmpImg in "${imgOnlyList[@]}"; do echo "${tmpImg}"; done | sort -u))
   for curImg in "${uniqs_arr[@]}"
   do
-    pullImage $curImg
+    buildOrPullImage $curImg
   done
-  buildCustomImages
+  # Create nonbackup directories
+  stackList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^#HSHQManaged" | cut -d" " -f2))
+  for curStackItem in "${stackList[@]}"
+  do
+    checkCreateNonbackupDirByStack "$curStackItem"
+  done
 }
 
-function buildCustomImages()
+function buildOrPullImage()
 {
-  buildFileDropImage
+  curImg="$1"
+  # At some point need to rework this function to be more generalized.
+  # But at the moment, there are only 3 custom images, so a simple case statement will do.
+  # The mindsdb image in the AIStack is still an issue. Still need a solution for it.
+  case "$curImg" in
+    "filedrop/filedrop:1")
+      buildImageFileDrop
+      ;;
+    "hshq/pixelfed:v1")
+      buildImagePixelfed
+      ;;
+    *)
+      pullImage "$curImg"
+      ;;
+  esac
 }
 
 function showRestoreMountDriveMenu()
@@ -13880,7 +13899,7 @@ function checkDeleteStackAndDirectory()
     stackID=$(getStackID $stack_name)
     if ! [ -z "$stackID" ]; then
       if ! [ "$ENABLE_STACK_DELETE" = "true" ] && ! [ "$is_force_delete" = "true" ]; then
-        echo "ERROR: Stack deletion is disabled, exiting..."
+        echo "ERROR: Stack deletion is disabled(1), exiting..."
         exit 5
       fi
       if [ "$is_force_delete" = "true" ]; then
@@ -13898,7 +13917,7 @@ function checkDeleteStackAndDirectory()
   fi
   if [ -d "$HSHQ_STACKS_DIR/$stack_name" ] || [ -d "$HSHQ_NONBACKUP_DIR/$stack_name" ]; then
     if ! [ "$ENABLE_STACK_DELETE" = "true" ] && ! [ "$is_force_delete" = "true" ]; then
-      echo "ERROR: Stack deletion is disabled, exiting..."
+      echo "ERROR: Stack deletion is disabled(2), exiting..."
       exit 5
     fi
     if [ "$is_force_delete" = "true" ]; then
@@ -30535,40 +30554,89 @@ function initServicesCredentials()
   fi
 }
 
-function checkCreateNonbackupDirs()
+function checkCreateNonbackupDirByStack()
 {
-  mkdir -p $HSHQ_NONBACKUP_DIR
-  mkdir -p $HSHQ_BUILD_DIR
-  mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
-  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
-  mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
-  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
-  mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
-  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
-  mkdir -p $HSHQ_NONBACKUP_DIR/netdata/cache
-  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
-  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
-  mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
-  mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
-  mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
+  nbStackName="$1"
+  case "$nbStackName" in
+    "adguard")
+      mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
+      ;;
+    "sysutils")
+      mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+      ;;
+    "wazuh")
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
+      ;;
+    "duplicati")
+      mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
+      ;;
+    "mastodon")
+      mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
+      mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
+      ;;
+    "searxng")
+      mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
+      ;;
+    "peertube")
+      mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
+      mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
+      ;;
+    "gitlab")
+      mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
+      ;;
+    "discourse")
+      mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
+      ;;
+    "shlink")
+      mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
+      ;;
+    "firefly")
+      mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
+      ;;
+    "kasm")
+      mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
+      ;;
+    "netdata")
+      mkdir -p $HSHQ_NONBACKUP_DIR/netdata/cache
+      ;;
+    "stirlingpdf")
+      mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
+      mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
+      ;;
+    "bar-assistant")
+      mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
+      ;;
+    "wallabag")
+      mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
+      ;;
+    "paperless")
+      mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
+      ;;
+    "piped")
+      mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
+      ;;
+    "penpot")
+      mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
+      ;;
+    "immich")
+      mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
+      mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
+      ;;
+    "aistack")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
+      ;;
+    "pixelfed")
+      mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
+      ;;
+    "yamtrack")
+      mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
+      ;;
+    *)
+      ;;
+  esac
 }
 
 function installBaseStacks()
@@ -53959,7 +54027,7 @@ function installFileDrop()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  buildFileDropImage
+  buildImageFileDrop
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -54073,7 +54141,7 @@ function performUpdateFileDrop()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function buildFileDropImage()
+function buildImageFileDrop()
 {
   set +e
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
