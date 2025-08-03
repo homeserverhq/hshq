@@ -27836,7 +27836,7 @@ function doNothing()
 # Services Functions
 function loadPinnedDockerImages()
 {
-  IMG_ADGUARD=adguard/adguardhome:v0.107.59
+  IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
   IMG_AISTACK_MINDSDB_APP=mindsdb/mindsdb:v25.4.5.0
   IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v1
   IMG_AISTACK_OPENTELEMETRY=otel/opentelemetry-collector-contrib:0.116.1
@@ -27999,7 +27999,7 @@ function getScriptStackVersion()
     portainer)
       echo "v3" ;;
     adguard)
-      echo "v6" ;;
+      echo "v7" ;;
     sysutils)
       echo "v7" ;;
     openldap)
@@ -32701,6 +32701,11 @@ function installPortainer()
   http --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/$PORTAINER_ADMIN_USERID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
 
+  # Add gcr registry
+  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
+  http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
+  rm $HOME/portainer-json.tmp
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PORTAINER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -32987,10 +32992,6 @@ function installAdGuard()
     echo "Adguard did not install correctly, exiting..."
     exit 1
   fi
-  # Add gcr registry
-  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
-  http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
-  rm $HOME/portainer-json.tmp
 
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
@@ -33317,34 +33318,39 @@ function performUpdateAdGuard()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.41
-      image_update_map[0]="adguard/adguardhome:v0.107.41,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.41,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     2)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.43
-      image_update_map[0]="adguard/adguardhome:v0.107.43,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.43,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     3)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.45
-      image_update_map[0]="adguard/adguardhome:v0.107.45,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.45,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     4)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.52
-      image_update_map[0]="adguard/adguardhome:v0.107.52,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.52,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.53
-      image_update_map[0]="adguard/adguardhome:v0.107.53,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.53,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.59
-      image_update_map[0]="adguard/adguardhome:v0.107.59,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.59,mirror.gcr.io/adguard/adguardhome:v0.107.64"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/adguard/adguardhome:v0.107.64
+      image_update_map[0]="mirror.gcr.io/adguard/adguardhome:v0.107.64,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     *)
       is_upgrade_error=true
