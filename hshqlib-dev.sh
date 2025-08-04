@@ -27849,7 +27849,7 @@ function loadPinnedDockerImages()
   IMG_CADDY=caddy:2.9.1
   IMG_CALIBRE_SERVER=linuxserver/calibre:8.2.1
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.24
-  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.49.11
+  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.50.8
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
   IMG_CODESERVER=codercom/code-server:4.98.2
   IMG_COLLABORA=collabora/code:24.04.13.2.1
@@ -27894,10 +27894,10 @@ function loadPinnedDockerImages()
   IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=jellyfin/jellyfin:10.10.6
-  IMG_JITSI_WEB=jitsi/web:stable-10133-1
-  IMG_JITSI_PROSODY=jitsi/prosody:stable-10133-1
-  IMG_JITSI_JICOFO=jitsi/jicofo:stable-10133-1
-  IMG_JITSI_JVB=jitsi/jvb:stable-10133-1
+  IMG_JITSI_WEB=jitsi/web:stable-10431
+  IMG_JITSI_PROSODY=jitsi/prosody:stable-10431
+  IMG_JITSI_JICOFO=jitsi/jicofo:stable-10431
+  IMG_JITSI_JVB=jitsi/jvb:stable-10431
   IMG_JUPYTER=continuumio/anaconda3:2024.10-1
   IMG_KASM=lscr.io/linuxserver/kasm:1.16.1-ls68
   IMG_KEILA=pentacent/keila:0.17.1
@@ -28013,7 +28013,7 @@ function getScriptStackVersion()
     nextcloud)
       echo "v9" ;;
     jitsi)
-      echo "v7" ;;
+      echo "v8" ;;
     matrix)
       echo "v7" ;;
     wikijs)
@@ -28103,7 +28103,7 @@ function getScriptStackVersion()
     heimdall)
       echo "v1" ;;
     changedetection)
-      echo "v5" ;;
+      echo "v6" ;;
     huginn)
       echo "v3" ;;
     coturn)
@@ -40618,60 +40618,68 @@ function performUpdateJitsi()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-8719,jitsi/jvb:stable-8719,jitsi/prosody:stable-8719,jitsi/web:stable-8719
-      image_update_map[0]="jitsi/jicofo:stable-8719,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-8719,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-8719,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-8719,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-8719,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-8719,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-8719,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-8719,jitsi/web:stable-10431"
     ;;
     2)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9111,jitsi/jvb:stable-9111,jitsi/prosody:stable-9111,jitsi/web:stable-9111
-      image_update_map[0]="jitsi/jicofo:stable-9111,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9111,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9111,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9111,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9111,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9111,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9111,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9111,jitsi/web:stable-10431"
     ;;
     3)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9220,jitsi/jvb:stable-9220,jitsi/prosody:stable-9220,jitsi/web:stable-9220
-      image_update_map[0]="jitsi/jicofo:stable-9220,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9220,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9220,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9220,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9220,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9220,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-10431"
     ;;
     4)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9258,jitsi/jvb:stable-9258,jitsi/prosody:stable-9258,jitsi/web:stable-9258
-      image_update_map[0]="jitsi/jicofo:stable-9258,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9258,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9258,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9258,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9258,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9258,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9258,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9258,jitsi/web:stable-10431"
     ;;
     5)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9584,jitsi/jvb:stable-9584,jitsi/prosody:stable-9584,jitsi/web:stable-9584
-      image_update_map[0]="jitsi/jicofo:stable-9584,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9584,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9584,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9584,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9584,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9584,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9584,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9584,jitsi/web:stable-10431"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9779,jitsi/jvb:stable-9779,jitsi/prosody:stable-9779,jitsi/web:stable-9779
-      image_update_map[0]="jitsi/jicofo:stable-9779,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9779,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9779,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9779,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9779,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9779,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9779,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9779,jitsi/web:stable-10431"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-10133-1,jitsi/jvb:stable-10133-1,jitsi/prosody:stable-10133-1,jitsi/web:stable-10133-1
-      image_update_map[0]="jitsi/jicofo:stable-10133-1,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-10133-1,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-10133-1,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-10133-1,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-10133-1,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-10133-1,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-10133-1,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-10133-1,jitsi/web:stable-10431"
+    ;;
+    8)
+      newVer=v8
+      curImageList=jitsi/jicofo:stable-10431,jitsi/jvb:stable-10431,jitsi/prosody:stable-10431,jitsi/web:stable-10431
+      image_update_map[0]="jitsi/jicofo:stable-10431,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-10431,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-10431,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-10431,jitsi/web:stable-10431"
     ;;
     *)
       is_upgrade_error=true
@@ -53428,7 +53436,7 @@ function installChangeDetection()
   fi
 
   outputConfigChangeDetection
-  installStack changedetection changedetection-app "wsgi starting up on" $HOME/changedetection.env
+  installStack changedetection changedetection-app "Running on http" $HOME/changedetection.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -53561,6 +53569,7 @@ SCREEN_WIDTH=1920
 SCREEN_HEIGHT=1024
 SCREEN_DEPTH=16
 MAX_CONCURRENT_CHROME_PROCESSES=10
+STATS_REFRESH_SECONDS=30
 EOFCD
 
   cat <<EOFCD > $HSHQ_STACKS_DIR/changedetection/data/genpass.py
@@ -53602,15 +53611,21 @@ function performUpdateChangeDetection()
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=ghcr.io/dgtlmoon/changedetection.io:0.47.05,dgtlmoon/sockpuppetbrowser:latest
-      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.47.05,ghcr.io/dgtlmoon/changedetection.io:0.49.11"
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.47.05,ghcr.io/dgtlmoon/changedetection.io:0.50.8"
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=ghcr.io/dgtlmoon/changedetection.io:0.49.11,dgtlmoon/sockpuppetbrowser:latest
-      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.49.11,ghcr.io/dgtlmoon/changedetection.io:0.49.11"
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.49.11,ghcr.io/dgtlmoon/changedetection.io:0.50.8"
+      image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
+    ;;
+    6)
+      newVer=v6
+      curImageList=ghcr.io/dgtlmoon/changedetection.io:0.50.8,dgtlmoon/sockpuppetbrowser:latest
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.50.8,ghcr.io/dgtlmoon/changedetection.io:0.50.8"
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     *)
