@@ -1,6 +1,6 @@
 #!/bin/bash
 HSHQ_LIB_SCRIPT_VERSION=178
-LOG_LEVEL=info
+LOG_LEVEL=debug
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
