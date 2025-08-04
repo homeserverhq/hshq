@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=176
+HSHQ_LIB_SCRIPT_VERSION=177
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -173,6 +173,7 @@ function init()
   HSHQ_LIB_FILENAME=hshqlib.sh
   HSHQ_NEW_LIB_FILENAME=hshqlib.new
   HSHQ_WRAP_FILENAME=hshq.sh
+  HSHQ_ASSETS_GIT_REPO=https://github.com/homeserverhq/assets.git
   APPLICATION_FIRST_LINE="###################### Application Begin #######################"
   APPLICATION_LAST_LINE="####################### Application End ########################"
   INVITATION_FIRST_LINE="####################### Invitation Begin #######################"
@@ -2147,6 +2148,7 @@ function performFullRestore()
   setSystemState $SS_RESTORING
   IS_INSTALLED=false
   IS_INSTALLING=true
+  is_draw_pb=false
   set +e
   origUsername=$(echo $HSHQ_BASE_DIR | cut -d"/" -f3)
   curUID=$(id -u)
@@ -2170,7 +2172,8 @@ EOF
     return
   fi
   setSudoTimeoutInstall
-  checkCreateNonbackupDirs
+  mkdir -p $HSHQ_NONBACKUP_DIR
+  mkdir -p $HSHQ_BUILD_DIR
   # Set hostname
   new_hostname="HomeServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
@@ -2182,7 +2185,6 @@ EOF
   echo "Pulling docker images..."
   restorePullDockerImages
   rm -f $HOME/script-server.zip
-
   # Set timezone
   sudo timedatectl set-timezone "$TZ"
   set +e
@@ -2215,7 +2217,6 @@ EOF
   updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_NAME $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
   HOMESERVER_HOST_PRIMARY_INTERFACE_IP=$curPrimaryIfaceIP
   updatePlaintextRootConfigVar HOMESERVER_HOST_PRIMARY_INTERFACE_IP $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
-
   find $HSHQ_SSL_DIR -name "*-ca.crt" -print0 | xargs -0 -I {} sudo cp {} /usr/local/share/ca-certificates/
   sudo update-ca-certificates
   CURRENT_SSH_PORT=$(sudo grep "^Port\|^#Port" /etc/ssh/sshd_config | cut -d" " -f2)
@@ -2231,7 +2232,7 @@ EOF
   performClearIPTables true
   checkUpdateAllIPTables performFullRestore
   outputScripts
-  sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/
+  sudo cp $HSHQ_WIREGUARD_DIR/vpn/*.conf /etc/wireguard/ > /dev/null 2>&1
   performAptInstall python3-tornado > /dev/null 2>&1
   sudo rm -f /etc/systemd/system/runScriptServer.service
   sudo ln -s $HSHQ_SCRIPTS_DIR/root/runScriptServer.service /etc/systemd/system/runScriptServer.service
@@ -2243,8 +2244,8 @@ EOF
     installWazuhAgent
   fi
   set +e
-  sudo docker ps -q | xargs sudo docker stop
-  sudo docker container prune -f
+  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
+  sudo docker container prune -f > /dev/null 2>&1
   createDockerNetworks
   enableAllWGVPNInterfaces
   createWGDockerNetworks
@@ -2262,30 +2263,39 @@ EOF
     ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successfully connected to RelayServer!'
     unloadSSHKey
   fi
-  removeSudoTimeoutInstall
   wgDockInternetUpAll
-  initCronJobs
+  postInstallation restore
   setSystemState $SS_RUNNING
   performExitFunctions
   releaseLock networkchecks performFullRestore false
+  sudo systemctl daemon-reload
+  sudo systemctl restart ssh
+  sudo systemctl restart sshd
   clear
-  echo -e "\n\n\n\n##########################################\n"
-  echo -e "HomeServer Restore Process Complete!\n"
-  echo -e "The duplicati and syncthing stacks have"
-  echo -e "been intentionally skipped from the stack"
-  echo -e "restart process, as you may still need"
-  echo -e "to re-configure your backup drives, etc.\n"
-  echo -e "You may also have to manually restart some"
-  echo -e "stacks due to some bugs in the docker"
-  echo -e "startup process.\n"
-  echo -e "Log in to Portainer via the following URL: \n"
-  echo -e "  https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT"
-  echo -e "\n##########################################\n\n"
-  read -r -p "Press enter to continue."
+  echo -e "\n\n\n\n################################################################\n"
+  echo -e "  HomeServer Restore Process Complete! \n"
+  echo -e "  The Duplicati and Syncthing stacks have been intentionally"
+  echo -e "  skipped from the stack restart process, as you may still"
+  echo -e "  need to re-configure your backup drives, etc. You may"
+  echo -e "  also have to manually restart some stacks due to some bugs"
+  echo -e "  in the docker startup process. Double check everything is"
+  echo -e "  working correctly in Portainer."
+  echo -e "                  ***** IMPORTANT *****                  "
+  echo -e "  If you use Duplicati as your primary backup method, then"
+  echo -e "  the first thing you need to do after starting the Duplicati"
+  echo -e "  stack is to run the 'Recreate (delete and repair)' function."
+  echo -e "  This can be found by going to your HSHQ Backup, then go to"
+  echo -e "  Advanced -> Database. DO NOT run the 'Repair' function,"
+  echo -e "  even if prompted. It will cause permanent data loss to your"
+  echo -e "  backup history, and you will have to either recover the"
+  echo -e "  missing files or start a fresh new backup profile." 
+  echo -e "\n################################################################\n\n"
+  read -r -p "  Press enter to continue."
 }
 
 function restorePullDockerImages()
 {
+  set +e
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   imgList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^[[:blank:]]*image:"))
@@ -2298,14 +2308,14 @@ function restorePullDockerImages()
   uniqs_arr=($(for tmpImg in "${imgOnlyList[@]}"; do echo "${tmpImg}"; done | sort -u))
   for curImg in "${uniqs_arr[@]}"
   do
-    pullImage $curImg
+    buildOrPullImage $curImg
   done
-  buildCustomImages
-}
-
-function buildCustomImages()
-{
-  buildFileDropImage
+  # Create nonbackup directories
+  stackList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^#HSHQManaged" | cut -d" " -f2))
+  for curStackItem in "${stackList[@]}"
+  do
+    checkCreateNonbackupDirByStack "$curStackItem"
+  done
 }
 
 function showRestoreMountDriveMenu()
@@ -2567,7 +2577,7 @@ function createClientDNSNetworksOnRestore()
   rstackIDsQry=""
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -2748,7 +2758,7 @@ EOF
       restartAllStacksDialog ;;
     7)
       checkLoadConfig
-      emailVaultwardenCredentials false ;;
+      emailVaultwardenCredentials ;;
     8)
       checkLoadConfig
       sendRootCAEmail ;;
@@ -4076,6 +4086,10 @@ function performBaseInstallation()
   initDHParams
   draw_progress_bar 53
   getUpdateAssets
+  if [ $? -ne 0 ]; then
+    echo "FATAL: Could not update image assets, exiting..."
+    exit 9
+  fi
   draw_progress_bar 55
   logHSHQEvent info "performBaseInstallation - Starting Stack Installs"
   installBaseStacks
@@ -4115,12 +4129,8 @@ function performBaseInstallation()
   draw_progress_bar 86
   checkUpdateAllIPTables performBaseInstallation-Late
   set -e
-  draw_progress_bar 88
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-autoipd > /dev/null 2>&1
-  sudo DEBIAN_FRONTEND=noninteractive apt autoremove --purge -y
   draw_progress_bar 90
-  postInstallation
+  postInstallation install
 }
 
 function trustDesktopIcon()
@@ -4139,21 +4149,26 @@ function trustDesktopIcon()
 
 function postInstallation()
 {
+  isInstallOrRestore="$1"
   refreshSudo
   echo "Performing post-installation tasks..."
-  echo "Emailing Root CA..."
-  sendRootCAEmail true
-  draw_progress_bar 91
-  emailFormattedCredentials
-  draw_progress_bar 93
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-daemon > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt remove --purge -y avahi-autoipd > /dev/null 2>&1
+  sudo DEBIAN_FRONTEND=noninteractive apt autoremove --purge -y
+  if [ "$isInstallOrRestore" = "install" ]; then
+    echo "Emailing Root CA..."
+    sendRootCAEmail true
+    draw_progress_bar 91
+    emailFormattedCredentials
+    draw_progress_bar 95
+    IS_INSTALLED=true
+    updateConfigVar IS_INSTALLED $IS_INSTALLED
+    IS_INSTALLING=false
+    updateConfigVar IS_INSTALLING $IS_INSTALLING
+  fi
   # Need to wait until emails have been sent before changing permissions.
   sudo chmod 750 /usr/bin/mail.mailutils
-  draw_progress_bar 95
   sudo rm -f /etc/skel/hshq.sh
-  IS_INSTALLED=true
-  updateConfigVar IS_INSTALLED $IS_INSTALLED
-  IS_INSTALLING=false
-  updateConfigVar IS_INSTALLING $IS_INSTALLING
   if [ "$IS_DESKTOP_ENV" = "true" ]; then
     echo "Configuring Desktop environment..."
     set +e
@@ -4250,22 +4265,24 @@ EOFHP
   fi
   draw_progress_bar 99
   initCronJobs
-  encryptConfigFile
-  draw_progress_bar 100
-  destroy_scroll_area
-  releaseLock hshqopen "postInstallation" false
   removeSudoTimeoutInstall
   rm -f ~/dead.letter
   rm -f $HSHQ_BASE_DIR/cip.txt
-  sanitizeHSHQLog
-  setSystemState $SS_RUNNING
-  echo -e "\n\n\n\n################################################################\n"
-  echo "               HomeServer Installation Complete!"
-  echo "     The system will automatically reboot in 60 seconds..."
-  echo -e "\n################################################################\n\n"
-  sleep 60
-  logHSHQEvent info "postInstallation - Rebooting"
-  sudo reboot
+  if [ "$isInstallOrRestore" = "install" ]; then
+    encryptConfigFile
+    draw_progress_bar 100
+    destroy_scroll_area
+    releaseLock hshqopen "postInstallation" false
+    sanitizeHSHQLog
+    setSystemState $SS_RUNNING
+    echo -e "\n\n\n\n################################################################\n"
+    echo "               HomeServer Installation Complete!"
+    echo "     The system will automatically reboot in 60 seconds..."
+    echo -e "\n################################################################\n\n"
+    sleep 60
+    logHSHQEvent info "postInstallation - Rebooting"
+    sudo reboot
+  fi
 }
 
 function sanitizeHSHQLog()
@@ -4695,7 +4712,7 @@ EOF
     showMessageBox "ERROR" "No partition was selected, returning..."
     return
   fi
-  sudo mount /dev/$selDisk $HSHQ_BACKUP_DIR
+  sudo mount /dev/$selDisk $HSHQ_BACKUP_DIR > /dev/null
   if [ $? -ne 0 ]; then
     showMessageBox "ERROR" "There was an error mounting this partition, returning..."
     return
@@ -4709,10 +4726,11 @@ EOF
   else
     echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
+  sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    sudo mv /etc/fstab.old /etc/fstab
     showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup disk will not be auto-mounted after a reboot."
+    sudo mv /etc/fstab.old /etc/fstab
   else
     sudo rm -f /etc/fstab.old
   fi
@@ -4810,8 +4828,14 @@ EOF
   "4" "Update All Available Services" \
   "5" "Remove Service(s) From List" \
   "6" "Exit" 3>&1 1>&2 2>&3)
+  if [ $? -ne 0 ] || [ $menures -eq 6 ]; then
+    return
+  fi
+  set +e
+  getUpdateAssets
   if [ $? -ne 0 ]; then
-    menures=0
+    showMessageBox "ERROR" "ERROR: Could not update image assets, returning..."
+    return
   fi
   case $menures in
     0)
@@ -4882,7 +4906,6 @@ EOF
     return
   fi
   setSudoTimeoutInstall
-  getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
   do
     installStackByName ${cur_svc//\"} $is_integrate
@@ -4898,7 +4921,6 @@ function installListOfServices()
   setSystemState $SS_INSTALLING
   stackListArr=($(echo "$1" | tr "," "\n"))
   setSudoTimeoutInstall
-  getUpdateAssets
   for curStack in "${stackListArr[@]}"
   do
     installStackByName $curStack true
@@ -4951,7 +4973,6 @@ function installAllAvailableStacks()
   fi
   set -e
   setSudoTimeoutInstall
-  getUpdateAssets
   for cur_svc in "${sel_svcs[@]}"
   do
     installStackByName $cur_svc $is_integrate
@@ -5076,7 +5097,6 @@ function updateListOfStacks()
   stackListArr=($(echo "$1" | tr "," "\n"))
   stacks_need_update_list="$(getStacksToUpdate)"
   setSudoTimeoutInstall
-  getUpdateAssets
   portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   report_start_time=$(date)
   full_update_report=""
@@ -5278,80 +5298,6 @@ EOF
 
 function initRelayServerCredentials()
 {
-  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
-    RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
-    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_PORTAINER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_PASSWORD $RELAYSERVER_PORTAINER_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_USERNAME" ]; then
-    RELAYSERVER_ADGUARD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_adguard"
-    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_ADGUARD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_PASSWORD $RELAYSERVER_ADGUARD_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_USERNAME" ]; then
-    RELAYSERVER_CADDYDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_caddydns"
-    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_CADDYDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_PASSWORD $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_USERNAME" ]; then
-    RELAYSERVER_WGPORTAL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_wgportal"
-    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_USERNAME $RELAYSERVER_WGPORTAL_ADMIN_USERNAME
-    RELAYSERVER_WGPORTAL_ADMIN_EMAIL=$RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_EMAIL
-  fi
-  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_WGPORTAL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_PASSWORD $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_USERNAME" ]; then
-    RELAYSERVER_CLIENTDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_clientdns"
-    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_USERNAME" ]; then
-    RELAYSERVER_RSPAMD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_rspamd"
-    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_RSPAMD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_PASSWORD $RELAYSERVER_RSPAMD_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_USERNAME" ]; then
-    RELAYSERVER_FILEBROWSER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_filebrowser"
-    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_USERNAME" ]; then
-    RELAYSERVER_SYNCTHING_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_syncthing"
-    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_USERNAME
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_PASSWORD" ]; then
-    RELAYSERVER_SYNCTHING_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_PASSWORD $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_API_KEY" ]; then
-    RELAYSERVER_SYNCTHING_API_KEY=$(pwgen -c -n 32 1)
-    updateConfigVar RELAYSERVER_SYNCTHING_API_KEY $RELAYSERVER_SYNCTHING_API_KEY
-  fi
-  if [ -z "$RELAYSERVER_SYNCTHING_FOLDER_ID" ]; then
-    RELAYSERVER_SYNCTHING_FOLDER_ID=$(pwgen -c -n 5 1)-$(pwgen -c -n 5 1)
-    updateConfigVar RELAYSERVER_SYNCTHING_FOLDER_ID $RELAYSERVER_SYNCTHING_FOLDER_ID
-  fi
   RELAYSERVER_WG_SV_IP=$(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f2- | rev).$(($(sipcalc $PRIMARY_VPN_SUBNET | grep "^Usable range" | rev | cut -d" " -f1 | cut -d"." -f1 | rev)))
   updateConfigVar RELAYSERVER_WG_SV_IP $RELAYSERVER_WG_SV_IP
   if [ -z "$RELAYSERVER_WG_SV_PRIVATEKEY" ]; then
@@ -5838,8 +5784,6 @@ function webSetupHostedVPN()
   fi
   rm -f $wgconfigfile
   echo -e "$wgconfig" > $wgconfigfile
-  echo "Emailing credentials..."
-  emailVaultwardenCredentials true
 }
 
 function setupHostedVPN()
@@ -8814,6 +8758,12 @@ function installPortainer()
   echo "{\"theme\":{\"color\":\"dark\"}}" > portainer-json.tmp
   http --verify=no --timeout=300 PUT https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/users/\$RELAYSERVER_PORTAINER_ADMIN_USERID "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" @portainer-json.tmp > /dev/null
   rm portainer-json.tmp
+
+  # Add gcr registry
+  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > portainer-json.tmp
+  http --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" @portainer-json.tmp > /dev/null
+  rm portainer-json.tmp
+
 }
 
 function outputConfigPortainer()
@@ -13878,7 +13828,7 @@ function checkDeleteStackAndDirectory()
     stackID=$(getStackID $stack_name)
     if ! [ -z "$stackID" ]; then
       if ! [ "$ENABLE_STACK_DELETE" = "true" ] && ! [ "$is_force_delete" = "true" ]; then
-        echo "ERROR: Stack deletion is disabled, exiting..."
+        echo "ERROR: Stack deletion is disabled(1), exiting..."
         exit 5
       fi
       if [ "$is_force_delete" = "true" ]; then
@@ -13896,7 +13846,7 @@ function checkDeleteStackAndDirectory()
   fi
   if [ -d "$HSHQ_STACKS_DIR/$stack_name" ] || [ -d "$HSHQ_NONBACKUP_DIR/$stack_name" ]; then
     if ! [ "$ENABLE_STACK_DELETE" = "true" ] && ! [ "$is_force_delete" = "true" ]; then
-      echo "ERROR: Stack deletion is disabled, exiting..."
+      echo "ERROR: Stack deletion is disabled(2), exiting..."
       exit 5
     fi
     if [ "$is_force_delete" = "true" ]; then
@@ -14952,7 +14902,7 @@ function getPortainerToken()
     if [ $ptok_retVal -eq 0 ] && ! [ -z "$ptok_full" ]; then
       # Do a sample query
       ptok=$(echo $ptok_full | jq -r .jwt)
-      qry=$(http --check-status --ignore-stdin --verify=no --timeout=$cur_timeout --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $ptok" endpointId==1)
+      qry=$(http --check-status --ignore-stdin --verify=no --timeout=$cur_timeout --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $ptok" endpointId==$PORTAINER_ENDPOINT_ID)
       if [ $? -eq 0 ]; then
         break
       fi
@@ -14985,7 +14935,7 @@ function getStackID()
   qry=""
   while [ $gsid_numTries -le $gsid_totalTries ]
   do
-    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     gsid_retVal=$?
     if [ $gsid_retVal -eq 0 ]; then
       break
@@ -15025,7 +14975,7 @@ function updateStackByID()
   usid_retVal=1
   while [ $usid_numTries -le $usid_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
     usid_retVal=$?
     if [ $usid_retVal -eq 0 ]; then
       break
@@ -15066,7 +15016,7 @@ function restartAllStacks()
   rstackIDsQry=""
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -15089,7 +15039,7 @@ function restartAllStacks()
   done
   stopPortainer
   removeDockerNetworks
-  sudo docker ps -q | xargs sudo docker stop
+  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
   docker container prune -f
   echo "Restarting Docker..."
   sudo systemctl restart docker
@@ -15507,9 +15457,9 @@ function installStack()
   while [ $ins_numTries -le $ins_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $ins_numTries -eq $ins_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/$stack_name-json.tmp
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==1 @$HOME/$stack_name-json.tmp >/dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/$stack_name-json.tmp >/dev/null
     fi
     ins_retVal=$?
     if [ $ins_retVal -eq 0 ]; then
@@ -15577,9 +15527,9 @@ function startStopStackByID()
   while [ $sss_numTries -le $sss_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $sss_numTries -eq $sss_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     fi
     sss_retVal=$?
     if [ $sss_retVal -eq 0 ]; then
@@ -15658,7 +15608,7 @@ function getStackStatusByID()
   stackStatus=""
   while [ $gss_numTries -le $gss_totalTries ]
   do
-    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1)
+    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
     gss_retVal=$?
     if [ $gss_retVal -eq 0 ]; then
       break
@@ -15703,7 +15653,7 @@ function deleteStack()
   ds_retVal=1
   while [ $ds_numTries -le $ds_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==1 > /dev/null
+    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     ds_retVal=$?
     if [ $ds_retVal -eq 0 ]; then
       break
@@ -17332,7 +17282,7 @@ function addLECertPathsToRelayServer()
     return
   fi
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add these subdomains to be managed by LetsEncrypt.\nSubdomains: $subdoms_le" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add this subdomain to be managed by LetsEncrypt: $subdoms_le" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     return
   fi
 
@@ -20695,6 +20645,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=171
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 177 ]; then
+    echo "Updating to Version 177..."
+    version177Update
+    HSHQ_VERSION=177
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20809,8 +20765,8 @@ function version22Update()
   mailuStackID=$(getStackID mailu "$portainerToken")
   cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
 
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1 | jq -r '.[] | select(.Status == 1) | .Name'))
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]}-1))
 
   for curID in $(seq 0 $numItems);
@@ -21134,7 +21090,7 @@ EOFMC
   sed -i "s|^SUBNET=.*|SUBNET=${NET_MAILU_EXT_SUBNET}|g" $HOME/mailu.env
   sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${NET_MAILU_EXT_SUBNET_PREFIX}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/mailu-json.tmp > /dev/null 2>&1
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
 
   if ! [ -z "$cdnsStackID" ]; then
@@ -21208,7 +21164,7 @@ EOFCF
     updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
     sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
     echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
     rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
   fi
 
@@ -21255,7 +21211,7 @@ EOFCF
     num_tries=1
     while [ $num_tries -lt $total_tries ]
     do
-      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==1 @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
       if [ $? -eq 0 ]; then
         break
       else
@@ -23059,6 +23015,7 @@ function version126Update()
   outputWireGuardScripts
   initCronJobs
   updateMOTD
+  getUpdateAssets
   outputScriptServerTheme
 }
 
@@ -23195,6 +23152,12 @@ EOFCS
 main "\$@"
 EOFRS
   updateRelayServerWithScript
+}
+
+function version177Update()
+{
+  PORTAINER_ENDPOINT_ID=1
+  outputMaintenanceScripts
 }
 
 function updateRelayServerWithScript()
@@ -24269,7 +24232,7 @@ function setVersionOnStacks()
     strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
   done
   # Special case for Caddy
-  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==1)
+  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
   caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("caddy-")) | .Id'))
   caddy_stack_names=($(echo $qry | jq -r '.[] | select (.Name | startswith("caddy-")) | .Name'))
   i=-1
@@ -24359,9 +24322,15 @@ function checkAddServiceToConfig()
 {
   casc_curE=${-//[^e]/}
   service_name="$1"
-  variable_list=$2
+  variable_list="$2"
+  conf_file="$3"
+  isRoot="$4"
   set +e
-  grep "# $service_name (Service Details)" $CONFIG_FILE > /dev/null 2>&1
+  if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+    sudo grep "# $service_name (Service Details)" $conf_file > /dev/null 2>&1
+  else
+    grep "# $service_name (Service Details)" $conf_file > /dev/null 2>&1
+  fi
   if [ $? -ne 0 ]; then
     replace_block="# $service_name (Service Details) BEGIN\n"
     varListArr=($(echo $variable_list | tr "," "\n"))
@@ -24370,7 +24339,11 @@ function checkAddServiceToConfig()
       replace_block=$replace_block"${curVar}\n"
     done
     replace_block=$replace_block"# $service_name (Service Details) END\n\n# Service Details END"
-    sed -i "s|# Service Details END|$replace_block|g" $CONFIG_FILE
+    if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+      sudo sed -i "s|# Service Details END|$replace_block|g" $conf_file
+    else
+      sed -i "s|# Service Details END|$replace_block|g" $conf_file
+    fi
   fi
   set +e
   if ! [ -z "$casc_curE" ]; then
@@ -24383,15 +24356,25 @@ function checkAddVarsToServiceConfig()
   cavc_curE=${-//[^e]/}
   service_name="$1"
   variable_list="$2"
+  conf_file="$3"
+  isRoot="$4"
   set +e
   varListArr=($(echo $variable_list | tr "," "\n"))
   for curVar in "${varListArr[@]}"
   do
     curVarCheck=$(echo $curVar | cut -d"=" -f1)"="
-    grep "$curVarCheck" $CONFIG_FILE > /dev/null 2>&1
+    if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+      sudo grep "$curVarCheck" $conf_file > /dev/null 2>&1
+    else
+      grep "$curVarCheck" $conf_file > /dev/null 2>&1
+    fi
     if [ $? -ne 0 ]; then
       replace_block="$curVar\n# $service_name (Service Details) END"
-      sed -i "s|# $service_name (Service Details) END|$replace_block|g" $CONFIG_FILE
+      if ! [ -z "$isRoot" ] && [ "$isRoot" = "true" ]; then
+        sudo sed -i "s|# $service_name (Service Details) END|$replace_block|g" $conf_file
+      else
+        sed -i "s|# $service_name (Service Details) END|$replace_block|g" $conf_file
+      fi
     fi
   done
   set +e
@@ -25347,7 +25330,7 @@ function startStopStack()
     portainerToken="\$(getPortainerToken)"
   fi
   stackID=\$(getStackID \$stackname "\$portainerToken")
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==1 > /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID > /dev/null
 }
 
 function getPortainerToken()
@@ -25361,7 +25344,7 @@ function getStackID()
   stackName=\$1
   stackName="\${stackName//.}"
   portainerToken=\$2
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -26105,9 +26088,9 @@ function wgDockInternetUpAll()
   checkUpdateDockerPrivateIP
   for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf 
   do
-    if ! test -f "$conf"; then continue; fi
+    if ! sudo test -f "$conf"; then continue; fi
     logHSHQEvent info "wgDockInternetUpAll - internet: $conf"
-    $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf up
+    sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf up
   done
   logHSHQEvent info "wgDockInternetUpAll - END"
 }
@@ -27596,10 +27579,30 @@ function generateCertDialog()
 
 function getUpdateAssets()
 {
+  isGitExist=false
   if [ -d $HSHQ_ASSETS_DIR/.git ]; then
-    git -C $HSHQ_ASSETS_DIR pull > /dev/null
-  else
-    git clone https://github.com/homeserverhq/assets.git $HSHQ_ASSETS_DIR
+    isGitExist=true
+  fi
+  curGitTries=0
+  maxGitTries=5
+  while [ $curGitTries -le $maxGitTries ]
+  do
+    if [ "$isGitExist" = "true" ]; then
+      git -C $HSHQ_ASSETS_DIR pull > /dev/null
+    else
+      rm -fr $HSHQ_ASSETS_DIR
+      git clone $HSHQ_ASSETS_GIT_REPO $HSHQ_ASSETS_DIR
+    fi
+    if [ $? -eq 0 ]; then
+      curGitTries=0
+      break
+    fi
+    echo "($((curGitTries+1)) of $maxGitTries) There was an error pulling the contents from the HSHQ assets Github repository, trying again in 5 seconds..."
+    sleep 5
+    ((curGitTries++))
+  done
+  if [ $curGitTries -ge $maxGitTries ]; then
+    return 1
   fi
 }
 
@@ -27607,6 +27610,10 @@ function pullImage()
 {
   img_and_version=$1
   secs_mult=60
+  # Check if registry is indicated, if not, then add mirror.gcr.io to front
+  if [ $(grep -o "/" <<< "$img_and_version" | wc -l) -lt 2 ]; then
+    img_and_version="mirror.gcr.io/$img_and_version"
+  fi
   logHSHQEvent info "Pulling Image: $img_and_version"
   echo "Pulling Image: $img_and_version"
   is_success=1
@@ -27627,6 +27634,10 @@ function pullImage()
       is_success=1
     fi
     ((num_tries++))
+    if [ $is_success -ne 0 ]; then
+      echo "There was an error pulling the image, retrying in 5 seconds..."
+      sleep 5
+    fi
   done
   if [ $is_success -ne 0 ]; then
     echo "Error pulling docker image: $img_and_version"
@@ -27830,7 +27841,7 @@ function doNothing()
 # Services Functions
 function loadPinnedDockerImages()
 {
-  IMG_ADGUARD=adguard/adguardhome:v0.107.59
+  IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
   IMG_AISTACK_MINDSDB_APP=mindsdb/mindsdb:v25.4.5.0
   IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v1
   IMG_AISTACK_OPENTELEMETRY=otel/opentelemetry-collector-contrib:0.116.1
@@ -27843,7 +27854,7 @@ function loadPinnedDockerImages()
   IMG_CADDY=caddy:2.9.1
   IMG_CALIBRE_SERVER=linuxserver/calibre:8.2.1
   IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.24
-  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.49.11
+  IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.50.8
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
   IMG_CODESERVER=codercom/code-server:4.98.2
   IMG_COLLABORA=collabora/code:24.04.13.2.1
@@ -27888,10 +27899,10 @@ function loadPinnedDockerImages()
   IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=jellyfin/jellyfin:10.10.6
-  IMG_JITSI_WEB=jitsi/web:stable-10133-1
-  IMG_JITSI_PROSODY=jitsi/prosody:stable-10133-1
-  IMG_JITSI_JICOFO=jitsi/jicofo:stable-10133-1
-  IMG_JITSI_JVB=jitsi/jvb:stable-10133-1
+  IMG_JITSI_WEB=jitsi/web:stable-10431
+  IMG_JITSI_PROSODY=jitsi/prosody:stable-10431
+  IMG_JITSI_JICOFO=jitsi/jicofo:stable-10431
+  IMG_JITSI_JVB=jitsi/jvb:stable-10431
   IMG_JUPYTER=continuumio/anaconda3:2024.10-1
   IMG_KASM=lscr.io/linuxserver/kasm:1.16.1-ls68
   IMG_KEILA=pentacent/keila:0.17.1
@@ -27930,6 +27941,7 @@ function loadPinnedDockerImages()
   IMG_NTFY=binwiederhier/ntfy:v2.11.0
   IMG_NODE_EXPORTER=prom/node-exporter:v1.9.1
   IMG_OFELIA=mcuadros/ofelia:0.3.16
+  IMG_OMBI_APP=linuxserver/ombi:4.47.1
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
@@ -27992,7 +28004,7 @@ function getScriptStackVersion()
     portainer)
       echo "v3" ;;
     adguard)
-      echo "v6" ;;
+      echo "v7" ;;
     sysutils)
       echo "v7" ;;
     openldap)
@@ -28006,7 +28018,7 @@ function getScriptStackVersion()
     nextcloud)
       echo "v9" ;;
     jitsi)
-      echo "v7" ;;
+      echo "v8" ;;
     matrix)
       echo "v7" ;;
     wikijs)
@@ -28096,7 +28108,7 @@ function getScriptStackVersion()
     heimdall)
       echo "v1" ;;
     changedetection)
-      echo "v5" ;;
+      echo "v6" ;;
     huginn)
       echo "v3" ;;
     coturn)
@@ -28132,6 +28144,8 @@ function getScriptStackVersion()
     sabnzbd)
       echo "v1" ;;
     qbittorrent)
+      echo "v1" ;;
+    ombi)
       echo "v1" ;;
     ofelia)
       echo "v5" ;;
@@ -28289,6 +28303,7 @@ function pullDockerImages()
   pullImage $IMG_SERVARR_PROWLARR
   pullImage $IMG_SABNZBD
   pullImage $IMG_QBITTORRENT
+  pullImage $IMG_OMBI_APP
 }
 
 function pullImagesUpdatePB()
@@ -29129,6 +29144,17 @@ QBITTORRENT_ADMIN_USERNAME=
 QBITTORRENT_ADMIN_PASSWORD=
 # qBittorrent (Service Details) END
 
+# Ombi (Service Details) BEGIN
+OMBI_INIT_ENV=true
+OMBI_ADMIN_USERNAME=
+OMBI_ADMIN_PASSWORD=
+OMBI_ADMIN_EMAIL_ADDRESS=
+OMBI_DATABASE_NAME=
+OMBI_DATABASE_ROOT_PASSWORD=
+OMBI_DATABASE_USER=
+OMBI_DATABASE_USER_PASSWORD=
+# Ombi (Service Details) END
+
 # Service Details END
 EOFCF
 
@@ -29192,6 +29218,7 @@ CERTS_INTERNAL_CA_DAYS=15330
 PORTAINER_ADMIN_USERNAME=
 PORTAINER_ADMIN_PASSWORD=
 PORTAINER_LOCAL_HTTPS_PORT=
+PORTAINER_ENDPOINT_ID=1
 # Portainer (Service Details) END
 
 # Script-server (Service Details) BEGIN
@@ -30455,42 +30482,195 @@ function initServicesCredentials()
     QBITTORRENT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar QBITTORRENT_ADMIN_PASSWORD $QBITTORRENT_ADMIN_PASSWORD
   fi
+  if [ -z "$OMBI_ADMIN_USERNAME" ]; then
+    OMBI_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_ombi"
+    updateConfigVar OMBI_ADMIN_USERNAME $OMBI_ADMIN_USERNAME
+  fi
+  if [ -z "$OMBI_ADMIN_PASSWORD" ]; then
+    OMBI_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OMBI_ADMIN_PASSWORD $OMBI_ADMIN_PASSWORD
+  fi
+  if [ -z "$OMBI_ADMIN_EMAIL_ADDRESS" ]; then
+    OMBI_ADMIN_EMAIL_ADDRESS=$OMBI_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar OMBI_ADMIN_EMAIL_ADDRESS $OMBI_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$OMBI_DATABASE_NAME" ]; then
+    OMBI_DATABASE_NAME=ombidb
+    updateConfigVar OMBI_DATABASE_NAME $OMBI_DATABASE_NAME
+  fi
+  if [ -z "$OMBI_DATABASE_ROOT_PASSWORD" ]; then
+    OMBI_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OMBI_DATABASE_ROOT_PASSWORD $OMBI_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$OMBI_DATABASE_USER" ]; then
+    OMBI_DATABASE_USER=ombi-user
+    updateConfigVar OMBI_DATABASE_USER $OMBI_DATABASE_USER
+  fi
+  if [ -z "$OMBI_DATABASE_USER_PASSWORD" ]; then
+    OMBI_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OMBI_DATABASE_USER_PASSWORD $OMBI_DATABASE_USER_PASSWORD
+  fi
+
+  # RelayServer credentials
+  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
+    RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
+    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_PORTAINER_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_PORTAINER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_PORTAINER_ADMIN_PASSWORD $RELAYSERVER_PORTAINER_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_USERNAME" ]; then
+    RELAYSERVER_ADGUARD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_adguard"
+    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_ADGUARD_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_ADGUARD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_ADGUARD_ADMIN_PASSWORD $RELAYSERVER_ADGUARD_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_USERNAME" ]; then
+    RELAYSERVER_CADDYDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_caddydns"
+    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_CADDYDNS_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_CADDYDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_CADDYDNS_ADMIN_PASSWORD $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_USERNAME" ]; then
+    RELAYSERVER_WGPORTAL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_wgportal"
+    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_USERNAME $RELAYSERVER_WGPORTAL_ADMIN_USERNAME
+    RELAYSERVER_WGPORTAL_ADMIN_EMAIL=$RELAYSERVER_WGPORTAL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_EMAIL
+  fi
+  if [ -z "$RELAYSERVER_WGPORTAL_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_WGPORTAL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_WGPORTAL_ADMIN_PASSWORD $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_USERNAME" ]; then
+    RELAYSERVER_CLIENTDNS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_clientdns"
+    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_USERNAME" ]; then
+    RELAYSERVER_RSPAMD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_rspamd"
+    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_RSPAMD_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_RSPAMD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_RSPAMD_ADMIN_PASSWORD $RELAYSERVER_RSPAMD_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_USERNAME" ]; then
+    RELAYSERVER_FILEBROWSER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_filebrowser"
+    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_USERNAME" ]; then
+    RELAYSERVER_SYNCTHING_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_syncthing"
+    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_USERNAME
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_ADMIN_PASSWORD" ]; then
+    RELAYSERVER_SYNCTHING_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_SYNCTHING_ADMIN_PASSWORD $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_API_KEY" ]; then
+    RELAYSERVER_SYNCTHING_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar RELAYSERVER_SYNCTHING_API_KEY $RELAYSERVER_SYNCTHING_API_KEY
+  fi
+  if [ -z "$RELAYSERVER_SYNCTHING_FOLDER_ID" ]; then
+    RELAYSERVER_SYNCTHING_FOLDER_ID=$(pwgen -c -n 5 1)-$(pwgen -c -n 5 1)
+    updateConfigVar RELAYSERVER_SYNCTHING_FOLDER_ID $RELAYSERVER_SYNCTHING_FOLDER_ID
+  fi
 }
 
-function checkCreateNonbackupDirs()
+function checkCreateNonbackupDirByStack()
 {
-  mkdir -p $HSHQ_NONBACKUP_DIR
-  mkdir -p $HSHQ_BUILD_DIR
-  mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
-  mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
-  mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
-  mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
-  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
-  mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
-  mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
-  mkdir -p $HSHQ_NONBACKUP_DIR/netdata/cache
-  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
-  mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
-  mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
-  mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
-  mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
-  mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
+  nbStackName="$1"
+  case "$nbStackName" in
+    "adguard")
+      mkdir -p $HSHQ_NONBACKUP_DIR/adguard/work
+      ;;
+    "sysutils")
+      mkdir -p $HSHQ_NONBACKUP_DIR/sysutils/prometheus
+      ;;
+    "wazuh")
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/queue
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/logs
+      mkdir -p $HSHQ_NONBACKUP_DIR/wazuh/volumes/indexer-data
+      ;;
+    "duplicati")
+      mkdir -p $HSHQ_NONBACKUP_DIR/duplicati/restore
+      ;;
+    "mastodon")
+      mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/redis
+      mkdir -p $HSHQ_NONBACKUP_DIR/mastodon/static
+      ;;
+    "searxng")
+      mkdir -p $HSHQ_NONBACKUP_DIR/searxng/redis
+      ;;
+    "peertube")
+      mkdir -p $HSHQ_NONBACKUP_DIR/peertube/assets
+      mkdir -p $HSHQ_NONBACKUP_DIR/peertube/redis
+      ;;
+    "gitlab")
+      mkdir -p $HSHQ_NONBACKUP_DIR/gitlab/redis
+      ;;
+    "discourse")
+      mkdir -p $HSHQ_NONBACKUP_DIR/discourse/redis
+      ;;
+    "shlink")
+      mkdir -p $HSHQ_NONBACKUP_DIR/shlink/redis
+      ;;
+    "firefly")
+      mkdir -p $HSHQ_NONBACKUP_DIR/firefly/redis
+      ;;
+    "kasm")
+      mkdir -p $HSHQ_NONBACKUP_DIR/kasm/data
+      ;;
+    "netdata")
+      mkdir -p $HSHQ_NONBACKUP_DIR/netdata/cache
+      ;;
+    "stirlingpdf")
+      mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/logs
+      mkdir -p $HSHQ_NONBACKUP_DIR/stirlingpdf/traindata
+      ;;
+    "bar-assistant")
+      mkdir -p $HSHQ_NONBACKUP_DIR/bar-assistant/redis
+      ;;
+    "wallabag")
+      mkdir -p $HSHQ_NONBACKUP_DIR/wallabag/redis
+      ;;
+    "paperless")
+      mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
+      ;;
+    "piped")
+      mkdir -p $HSHQ_NONBACKUP_DIR/piped/proxy
+      ;;
+    "penpot")
+      mkdir -p $HSHQ_NONBACKUP_DIR/penpot/redis
+      ;;
+    "immich")
+      mkdir -p $HSHQ_NONBACKUP_DIR/immich/redis
+      mkdir -p $HSHQ_NONBACKUP_DIR/immich/cache
+      ;;
+    "aistack")
+      mkdir -p $HSHQ_NONBACKUP_DIR/aistack/redis
+      ;;
+    "pixelfed")
+      mkdir -p $HSHQ_NONBACKUP_DIR/pixelfed/redis
+      ;;
+    "yamtrack")
+      mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
+      ;;
+    *)
+      ;;
+  esac
 }
 
 function installBaseStacks()
@@ -30596,6 +30776,7 @@ function initServiceVars()
   checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
   checkAddSvc "SVCD_NCTALKRECORD=nextcloud,nctalk-record,other,user,Nextcloud Talk Recording,nctalk-record,hshq"
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
+  checkAddSvc "SVCD_OMBI_APP=ombi,ombi,primary,user,Ombi,ombi,le"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
   checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
@@ -30792,6 +30973,8 @@ function installStackByName()
       installSABnzbd $is_integrate ;;
     qbittorrent)
       installqBittorrent $is_integrate ;;
+    ombi)
+      installOmbi $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -30960,6 +31143,8 @@ function performUpdateStackByName()
       performUpdateSABnzbd "$portainerToken" ;;
     qbittorrent)
       performUpdateqBittorrent "$portainerToken" ;;
+    ombi)
+      performUpdateOmbi "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -31024,6 +31209,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OMBI_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PENPOT.$HOMESERVER_DOMAIN\n"
@@ -31114,99 +31300,95 @@ function getAutheliaBlock()
 
 function emailVaultwardenCredentials()
 {
-  is_relay_only=$1
   strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  if ! [ "$is_relay_only" = "true" ]; then
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizarduser.html\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GUACAMOLE" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_UPTIMEKUMA" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SQLPAD" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SYNCTHING" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_CODESERVER" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_TASMOADMIN" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin,https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator,https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Admin" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Users" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-HomeServers" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-RelayServer" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITEA}-Admin" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $GITEA_ADMIN_USERNAME $GITEA_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITEA}-User" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GITLAB" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_MANAGER" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PRIVATE" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-User" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PEERTUBE}-Admin" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PEERTUBE_ADMIN_USERNAME $PEERTUBE_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PEERTUBE}-User" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COLLABORA}-Admin" https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $COLLABORA_ADMIN_USERNAME $COLLABORA_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NEXTCLOUD}-Admin" https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NEXTCLOUD_ADMIN_USERNAME $NEXTCLOUD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NEXTCLOUD}-User" https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DISCOURSE}-Admin" https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_VAULTWARDEN}-Admin" https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV admin $VAULTWARDEN_ADMIN_TOKEN)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-Admin" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-User" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FRESHRSS}-Admin" https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KEILA}-Admin" https://$SUB_KEILA.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WALLABAG}-Admin" https://$SUB_WALLABAG.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JUPYTER}-Admin" https://$SUB_JUPYTER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $JUPYTER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PAPERLESS}-Admin" https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN/accounts/login/ $HOMESERVER_ABBREV $PAPERLESS_ADMIN_USERNAME $PAPERLESS_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_LOCAL}-Admin" https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_VPN}-Admin" https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_EMAIL_ADDRESS $IMMICH_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_RADARR}-Admin" https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RADARR_ADMIN_USERNAME $RADARR_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_LIDARR}-Admin" https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIDARR_ADMIN_USERNAME $LIDARR_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_READARR}-Admin" https://$SUB_SERVARR_READARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $READARR_ADMIN_USERNAME $READARR_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_BAZARR}-Admin" https://$SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BAZARR_ADMIN_USERNAME $BAZARR_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_MYLAR3}-Admin" https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $MYLAR3_ADMIN_USERNAME $MYLAR3_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
-  fi
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizarduser.html\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GUACAMOLE" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_UPTIMEKUMA" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SQLPAD" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SYNCTHING" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_CODESERVER" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_TASMOADMIN" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin,https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator,https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Admin" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Users" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-HomeServers" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-RelayServer" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITEA}-Admin" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $GITEA_ADMIN_USERNAME $GITEA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITEA}-User" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GITLAB" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_MANAGER" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PRIVATE" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-User" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PEERTUBE}-Admin" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PEERTUBE_ADMIN_USERNAME $PEERTUBE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PEERTUBE}-User" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_COLLABORA}-Admin" https://$SUB_COLLABORA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $COLLABORA_ADMIN_USERNAME $COLLABORA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NEXTCLOUD}-Admin" https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $NEXTCLOUD_ADMIN_USERNAME $NEXTCLOUD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NEXTCLOUD}-User" https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DISCOURSE}-Admin" https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_VAULTWARDEN}-Admin" https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin $HOMESERVER_ABBREV admin $VAULTWARDEN_ADMIN_TOKEN)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-Admin" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CALIBRE_WEB_ADMIN_USERNAME $CALIBRE_WEB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALIBRE_WEB}-User" https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FRESHRSS}-Admin" https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRESHRSS_ADMIN_USERNAME $FRESHRSS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KEILA}-Admin" https://$SUB_KEILA.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $KEILA_ADMIN_EMAIL_ADDRESS $KEILA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WALLABAG}-Admin" https://$SUB_WALLABAG.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $WALLABAG_ADMIN_USERNAME $WALLABAG_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JUPYTER}-Admin" https://$SUB_JUPYTER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $JUPYTER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PAPERLESS}-Admin" https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN/accounts/login/ $HOMESERVER_ABBREV $PAPERLESS_ADMIN_USERNAME $PAPERLESS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_LOCAL}-Admin" https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SPEEDTEST_TRACKER_VPN}-Admin" https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN/admin/login $HOMESERVER_ABBREV $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CHANGEDETECTION}-Admin" https://$SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV admin $CHANGEDETECTION_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HUGINN}-Admin" https://$SUB_HUGINN.$HOMESERVER_DOMAIN/users/sign_in $HOMESERVER_ABBREV $HUGINN_ADMIN_USERNAME $HUGINN_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_EMAIL_ADDRESS $IMMICH_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_RADARR}-Admin" https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RADARR_ADMIN_USERNAME $RADARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_LIDARR}-Admin" https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIDARR_ADMIN_USERNAME $LIDARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_READARR}-Admin" https://$SUB_SERVARR_READARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $READARR_ADMIN_USERNAME $READARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_BAZARR}-Admin" https://$SUB_SERVARR_BAZARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $BAZARR_ADMIN_USERNAME $BAZARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_MYLAR3}-Admin" https://$SUB_SERVARR_MYLAR3.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $MYLAR3_ADMIN_USERNAME $MYLAR3_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   # RelayServer
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ] || [ "$is_relay_only" = "true" ]; then
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-RelayServer" https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}-RelayServer" https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RSPAMD}-RelayServer" https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SYNCTHING}-RelayServer" https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FILEBROWSER}-RelayServer" https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
-  fi
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-RelayServer" https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}-RelayServer" https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RSPAMD}-RelayServer" https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SYNCTHING}-RelayServer" https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FILEBROWSER}-RelayServer" https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}"\n\n\n\n"
   strInstructions="Vaultwarden Import Instructions - !!! READ ALL STEPS !!!\n_________________________________________________________________________\n\n"
   strInstructions=$strInstructions"1. Vaultwarden is only accessible on your private network, so any devices that you wish to access this service with must be correctly added. \n\n2. Upon installation, you should receive a seperate 'Join Vaultwarden' email from the Vaultwarden service. Click the provided 'Join Organization Now' button and create an account. \n\n3. After creating your account, log in through the same web interface. \n\n4. Select Tools on top of page, then Import Data on left side. For File format, select Bitwarden(csv) from the drop down.  Then copy all of the data AFTER the line below (including field headers) and paste it into the provided empty text box. Then click Import Data. \n\n5. Download and install Bitwarden plugin/extension for your browser (https://bitwarden.com/download/). \n\n6. In the browser plugin, select Self-hosted for Region. Then enter https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN in both Server URL and Web vault server URL fields, and Save. \n\n7. Log in with email and master password. Go to Settings (bottom right), then Auto-fill, then under Default URI match detection, select Starts with. (You can also check the Auto-fill on page load option, but ensure you know how it works and the risks)\n\n8. Delete this email (and empty it from Trash) once you have imported the passwords into Vaultwarden. There is an option within Script-server or the console UI to send yourself another copy if need be (01 Misc Utils -> 08 Email Vaultwarden Credentials).\n\n9. All of these passwords are randomly generated during install and stored in your configuration file, which is encrypted at rest (thus the need to enter your config decrypt password for nearly every operation). Nota Bene: If you change any of these generated passwords it will not sync back to this source. If you change the Portainer, AdguardHome, or WG Portal admin passwords without also changing them in the configuration file, then you will break any of the script functions that use these utilities (they use API calls that require authorization). There could also be consequences for a few others as well. For more information, ask on the forum (https://forum.homeserverhq.com). To view/edit the configuration file, run the console UI (enter 'bash hshq.sh' on your HomeServer), then go to System Utils -> 1 Edit Encrypted Config File. BE VERY CAREFUL editing anything in this config file, you could break things!!!\n\n10. After any operation that requires the config decrypt password, whether via the console UI or Script-server web interface, you should ALWAYS see a confirmation that the configuration file has been encrypted. If a script function terminates abnormally, ensure to re-run another simple function, for example (01 Misc Utils -> 09 Email Root CA) just to ensure the configuration file is back to an encrypted state."
@@ -31311,18 +31493,17 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_PROWLARR}-Admin" https://$SUB_SERVARR_PROWLARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PROWLARR_ADMIN_USERNAME $PROWLARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   # RelayServer
-  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-RelayServer" https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PORTAINER}-RelayServer" https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RSPAMD}-RelayServer" https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SYNCTHING}-RelayServer" https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FILEBROWSER}-RelayServer" https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
-    strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
-  fi
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-RelayServer" https://$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CLIENTDNS_ADMIN_USERNAME $RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PORTAINER}-RelayServer" https://$SUB_PORTAINER.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/#!/auth $HOMESERVER_ABBREV $RELAYSERVER_PORTAINER_ADMIN_USERNAME $RELAYSERVER_PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RSPAMD}-RelayServer" https://$SUB_RSPAMD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_RSPAMD_ADMIN_USERNAME $RELAYSERVER_RSPAMD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SYNCTHING}-RelayServer" https://$SUB_SYNCTHING.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_SYNCTHING_ADMIN_USERNAME $RELAYSERVER_SYNCTHING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FILEBROWSER}-RelayServer" https://$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_FILEBROWSER_ADMIN_USERNAME $RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CADDYDNS}-RelayServer" https://$SUB_CADDYDNS.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $RELAYSERVER_CADDYDNS_ADMIN_USERNAME $RELAYSERVER_CADDYDNS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}"\n\n"
   sendEmail -s "All Services Login Info" -b "$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
 }
@@ -31678,6 +31859,9 @@ function getHeimdallOrderFromSub()
     "$SUB_QBITTORRENT")
       order_num=92
       ;;
+    "$SUB_OMBI_APP")
+      order_num=93
+      ;;
     *)
       ;;
   esac
@@ -31686,19 +31870,19 @@ function getHeimdallOrderFromSub()
 
 function getLetsEncryptCertsDefault()
 {
-  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN,$SUB_IMMICH.$HOMESERVER_DOMAIN"
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN,$SUB_IMMICH.$HOMESERVER_DOMAIN,$SUB_OMBI_APP.$HOMESERVER_DOMAIN"
 }
 
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi
 }
 
 function getScriptImageByContainerName()
@@ -32331,6 +32515,12 @@ function getScriptImageByContainerName()
     "qbittorrent")
       container_image=$IMG_QBITTORRENT
       ;;
+    "ombi-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "ombi-app")
+      container_image=$IMG_OMBI_APP
+      ;;
     *)
       ;;
   esac
@@ -32350,60 +32540,62 @@ function performPostStackRemoval()
 
 function checkAddAllNewSvcs()
 {
-  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=,LINKWARDEN_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD=,FRESHRSS_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY="
-  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD="
-  checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Script-server" "SCRIPTSERVER_INIT_ENV=false,SCRIPTSERVER_LOCALHOST_PORT=8008,SCRIPTSERVER_ADMIN_USERNAME=,SCRIPTSERVER_ADMIN_PASSWORD="
-  checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET="
-  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD="
-  checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY="
-  checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_EMAIL_ADDRESS=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD="
-  checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD="
-  checkAddServiceToConfig "Pixelfed" "PIXELFED_INIT_ENV=false,PIXELFED_DATABASE_NAME=,PIXELFED_DATABASE_ROOT_PASSWORD=,PIXELFED_DATABASE_USER=,PIXELFED_DATABASE_USER_PASSWORD=,PIXELFED_REDIS_PASSWORD=,PIXELFED_APP_KEY="
-  checkAddServiceToConfig "Yamtrack" "YAMTRACK_INIT_ENV=false,YAMTRACK_ADMIN_USERNAME=,YAMTRACK_ADMIN_PASSWORD=,YAMTRACK_REDIS_PASSWORD=,YAMTRACK_DATABASE_NAME=,YAMTRACK_DATABASE_USER=,YAMTRACK_DATABASE_USER_PASSWORD=,YAMTRACK_SECRET_KEY=,YAMTRACK_OIDC_CLIENT_ID=,YAMTRACK_OIDC_CLIENT_SECRET="
-  checkAddServiceToConfig "Servarr" "SERVARR_INIT_ENV=false,SONARR_ADMIN_USERNAME=,SONARR_ADMIN_PASSWORD=,RADARR_ADMIN_USERNAME=,RADARR_ADMIN_PASSWORD=,LIDARR_ADMIN_USERNAME=,LIDARR_ADMIN_PASSWORD=,READARR_ADMIN_USERNAME=,READARR_ADMIN_PASSWORD=,BAZARR_ADMIN_USERNAME=,BAZARR_ADMIN_PASSWORD=,MYLAR3_ADMIN_USERNAME=,MYLAR3_ADMIN_PASSWORD=,PROWLARR_ADMIN_USERNAME=,PROWLARR_ADMIN_PASSWORD="
-  checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD="
-  checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD="
-  checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN="
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false"
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME="
-  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_PASSWORD="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_DETERMINISTIC_KEY="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT="
-  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY="
-  checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD="
-  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD="
-  checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false"
-  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false"
-  checkAddVarsToServiceConfig "Wazuh" "WAZUH_MANAGER_AUTH_PASSWORD="
-  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET="
-  checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET="
-  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET="
-  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}"
-  checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY="
-  checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN="
-  checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS="
-  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET="
+  checkAddServiceToConfig "Collabora" "COLLABORA_ADMIN_USERNAME=,COLLABORA_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Invidious" "INVIDIOUS_DATABASE_NAME=,INVIDIOUS_DATABASE_USER=,INVIDIOUS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Mealie" "MEALIE_ADMIN_USERNAME=,MEALIE_ADMIN_EMAIL_ADDRESS=,MEALIE_ADMIN_PASSWORD=,MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Remotely" "REMOTELY_INIT_ENV=false,REMOTELY_ADMIN_USERNAME=,REMOTELY_ADMIN_EMAIL_ADDRESS=,REMOTELY_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false,CALIBRE_WEB_ADMIN_USERNAME=,CALIBRE_WEB_ADMIN_EMAIL_ADDRESS=,CALIBRE_WEB_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Linkwarden" "LINKWARDEN_DATABASE_NAME=,LINKWARDEN_DATABASE_USER=,LINKWARDEN_DATABASE_USER_PASSWORD=,LINKWARDEN_NEXTAUTH_SECRET=,LINKWARDEN_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "FreshRSS" "FRESHRSS_INIT_ENV=false,FRESHRSS_ADMIN_USERNAME=,FRESHRSS_ADMIN_PASSWORD=,FRESHRSS_ADMIN_EMAIL_ADDRESS=,FRESHRSS_DATABASE_NAME=,FRESHRSS_DATABASE_USER=,FRESHRSS_DATABASE_USER_PASSWORD=,FRESHRSS_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Bar Assistant" "BARASSISTANT_REDIS_PASSWORD=,BARASSISTANT_MEILISEARCH_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Keila" "KEILA_INIT_ENV=false,KEILA_ADMIN_USERNAME=,KEILA_ADMIN_EMAIL_ADDRESS=,KEILA_ADMIN_PASSWORD=,KEILA_DATABASE_NAME=,KEILA_DATABASE_USER=,KEILA_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Wallabag" "WALLABAG_INIT_ENV=false,WALLABAG_ADMIN_USERNAME=,WALLABAG_ADMIN_EMAIL_ADDRESS=,WALLABAG_ADMIN_PASSWORD=,WALLABAG_DATABASE_NAME=,WALLABAG_DATABASE_USER=,WALLABAG_DATABASE_USER_PASSWORD=,WALLABAG_ENV_SECRET=,WALLABAG_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Jupyter" "JUPYTER_INIT_ENV=false,JUPYTER_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Paperless" "PAPERLESS_INIT_ENV=false,PAPERLESS_SECRET_KEY=,PAPERLESS_CLIENT_SECRET=,PAPERLESS_REDIS_PASSWORD=,PAPERLESS_ADMIN_USERNAME=,PAPERLESS_ADMIN_EMAIL_ADDRESS=,PAPERLESS_ADMIN_PASSWORD=,PAPERLESS_DATABASE_NAME=,PAPERLESS_DATABASE_USER=,PAPERLESS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "SpeedtestTrackerLocal" "SPEEDTEST_TRACKER_LOCAL_INIT_ENV=false,SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME=,SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER=,SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "SpeedtestTrackerVPN" "SPEEDTEST_TRACKER_VPN_INIT_ENV=false,SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME=,SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS=,SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD=,SPEEDTEST_TRACKER_VPN_DATABASE_NAME=,SPEEDTEST_TRACKER_VPN_DATABASE_USER=,SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Change Detection" "CHANGEDETECTION_INIT_ENV=false,CHANGEDETECTION_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Script-server" "SCRIPTSERVER_INIT_ENV=false,SCRIPTSERVER_LOCALHOST_PORT=8008,SCRIPTSERVER_ADMIN_USERNAME=,SCRIPTSERVER_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Huginn" "HUGINN_INIT_ENV=false,HUGINN_APP_SECRET_TOKEN=,HUGINN_ADMIN_USERNAME=,HUGINN_ADMIN_EMAIL_ADDRESS=,HUGINN_ADMIN_PASSWORD=,HUGINN_DATABASE_NAME=,HUGINN_DATABASE_USER=,HUGINN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Coturn" "COTURN_STATIC_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Piped" "PIPED_DATABASE_NAME=,PIPED_DATABASE_USER=,PIPED_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "GrampsWeb" "GRAMPSWEB_INIT_ENV=false,GRAMPSWEB_ADMIN_USERNAME=,GRAMPSWEB_ADMIN_PASSWORD=,GRAMPSWEB_ADMIN_EMAIL_ADDRESS=,GRAMPSWEB_SECRET_KEY=,GRAMPSWEB_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Penpot" "PENPOT_INIT_ENV=false,PENPOT_REDIS_PASSWORD=,PENPOT_DATABASE_NAME=,PENPOT_DATABASE_USER=,PENPOT_DATABASE_USER_PASSWORD=,PENPOT_SECRET_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "EspoCRM" "ESPOCRM_INIT_ENV=false,ESPOCRM_ADMIN_USERNAME=,ESPOCRM_ADMIN_PASSWORD=,ESPOCRM_DATABASE_NAME=,ESPOCRM_DATABASE_ROOT_PASSWORD=,ESPOCRM_DATABASE_USER=,ESPOCRM_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Immich" "IMMICH_INIT_ENV=false,IMMICH_ADMIN_USERNAME=,IMMICH_ADMIN_PASSWORD=,IMMICH_ADMIN_EMAIL_ADDRESS=,IMMICH_DATABASE_NAME=,IMMICH_DATABASE_USER=,IMMICH_DATABASE_USER_PASSWORD=,IMMICH_REDIS_PASSWORD=,IMMICH_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Homarr" "HOMARR_INIT_ENV=false,HOMARR_ADMIN_USERNAME=,HOMARR_ADMIN_EMAIL_ADDRESS=,HOMARR_ADMIN_PASSWORD=,HOMARR_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Matomo" "MATOMO_INIT_ENV=false,MATOMO_ADMIN_USERNAME=,MATOMO_ADMIN_PASSWORD=,MATOMO_ADMIN_EMAIL_ADDRESS=,MATOMO_DATABASE_NAME=,MATOMO_DATABASE_ROOT_PASSWORD=,MATOMO_DATABASE_USER=,MATOMO_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Pastefy" "PASTEFY_INIT_ENV=false,PASTEFY_ADMIN_USERNAME=,PASTEFY_ADMIN_PASSWORD=,PASTEFY_ADMIN_EMAIL_ADDRESS=,PASTEFY_DATABASE_NAME=,PASTEFY_DATABASE_ROOT_PASSWORD=,PASTEFY_DATABASE_USER=,PASTEFY_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "AIStack" "AISTACK_INIT_ENV=false,AISTACK_MINDSDB_ADMIN_USERNAME=,AISTACK_MINDSDB_ADMIN_PASSWORD=,AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS=,AISTACK_MINDSDB_DATABASE_NAME=,AISTACK_MINDSDB_DATABASE_USER=,AISTACK_MINDSDB_DATABASE_USER_PASSWORD=,AISTACK_LANGFUSE_ADMIN_USERNAME=,AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS=,AISTACK_LANGFUSE_ADMIN_PASSWORD=,AISTACK_LANGFUSE_DATABASE_NAME=,AISTACK_OPENWEBUI_ADMIN_USERNAME=,AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS=,AISTACK_OPENWEBUI_ADMIN_PASSWORD=,AISTACK_OPENWEBUI_OIDC_CLIENT_ID=,AISTACK_OPENWEBUI_OIDC_CLIENT_SECRET=,AISTACK_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Pixelfed" "PIXELFED_INIT_ENV=false,PIXELFED_DATABASE_NAME=,PIXELFED_DATABASE_ROOT_PASSWORD=,PIXELFED_DATABASE_USER=,PIXELFED_DATABASE_USER_PASSWORD=,PIXELFED_REDIS_PASSWORD=,PIXELFED_APP_KEY=" $CONFIG_FILE false
+  checkAddServiceToConfig "Yamtrack" "YAMTRACK_INIT_ENV=false,YAMTRACK_ADMIN_USERNAME=,YAMTRACK_ADMIN_PASSWORD=,YAMTRACK_REDIS_PASSWORD=,YAMTRACK_DATABASE_NAME=,YAMTRACK_DATABASE_USER=,YAMTRACK_DATABASE_USER_PASSWORD=,YAMTRACK_SECRET_KEY=,YAMTRACK_OIDC_CLIENT_ID=,YAMTRACK_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Servarr" "SERVARR_INIT_ENV=false,SONARR_ADMIN_USERNAME=,SONARR_ADMIN_PASSWORD=,RADARR_ADMIN_USERNAME=,RADARR_ADMIN_PASSWORD=,LIDARR_ADMIN_USERNAME=,LIDARR_ADMIN_PASSWORD=,READARR_ADMIN_USERNAME=,READARR_ADMIN_PASSWORD=,BAZARR_ADMIN_USERNAME=,BAZARR_ADMIN_PASSWORD=,MYLAR3_ADMIN_USERNAME=,MYLAR3_ADMIN_PASSWORD=,PROWLARR_ADMIN_USERNAME=,PROWLARR_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Ombi" "OMBI_INIT_ENV=false,OMBI_ADMIN_USERNAME=,OMBI_ADMIN_PASSWORD=,OMBI_ADMIN_EMAIL_ADDRESS=,OMBI_DATABASE_NAME=,OMBI_DATABASE_ROOT_PASSWORD=,OMBI_DATABASE_USER=,OMBI_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_DETERMINISTIC_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_KEY_DERIVATION_SALT=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mastodon" "MASTODON_ARE_PRIMARY_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "HomeAssistant" "HOMEASSISTANT_CONFIGURATOR_USER=,HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Mealie" "MEALIE_DATABASE_NAME=,MEALIE_DATABASE_USER=,MEALIE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Remotely" "REMOTELY_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Calibre" "CALIBRE_WEB_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Keila" "KEILA_INIT_ENV=false" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Wazuh" "WAZUH_MANAGER_AUTH_PASSWORD=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Paperless" "PAPERLESS_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Linkwarden" "LINKWARDEN_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FreshRSS" "FRESHRSS_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "OpenLDAP" "LDAP_PRIMARY_USER_FULLNAME=${LDAP_PRIMARY_USER_USERNAME^}" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Duplicati" "DUPLICATI_SETTINGS_ENCRYPTION_KEY=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "FireflyIII" "FIREFLY_STATIC_CRON_TOKEN=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Homarr" "HOMARR_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Nextcloud" "NEXTCLOUD_TALKHPB_SIGNALING_SECRET=,NEXTCLOUD_TALKHPB_INTERNAL_SECRET=,NEXTCLOUD_TALKHPB_RECORDING_SECRET=" $CONFIG_FILE false
+  checkAddVarsToServiceConfig "Portainer" "PORTAINER_ENDPOINT_ID=1" $HSHQ_PLAINTEXT_ROOT_CONFIG true
 }
 
 function importDBs()
@@ -32419,6 +32611,27 @@ function getHomeServerPortsList()
   echo "$portsList"
 }
 
+function buildOrPullImage()
+{
+  curImg="$1"
+  # At some point need to rework this function to be more generalized.
+  # But at the moment, there are only 3 custom images, so a simple case statement will do.
+  # The mindsdb image in the AIStack is still an issue, need a solution for it.
+  case "$curImg" in
+    "filedrop/filedrop:1")
+      buildImageFileDropV1
+      ;;
+    "hshq/pixelfed:v1")
+      buildImagePixelfedV1
+      ;;
+    "hshq/mindsdb:v1")
+      echo "hshq/mindsdb:v1 - This image must be rebuilt by user."
+      ;;
+    *)
+      pullImage "$curImg"
+      ;;
+  esac
+}
 # Stacks Installation/Update Functions
 
 # Portainer
@@ -32491,6 +32704,11 @@ function installPortainer()
   # Enable dark mode because it looks better
   echo "{\"theme\":{\"color\":\"dark\"}}" > $HOME/portainer-json.tmp
   http --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/users/$PORTAINER_ADMIN_USERID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
+  rm $HOME/portainer-json.tmp
+
+  # Add gcr registry
+  echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > $HOME/portainer-json.tmp
+  http --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/portainer-json.tmp > /dev/null
   rm $HOME/portainer-json.tmp
 
   inner_block=""
@@ -32758,24 +32976,28 @@ function installAdGuard()
     echo "ERROR: There was a problem installing AdGuard"
     exit $retval
   fi
+  sleep 5
   isSuccess=false
   i=0
   set +e
   while [ $i -le 300 ]
   do
-    checkDNS=$(dig +short api.ipify.org | head -n 1)
-    if ! [ -z "$checkDNS" ] && [ "$(checkValidIPAddress $checkDNS)" = "true" ]; then
+    checkDNS1=$(dig +short api.ipify.org | grep '^[.0-9]*$' | tail -n 1)
+    checkDNS2=$(dig +short registry-1.docker.io | grep '^[.0-9]*$' | tail -n 1)
+    checkDNS3=$(dig +short mirror.gcr.io | grep '^[.0-9]*$' | tail -n 1)
+    if ! [ -z "$checkDNS1" ] && [ "$(checkValidIPAddress $checkDNS1)" = "true" ] &&  ! [ -z "$checkDNS2" ] && [ "$(checkValidIPAddress $checkDNS2)" = "true" ] &&  ! [ -z "$checkDNS3" ] && [ "$(checkValidIPAddress $checkDNS3)" = "true" ]; then
       isSuccess=true
       break
     fi
-    echo "Adguard not ready, sleeping 3 seconds, total wait=$i seconds..."
-    sleep 3
-    i=$((i+3))
+    echo "Adguard not ready, sleeping 5 seconds, total wait=$i seconds..."
+    sleep 5
+    i=$((i+5))
   done
   if ! [ "$isSuccess" = "true" ]; then
     echo "Adguard did not install correctly, exiting..."
     exit 1
   fi
+
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ADGUARD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -33101,34 +33323,39 @@ function performUpdateAdGuard()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.41
-      image_update_map[0]="adguard/adguardhome:v0.107.41,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.41,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     2)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.43
-      image_update_map[0]="adguard/adguardhome:v0.107.43,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.43,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     3)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.45
-      image_update_map[0]="adguard/adguardhome:v0.107.45,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.45,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     4)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.52
-      image_update_map[0]="adguard/adguardhome:v0.107.52,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.52,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.53
-      image_update_map[0]="adguard/adguardhome:v0.107.53,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.53,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=adguard/adguardhome:v0.107.59
-      image_update_map[0]="adguard/adguardhome:v0.107.59,adguard/adguardhome:v0.107.59"
+      image_update_map[0]="adguard/adguardhome:v0.107.59,mirror.gcr.io/adguard/adguardhome:v0.107.64"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/adguard/adguardhome:v0.107.64
+      image_update_map[0]="mirror.gcr.io/adguard/adguardhome:v0.107.64,mirror.gcr.io/adguard/adguardhome:v0.107.64"
     ;;
     *)
       is_upgrade_error=true
@@ -40396,60 +40623,68 @@ function performUpdateJitsi()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-8719,jitsi/jvb:stable-8719,jitsi/prosody:stable-8719,jitsi/web:stable-8719
-      image_update_map[0]="jitsi/jicofo:stable-8719,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-8719,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-8719,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-8719,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-8719,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-8719,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-8719,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-8719,jitsi/web:stable-10431"
     ;;
     2)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9111,jitsi/jvb:stable-9111,jitsi/prosody:stable-9111,jitsi/web:stable-9111
-      image_update_map[0]="jitsi/jicofo:stable-9111,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9111,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9111,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9111,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9111,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9111,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9111,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9111,jitsi/web:stable-10431"
     ;;
     3)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9220,jitsi/jvb:stable-9220,jitsi/prosody:stable-9220,jitsi/web:stable-9220
-      image_update_map[0]="jitsi/jicofo:stable-9220,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9220,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9220,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9220,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9220,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9220,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9220,jitsi/web:stable-10431"
     ;;
     4)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9258,jitsi/jvb:stable-9258,jitsi/prosody:stable-9258,jitsi/web:stable-9258
-      image_update_map[0]="jitsi/jicofo:stable-9258,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9258,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9258,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9258,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9258,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9258,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9258,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9258,jitsi/web:stable-10431"
     ;;
     5)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9584,jitsi/jvb:stable-9584,jitsi/prosody:stable-9584,jitsi/web:stable-9584
-      image_update_map[0]="jitsi/jicofo:stable-9584,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9584,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9584,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9584,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9584,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9584,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9584,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9584,jitsi/web:stable-10431"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-9779,jitsi/jvb:stable-9779,jitsi/prosody:stable-9779,jitsi/web:stable-9779
-      image_update_map[0]="jitsi/jicofo:stable-9779,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-9779,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-9779,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-9779,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-9779,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-9779,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-9779,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-9779,jitsi/web:stable-10431"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=jitsi/jicofo:stable-10133-1,jitsi/jvb:stable-10133-1,jitsi/prosody:stable-10133-1,jitsi/web:stable-10133-1
-      image_update_map[0]="jitsi/jicofo:stable-10133-1,jitsi/jicofo:stable-10133-1"
-      image_update_map[1]="jitsi/jvb:stable-10133-1,jitsi/jvb:stable-10133-1"
-      image_update_map[2]="jitsi/prosody:stable-10133-1,jitsi/prosody:stable-10133-1"
-      image_update_map[3]="jitsi/web:stable-10133-1,jitsi/web:stable-10133-1"
+      image_update_map[0]="jitsi/jicofo:stable-10133-1,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-10133-1,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-10133-1,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-10133-1,jitsi/web:stable-10431"
+    ;;
+    8)
+      newVer=v8
+      curImageList=jitsi/jicofo:stable-10431,jitsi/jvb:stable-10431,jitsi/prosody:stable-10431,jitsi/web:stable-10431
+      image_update_map[0]="jitsi/jicofo:stable-10431,jitsi/jicofo:stable-10431"
+      image_update_map[1]="jitsi/jvb:stable-10431,jitsi/jvb:stable-10431"
+      image_update_map[2]="jitsi/prosody:stable-10431,jitsi/prosody:stable-10431"
+      image_update_map[3]="jitsi/web:stable-10431,jitsi/web:stable-10431"
     ;;
     *)
       is_upgrade_error=true
@@ -46068,7 +46303,7 @@ function installVaultwarden()
     insertEnableSvcHeimdall vaultwarden "$FMLNAME_VAULTWARDEN Admin" admin "https://$SUB_VAULTWARDEN.$HOMESERVER_DOMAIN/admin" "vaultwarden.png" true "$(getHeimdallOrderFromSub $SUB_VAULTWARDEN admin)"
     restartAllCaddyContainers
   fi
-  emailVaultwardenCredentials false
+  emailVaultwardenCredentials
 }
 
 function outputConfigVaultwarden()
@@ -46209,7 +46444,6 @@ APP_LDAP_SEARCH_BASE_DN=$LDAP_BASE_DN
 APP_LDAP_STARTTLS=true
 APP_LDAP_NO_TLS_VERIFY=true
 APP_VAULTWARDEN_ROOT_CERT_FILE=/cacert/rootca.der
-APP_LDAP_SEARCH_BASE_DN=$LDAP_BASE_DN
 APP_LDAP_SEARCH_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
 APP_LDAP_SYNC_INTERVAL_SECONDS=300
 
@@ -53207,7 +53441,7 @@ function installChangeDetection()
   fi
 
   outputConfigChangeDetection
-  installStack changedetection changedetection-app "wsgi starting up on" $HOME/changedetection.env
+  installStack changedetection changedetection-app "Running on http" $HOME/changedetection.env
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -53340,6 +53574,7 @@ SCREEN_WIDTH=1920
 SCREEN_HEIGHT=1024
 SCREEN_DEPTH=16
 MAX_CONCURRENT_CHROME_PROCESSES=10
+STATS_REFRESH_SECONDS=30
 EOFCD
 
   cat <<EOFCD > $HSHQ_STACKS_DIR/changedetection/data/genpass.py
@@ -53381,15 +53616,21 @@ function performUpdateChangeDetection()
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=ghcr.io/dgtlmoon/changedetection.io:0.47.05,dgtlmoon/sockpuppetbrowser:latest
-      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.47.05,ghcr.io/dgtlmoon/changedetection.io:0.49.11"
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.47.05,ghcr.io/dgtlmoon/changedetection.io:0.50.8"
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=ghcr.io/dgtlmoon/changedetection.io:0.49.11,dgtlmoon/sockpuppetbrowser:latest
-      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.49.11,ghcr.io/dgtlmoon/changedetection.io:0.49.11"
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.49.11,ghcr.io/dgtlmoon/changedetection.io:0.50.8"
+      image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
+    ;;
+    6)
+      newVer=v6
+      curImageList=ghcr.io/dgtlmoon/changedetection.io:0.50.8,dgtlmoon/sockpuppetbrowser:latest
+      image_update_map[0]="ghcr.io/dgtlmoon/changedetection.io:0.50.8,ghcr.io/dgtlmoon/changedetection.io:0.50.8"
       image_update_map[1]="dgtlmoon/sockpuppetbrowser:latest,dgtlmoon/sockpuppetbrowser:latest"
     ;;
     *)
@@ -53661,7 +53902,7 @@ function installCoturn()
   pullImage $(getScriptImageByContainerName coturn)
   retVal=$?
   if [ $retVal -ne 0 ]; then
-    return 1 $retVal
+    return $retVal
   fi
   set -e
 
@@ -53863,7 +54104,7 @@ function installFileDrop()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  buildFileDropImage
+  buildImageFileDropV1
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -53977,7 +54218,7 @@ function performUpdateFileDrop()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function buildFileDropImage()
+function buildImageFileDropV1()
 {
   set +e
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
@@ -57410,6 +57651,7 @@ EOFOT
 "Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD
 "Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
+"Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
 "Pastefy" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
 "PeerTube" postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER_PASSWORD
@@ -57561,7 +57803,7 @@ function installPixelfed()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildImagePixelfed
+  buildImagePixelfedV1
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -57876,8 +58118,9 @@ TLS_REQSAN never
 EOFPF
 }
 
-function buildImagePixelfed()
+function buildImagePixelfedV1()
 {
+  echo "The Pixelfed image is being built. It can take up to 15 minutes for the process to complete, so please be patient."
   img_ver=v0.12.5.tar.gz
   cd $HSHQ_BUILD_DIR
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
@@ -58452,7 +58695,8 @@ ARG PHP_EXTENSIONS_EXTRA=""
 ARG PHP_EXTENSIONS_DATABASE="pdo_pgsql pdo_mysql pdo_sqlite"
 
 # GPG key for nginx apt repository
-ARG NGINX_GPGKEY="573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62"
+# ARG NGINX_GPGKEY="573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62"
+ARG NGINX_GPGKEY="8540A6F18833A80E9C1653A42FD21310B49F6B46"
 
 # GPP key path for nginx apt repository
 ARG NGINX_GPGKEY_PATH="/usr/share/keyrings/nginx-archive-keyring.gpg"
@@ -60362,6 +60606,216 @@ function performUpdateqBittorrent()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Ombi
+function installOmbi()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory ombi "Ombi"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName ombi-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/ombi
+  mkdir $HSHQ_STACKS_DIR/ombi/config
+  mkdir $HSHQ_STACKS_DIR/ombi/db
+  mkdir $HSHQ_STACKS_DIR/ombi/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/ombi/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $OMBI_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $OMBI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  OMBI_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OMBI_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigOmbi
+  installStack ombi ombi-app "\[ls.io-init\] done" $HOME/ombi.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OMBI_INIT_ENV" = "true" ]; then
+    sendEmail -s "Ombi Admin Login Info" -b "Ombi Admin Username: $OMBI_ADMIN_USERNAME\nOmbi Admin Password: $OMBI_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    OMBI_INIT_ENV=true
+    updateConfigVar OMBI_INIT_ENV $OMBI_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://ombi-app:3579 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OMBI_APP $MANAGETLS_OMBI_APP "$is_integrate_hshq" $NETDEFAULT_OMBI_APP "$inner_block"
+  insertSubAuthelia $SUB_OMBI_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll ombi "$FMLNAME_OMBI_APP" $USERTYPE_OMBI_APP "https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN" "ombi.png" "$(getHeimdallOrderFromSub $SUB_OMBI_APP $USERTYPE_OMBI_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true ombi "$FMLNAME_OMBI_APP" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
+  fi
+  set +e
+  apik=$(docker exec -i ombi-db mysql -N -u $OMBI_DATABASE_USER -p$OMBI_DATABASE_USER_PASSWORD -e "use $OMBI_DATABASE_NAME; select Content from GlobalSettings where SettingsName='OmbiSettings';" | jq -r .ApiKey)
+  curl -X "POST" -H "ApiKey: $apik" "https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/api/v1/Settings/notifications/email" -H "accept: application/json" -H "Content-Type: application/json" -d "{\"notificationTemplates\": [],\"enabled\": true,\"host\": \"$SMTP_HOSTNAME\",\"port\": \"$SMTP_HOSTPORT\",\"senderName\":\"Ombi $(getAdminEmailName)\",\"senderAddress\": \"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"authentication\": false,\"disableTLS\": false,\"disableCertificateChecking\": true}" > /dev/null 2>&1
+  set -e
+}
+
+function outputConfigOmbi()
+{
+  cat <<EOFMT > $HOME/ombi-compose.yml
+$STACK_VERSION_PREFIX ombi $(getScriptStackVersion ombi)
+
+services:
+  ombi-db:
+    image: $(getScriptImageByContainerName ombi-db)
+    container_name: ombi-db
+    hostname: ombi-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-ombi-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-ombi-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/ombi/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.ombi-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.ombi-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ombi-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ombi-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ombi-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ombi-hourly-db.email-from=Ombi Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ombi-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.ombi-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.ombi-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.ombi-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.ombi-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.ombi-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.ombi-monthly-db.email-from=Ombi Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.ombi-monthly-db.mail-only-on-error=false"
+
+  ombi-app:
+    image: $(getScriptImageByContainerName ombi-app)
+    container_name: ombi-app
+    hostname: ombi-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - ombi-db
+    networks:
+      - int-ombi-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/ombi/config:/config
+
+volumes:
+  v-ombi-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/ombi/db
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-ombi-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/ombi.env
+TZ=\${TZ}
+PUID=$USERID
+PGID=$GROUPID
+MYSQL_DATABASE=$OMBI_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$OMBI_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$OMBI_DATABASE_USER
+MYSQL_PASSWORD=$OMBI_DATABASE_USER_PASSWORD
+EOFMT
+
+  cat <<EOFOB > $HSHQ_STACKS_DIR/ombi/config/database.json
+{
+  "OmbiDatabase": {
+    "Type": "MySQL",
+    "ConnectionString": "Server=ombi-db;Port=3306;User ID=$OMBI_DATABASE_USER;Password=$OMBI_DATABASE_USER_PASSWORD;Database=$OMBI_DATABASE_NAME"
+  },
+  "SettingsDatabase": {
+    "Type": "MySQL",
+    "ConnectionString": "Server=ombi-db;Port=3306;User ID=$OMBI_DATABASE_USER;Password=$OMBI_DATABASE_USER_PASSWORD;Database=$OMBI_DATABASE_NAME"
+  },
+  "ExternalDatabase": {
+    "Type": "MySQL",
+    "ConnectionString": "Server=ombi-db;Port=3306;User ID=$OMBI_DATABASE_USER;Password=$OMBI_DATABASE_USER_PASSWORD;Database=$OMBI_DATABASE_NAME"
+  }
+}
+EOFOB
+}
+
+function performUpdateOmbi()
+{
+  perform_stack_name=ombi
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mariadb:10.7.3,linuxserver/ombi:4.47.1
+      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
+      image_update_map[1]="linuxserver/ombi:4.47.1,linuxserver/ombi:4.47.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -60806,7 +61260,6 @@ EOFHS
 
 function outputScriptServerTheme()
 {
-  getUpdateAssets
   rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-ApplyJoin.png
   rm -f $HSHQ_STACKS_DIR/script-server/web/img/HSHQ-Invite.png
   cp $HSHQ_ASSETS_DIR/images/HSHQ-ApplyJoin.png $HSHQ_STACKS_DIR/script-server/web/img/
@@ -61623,7 +62076,7 @@ decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing login credentials in Vaultwarden format..."
-emailVaultwardenCredentials false
+emailVaultwardenCredentials
 set -e
 performExitFunctions false
 
@@ -61921,7 +62374,12 @@ decryptConfigFileAndLoadEnvNoPrompts
 services=\$(getArgumentValue services "\$@")
 
 set +e
-installListOfServices "\$services"
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  installListOfServices "\$services"
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
 set -e
 performExitFunctions false
 
@@ -62004,7 +62462,13 @@ source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
 decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
-installAllAvailableStacks false
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  installAllAvailableStacks false
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
+
 set -e
 performExitFunctions false
 
@@ -62070,7 +62534,12 @@ decryptConfigFileAndLoadEnvNoPrompts
 USER_RELAY_SUDO_PW="\$TMP_USER_RELAY_SUDO_PW"
 services=\$(getArgumentValue services "\$@")
 set +e
-updateListOfStacks "\$services"
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  updateListOfStacks "\$services"
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
 set -e
 performExitFunctions false
 
@@ -62170,7 +62639,12 @@ TMP_USER_RELAY_SUDO_PW="\$USER_RELAY_SUDO_PW"
 decryptConfigFileAndLoadEnvNoPrompts
 USER_RELAY_SUDO_PW="\$TMP_USER_RELAY_SUDO_PW"
 set +e
-performAllAvailableStackUpdates false
+getUpdateAssets
+if [ \$? -eq 0 ]; then
+  performAllAvailableStackUpdates false
+else
+  echo "ERROR: Could not update image assets, returning..."
+fi
 set -e
 performExitFunctions false
 
@@ -63908,7 +64382,7 @@ echo "Getting auth token..."
 portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
 if [ \$? -eq 0 ]; then
   echo "Querying stacks..."
-  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==1)
+  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
   if [ \$? -eq 0 ]; then
     echo "Succesfully executed query, connection is good!"
   else
@@ -68813,6 +69287,14 @@ SQLPAD_CONNECTIONS__nextcloud__username=$NEXTCLOUD_DATABASE_USER
 SQLPAD_CONNECTIONS__nextcloud__password=$NEXTCLOUD_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__nextcloud__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__nextcloud__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__ombi__name=Ombi
+SQLPAD_CONNECTIONS__ombi__driver=mysql
+SQLPAD_CONNECTIONS__ombi__host=ombi-db
+SQLPAD_CONNECTIONS__ombi__database=$OMBI_DATABASE_NAME
+SQLPAD_CONNECTIONS__ombi__username=$OMBI_DATABASE_USER
+SQLPAD_CONNECTIONS__ombi__password=$OMBI_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__ombi__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__ombi__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__paperless__name=Paperless
 SQLPAD_CONNECTIONS__paperless__driver=postgres
 SQLPAD_CONNECTIONS__paperless__host=paperless-db
@@ -70488,7 +70970,7 @@ function installClientDNS()
 
   mkdir -p $HSHQ_STACKS_DIR/clientdns-${cdns_stack_name}
   cdns_stack_name_upper=$(echo $cdns_stack_name | tr '[:lower:]' '[:upper:]')
-  checkAddServiceToConfig "clientdns-${cdns_stack_name}" "CLIENTDNS_${cdns_stack_name_upper}_ADMIN_USERNAME=$CUR_CLIENTDNS_ADMIN_USERNAME,CLIENTDNS_${cdns_stack_name_upper}_ADMIN_PASSWORD=$CUR_CLIENTDNS_ADMIN_PASSWORD"
+  checkAddServiceToConfig "clientdns-${cdns_stack_name}" "CLIENTDNS_${cdns_stack_name_upper}_ADMIN_USERNAME=$CUR_CLIENTDNS_ADMIN_USERNAME,CLIENTDNS_${cdns_stack_name_upper}_ADMIN_PASSWORD=$CUR_CLIENTDNS_ADMIN_PASSWORD" $CONFIG_FILE false
   docker network create --driver=bridge tmpnet >/dev/null
   clientdns_subnet=$(getDockerSubnet tmpnet)
   clientdns_subnet_prefix=$(echo $clientdns_subnet | rev | cut -d "." -f2- | rev)
