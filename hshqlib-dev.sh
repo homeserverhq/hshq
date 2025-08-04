@@ -15039,7 +15039,7 @@ function restartAllStacks()
   done
   stopPortainer
   removeDockerNetworks
-  sudo docker ps -q | xargs sudo docker stop
+  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
   docker container prune -f
   echo "Restarting Docker..."
   sudo systemctl restart docker
