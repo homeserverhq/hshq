@@ -2295,6 +2295,7 @@ EOF
 
 function restorePullDockerImages()
 {
+  set +e
   OLDIFS=$IFS
   IFS=$(echo -en "\n\b")
   imgList=($(sudo find $HSHQ_STACKS_DIR/portainer/compose -name docker-compose.yml -print0 | xargs -0 sudo grep -hr "^[[:blank:]]*image:"))
@@ -32618,10 +32619,10 @@ function buildOrPullImage()
   # The mindsdb image in the AIStack is still an issue, need a solution for it.
   case "$curImg" in
     "filedrop/filedrop:1")
-      buildImageFileDrop
+      buildImageFileDropV1
       ;;
     "hshq/pixelfed:v1")
-      buildImagePixelfed
+      buildImagePixelfedV1
       ;;
     "hshq/mindsdb:v1")
       echo "hshq/mindsdb:v1 - This image must be rebuilt by user."
@@ -54103,7 +54104,7 @@ function installFileDrop()
   if [ $cdRes -ne 0 ]; then
     return 1
   fi
-  buildImageFileDrop
+  buildImageFileDropV1
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -54217,7 +54218,7 @@ function performUpdateFileDrop()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function buildImageFileDrop()
+function buildImageFileDropV1()
 {
   set +e
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
@@ -57802,7 +57803,7 @@ function installPixelfed()
   if [ $? -ne 0 ]; then
     return 1
   fi
-  buildImagePixelfed
+  buildImagePixelfedV1
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -58117,7 +58118,7 @@ TLS_REQSAN never
 EOFPF
 }
 
-function buildImagePixelfed()
+function buildImagePixelfedV1()
 {
   echo "The Pixelfed image is being built. It can take up to 15 minutes for the process to complete, so please be patient."
   img_ver=v0.12.5.tar.gz
