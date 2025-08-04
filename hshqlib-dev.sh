@@ -2268,6 +2268,9 @@ EOF
   setSystemState $SS_RUNNING
   performExitFunctions
   releaseLock networkchecks performFullRestore false
+  sudo systemctl daemon-reload
+  sudo systemctl restart ssh
+  sudo systemctl restart sshd
   clear
   echo -e "\n\n\n\n################################################################\n"
   echo -e "  HomeServer Restore Process Complete! \n"
@@ -4708,7 +4711,7 @@ EOF
     showMessageBox "ERROR" "No partition was selected, returning..."
     return
   fi
-  sudo mount /dev/$selDisk $HSHQ_BACKUP_DIR
+  sudo mount /dev/$selDisk $HSHQ_BACKUP_DIR > /dev/null
   if [ $? -ne 0 ]; then
     showMessageBox "ERROR" "There was an error mounting this partition, returning..."
     return
@@ -4722,10 +4725,11 @@ EOF
   else
     echo "UUID=$newPartID $HSHQ_BACKUP_DIR ext4 defaults 0 0" | sudo tee -a /etc/fstab > /dev/null 2>&1
   fi
+  sudo systemctl daemon-reload > /dev/null 2>&1
   sudo findmnt --verify | grep "Success, no errors or warnings detected" > /dev/null 2>&1
   if [ $? -ne 0 ]; then
-    sudo mv /etc/fstab.old /etc/fstab
     showMessageBox "ERROR" "There was a problem adding the requisite entry to /etc/fstab. Your backup disk will not be auto-mounted after a reboot."
+    sudo mv /etc/fstab.old /etc/fstab
   else
     sudo rm -f /etc/fstab.old
   fi
@@ -26083,9 +26087,9 @@ function wgDockInternetUpAll()
   checkUpdateDockerPrivateIP
   for conf in $HSHQ_WIREGUARD_DIR/internet/*.conf 
   do
-    if ! test -f "$conf"; then continue; fi
+    if ! sudo test -f "$conf"; then continue; fi
     logHSHQEvent info "wgDockInternetUpAll - internet: $conf"
-    $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf up
+    sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $conf up
   done
   logHSHQEvent info "wgDockInternetUpAll - END"
 }
