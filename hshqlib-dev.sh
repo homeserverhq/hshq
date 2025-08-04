@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=177
+HSHQ_LIB_SCRIPT_VERSION=178
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5634,6 +5634,9 @@ function webSetupHostedVPN()
     echo "ERROR: There was an problem uploading the validation script to the RelayServer, returning..."
     return
   fi
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo "DEBUG: Uploading Validation Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME"
+  fi
   sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
   is_err=$?
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
@@ -5721,6 +5724,17 @@ function webSetupHostedVPN()
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
   loadSSHKey
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    if ! [ -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME ]; then
+      echo "DEBUG: The setup file does not exist!"
+    fi
+    # Add a sleep?
+    echo "DEBUG: Sleeping for 5 seconds, just for s&g..."
+    sleep 5
+    echo "DEBUG: Testing RelayServer Login - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP"
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest"
+    echo "DEBUG: Uploading Setup Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME"
+  fi
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
   ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE"
@@ -27584,8 +27598,8 @@ function getUpdateAssets()
     isGitExist=true
   fi
   curGitTries=0
-  maxGitTries=5
-  while [ $curGitTries -le $maxGitTries ]
+  maxGitTries=10
+  while [ $curGitTries -lt $maxGitTries ]
   do
     if [ "$isGitExist" = "true" ]; then
       git -C $HSHQ_ASSETS_DIR pull > /dev/null
@@ -61885,7 +61899,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "regex": {
-        "pattern": "[1-2][0-9][0-9][0-9]-[0-2][0-9]-[0-2][0-9] [0-2][0-9]\\\\:[0-2][0-9]\\\\:[0-2][0-9] [A-Z]{3,5}",
+        "pattern": "[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3])\\\\:(0[0-9]|[1-5][0-9])\\\\:(0[0-9]|[1-5][0-9]) [A-Z]{3,5}",
         "description": "Date format (see instructions)"
       },
       "ui": {
@@ -61901,7 +61915,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "regex": {
-        "pattern": "[1-2][0-9][0-9][0-9]-[0-2][0-9]-[0-2][0-9] [0-2][0-9]\\\\:[0-2][0-9]\\\\:[0-2][0-9] [A-Z]{3,5}",
+        "pattern": "[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3])\\\\:(0[0-9]|[1-5][0-9])\\\\:(0[0-9]|[1-5][0-9]) [A-Z]{3,5}",
         "description": "Date format (see instructions)"
       },
       "ui": {
