@@ -5661,14 +5661,14 @@ function webSetupHostedVPN()
   loadSSHKey
   set +e
   if [ "$LOG_LEVEL" = "debug" ]; then
-    echo -e "Public key on HomeServer side:"
+    echo -e "\n\nPublic key on HomeServer side:"
     echo -e "========================================================================"
     echo -e "$(ssh-add -L)"
     echo -e "========================================================================\n"
     echo -e "Public key on RelayServer side:"
     echo -e "========================================================================"
     SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "cat /home/$RELAYSERVER_REMOTE_USERNAME/.ssh/authorized_keys"
-    echo -e "========================================================================\n"
+    echo -e "========================================================================\n\n"
   fi
   echo "Testing RelayServer login with pub/priv key..."
   if [ "$LOG_LEVEL" = "debug" ]; then
