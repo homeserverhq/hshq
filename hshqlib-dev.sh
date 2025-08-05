@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=179
+HSHQ_LIB_SCRIPT_VERSION=180
 LOG_LEVEL=debug
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5638,7 +5638,7 @@ function webSetupHostedVPN()
     return
   fi
   if [ "$LOG_LEVEL" = "debug" ]; then
-    echo "DEBUG: Uploading Validation Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME"
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: Uploading Validation Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME"
   fi
   sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
   is_err=$?
@@ -5672,10 +5672,24 @@ function webSetupHostedVPN()
   fi
   echo "Testing RelayServer login with pub/priv key..."
   if [ "$LOG_LEVEL" = "debug" ]; then
-    echo "DEBUG: RS Login [1] - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest1\""
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: RS Login [1] - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest1\""
   fi
   ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest1"
   is_err=$?
+  if [ $is_err -eq 0 ]; then
+    # Do a test scp upload with key
+    echo "Testing RelayServer scp with pub/priv key..."
+    truncate -s 1M $HSHQ_RELAYSERVER_DIR/scripts/testRSFile
+    scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/testRSFile $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+    is_err=$?
+    rm -f $HSHQ_RELAYSERVER_DIR/scripts/testRSFile
+  fi
+  if [ $is_err -eq 0 ]; then
+    # Remove remote testfile
+    echo "Remove remote testfile with pub/priv key..."
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "rm -f ~/testRSFile && echo RSFileRemoved_1"
+    is_err=$?
+  fi
   unloadSSHKey
   set +e
   if [ $is_err -ne 0 ]; then
@@ -5742,7 +5756,7 @@ function webSetupHostedVPN()
   if [ "$LOG_LEVEL" = "debug" ]; then
     loadSSHKey
     set +e
-    echo "DEBUG: RS Login [2] - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest2\""
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: RS Login [2] - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest2\""
     ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest2"
     is_err=$?
     unloadSSHKey
@@ -5765,23 +5779,43 @@ function webSetupHostedVPN()
   loadSSHKey
   if [ "$LOG_LEVEL" = "debug" ]; then
     if ! [ -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME ]; then
-      echo "DEBUG: The setup file does not exist!"
+      echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: The setup file does not exist!"
     fi
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: Size of setup script: $(du -h $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME | xargs | cut -d" " -f1)"
+    # Do a simple file copy, see if any strange issues pop
+    cp $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $HSHQ_RELAYSERVER_DIR/scripts/${RS_INSTALL_SETUP_SCRIPT_NAME}.bak && cp $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $HSHQ_RELAYSERVER_DIR/testRSFile
+    rm -f $HSHQ_RELAYSERVER_DIR/scripts/${RS_INSTALL_SETUP_SCRIPT_NAME}.bak
     # Add a sleep?
-    echo "DEBUG: Sleeping for 5 seconds, just for s&g..."
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: Sleeping for 5 seconds, just for s&g..."
     sleep 5
-    echo "DEBUG: RS Login [3] Testing RelayServer Login with password - ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP \"echo RSLoginTest3\""
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: RS Login [3] Testing RelayServer Login with password - ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP \"echo RSLoginTest3\""
     SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo RSLoginTest3"
-    echo "DEBUG: RS Login [4] Testing RelayServer Login with keys - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest4\""
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: RS Login [4] Testing RelayServer Login with keys - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest4\""
     ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest4"
-    echo "DEBUG: Uploading Setup Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME"
+    # Do another test scp upload with key
+    truncate -s 1M $HSHQ_RELAYSERVER_DIR/scripts/testRSFile
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: RS Upload [5] Testing RelayServer SCP with pub/priv key - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/testRSFile $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME"
+    scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/testRSFile $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME/testRSFile
+    rm -f $HSHQ_RELAYSERVER_DIR/scripts/testRSFile
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: RS Login [6] Testing RelayServer remove remote testfile - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"rm -f ~/testRSFile && echo RSFileRemoved_2\""
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "rm -f ~/testRSFile && echo RSFileRemoved_2"
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: Uploading Setup Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME"
   fi
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: Uploading Install Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME"
+  fi
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: Creating upload notify - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE\""
+  fi
   ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE"
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   unloadSSHKey
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo "[$(date "+%Y-%m-%d %H:%M:%S.%3N")] DEBUG: RelayServer Scripts uploaded, continuing..."
+  fi
   set +e
   sendDNSRecordsEmail $HOMESERVER_DOMAIN
   sleep 2
@@ -13629,8 +13663,10 @@ function getIncrementLockAttempts()
   if test -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME; then
     lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
     totAttempts=\$((\$lastAttempts + 1))
-    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME
-    echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME > /dev/null 2>&1
+    if [ \$? -eq 0 ]; then
+      echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    fi
     echo "\$totAttempts"
   fi
 }
@@ -20706,6 +20742,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=177
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 180 ]; then
+    echo "Updating to Version 180..."
+    version180Update
+    HSHQ_VERSION=180
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23213,6 +23255,11 @@ function version177Update()
 {
   PORTAINER_ENDPOINT_ID=1
   outputMaintenanceScripts
+}
+
+function version180Update()
+{
+  outputLockUtilsScript
 }
 
 function updateRelayServerWithScript()
