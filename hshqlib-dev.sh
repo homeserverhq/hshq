@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=178
+HSHQ_LIB_SCRIPT_VERSION=179
 LOG_LEVEL=debug
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5603,6 +5603,9 @@ function webSetupHostedVPN()
   # Clear out any old hosts
   ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
   ssh-keygen -f "$HOME/.ssh/known_hosts" -R "[$RELAYSERVER_SERVER_IP]:$RELAYSERVER_SSH_PORT" > /dev/null 2>&1
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    RELAYSERVER_SSH_PRIVATE_KEY_FILENAME=""
+  fi
   if [ -z "$RELAYSERVER_SSH_PRIVATE_KEY_FILENAME" ]; then
     echo "Generating keys, please wait..."
     RELAYSERVER_SSH_PRIVATE_KEY_FILENAME=$HOMESERVER_ABBREV".key"
@@ -5653,6 +5656,24 @@ function webSetupHostedVPN()
   SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" <<< "$rs_new_password"
   if [ $? -ne 0 ]; then
     echo "ERROR: There was a problem with the RelayServer, see above."
+    return
+  fi
+  loadSSHKey
+  set +e
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo -e "Public key on HomeServer side: $(ssh-add -L)\n"
+    SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo \"Public key on RelayServer side: \"; cat ~/.ssh/authorized_keys"
+  fi
+  echo "Testing RelayServer login with pub/priv key..."
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo "DEBUG: RS Login [1] - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest1\""
+  fi
+  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest1"
+  is_err=$?
+  unloadSSHKey
+  set +e
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: Could not login to RelayServer with pub/priv key."
     return
   fi
   echo "All is good, assigning values..."
@@ -5712,6 +5733,18 @@ function webSetupHostedVPN()
       done
     fi
   done
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    loadSSHKey
+    set +e
+    echo "DEBUG: RS Login [2] - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest2\""
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest2"
+    is_err=$?
+    unloadSSHKey
+    set +e
+    if [ $is_err -ne 0 ]; then
+      echo "ERROR: [2] Could not login to RelayServer with pub/priv key."
+    fi
+  fi
   initRelayServerCredentials
   outputHostedVPNConfigs
   insertSQLHostedVPN
@@ -5731,8 +5764,10 @@ function webSetupHostedVPN()
     # Add a sleep?
     echo "DEBUG: Sleeping for 5 seconds, just for s&g..."
     sleep 5
-    echo "DEBUG: Testing RelayServer Login - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP"
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest"
+    echo "DEBUG: RS Login [3] Testing RelayServer Login with password - ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP \"echo RSLoginTest3\""
+    SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo RSLoginTest3"
+    echo "DEBUG: RS Login [4] Testing RelayServer Login with keys - ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP \"echo RSLoginTest4\""
+    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "echo RSLoginTest4"
     echo "DEBUG: Uploading Setup Script - scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME"
   fi
   scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
