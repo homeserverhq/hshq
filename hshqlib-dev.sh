@@ -29761,7 +29761,7 @@ function initServicesCredentials()
     updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
   fi
   if [ -z "$DISCOURSE_ADMIN_EMAIL_ADDRESS" ]; then
-    DISCOURSE_ADMIN_EMAIL_ADDRESS=$DISCOURSE_ADMIN_USERNAME"@"$HOMESERVER_DOMAIN
+    DISCOURSE_ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME_BASE"_discourse@"$HOMESERVER_DOMAIN
     updateConfigVar DISCOURSE_ADMIN_EMAIL_ADDRESS $DISCOURSE_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$DISCOURSE_ADMIN_PASSWORD" ]; then
@@ -46637,7 +46637,7 @@ function installDiscourse()
   set +e
   docker exec mailu-admin flask mailu alias-delete $DISCOURSE_ADMIN_EMAIL_ADDRESS
   sleep 5
-  addUserMailu alias $DISCOURSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  addUserMailu alias $ADMIN_USERNAME_BASE"_discourse" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   #generateCert discourse-app discourse-app
   outputConfigDiscourse
   installStack discourse discourse-app "" $HOME/discourse.env
