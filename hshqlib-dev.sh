@@ -23215,8 +23215,10 @@ function version180Update()
 
 function version181Update()
 {
-  DISCOURSE_ADMIN_USERNAME=""
-  initServicesCredentials
+  if [ ${#DISCOURSE_ADMIN_USERNAME} -gt 20 ]; then
+    DISCOURSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE
+    updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
+  fi
 }
 
 function updateRelayServerWithScript()
