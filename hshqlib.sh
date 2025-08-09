@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=177
+HSHQ_LIB_SCRIPT_VERSION=181
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -2259,9 +2259,7 @@ EOF
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   # Add RelayServer fingerprint
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    loadSSHKey
-    ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successfully connected to RelayServer!'
-    unloadSSHKey
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo \"Successfully connected to RelayServer! \"" -f
   fi
   wgDockInternetUpAll
   postInstallation restore
@@ -3981,14 +3979,13 @@ function initInstallation()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo "Starting installation on RelayServer..."
     sleep 1
-    loadSSHKey
     isRSReady=false
     set +e
     countRSPreRetries=0
     maxRSPreRetries=30
     while true;
     do
-      ssh -o 'StrictHostKeyChecking accept-new' -p $RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi"
+      perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -f
       if [ $? -eq 0 ]; then
         break
       fi
@@ -4001,8 +3998,7 @@ function initInstallation()
       sleep 30
     done
     sleep 1
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW"
-    unloadSSHKey
+    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" -f -i "$USER_RELAY_SUDO_PW"
   fi
   set -e
   refreshSudo
@@ -5486,7 +5482,6 @@ function webSetupHostedVPN()
   # rs_new_password
   # rs_new_ssh_port
   # rs_primary_vpn_subnet
-
   case "$PRIMARY_VPN_SETUP_TYPE" in
     "host")
       echo "ERROR: You are already hosting a VPN, please remove the existing one first, returning..."
@@ -5618,8 +5613,9 @@ function webSetupHostedVPN()
   # Login, upload check script, log back in and run check script
   # 1. Login
   echo "Logging into RelayServer..."
-  SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo hello >/dev/null"
-  if [ $? -ne 0 ]; then
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o ConnectTimeout=5 -o 'StrictHostKeyChecking accept-new'" -u "$rs_cur_username" -h "$RELAYSERVER_SERVER_IP" -c "echo hello >/dev/null" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
     echo "ERROR: There was a problem logging in to the RelayServer, returning..."
     return
   fi
@@ -5627,14 +5623,14 @@ function webSetupHostedVPN()
   echo "Uploading validation script..."
   outputRelayServerValidationScript
   outputRelayServerInstallSetupScript
-  sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/" -f
   is_err=$?
   rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
   if [ $is_err -ne 0 ]; then
     echo "ERROR: There was an problem uploading the validation script to the RelayServer, returning..."
     return
   fi
-  sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME" -f
   is_err=$?
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
   if [ $is_err -ne 0 ]; then
@@ -5647,9 +5643,17 @@ function webSetupHostedVPN()
     rs_new_password="$rs_cur_password"
   fi
   echo "Performing pre-installation checks, please wait..."
-  SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" <<< "$rs_new_password"
-  if [ $? -ne 0 ]; then
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$rs_new_password"
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
     echo "ERROR: There was a problem with the RelayServer, see above."
+    return
+  fi
+  echo "Testing RelayServer login with pub/priv key..."
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "echo \"Successfully logged in to RelayServer with key! \"" -f
+  is_err=$?
+  if [ $is_err -ne 0 ]; then
+    echo "ERROR: Could not login to RelayServer with pub/priv key."
     return
   fi
   echo "All is good, assigning values..."
@@ -5720,13 +5724,11 @@ function webSetupHostedVPN()
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
-  loadSSHKey
-  scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
-  scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
-  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE"
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME
   rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
-  unloadSSHKey
   set +e
   sendDNSRecordsEmail $HOMESERVER_DOMAIN
   sleep 2
@@ -5741,13 +5743,11 @@ function webSetupHostedVPN()
   # Start Install
   set +e
   echo "Starting installation on RelayServer..."
-  loadSSHKey
-  set +e
   countRSPreRetries=0
   maxRSPreRetries=20
   while true;
   do
-    ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" <<< "$USER_RELAY_SUDO_PW"
+    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -i "$USER_RELAY_SUDO_PW" -f
     if [ $? -eq 0 ]; then
       break
     fi
@@ -5759,16 +5759,15 @@ function webSetupHostedVPN()
     echo "($countRSPreRetries of $maxRSPreRetries) RelayServer not ready for installation, sleeping 30 seconds then will retry..."
     sleep 30
   done
-  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW"
-  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "export TERM=linux; screen -r hshqInstall"
-  unloadSSHKey
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "bash $RS_INSTALL_FRESH_SCRIPT_NAME -s" -i "$USER_RELAY_SUDO_PW" -f
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-t -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "export TERM=linux; screen -r hshqInstall" -r 1 -b 1
   echo "RelayServer is rebooting..."
-  echo "Sleeping 30 seconds, then will attempt to connect..."
-  sleep 30
+  echo "Sleeping 10 seconds, then will attempt to connect..."
+  sleep 10
   set +e
   connectPrimaryInternet
   set +e
-  connectPrimaryVPN false
+  connectPrimaryVPN true
   set +e
   updateEndpointIPs
   set +e
@@ -6089,9 +6088,7 @@ function transferHostedVPN()
   sudo tar cvzf $HOME/rsbackup.tar.gz -C $HSHQ_RELAYSERVER_DIR/ ./backup >/dev/null
   old_rsIP=$RELAYSERVER_SERVER_IP
   uploadVPNInstallScripts true
-  loadSSHKey
-  scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/rsbackup.tar.gz $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
-  unloadSSHKey
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HOME/rsbackup.tar.gz -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   sudo rm -f $HOME/rsbackup.tar.gz
   showMessageBox "Upload Success" "The scripts and data have been uploaded to the RelayServer host. Please run 'bash $RS_INSTALL_TRANSFER_SCRIPT_NAME' on the remote host. After the installation has completed and the server has fully rebooted, press okay to begin monitoring for a successful connection transfer."
   # Remove old RelayIP with no update
@@ -6155,10 +6152,8 @@ function transferHostedVPN()
   jsonbody="{\"paused\": false}"
   curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X PATCH -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices/$RELAYSERVER_SYNCTHING_DEVICE_ID
   docker container restart syncthing
-  loadSSHKey
   echo "Test login to new RelayServer: $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN"
-  ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN 'echo Successful! IP Address is: $(curl --silent https://api.ipify.org)'
-  unloadSSHKey
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo \"Successful! IP Address is: \$(curl --silent https://api.ipify.org)\"" -f
   notifyMyNetworkTransferRelayServer "$RELAYSERVER_SERVER_IP"
   removeSudoTimeoutInstall
   setSystemState $SS_RUNNING
@@ -7574,6 +7569,7 @@ function startInstall()
   scName=hshqInstall
   initScreen "\$scName"
   screen -S "\$scName" -X stuff "bash \$0 -i\n"
+  sleep 10
 }
 
 function getSuper()
@@ -10641,7 +10637,7 @@ EOF
       rs_cur_password="$USER_RELAY_SUDO_PW"
     fi
     echo "Logging into RelayServer..."
-    SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "echo hello >/dev/null"
+    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c "echo hello >/dev/null" -f
     is_err=$?
     if [ $is_err -ne 0 ]; then
       err_message="Could not log in to RelayServer. It could be wrong IP address/port and/or incorrect credentials. Please check your records and try again."
@@ -10650,28 +10646,27 @@ EOF
     # 2. Upload check script
     outputRelayServerValidationScript
     echo "Uploading validation script..."
-    sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/" -f
     is_err=$?
     rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
     if [ $is_err -ne 0 ]; then
       err_message="There was an error uploading the validation script to the RelayServer."
       continue
     fi
-    sshpass -p "$rs_cur_password" scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $rs_cur_username@$RELAYSERVER_SERVER_IP:~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME" -f
     is_err=$?
     if [ $is_err -ne 0 ]; then
       err_message="There was an error uploading the setup script to the RelayServer."
       continue
     fi
     echo "Performing pre-installation checks, please wait..."
-    SSHPASS="$rs_cur_password" sshpass -e ssh -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 -p $RELAYSERVER_CURRENT_SSH_PORT $rs_cur_username@$RELAYSERVER_SERVER_IP "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" <<< "$USER_RELAY_SUDO_PW" > /tmp/rsValidationOutput.txt
+    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$USER_RELAY_SUDO_PW" > /tmp/rsValidationOutput.txt
     is_err=$?
     if [ $is_err -ne 0 ]; then
       err_message="$(cat /tmp/rsValidationOutput.txt)"
       rm -f /tmp/rsValidationOutput.txt
       continue
     fi
-    unloadSSHKey
     if [ $is_err -eq 0 ]; then
       break
     fi
@@ -10705,16 +10700,14 @@ EOF
     updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
     updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   fi
-  loadSSHKey
-  scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+  perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   if [ "$isTransfer" = "true" ]; then
-    scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   else
-    scp -P $RELAYSERVER_CURRENT_SSH_PORT $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP:/home/$RELAYSERVER_REMOTE_USERNAME
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
     rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   fi
-  ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o ConnectTimeout=10 -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SERVER_IP "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE"
-  unloadSSHKey
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
 }
 
 function loadSSHKey()
@@ -10799,16 +10792,15 @@ function connectVPN()
   rs_vpn_ip=$(sqlite3 $HSHQ_DB "select RS_VPN_IP from hsvpn_connections where ID=$db_id;")
   is_primary=$(sqlite3 $HSHQ_DB "select IsPrimary from hsvpn_connections where ID=$db_id;")
   if [ $is_primary = 1 ] && [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    loadSSHKey
     set +e
     while true;
     do
-      max_attempts=40
+      max_attempts=20
       total_attempts=1
       isBreak=false
       while [ $total_attempts -le $max_attempts ]
       do
-        ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "echo \"Logged in to RelayServer...\"; if test -f ~/$RELAYSERVER_INSTALL_FAILED_FILE; then exit 23; fi; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1"
+        perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo \"Logged in to RelayServer...\"; if test -f ~/$RELAYSERVER_INSTALL_FAILED_FILE; then exit 23; fi; test -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE && rm -f ~/hshq/$RELAYSERVER_INSTALL_COMPLETE_FILE > /dev/null 2>&1" -r 1 -b 1
         rtVal=$?
         if [ $rtVal -eq 0 ]; then
           isBreak=true
@@ -10822,7 +10814,7 @@ function connectVPN()
         if [ $total_attempts -lt 10 ]; then
           echo "($total_attempts of $max_attempts) RelayServer installation has not completed, retrying in 30 seconds..."
         else
-          echo "($total_attempts of $max_attempts) RelayServer installation has not completed, it could be a firewall issue with the provider. Ensure that the port $RELAYSERVER_SSH_PORT (SSH) is open and accessible. Retrying in 30 seconds..."
+          echo "($total_attempts of $max_attempts) RelayServer installation has not completed, it could be a firewall issue with the VPS provider. Ensure that the port $RELAYSERVER_SSH_PORT (SSH) is open and accessible. Retrying in 30 seconds..."
         fi
         refreshSudo
         sleep 30
@@ -10830,7 +10822,7 @@ function connectVPN()
       done
       if ! [ "$isBreak" = "true" ]; then
         if [ "$is_prompt_user" = "true" ]; then
-          echo "ERROR: Could not log in to RelayServer to setup Syncthing. If this step is skipped, you will have to manually set up the RelayServer backup in Syncthing."
+          echo "ERROR: Could not log in to RelayServer to setup Syncthing. It could be an external firewall by the VPS provider or some other unknown network connectivity issue. If this step is skipped, you will have to manually set up the RelayServer backup in Syncthing."
           while true;
           do
             read -r -p "Enter 'retry' or 'cancel': " isRetryConnect
@@ -10856,7 +10848,6 @@ function connectVPN()
         break
       fi
     done
-    unloadSSHKey
   fi
   enableWGInterfaceQuick $ifaceName
   # If not hosting or non-primary VPN, then add CA domain.
@@ -10889,18 +10880,16 @@ function connectVPN()
     installClientDNS user1 $RELAYSERVER_WG_HS_CLIENTDNS_IP "$CLIENTDNS_USER1_ADMIN_USERNAME" "$CLIENTDNS_USER1_ADMIN_PASSWORD"
     echo "Sleeping for 5 seconds..."
     sleep 5
-    loadSSHKey
     # Setup syncthing link
     echo "Setting up Syncthing..."
     SYNCTHING_DEVICE_ID=$(curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X GET -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices | jq '.[0]' | jq -r '.deviceID')
     updateConfigVar SYNCTHING_DEVICE_ID $SYNCTHING_DEVICE_ID
     # Remote Syncthing
     echo "Getting RelayServer syncthing device ID..."
-    runCommandOnRelayServer true "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices | jq '.[0]' | jq -r '.deviceID'"
+    rsCaptureResults=$(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X GET -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices | jq '.[0]' | jq -r '.deviceID'" -f -d)
     if [ $? -ne 0 ]; then
       echo "There was an error obtaining the remote RelayServer Synchthing device ID. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
-      unloadSSHKey
       updateHeimdallUptimeKumaRelayServer
       return
     fi
@@ -10908,21 +10897,19 @@ function connectVPN()
     updateConfigVar RELAYSERVER_SYNCTHING_DEVICE_ID $RELAYSERVER_SYNCTHING_DEVICE_ID
     jsonbody="{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\", \\\"name\\\": \\\"$HOMESERVER_NAME HomeServer\\\",\\\"addresses\\\": [\\\"tcp://$SUB_SYNCTHING.$HOMESERVER_DOMAIN:$SYNCTHING_SYNC_PORT\\\"], \\\"compression\\\": \\\"metadata\\\", \\\"certName\\\": \\\"\\\", \\\"skipIntroductionRemovals\\\": false,\\\"introducedBy\\\": \\\"\\\",\\\"paused\\\": false,\\\"allowedNetworks\\\": [],\\\"autoAcceptFolders\\\": false,\\\"maxSendKbps\\\": 0,\\\"maxRecvKbps\\\": 0,\\\"ignoredFolders\\\": [],\\\"maxRequestKiB\\\": 0,\\\"untrusted\\\": false,\\\"remoteGUIPort\\\": 0}"
     echo "Adding HomeServer device to RelayServer syncthing..."
-    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices"
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices" -f
     if [ $? -ne 0 ]; then
       echo "There was an error setting up Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
-      unloadSSHKey
       updateHeimdallUptimeKumaRelayServer
       return
     fi
     jsonbody="{\\\"id\\\": \\\"$RELAYSERVER_SYNCTHING_FOLDER_ID\\\", \\\"label\\\": \\\"RelayServer Backup\\\",\\\"filesystemType\\\": \\\"basic\\\", \\\"path\\\": \\\"/relayserver/\\\", \\\"type\\\": \\\"sendonly\\\",\\\"devices\\\": [{\\\"deviceID\\\": \\\"$RELAYSERVER_SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"},{\\\"deviceID\\\": \\\"$SYNCTHING_DEVICE_ID\\\",\\\"introducedBy\\\": \\\"\\\",\\\"encryptionPassword\\\": \\\"\\\"}], \\\"rescanIntervalS\\\": 3600,\\\"fsWatcherEnabled\\\": true,\\\"fsWatcherDelayS\\\": 10,\\\"ignorePerms\\\": false,\\\"autoNormalize\\\": true,\\\"minDiskFree\\\": {\\\"value\\\": 1,\\\"unit\\\": \\\"%\\\"},\\\"versioning\\\": {\\\"type\\\": \\\"\\\",\\\"params\\\": {},\\\"cleanupIntervalS\\\": 3600,\\\"fsPath\\\": \\\"\\\",\\\"fsType\\\": \\\"basic\\\"},\\\"copiers\\\": 0,\\\"pullerMaxPendingKiB\\\": 0,\\\"hashers\\\": 0,\\\"order\\\": \\\"random\\\",\\\"ignoreDelete\\\": false,\\\"scanProgressIntervalS\\\": 0,\\\"pullerPauseS\\\": 0,\\\"maxConflicts\\\": 10,\\\"disableSparseFiles\\\": false,\\\"disableTempIndexes\\\": false,\\\"paused\\\": false,\\\"weakHashThresholdPct\\\": 25,\\\"markerName\\\": \\\".stfolder\\\",\\\"copyOwnershipFromParent\\\": false,\\\"modTimeWindowS\\\": 0,\\\"maxConcurrentWrites\\\": 2,\\\"disableFsync\\\": false,\\\"blockPullOrder\\\": \\\"standard\\\",\\\"copyRangeMethod\\\": \\\"standard\\\",\\\"caseSensitiveFS\\\": false,\\\"junctionsAsDirs\\\": false,\\\"syncOwnership\\\": false,\\\"sendOwnership\\\": true,\\\"syncXattrs\\\": false,\\\"sendXattrs\\\": false,\\\"xattrFilter\\\": {\\\"entries\\\": [],\\\"maxSingleEntrySize\\\": 1024,\\\"maxTotalSize\\\": 4096}}"
     echo "Setting up backup directory on RelayServer syncthing..."
-    runCommandOnRelayServer false "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders"
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "curl -s -H \"X-API-Key: $RELAYSERVER_SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders" -f
     if [ $? -ne 0 ]; then
       echo "There was an error configuring Syncthing on the remote RelayServer instance. This is likely due to an issue with your internet connection. You can either manually set up Syncthing to backup your RelayServer's data or remove the VPN and retry."
       set -e
-      unloadSSHKey
       updateHeimdallUptimeKumaRelayServer
       return
     fi
@@ -10931,80 +10918,33 @@ function connectVPN()
     echo "Setting up RelayServer device on HomeServer syncthing..."
     if [ "$LOG_LEVEL" = "debug" ]; then
       echo -e "Running this command on HomeServer:"
-      echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+      echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n"
       echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices"
-      echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+      echo -e " \n++++++++++++++++++++++++++++++++++++++++++++++++++\n"
     fi
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices
     jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
     echo "Setting up backup directory on HomeServer syncthing..."
     if [ "$LOG_LEVEL" = "debug" ]; then
       echo -e "Running this command on HomeServer:"
-      echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+      echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n"
       echo "curl -s -H \"X-API-Key: $SYNCTHING_API_KEY\" -X POST -d \"$jsonbody\" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders"
-      echo -e " \n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
+      echo -e " \n++++++++++++++++++++++++++++++++++++++++++++++++++\n"
     fi
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/folders
     echo "Restarting caddy instance on RelayServer..."
-    runCommandOnRelayServer false "docker container restart caddy"
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "docker container restart caddy" -f
     if [ $? -ne 0 ]; then
       echo "There was an error restarting caddy on the remote RelayServer instance. This is likely due to an issue with your internet connection. This is not a breaking issue, it will likely resolve itself automatically."
       set -e
-      unloadSSHKey
       updateHeimdallUptimeKumaRelayServer
       return
     fi
     echo "Finished setting up syncthing..."
     set -e
-    unloadSSHKey
     curdt=$(getCurrentDate)
     sudo sqlite3 $HSHQ_DB "update connections set LastUpdated='$curdt' where ID=$db_id;"
     updateHeimdallUptimeKumaRelayServer
-  fi
-}
-
-function runCommandOnRelayServer()
-{
-  set +e
-  isCaptureResult="$1"
-  rsCommand="$2"
-  maxRSRetries="$3"
-  rsInterval="$4"
-  if [ -z "$maxRSRetries" ]; then
-    maxRSRetries=30
-  fi
-  if [ -z "$rsInterval" ]; then
-    rsInterval=10
-  fi
-  total_attempts=1
-  isRSSuccess=false
-  rsCaptureResults=""
-  if [ "$LOG_LEVEL" = "debug" ]; then
-    echo -e "Running this command on RelayServer:"
-    echo -e "++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-    echo "$rsCommand"
-    echo -e "\n\n++++++++++++++++++++++++++++++++++++++++++++++++++\n\n"
-  fi
-  while [ $total_attempts -le $maxRSRetries ]
-  do
-    rsCaptureResults=""
-    if [ "$isCaptureResult" = "true" ]; then
-      rsCaptureResults=$(timeout $rsInterval ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$rsCommand")
-    else
-      timeout $rsInterval ssh -p $RELAYSERVER_SSH_PORT -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$rsCommand"
-    fi
-    if [ $? -eq 0 ]; then
-      isRSSuccess=true
-      break
-    fi
-    echo "($total_attempts of $maxRSRetries), retrying in 5 seconds..."
-    refreshSudo
-    sleep 5
-    total_attempts=$((total_attempts + 1))
-  done
-  if ! [ "$isRSSuccess" = "true" ]; then
-    rsCaptureResults=""
-    return 10
   fi
 }
 
@@ -11607,15 +11547,13 @@ function performMyNetworkCreateClientDNS()
   wg_pre_key=$(wg genpsk)
   wg_pub_key=$(echo $wg_priv_key | wg pubkey)
   wgPortalAuth="$(getWGPortalAuth)"
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"ClientDNS-$clientdns_stack_name\" \"$EMAIL_ADMIN_EMAIL_ADDRESS\" \"$wg_pub_key\" \"$wg_pre_key\" \"$wg_ip\" \"false\" \"true\" \"$wgPortalAuth\""
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"ClientDNS-$clientdns_stack_name\" \"$EMAIL_ADMIN_EMAIL_ADDRESS\" \"$wg_pub_key\" \"$wg_pre_key\" \"$wg_ip\" \"false\" \"true\" \"$wgPortalAuth\"" -f
   mbres=$?
   if [ $mbres -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer, returning..."
     return
   fi
   sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('clientdns-$clientdns_stack_name','$EMAIL_ADMIN_EMAIL_ADDRESS','clientdns','mynetwork','$wg_pub_key','$wg_pre_key','$wg_ip',false,'wg0','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$(getCurrentDate)');"
-
   sudo rm -f $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf
   sudo tee $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf >/dev/null <<EOFCF
 [Interface]
@@ -11631,7 +11569,6 @@ Endpoint = $RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVE
 PersistentKeepalive = $RELAYSERVER_PERSISTENT_KEEPALIVE
 EOFCF
   sudo chmod 0400 $HSHQ_WIREGUARD_DIR/users/clientdns-${clientdns_stack_name}.conf
-
   adm_username=$ADMIN_USERNAME_BASE"_clientdns"
   adm_pw=$(pwgen -c -n 32 1)
   installClientDNS $clientdns_stack_name $wg_ip $adm_username $adm_pw
@@ -12290,16 +12227,14 @@ function performNetworkInvite()
     preshared_key="$tmp_preshared_key"
   fi
   wgPortalAuth="$(getWGPortalAuth)"
-  loadSSHKey
   curdt=$(getCurrentDate)
   case "$conn_type" in
     "HomeServer VPN")
       echo "Adding to RelayServer..."
-      ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"HS-$domain_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$new_ip\" \"false\" \"true\" \"$wgPortalAuth\""
+      perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"HS-$domain_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$new_ip\" \"false\" \"true\" \"$wgPortalAuth\"" -f
       mbres=$?
       if [ $mbres -ne 0 ]; then
         echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer."
-        unloadSSHKey
         return 7
       fi
       db_id=$(sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,InterfaceName,EndpointHostname,LastUpdated) values('$config_name','$email_address','homeserver_vpn','mynetwork','$pub_key','$preshared_key','$new_ip',false,'','$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN','$curdt');select last_insert_rowid();")
@@ -12320,8 +12255,18 @@ function performNetworkInvite()
         echo "Adding mail domain to RelayServer..."
         sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into mailhostmap(MailHostID,Domain,IsFirstDomain) values ($mail_host_id,'$domain_name',true);"
         mail_relay_password=$(pwgen -c -n 32 1)
-        ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "docker exec mail-relay-postfix /etc/postfix/scripts/addMailUser.sh $domain_name $mail_relay_password"
-        ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $domain_name $mail_subdomain $new_ip"
+        perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "docker exec mail-relay-postfix /etc/postfix/scripts/addMailUser.sh $domain_name $mail_relay_password" -f
+        mbres=$?
+        if [ $mbres -ne 0 ]; then
+          echo "ERROR: Could not connect to RelayServer host or there was another unknown error."
+          return 7
+        fi
+        perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $domain_name $mail_subdomain $new_ip" -f
+        mbres=$?
+        if [ $mbres -ne 0 ]; then
+          echo "ERROR: Could not connect to RelayServer host or there was another unknown error."
+          return 7
+        fi
         if ! [ -z "$le_domains" ]; then
           echo "Primary Adding LECertDomains: $le_domains"
           addLECertPathsToRelayServer "$le_domains" "$domain_name"
@@ -12332,24 +12277,21 @@ function performNetworkInvite()
       new_ip=$(getRandomWireGuardIP)
       if [ -z "$new_ip" ]; then
         echo "ERROR: The HomeServer Internet network is full."
-        unloadSSHKey
         return 7
       fi
-      ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\""
+      perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\"" -f
       mbres=$?
       if [ $mbres -ne 0 ]; then
         echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer."
-        unloadSSHKey
         return 7
       fi
       sudo sqlite3 $HSHQ_DB "insert into connections(Name,EmailAddress,ConnectionType,NetworkType,PublicKey,PresharedKey,IPAddress,IsInternet,LastUpdated) values('$config_name','$email_address','homeserver_internet','mynetwork','$pub_key','$preshared_key','$new_ip',true,'$curdt');"
     ;;
     "User")
-      ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$ip_address\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
+      perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$config_name\" \"$email_address\" \"$pub_key\" \"$preshared_key\" \"$ip_address\" \"$is_internet\" \"false\" \"$wgPortalAuth\"" -f
       mbres=$?
       if [ $mbres -ne 0 ]; then
         echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer."
-        unloadSSHKey
         return 7
       fi
       isInternet=false
@@ -12360,7 +12302,6 @@ function performNetworkInvite()
       priv_key=$(getValueFromConfig "PrivateKey" $apply_file)
     ;;
   esac
-  unloadSSHKey
   echo "Emailing the invitation..."
   # Finally, email the invitation.
   case "$conn_type" in
@@ -13196,8 +13137,7 @@ function removeMyNetworkHomeServerVPNConnection()
   fi
 
   wgPortalAuth="$(getWGPortalAuth)"
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$ip_addr\" \"false\" \"true\" \"$wgPortalAuth\""
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$ip_addr\" \"false\" \"true\" \"$wgPortalAuth\"" -f
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer, returning..."
     return
@@ -13207,7 +13147,6 @@ function removeMyNetworkHomeServerVPNConnection()
   deleteDomainAndWildcardAdguardRS $domain_name
   deleteDomainAdguardRS "*.$domain_ext_prefix.$domain_name"
   deleteSvcHeimdall homeservers "https://$SUB_HSHQHOME.$domain_name" true
-
   if [ $is_primary = 1 ]; then
     domains_to_remove=$(sqlite3 $HSHQ_DB "select Domain from mailhostmap where MailHostID=$mail_host_id and IsFirstDomain=true;")
     domains_to_rem_qry=($(sqlite3 $HSHQ_DB "select Domain from mailhostmap where MailHostID=$mail_host_id and IsFirstDomain=false;"))
@@ -13216,7 +13155,7 @@ function removeMyNetworkHomeServerVPNConnection()
       domains_to_remove="${domains_to_remove},$curdom"
     done
     deliver_to_host=$(sqlite3 $HSHQ_DB "select MailHost from mailhosts where ID=$mail_host_id;")
-    ssh -p $RELAYSERVER_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh $domains_to_remove $deliver_to_host $domain_name"
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh $domains_to_remove $deliver_to_host $domain_name" -f
     if [ $? -ne 0 ]; then
       echo "ERROR: Could not connect to RelayServer host or there was an error removing the peer, returning..."
       return
@@ -13225,7 +13164,6 @@ function removeMyNetworkHomeServerVPNConnection()
     sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from mailhosts where ID=$mail_host_id;"
     removeSecondaryDomainFromRelayServer "$domain_name"
   fi
-  unloadSSHKey
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
   # Send update email to other HomeServers on our network
   notifyMyNetworkHomeServersDNSUpdate remove "$hs_name" "$domain_name"
@@ -13269,15 +13207,12 @@ function removeMyNetworkNonHomeServerConnection()
   if ! [ -z "$is_vpn" ] && [ "$is_vpn" = "true" ]; then
     is_in_vpn=true
   fi
-
   wgPortalAuth="$(getWGPortalAuth)"
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$ip_addr\" \"$is_internet\" \"$is_in_vpn\" \"$wgPortalAuth\""
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$ip_addr\" \"$is_internet\" \"$is_in_vpn\" \"$wgPortalAuth\"" -f
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an error adding the peer, returning..."
     return
   fi
-  unloadSSHKey
   sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;delete from connections where ID=$db_id;"
 }
 
@@ -13381,20 +13316,16 @@ function changeHSInternetPrimaryIPAddress()
   cur_ip=$(sqlite3 $HSHQ_DB "select IPAddress from connections where ID=$db_id;")
   interface_name=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ID=$db_id;")
   wgPortalAuth="$(getWGPortalAuth)"
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"true\" \"false\" \"$wgPortalAuth\""
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"true\" \"false\" \"$wgPortalAuth\"" -f
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
-    unloadSSHKey
     return 4
   fi
-  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"Primary-Internet-$HOMESERVER_DOMAIN\" \"$EMAIL_ADMIN_EMAIL_ADDRESS\" \"$pub_key\" \"$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\""
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"Primary-Internet-$HOMESERVER_DOMAIN\" \"$EMAIL_ADMIN_EMAIL_ADDRESS\" \"$pub_key\" \"$RELAYSERVER_WG_INTERNET_HS_PRESHAREDKEY\" \"$new_ip\" \"true\" \"false\" \"$wgPortalAuth\"" -f
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
-    unloadSSHKey
     return 5
   fi
-  unloadSSHKey
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf down
   sudo sed -i "s/^#CLIENT_ADDRESS=.*/#CLIENT_ADDRESS=$new_ip\/32/g" $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf
   sudo $HSHQ_WIREGUARD_DIR/scripts/wgDockInternet.sh $HSHQ_WIREGUARD_DIR/internet/${interface_name}.conf up
@@ -13412,7 +13343,6 @@ function changeDeviceIPAddress()
   fi
   db_id=$1
   new_ip=$2
-
   is_db=$(getWGNameFromIP $new_ip)
   if ! [ -z "$is_db" ]; then
     echo "ERROR: This IP address is already being used (Connection Name: $is_db)."
@@ -13434,20 +13364,16 @@ function changeDeviceIPAddress()
     is_internet="true"
   fi
   wgPortalAuth="$(getWGPortalAuth)"
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePeer.sh \"$pub_key\" \"$cur_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\"" -f
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
-    unloadSSHKey
     return 4
   fi
-  ssh -p $RELAYSERVER_SSH_PORT -t -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$cur_name\" \"$email_address\" \"$pub_key\" \"$pre_key\" \"$new_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\""
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPeer.sh \"$cur_name\" \"$email_address\" \"$pub_key\" \"$pre_key\" \"$new_ip\" \"$is_internet\" \"false\" \"$wgPortalAuth\"" -f
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not connect to RelayServer host or there was an unknown error, returning..."
-    unloadSSHKey
     return 5
   fi
-  unloadSSHKey
   sudo sqlite3 $HSHQ_DB "update connections set IPAddress='$new_ip' where ID=$db_id;"
   email_subj="User Interface IP Address Change Notice from $HOMESERVER_NAME"
   email_body=""
@@ -13574,8 +13500,10 @@ function getIncrementLockAttempts()
   if test -f /tmp/\$lockName/\$LOCKHOLDER_FILENAME; then
     lastAttempts=\$(sed -n 3p /tmp/\$lockName/\$LOCKHOLDER_FILENAME)
     totAttempts=\$((\$lastAttempts + 1))
-    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME
-    echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    sed -i '\$d' /tmp/\$lockName/\$LOCKHOLDER_FILENAME > /dev/null 2>&1
+    if [ \$? -eq 0 ]; then
+      echo "\$totAttempts" >> /tmp/\$lockName/\$LOCKHOLDER_FILENAME
+    fi
     echo "\$totAttempts"
   fi
 }
@@ -13909,6 +13837,195 @@ function checkAvailableHomeServerPort()
       fi
     fi
   done
+}
+
+function perfRemoteAction()
+{
+  set +e
+  # m
+  ra_mode=""
+  # h
+  ra_host=""
+  # p
+  ra_port=22
+  # u
+  ra_username=""
+  # i
+  ra_injectPassword=""
+  # s
+  ra_sshPassword=""
+  # c
+  ra_command=""
+  # a 
+  ra_attachfile=""
+  # d 
+  ra_isEchoOutput=false
+  # e
+  ra_errorMsg="The remote operation failed, there might be a problem with your network."
+  # o
+  ra_options=""
+  # r
+  ra_numRetries=5
+  # b
+  ra_secondsBetweenRetries=5
+  # f
+  ra_isPromptRetryOnFailure=false
+  local OPTIND opt a b c d e f h i m o p r s u
+  while getopts ':a:b:c:de:fh:i:m:o:p:r:s:u:' opt; do
+    case "$opt" in
+      a)
+        ra_attachfile="$OPTARG" ;;
+      b)
+        ra_secondsBetweenRetries="$OPTARG" ;;
+      c)
+        ra_command="$OPTARG" ;;
+      d)
+        ra_isEchoOutput=true ;;
+      e)
+        ra_errorMsg="$OPTARG" ;;
+      f)
+        ra_isPromptRetryOnFailure=true ;;
+      h)
+        ra_host="$OPTARG" ;;
+      i)
+        ra_injectPassword="$OPTARG" ;;
+      m)
+        ra_mode="$OPTARG" ;;
+      o)
+        ra_options="$OPTARG" ;;
+      p)
+        ra_port="$OPTARG" ;;
+      r)
+        ra_numRetries="$OPTARG" ;;
+      s)
+        ra_sshPassword="$OPTARG" ;;
+      u)
+        ra_username="$OPTARG" ;;
+      ?|h)
+        echo "Usage: perfRemoteAction [-a arg] [-b arg] [-c arg] [-d] [-e arg] [-f] [-h arg] [-i arg] [-m arg] [-o arg] [-p arg] [-r arg] [-s arg] [-u arg]" >&2
+        return ;;
+    esac
+  done
+  shift "$(($OPTIND -1))"
+  if [ -z "$ra_mode" ]; then
+    echo "ERROR: Mode not specified, returning..." >&2
+    return 1
+  fi
+  if [ -z "$ra_host" ]; then
+    echo "ERROR: Host not specified($ra_host), returning..." >&2
+    return 1
+  fi
+  if [ -z "$ra_port" ]; then
+    echo "ERROR: Port not specified, returning..." >&2
+    return 1
+  fi
+  if [ -z "$ra_username" ]; then
+    echo "ERROR: Username not specified, returning..." >&2
+    return 1
+  fi
+  if [ -z "$ra_command" ]; then
+    echo "ERROR: Command not specified, returning..." >&2
+    return 1
+  fi
+  if [ -z "$ra_numRetries" ]; then
+    echo "ERROR: numRetries not specified, returning..." >&2
+    return 1
+  fi
+  if [ -z "$ra_secondsBetweenRetries" ]; then
+    echo "ERROR: secondsBetweenRetries not specified, returning..." >&2
+    return 1
+  fi
+  if [ -z "$ra_isPromptRetryOnFailure" ]; then
+    echo "ERROR: isPromptRetryOnFailure not specified, returning..." >&2
+    return 1
+  fi
+  if [ "$ra_mode" = "scp" ] && [ -z "$ra_attachfile" ]; then
+    echo "ERROR: No file specified for scp, returning..." >&2
+    return 1
+  fi
+  if ! [ "$ra_mode" = "ssh" ] && ! [ "$ra_mode" = "scp" ]; then
+    echo "ERROR: Unknown mode - only ssh and scp are supported, returning..." >&2
+    return 1
+  fi
+  cmdString=""
+  if ! [ -z "$ra_sshPassword" ]; then
+    cmdString=${cmdString}"sshpass -p \"$ra_sshPassword\" "
+  fi
+  case "$ra_mode" in
+    ssh)
+      cmdString=${cmdString}"ssh -p $ra_port " ;;
+    scp)
+      cmdString=${cmdString}"scp -P $ra_port " ;;
+  esac
+  if ! [ -z "$ra_options" ]; then
+    cmdString=${cmdString}"$ra_options "
+  fi
+  if [ "$ra_mode" = "scp" ]; then
+    cmdString=${cmdString}" $ra_attachfile "
+  fi
+  cmdString=${cmdString}"$ra_username@$ra_host"
+  case "$ra_mode" in
+    ssh)
+      cmdString=${cmdString}" ${ra_command@Q} " ;;
+    scp)
+      cmdString=${cmdString}"$ra_command " ;;
+  esac
+  if ! [ -z "$ra_injectPassword" ]; then
+    cmdString=${cmdString}"<<< \"$ra_injectPassword\""
+  fi
+  if [ "$ra_isEchoOutput" = "true" ]; then
+    cmdString="cmdResult=\$(${cmdString})"
+  fi
+  if [ "$LOG_LEVEL" = "debug" ]; then
+    echo "DEBUG: perfRemoteAction - $cmdString" >&2
+  fi
+  if [ -z "$ra_sshPassword" ]; then
+    loadSSHKey
+  fi
+  set +e
+  while true;
+  do
+    curRATries=0
+    while [ $curRATries -lt $ra_numRetries ]
+    do
+      eval "$cmdString"
+      ra_result=$?
+      if [ $ra_result -eq 0 ]; then
+        if [ "$ra_isEchoOutput" = "true" ]; then
+          echo "$cmdResult"
+        fi
+        unloadSSHKey
+        set +e
+        return 0
+      fi
+      ((curRATries++))
+      echo "($curRATries of $ra_numRetries) Connection error, retrying in $ra_secondsBetweenRetries seconds..." >&2
+      sleep $ra_secondsBetweenRetries
+    done
+    if [ "$ra_isPromptRetryOnFailure" = "true" ]; then
+      echo -e "\n\n========================================================================" >&2
+      echo "$ra_errorMsg" >&2
+      while true;
+      do
+        read -r -p "Enter retry or cancel: " raRetry
+        if [ "$raRetry" = "retry" ]; then
+          break
+        elif [ "$raRetry" = "cancel" ]; then
+          unloadSSHKey
+          set +e
+          return $ra_result
+        else
+          echo -e "\nUnknown option, please enter either retry or cancel.\n" >&2
+        fi
+      done
+    else
+      unloadSSHKey
+      set +e
+      return 2
+    fi
+  done
+  unloadSSHKey
+  set +e
 }
 
 function getPrivateIPRangesCaddy()
@@ -15222,7 +15339,6 @@ function performExitFunctions()
 {
   is_show_msgbox="$1"
   releaseLock hshqopen "performExitFunctions" false
-  #unloadSSHKey
   # This is more aggressive, but cleans up any pre-existing sessions (in case the script terminated abnormally)
   set +e
   killall ssh-agent > /dev/null 2>&1
@@ -16982,9 +17098,7 @@ function resetCaddyDataRelayServer()
     fi
     return
   fi
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh"
-  unloadSSHKey
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh" -f
 }
 
 function getVPNIPFromHostname()
@@ -17056,15 +17170,8 @@ EOF
     return 1
   fi
   deliver_to_host=$(sqlite3 $HSHQ_DB "select MailHost from mailhosts where ID=$mail_host_id;")
-  loadSSHKey
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $domains_to_add $deliver_to_host $deliver_ip" -f
   mbres=$?
-  if [ $mbres -ne 0 ]; then
-    showMessageBox "Error" "There was a problem loading the SSH key"
-    return 1
-  fi
-  ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $domains_to_add $deliver_to_host $deliver_ip"
-  mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     showMessageBox "Error" "There was a problem adding the domain(s)"
     return 1
@@ -17119,15 +17226,8 @@ EOF
     return
   fi
   domains_to_remove=${domains_to_remove%?}
-  loadSSHKey
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh $domains_to_remove" -f
   mbres=$?
-  if [ $mbres -ne 0 ]; then
-    showMessageBox "Error" "There was a problem loading the SSH key"
-    return 1
-  fi
-  ssh -p $RELAYSERVER_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh $domains_to_remove"
-  mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     showMessageBox "Error" "There was a problem removing the domain(s)"
     return 1
@@ -17158,10 +17258,8 @@ function addSecondaryDomainToRelayServer()
     return 5
   fi
   deliver_to_host=$(sqlite3 $HSHQ_DB "select MailHost from mailhosts where ID=$mail_host_id;")
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $add_domain $deliver_to_host $deliver_ip"
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addRelayedDomains.sh $add_domain $deliver_to_host $deliver_ip" -f
   mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     echo "ERROR: There was a problem adding the domain to the RelayServer."
     return 5
@@ -17173,7 +17271,6 @@ function addSecondaryDomainToRelayServer()
 function removeSecondaryDomainFromRelayServer()
 {
   dom_to_remove="$1"
-
   le_arr=($(sqlite3 $HSHQ_DB "select Domain from lecertdomains where BaseDomain='$dom_to_remove';"))
   subdomlist=""
   for cursub in "${le_arr[@]}"
@@ -17189,7 +17286,6 @@ function removeSecondaryDomainFromRelayServer()
       return $mbres
     fi
   fi
-
   exp_arr=($(sqlite3 $HSHQ_DB "select Domain from exposedomains where BaseDomain='$dom_to_remove';"))
   subdomlist=""
   for cursub in "${exp_arr[@]}"
@@ -17205,12 +17301,9 @@ function removeSecondaryDomainFromRelayServer()
       return $mbres
     fi
   fi
-
-  loadSSHKey
   echo "Removing $dom_to_remove from RelayServer..."
-  ssh -p $RELAYSERVER_SSH_PORT -o ConnectTimeout=10 $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh $dom_to_remove"
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeRelayedDomains.sh $dom_to_remove" -f
   mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     echo "ERROR: There was a problem connecting to the RelayServer."
     return 1
@@ -17285,11 +17378,8 @@ function addLECertPathsToRelayServer()
     sendEmail -s "Add LetsEncrypt Domain" -b "If and when you setup a RelayServer, you will need to add this subdomain to be managed by LetsEncrypt: $subdoms_le" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     return
   fi
-
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh $subdoms_le"
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh $subdoms_le" -f
   mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     echo "ERROR: There was a problem connecting to the RelayServer."
     return 6
@@ -17308,10 +17398,8 @@ function removeLECertPathsFromRelayServer()
     return 1
   fi
   subdoms_le="$1"
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $subdoms_le"
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $subdoms_le" -f
   mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     echo "ERROR: There was a problem connecting to the RelayServer."
     return 1
@@ -17365,10 +17453,8 @@ function addExposeDomainPathsToRelayServer()
     fi
   fi
   newList=${newList%?}
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $subdoms_exp"
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $subdoms_exp" -f
   mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     echo "ERROR: There was a problem connecting to the RelayServer."
     return 5
@@ -17388,10 +17474,8 @@ function removeExposeDomainPathsFromRelayServer()
     return 1
   fi
   subdoms_exp="$1"
-  loadSSHKey
-  ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh $subdoms_exp"
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh $subdoms_exp" -f
   mbres=$?
-  unloadSSHKey
   if [ $mbres -ne 0 ]; then
     echo "ERROR: There was a problem connecting to the RelayServer."
     return 1
@@ -18394,11 +18478,9 @@ rm -f \$RELAYSERVER_PF_REMOVE_DIR/pfRem-\${ID}.sh
 rm -f \$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\${ID}.sh
 EOFCD
     chmod 500 $HOME/removePortForward.sh
-    loadSSHKey
-    scp -P $RELAYSERVER_SSH_PORT $HOME/addPortForward.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    scp -P $RELAYSERVER_SSH_PORT $HOME/removePortForward.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo mkdir -p $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding; sudo chown root:root ~/addPortForward.sh; sudo chown root:root ~/removePortForward.sh; sudo mv ~/addPortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh; sudo mv ~/removePortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh"
-    unloadSSHKey
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/addPortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/removePortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo mkdir -p $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding; sudo chown root:root ~/addPortForward.sh; sudo chown root:root ~/removePortForward.sh; sudo mv ~/addPortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh; sudo mv ~/removePortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/addPortForward.sh
     rm -f $HOME/removePortForward.sh
   fi
@@ -18416,7 +18498,6 @@ function addPortForwardingRule()
   IPAddress=$8
   PFType="User"
   curdt=$(getCurrentDate)
-
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo "You are not hosting a RelayServer, returning..."
     return 1
@@ -18487,7 +18568,6 @@ function addPortForwardingRule()
     echo "$checkUDP"
     return 13
   fi
-
   if ! [ -z "$InternalHost" ]; then
     InternalHostID=$(echo $InternalHost | cut -d"-" -f1)
     InternalHostName=$(echo $InternalHost | cut -d"-" -f2)
@@ -18519,12 +18599,9 @@ function addPortForwardingRule()
     echo "IP address is not in range, IP: $useThisIP, VPN Subnet: $PRIMARY_VPN_SUBNET, returning..."
     return 17
   fi
-
   pfID=$(sudo sqlite3 $HSHQ_DB "PRAGMA foreign_keys=ON;insert into portforwarding(PFType, Name, ExtStart, ExtEnd, IntStart, IntEnd, Protocol, InternalHost, IPAddress, LastUpdated) values('$PFType', '$Name', $ExtStart, $ExtEnd, $IntStart, $IntEnd, '$Protocol','$InternalHostName','$IPAddress','$curdt');select last_insert_rowid();")
-  loadSSHKey
-  pfResult=$(ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh $pfID $ExtStart $ExtEnd $IntStart $IntEnd $Protocol $useThisIP")
+  pfResult=$(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh $pfID $ExtStart $ExtEnd $IntStart $IntEnd $Protocol $useThisIP" -f -d)
   retVal=$?
-  unloadSSHKey
   if [ $retVal -ne 0 ]; then
     echo "There was a problem adding this port forwarding rule: $pfResult"
     echo
@@ -18540,10 +18617,8 @@ function removePortForwardingRule()
     echo "You are not hosting a RelayServer, returning..."
     return 1
   fi
-  loadSSHKey
-  pfResult=$(ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh $pfID")
+  pfResult=$(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh $pfID" -f -d)
   retVal=$?
-  unloadSSHKey
   if [ $retVal -ne 0 ]; then
     echo "There was a problem removing this port forwarding rule: $pfResult"
     echo
@@ -20150,14 +20225,9 @@ function createInitialEnv()
   mkdir -p $HSHQ_SSL_DIR
   mkdir -p $HSHQ_STACKS_DIR
   mkdir -p $HSHQ_WIREGUARD_DIR
-  mkdir -p $HSHQ_WIREGUARD_DIR/internet
-  mkdir -p $HSHQ_WIREGUARD_DIR/vpn
-  mkdir -p $HSHQ_WIREGUARD_DIR/scripts
-  mkdir -p $HSHQ_WIREGUARD_DIR/users
-  mkdir -p $HSHQ_WIREGUARD_DIR/requestkeys
-  mkdir -p $HSHQ_WIREGUARD_DIR/logs
-  mkdir -p $HSHQ_RELAYSERVER_DIR/backup
-  mkdir -p $HSHQ_RELAYSERVER_DIR/scripts
+  mkdir -p $HSHQ_WIREGUARD_DIR/{internet,vpn,scripts,users,requestkeys,logs}
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/media/{audio,books,comics,misc,movies,software,tv}
+  mkdir -p $HSHQ_RELAYSERVER_DIR/{backup,scripts}
   mkdir -p $HSHQ_SCRIPTS_DIR/user
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/root
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/root
@@ -20651,6 +20721,18 @@ function checkUpdateVersion()
     HSHQ_VERSION=177
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 180 ]; then
+    echo "Updating to Version 180..."
+    version180Update
+    HSHQ_VERSION=180
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 181 ]; then
+    echo "Updating to Version 181..."
+    version181Update
+    HSHQ_VERSION=181
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20704,14 +20786,8 @@ function promptTestRelayServerPassword()
 
 function testRelayServerPassword()
 {
-  set +e
-  loadSSHKey
-  set +e
-  ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v" <<< "$USER_RELAY_SUDO_PW" > /dev/null 2>&1
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo -S -v" -f -i "$USER_RELAY_SUDO_PW" > /dev/null 2>&1
   retVal=$?
-  set +e
-  unloadSSHKey
-  set +e
   return $retVal
 }
 
@@ -21423,9 +21499,7 @@ function version39Update()
   sudo sqlite3 $HSHQ_DB "ALTER TABLE newconnections RENAME TO connections;"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
-    loadSSHKey
-    keylist=($(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sqlite3 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db \"select public_key,preshared_key from peers;\""
-    unloadSSHKey))
+    keylist=($(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sqlite3 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db \"select public_key,preshared_key from peers;\"" -f -d))
     for curKeys in "${keylist[@]}"
     do
       pub_key=$(echo "$curKeys" | cut -d "|" -f1)
@@ -21469,10 +21543,7 @@ function version41Update()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
     read -r -p "Press enter to continue."
-    loadSSHKey
-    set +e
-    rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
-
+    rs_default_iface=$(echo $(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "ip route | grep -e \"^default\"" -f -d) | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
     tee $HOME/wgupdown.sh >/dev/null <<EOFPU
 #!/bin/bash
 COMMAND=\$1
@@ -21529,7 +21600,6 @@ function down()
 
 main "\$@"
 EOFPU
-
     tee $HOME/addPeer.sh >/dev/null <<EOFWA
 #!/bin/bash
 
@@ -21563,7 +21633,6 @@ fi
 
 
 EOFWA
-
     tee $HOME/removePeer.sh >/dev/null <<EOFWA
 #!/bin/bash
 set +e
@@ -21609,7 +21678,6 @@ function urlDecode()
 
 main "\$@"
 EOFWA
-
     tee $HOME/v41.sh >/dev/null <<EOFWA
 #!/bin/bash
 
@@ -21625,13 +21693,11 @@ mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/removePeer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/use
 rm -f \$0
 reboot
 EOFWA
-
-    scp -P $RELAYSERVER_SSH_PORT $HOME/wgupdown.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
-    scp -P $RELAYSERVER_SSH_PORT $HOME/addPeer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
-    scp -P $RELAYSERVER_SSH_PORT $HOME/removePeer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
-    scp -P $RELAYSERVER_SSH_PORT $HOME/v41.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo bash $RELAYSERVER_HSHQ_SCRIPTS_DIR/v41.sh"
-    unloadSSHKey
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $RELAYSERVER_SSH_PORT $HOME/wgupdown.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $RELAYSERVER_SSH_PORT $HOME/addPeer.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $RELAYSERVER_SSH_PORT $HOME/removePeer.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $RELAYSERVER_SSH_PORT $HOME/v41.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/" -f
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo bash $RELAYSERVER_HSHQ_SCRIPTS_DIR/v41.sh" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/wgupdown.sh
     rm -f $HOME/addPeer.sh
     rm -f $HOME/removePeer.sh
@@ -21729,9 +21795,8 @@ function version52Update()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
     notifyRSLogin
-    loadSSHKey
     set +e
-    rs_default_iface=$(ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "ip route | grep -e \"^default\"" | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
+    rs_default_iface=$(echo $(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "ip route | grep -e \"^default\"" -f -d) | awk -F'dev ' '{print $2}' | xargs | cut -d" " -f1)
     tee $HOME/88-hshq.conf >/dev/null <<EOFSC
 # Some minor tuning
 kernel.panic = 10
@@ -21777,7 +21842,6 @@ net.ipv6.conf.all.disable_ipv6 = 1
 net.ipv6.conf.default.disable_ipv6 = 1
 EOFSC
     chmod 644 $HOME/88-hshq.conf
-
     tee $HOME/10-setupDockerUserIPTables.sh >/dev/null <<EOFSC
 #!/bin/bash
   set +e
@@ -21886,7 +21950,6 @@ EOFSC
 
 EOFSC
     chmod 744 $HOME/10-setupDockerUserIPTables.sh
-
     tee $HOME/clearDockerUserIPTables.sh >/dev/null <<EOFSC
 #!/bin/bash
   set +e
@@ -21929,18 +21992,15 @@ EOFSC
 
 EOFSC
     chmod 744 $HOME/clearDockerUserIPTables.sh
-
-    scp -P $RELAYSERVER_SSH_PORT $HOME/88-hshq.conf $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    scp -P $RELAYSERVER_SSH_PORT $HOME/10-setupDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    scp -P $RELAYSERVER_SSH_PORT $HOME/clearDockerUserIPTables.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/10-setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/10-setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; sudo rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli; sudo reboot"
-    unloadSSHKey
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/88-hshq.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/10-setupDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/clearDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/10-setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/10-setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; sudo rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli; sudo reboot" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/88-hshq.conf
     rm -f $HOME/10-setupDockerUserIPTables.sh
     rm -f $HOME/clearDockerUserIPTables.sh
   fi
   set -e
-
   updateSysctl false
   # See https://www.portainer.io/blog/portainer-and-docker-26
   sudo apt-mark hold docker-ce
@@ -21984,8 +22044,6 @@ EOFBS
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nThis update will also reboot the RelayServer.\nYou will be prompted for you sudo password on the RelayServer.\n"
     notifyRSLogin
-    loadSSHKey
-    set +e
     tee $HOME/onBootRoot.sh >/dev/null <<EOFBS
 #!/bin/bash
 set +e
@@ -21994,13 +22052,11 @@ chmod 744 $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
 run-parts --regex '.*sh\$' $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 EOFBS
     chmod 744 $HOME/onBootRoot.sh
-    scp -P $RELAYSERVER_SSH_PORT $HOME/onBootRoot.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi; sleep 5; sudo reboot"
-    unloadSSHKey
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/onBootRoot.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi; sleep 5; sudo reboot" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/onBootRoot.sh
     sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
   fi
-
   HSHQ_VERSION=53
   updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   echo -e "\n\n\nThis update requires a reboot of the HomeServer.\n"
@@ -22075,8 +22131,6 @@ EOFRS
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
     notifyRSLogin
-    loadSSHKey
-    set +e
     cat <<EOFHC > $HOME/groups.conf
 group "policies" {
   symbols = {
@@ -22088,9 +22142,8 @@ group "policies" {
 
 EOFHC
     chmod 644 $HOME/groups.conf
-    scp -P $RELAYSERVER_SSH_PORT $HOME/groups.conf $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/groups.conf; sudo mv ~/groups.conf $RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf/groups.conf; docker container restart mail-relay-rspamd > /dev/null 2>&1"
-    unloadSSHKey
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/groups.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/groups.conf; sudo mv ~/groups.conf $RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf/groups.conf; docker container restart mail-relay-rspamd > /dev/null 2>&1" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/groups.conf
   fi
   set +e
@@ -22159,9 +22212,7 @@ function version66Update()
 function version67Update()
 {
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    loadSSHKey
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "chmod 600 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml"
-    unloadSSHKey
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "chmod 600 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/config.yml" -f
   fi
 }
 
@@ -22183,10 +22234,8 @@ docker container start caddy
 
 EOFCD
     chmod 500 $HOME/resetCaddyContainer.sh
-    loadSSHKey
-    scp -P $RELAYSERVER_SSH_PORT $HOME/resetCaddyContainer.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo chown root:root ~/resetCaddyContainer.sh; sudo mv ~/resetCaddyContainer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh"
-    unloadSSHKey
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/resetCaddyContainer.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/resetCaddyContainer.sh; sudo mv ~/resetCaddyContainer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/resetCaddyContainer.sh
   fi
 }
@@ -22228,9 +22277,7 @@ function version75Update()
     if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
       echo -e "\n\n\nThe RelayServer requires an update which requires root privileges.\nYou will be prompted for you sudo password on the RelayServer.\n"
       notifyRSLogin
-      loadSSHKey
-      ssh -p $RELAYSERVER_SSH_PORT -t $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo apt update; sudo apt install -y --only-upgrade wazuh-agent=4.7.5-1; sudo apt-mark hold wazuh-agent"
-      unloadSSHKey
+      perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo apt update; sudo apt install -y --only-upgrade wazuh-agent=4.7.5-1; sudo apt-mark hold wazuh-agent" -f -i "$USER_RELAY_SUDO_PW"
     fi
   fi
 }
@@ -22254,9 +22301,7 @@ function version78Update()
     set -e
     if [ $nrsl_retVal -eq 0 ]; then
       promptTestRelayServerPassword
-      loadSSHKey
-      ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "sudo -S -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay"  <<< "$USER_RELAY_SUDO_PW"
-      unloadSSHKey
+      perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo -S -v; git clone https://github.com/homeserverhq/mail-relay.git $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay; docker image build --network host -t $IMG_MAIL_RELAY_POSTFIX -f $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix/Dockerfile $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay/postfix; sudo rm -fr $RELAYSERVER_HSHQ_NONBACKUP_DIR/build/mail-relay" -f -i "$USER_RELAY_SUDO_PW"
     fi
   fi
 }
@@ -22413,9 +22458,7 @@ EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
     chmod 640 $HOME/authd.pass
-    loadSSHKey
-    scp -P $RELAYSERVER_SSH_PORT $HOME/authd.pass $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
-    unloadSSHKey
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/authd.pass -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
     rm -f $HOME/rsUpdateScript.sh
     cat <<EOFLO > $HOME/rsUpdateScript.sh
 #!/bin/bash
@@ -23160,6 +23203,20 @@ function version177Update()
   outputMaintenanceScripts
 }
 
+function version180Update()
+{
+  outputLockUtilsScript
+}
+
+function version181Update()
+{
+  if [ ${#DISCOURSE_ADMIN_USERNAME} -gt 20 ]; then
+    DISCOURSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE
+    updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
+  fi
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/media/{audio,books,comics,misc,movies,software,tv}
+}
+
 function updateRelayServerWithScript()
 {
   # This function assumes that a script file
@@ -23169,22 +23226,16 @@ function updateRelayServerWithScript()
     chmod 500 $HOME/rsUpdateScript.sh
     set +e
     promptTestRelayServerPassword
-    set -e
-    loadSSHKey
-    set +e
-    scp -P $RELAYSERVER_SSH_PORT $HOME/rsUpdateScript.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:~/ > /dev/null 2>&1
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/rsUpdateScript.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
     rsRet=$?
     if [ $rsRet -ne 0 ]; then
-      unloadSSHKey
       return $rsRet
     fi
-    ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" <<< "$USER_RELAY_SUDO_PW"
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" -f -i "$USER_RELAY_SUDO_PW"
     rsRet=$?
     if [ $rsRet -ne 0 ]; then
-      unloadSSHKey
       return $rsRet
     fi
-    unloadSSHKey
   fi
   set +e
   rm -f $HOME/rsUpdateScript.sh
@@ -23584,15 +23635,11 @@ function main()
 main "\$@"
 EOFEX
   chmod 500 $HOME/removeExposeDomains.sh
-
-  loadSSHKey
-  set -e
-  ssh -p $RELAYSERVER_SSH_PORT $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN "rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh"
-  scp -P $RELAYSERVER_SSH_PORT $HOME/addLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
-  scp -P $RELAYSERVER_SSH_PORT $HOME/removeLECertDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
-  scp -P $RELAYSERVER_SSH_PORT $HOME/addExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
-  scp -P $RELAYSERVER_SSH_PORT $HOME/removeExposeDomains.sh $RELAYSERVER_REMOTE_USERNAME@$RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/ > /dev/null 2>&1
-  unloadSSHKey
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeLECertDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/addExposeDomains.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/user/removeExposeDomains.sh" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a "$HOME/addLECertDomains.sh" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a "$HOME/removeLECertDomains.sh" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a "$HOME/addExposeDomains.sh" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a "$HOME/removeExposeDomains.sh" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":$RELAYSERVER_HSHQ_SCRIPTS_DIR/user/" -f
   rm -f $HOME/addLECertDomains.sh
   rm -f $HOME/removeLECertDomains.sh
   rm -f $HOME/addExposeDomains.sh
@@ -27584,8 +27631,8 @@ function getUpdateAssets()
     isGitExist=true
   fi
   curGitTries=0
-  maxGitTries=5
-  while [ $curGitTries -le $maxGitTries ]
+  maxGitTries=10
+  while [ $curGitTries -lt $maxGitTries ]
   do
     if [ "$isGitExist" = "true" ]; then
       git -C $HSHQ_ASSETS_DIR pull > /dev/null
@@ -27930,8 +27977,10 @@ function loadPinnedDockerImages()
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.127.1
   IMG_MATOMO_APP=matomo:5.3.1-fpm-alpine
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v2.8.0
+  IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.48
   IMG_MEILISEARCH=getmeili/meilisearch:v1.6
   IMG_MYSQL=mariadb:10.7.3
+  IMG_NAVIDROME=deluan/navidrome:0.58.0
   IMG_NETDATA=netdata/netdata:v2.3.2
   IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
@@ -28147,6 +28196,10 @@ function getScriptStackVersion()
       echo "v1" ;;
     ombi)
       echo "v1" ;;
+    meshcentral)
+      echo "v1" ;;
+    navidrome)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -28304,6 +28357,8 @@ function pullDockerImages()
   pullImage $IMG_SABNZBD
   pullImage $IMG_QBITTORRENT
   pullImage $IMG_OMBI_APP
+  pullImage $IMG_MESHCENTRAL
+  pullImage $IMG_NAVIDROME
 }
 
 function pullImagesUpdatePB()
@@ -29155,6 +29210,21 @@ OMBI_DATABASE_USER=
 OMBI_DATABASE_USER_PASSWORD=
 # Ombi (Service Details) END
 
+# MeshCentral (Service Details) BEGIN
+MESHCENTRAL_INIT_ENV=true
+MESHCENTRAL_DATABASE_NAME=
+MESHCENTRAL_DATABASE_ROOT_PASSWORD=
+MESHCENTRAL_DATABASE_USER=
+MESHCENTRAL_DATABASE_USER_PASSWORD=
+# MeshCentral (Service Details) END
+
+# Navidrome (Service Details) BEGIN
+NAVIDROME_INIT_ENV=true
+NAVIDROME_ADMIN_USERNAME=
+NAVIDROME_ADMIN_PASSWORD=
+NAVIDROME_ADMIN_EMAIL_ADDRESS=
+# Navidrome (Service Details) END
+
 # Service Details END
 EOFCF
 
@@ -29704,10 +29774,13 @@ function initServicesCredentials()
   fi
   if [ -z "$DISCOURSE_ADMIN_USERNAME" ]; then
     DISCOURSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_discourse"
+    if [ ${#DISCOURSE_ADMIN_USERNAME} -gt 20 ]; then
+      DISCOURSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE
+    fi
     updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
   fi
   if [ -z "$DISCOURSE_ADMIN_EMAIL_ADDRESS" ]; then
-    DISCOURSE_ADMIN_EMAIL_ADDRESS=$DISCOURSE_ADMIN_USERNAME"@"$HOMESERVER_DOMAIN
+    DISCOURSE_ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME_BASE"_discourse@"$HOMESERVER_DOMAIN
     updateConfigVar DISCOURSE_ADMIN_EMAIL_ADDRESS $DISCOURSE_ADMIN_EMAIL_ADDRESS
   fi
   if [ -z "$DISCOURSE_ADMIN_PASSWORD" ]; then
@@ -30510,6 +30583,34 @@ function initServicesCredentials()
     OMBI_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar OMBI_DATABASE_USER_PASSWORD $OMBI_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$MESHCENTRAL_DATABASE_NAME" ]; then
+    MESHCENTRAL_DATABASE_NAME=meshcentraldb
+    updateConfigVar MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_NAME
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_ROOT_PASSWORD" ]; then
+    MESHCENTRAL_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MESHCENTRAL_DATABASE_ROOT_PASSWORD $MESHCENTRAL_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_USER" ]; then
+    MESHCENTRAL_DATABASE_USER=meshcentral-user
+    updateConfigVar MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_USER_PASSWORD" ]; then
+    MESHCENTRAL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MESHCENTRAL_DATABASE_USER_PASSWORD $MESHCENTRAL_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$NAVIDROME_ADMIN_USERNAME" ]; then
+    NAVIDROME_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_navidrome"
+    updateConfigVar NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_USERNAME
+  fi
+  if [ -z "$NAVIDROME_ADMIN_PASSWORD" ]; then
+    NAVIDROME_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar NAVIDROME_ADMIN_PASSWORD $NAVIDROME_ADMIN_PASSWORD
+  fi
+  if [ -z "$NAVIDROME_ADMIN_EMAIL_ADDRESS" ]; then
+    NAVIDROME_ADMIN_EMAIL_ADDRESS=$NAVIDROME_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar NAVIDROME_ADMIN_EMAIL_ADDRESS $NAVIDROME_ADMIN_EMAIL_ADDRESS
+  fi
 
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -30771,6 +30872,8 @@ function initServiceVars()
   checkAddSvc "SVCD_MATRIX_SYNAPSE=matrix,synapse,other,user,Synapse,synapse,le"
   checkAddSvc "SVCD_MATOMO=matomo,matomo,primary,admin,Matomo,matomo,hshq"
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
+  checkAddSvc "SVCD_MESHCENTRAL=meshcentral,meshcentral,primary,admin,MeshCentral,meshcentral,hshq"
+  checkAddSvc "SVCD_NAVIDROME=navidrome,navidrome,other,user,Navidrome,navidrome,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
   checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
@@ -30975,6 +31078,10 @@ function installStackByName()
       installqBittorrent $is_integrate ;;
     ombi)
       installOmbi $is_integrate ;;
+    meshcentral)
+      installMeshCentral $is_integrate ;;
+    navidrome)
+      installNavidrome $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -31145,6 +31252,10 @@ function performUpdateStackByName()
       performUpdateqBittorrent "$portainerToken" ;;
     ombi)
       performUpdateOmbi "$portainerToken" ;;
+    meshcentral)
+      performUpdateMeshCentral "$portainerToken" ;;
+    navidrome)
+      performUpdateNavidrome "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -31205,6 +31316,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MEALIE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NAVIDROME.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
@@ -31240,6 +31352,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
@@ -31379,6 +31492,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31494,6 +31609,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31862,6 +31979,12 @@ function getHeimdallOrderFromSub()
     "$SUB_OMBI_APP")
       order_num=93
       ;;
+    "$SUB_MESHCENTRAL")
+      order_num=94
+      ;;
+    "$SUB_NAVIDROME")
+      order_num=95
+      ;;
     *)
       ;;
   esac
@@ -31876,13 +31999,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
 }
 
 function getScriptImageByContainerName()
@@ -32521,6 +32644,15 @@ function getScriptImageByContainerName()
     "ombi-app")
       container_image=$IMG_OMBI_APP
       ;;
+    "meshcentral-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "meshcentral-app")
+      container_image=$IMG_MESHCENTRAL
+      ;;
+    "navidrome-app")
+      container_image=$IMG_NAVIDROME
+      ;;
     *)
       ;;
   esac
@@ -32573,6 +32705,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Ombi" "OMBI_INIT_ENV=false,OMBI_ADMIN_USERNAME=,OMBI_ADMIN_PASSWORD=,OMBI_ADMIN_EMAIL_ADDRESS=,OMBI_DATABASE_NAME=,OMBI_DATABASE_ROOT_PASSWORD=,OMBI_DATABASE_USER=,OMBI_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "MeshCentral" "MESHCENTRAL_INIT_ENV=false,MESHCENTRAL_DATABASE_NAME=,MESHCENTRAL_DATABASE_ROOT_PASSWORD=,MESHCENTRAL_DATABASE_USER=,MESHCENTRAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Navidrome" "NAVIDROME_INIT_ENV=false,NAVIDROME_ADMIN_USERNAME=,NAVIDROME_ADMIN_PASSWORD=,NAVIDROME_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME=" $CONFIG_FILE false
@@ -43174,6 +43308,9 @@ services:
       - \${HSHQ_STACKS_DIR}/jellyfin/config:/config
       - \${HSHQ_STACKS_DIR}/jellyfin/cache:/cache
       - \${HSHQ_STACKS_DIR}/jellyfin/media:/media
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/movies:/sharedmovies
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/tv:/sharedtv
 #    devices:
 #      - /dev/dri/renderD128:/dev/dri/renderD128
 #      - /dev/dri/card0:/dev/dri/card0
@@ -46583,7 +46720,7 @@ function installDiscourse()
   set +e
   docker exec mailu-admin flask mailu alias-delete $DISCOURSE_ADMIN_EMAIL_ADDRESS
   sleep 5
-  addUserMailu alias $DISCOURSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  addUserMailu alias $ADMIN_USERNAME_BASE"_discourse" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   #generateCert discourse-app discourse-app
   outputConfigDiscourse
   installStack discourse discourse-app "" $HOME/discourse.env
@@ -57650,6 +57787,7 @@ EOFOT
 "Matomo" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
 "Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD
 "Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
+"MeshCentral" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
 "Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
@@ -60816,6 +60954,429 @@ function performUpdateOmbi()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# MeshCentral
+function installMeshCentral()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory meshcentral "MeshCentral"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName meshcentral-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName meshcentral-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/meshcentral
+  mkdir $HSHQ_STACKS_DIR/meshcentral/config
+  mkdir $HSHQ_STACKS_DIR/meshcentral/db
+  mkdir $HSHQ_STACKS_DIR/meshcentral/dbexport
+  mkdir $HSHQ_STACKS_DIR/meshcentral/data
+  mkdir $HSHQ_STACKS_DIR/meshcentral/files
+  mkdir $HSHQ_STACKS_DIR/meshcentral/web
+  mkdir $HSHQ_STACKS_DIR/meshcentral/backups
+  chmod 777 $HSHQ_STACKS_DIR/meshcentral/dbexport
+  initServicesCredentials
+  set +e
+  outputConfigMeshCentral
+  installStack meshcentral meshcentral-app "" $HOME/meshcentral.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if ! [ "$MESHCENTRAL_INIT_ENV" = "true" ]; then
+    sendEmail -s "MeshCentral Admin Login Info" -b "MeshCentral Admin Username: $LDAP_ADMIN_USER_USERNAME\nMeshCentral Admin Password: $LDAP_ADMIN_USER_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MESHCENTRAL_INIT_ENV=true
+    updateConfigVar MESHCENTRAL_INIT_ENV $MESHCENTRAL_INIT_ENV
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://meshcentral-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>transport http {\n"
+  inner_block=$inner_block">>>>>>>>>>tls\n"
+  inner_block=$inner_block">>>>>>>>>>tls_insecure_skip_verify\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MESHCENTRAL $MANAGETLS_MESHCENTRAL "$is_integrate_hshq" $NETDEFAULT_MESHCENTRAL "$inner_block"
+  insertSubAuthelia $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll meshcentral "$FMLNAME_MESHCENTRAL" $USERTYPE_MESHCENTRAL "https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN" "meshcentral.png" "$(getHeimdallOrderFromSub $SUB_MESHCENTRAL $USERTYPE_MESHCENTRAL)"
+    restartAllCaddyContainers
+    checkAddDBConnection true meshcentral "$FMLNAME_MESHCENTRAL" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigMeshCentral()
+{
+  cat <<EOFMT > $HOME/meshcentral-compose.yml
+$STACK_VERSION_PREFIX meshcentral $(getScriptStackVersion meshcentral)
+
+services:
+  meshcentral-db:
+    image: $(getScriptImageByContainerName meshcentral-db)
+    container_name: meshcentral-db
+    hostname: meshcentral-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-meshcentral-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-meshcentral-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/meshcentral/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.meshcentral-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.meshcentral-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.meshcentral-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.meshcentral-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.meshcentral-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.meshcentral-hourly-db.email-from=MeshCentral Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.meshcentral-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.meshcentral-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.meshcentral-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.meshcentral-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.meshcentral-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.meshcentral-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.meshcentral-monthly-db.email-from=MeshCentral Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.meshcentral-monthly-db.mail-only-on-error=false"
+    environment:
+      - MYSQL_DATABASE=$MESHCENTRAL_DATABASE_NAME
+      - MYSQL_ROOT_PASSWORD=$MESHCENTRAL_DATABASE_ROOT_PASSWORD
+      - MYSQL_USER=$MESHCENTRAL_DATABASE_USER
+      - MYSQL_PASSWORD=$MESHCENTRAL_DATABASE_USER_PASSWORD
+
+  meshcentral-app:
+    image: $(getScriptImageByContainerName meshcentral-app)
+    container_name: meshcentral-app
+    hostname: meshcentral-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - meshcentral-db
+    networks:
+      - int-meshcentral-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ldap-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/opt/meshcentral/meshcentral-data/root-cert-public.crt:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/opt/meshcentral/meshcentral-data/root-cert-private.key:ro
+      - v-meshcentral-data:/opt/meshcentral/meshcentral-data
+      - v-meshcentral-files:/opt/meshcentral/meshcentral-files
+      - v-meshcentral-web:/opt/meshcentral/meshcentral-web
+      - v-meshcentral-backups:/opt/meshcentral/meshcentral-backups
+
+volumes:
+  v-meshcentral-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/db
+  v-meshcentral-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/data
+  v-meshcentral-files:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/files
+  v-meshcentral-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/web
+  v-meshcentral-backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/backups
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-meshcentral-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/meshcentral.env
+TZ=\${TZ}
+NODE_ENV=production
+DYNAMIC_CONFIG=false
+HOSTNAME=$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN
+EOFMT
+
+  cat <<EOFMT > $HSHQ_STACKS_DIR/meshcentral/data/config.json
+{
+  "\$schema": "https://raw.githubusercontent.com/Ylianst/MeshCentral/master/meshcentral-config-schema.json",
+  "settings": {
+    "plugins":{
+      "enabled": false
+    },
+    "cert": "$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN",
+    "_WANonly": true,
+    "_LANonly": true,
+    "sessionKey": "$(pwgen -c -n 32 1)",
+    "port": 443,
+    "_aliasPort": 443,
+    "redirPort": 80,
+    "_redirAliasPort": 80,
+    "AgentPong": 300,
+    "trustedProxy": true,
+    "SelfUpdate": false,
+    "AllowFraming": false,
+    "WebRTC": false,
+    "_mongoDb": "",
+    "_postgres": {
+      "host": "",
+      "port": "",
+      "user": "",
+      "password": "",
+      "database": ""
+    },
+    "mariaDB": {
+      "host": "meshcentral-db",
+      "port": "3306",
+      "user": "$MESHCENTRAL_DATABASE_USER",
+      "password": "$MESHCENTRAL_DATABASE_USER_PASSWORD",
+      "database": "$MESHCENTRAL_DATABASE_NAME"
+    }
+  },
+  "domains": {
+    "": {
+      "title": "$HOMESERVER_NAME",
+      "title2": "MeshCentral",
+      "minify": false,
+      "NewAccounts": true,
+      "localSessionRecording": true,
+      "certUrl": "https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/",
+      "allowedOrigin": false,
+      "auth": "ldap",
+      "ldapUserName": "uid",
+      "ldapUserKey": "uid",
+      "ldapOptions": {
+        "url": "$LDAPS_URI",
+        "bindDN": "$LDAP_READONLY_USER_BIND_DN",
+        "bindCredentials": "$LDAP_READONLY_USER_PASSWORD",
+        "searchBase": "ou=people,$LDAP_BASE_DN",
+        "searchFilter": "(&(uid={{username}})(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))"
+      }
+    }
+  },
+  "smtp": {
+    "host": "$SMTP_HOSTNAME",
+    "port": $SMTP_HOSTPORT,
+    "from": "$EMAIL_SMTP_EMAIL_ADDRESS",
+    "tls": false,
+    "verifyEmail": false
+  }
+}
+EOFMT
+
+}
+
+function performUpdateMeshCentral()
+{
+  perform_stack_name=meshcentral
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Navidrome
+function installNavidrome()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory exampleservice "Navidrome"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName navidrome-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/navidrome
+  mkdir $HSHQ_STACKS_DIR/navidrome/config
+  mkdir $HSHQ_STACKS_DIR/navidrome/data
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $NAVIDROME_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $NAVIDROME_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigNavidrome
+  installStack navidrome navidrome-app "Navidrome server is ready" $HOME/navidrome.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$NAVIDROME_INIT_ENV" = "true" ]; then
+    sendEmail -s "Navidrome Admin Login Info" -b "Navidrome Admin Username: $NAVIDROME_ADMIN_USERNAME\nNavidrome Admin Password: $NAVIDROME_ADMIN_PASSWORD\nNavidrome Admin Email: $NAVIDROME_ADMIN_EMAIL_ADDRESS\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    NAVIDROME_INIT_ENV=true
+    updateConfigVar NAVIDROME_INIT_ENV $NAVIDROME_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://navidrome-app:4533 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NAVIDROME $MANAGETLS_NAVIDROME "$is_integrate_hshq" $NETDEFAULT_NAVIDROME "$inner_block"
+  insertSubAuthelia $SUB_NAVIDROME.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll navidrome "$FMLNAME_NAVIDROME" $USERTYPE_NAVIDROME "https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN" "navidrome.png" "$(getHeimdallOrderFromSub $SUB_NAVIDROME $USERTYPE_NAVIDROME)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigNavidrome()
+{
+  cat <<EOFMT > $HOME/navidrome-compose.yml
+$STACK_VERSION_PREFIX navidrome $(getScriptStackVersion navidrome)
+
+services:
+  navidrome-app:
+    image: $(getScriptImageByContainerName navidrome-app)
+    container_name: navidrome-app
+    hostname: navidrome-app
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/navidrome/data:/data
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+
+  cat <<EOFMT > $HOME/navidrome.env
+TZ=\${TZ}
+ND_ENABLEINSIGHTSCOLLECTOR=false
+ND_BASEURL=https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN
+EOFMT
+
+}
+
+function performUpdateNavidrome()
+{
+  perform_stack_name=navidrome
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -61885,7 +62446,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "regex": {
-        "pattern": "[1-2][0-9][0-9][0-9]-[0-2][0-9]-[0-2][0-9] [0-2][0-9]\\\\:[0-2][0-9]\\\\:[0-2][0-9] [A-Z]{3,5}",
+        "pattern": "[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3])\\\\:(0[0-9]|[1-5][0-9])\\\\:(0[0-9]|[1-5][0-9]) [A-Z]{3,5}",
         "description": "Date format (see instructions)"
       },
       "ui": {
@@ -61901,7 +62462,7 @@ EOFSC
       "type": "text",
       "secure": false,
       "regex": {
-        "pattern": "[1-2][0-9][0-9][0-9]-[0-2][0-9]-[0-2][0-9] [0-2][0-9]\\\\:[0-2][0-9]\\\\:[0-2][0-9] [A-Z]{3,5}",
+        "pattern": "[1-2][0-9][0-9][0-9]-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]) ([01][0-9]|2[0-3])\\\\:(0[0-9]|[1-5][0-9])\\\\:(0[0-9]|[1-5][0-9]) [A-Z]{3,5}",
         "description": "Date format (see instructions)"
       },
       "ui": {
@@ -69279,6 +69840,14 @@ SQLPAD_CONNECTIONS__mealie__username=$MEALIE_DATABASE_USER
 SQLPAD_CONNECTIONS__mealie__password=$MEALIE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__mealie__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__mealie__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__meshcentral__name=MeshCentral
+SQLPAD_CONNECTIONS__meshcentral__driver=mysql
+SQLPAD_CONNECTIONS__meshcentral__host=meshcentral-db
+SQLPAD_CONNECTIONS__meshcentral__database=$MESHCENTRAL_DATABASE_NAME
+SQLPAD_CONNECTIONS__meshcentral__username=$MESHCENTRAL_DATABASE_USER
+SQLPAD_CONNECTIONS__meshcentral__password=$MESHCENTRAL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__meshcentral__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__meshcentral__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
