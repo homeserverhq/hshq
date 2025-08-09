@@ -20225,14 +20225,9 @@ function createInitialEnv()
   mkdir -p $HSHQ_SSL_DIR
   mkdir -p $HSHQ_STACKS_DIR
   mkdir -p $HSHQ_WIREGUARD_DIR
-  mkdir -p $HSHQ_WIREGUARD_DIR/internet
-  mkdir -p $HSHQ_WIREGUARD_DIR/vpn
-  mkdir -p $HSHQ_WIREGUARD_DIR/scripts
-  mkdir -p $HSHQ_WIREGUARD_DIR/users
-  mkdir -p $HSHQ_WIREGUARD_DIR/requestkeys
-  mkdir -p $HSHQ_WIREGUARD_DIR/logs
-  mkdir -p $HSHQ_RELAYSERVER_DIR/backup
-  mkdir -p $HSHQ_RELAYSERVER_DIR/scripts
+  mkdir -p $HSHQ_WIREGUARD_DIR/{internet,vpn,scripts,users,requestkeys,logs}
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/media/{audio,books,comics,misc,movies,software,tv}
+  mkdir -p $HSHQ_RELAYSERVER_DIR/{backup,scripts}
   mkdir -p $HSHQ_SCRIPTS_DIR/user
   sudo mkdir -p $HSHQ_SCRIPTS_DIR/root
   sudo chmod 700 $HSHQ_SCRIPTS_DIR/root
@@ -23219,6 +23214,7 @@ function version181Update()
     DISCOURSE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE
     updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
   fi
+  mkdir -p $HSHQ_STACKS_DIR/shared/rdata/media/{audio,books,comics,misc,movies,software,tv}
 }
 
 function updateRelayServerWithScript()
@@ -27981,8 +27977,10 @@ function loadPinnedDockerImages()
   IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.127.1
   IMG_MATOMO_APP=matomo:5.3.1-fpm-alpine
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v2.8.0
+  IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.48
   IMG_MEILISEARCH=getmeili/meilisearch:v1.6
   IMG_MYSQL=mariadb:10.7.3
+  IMG_NAVIDROME=deluan/navidrome:0.58.0
   IMG_NETDATA=netdata/netdata:v2.3.2
   IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
   IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
@@ -28198,6 +28196,10 @@ function getScriptStackVersion()
       echo "v1" ;;
     ombi)
       echo "v1" ;;
+    meshcentral)
+      echo "v1" ;;
+    navidrome)
+      echo "v1" ;;
     ofelia)
       echo "v5" ;;
     sqlpad)
@@ -28355,6 +28357,8 @@ function pullDockerImages()
   pullImage $IMG_SABNZBD
   pullImage $IMG_QBITTORRENT
   pullImage $IMG_OMBI_APP
+  pullImage $IMG_MESHCENTRAL
+  pullImage $IMG_NAVIDROME
 }
 
 function pullImagesUpdatePB()
@@ -29205,6 +29209,21 @@ OMBI_DATABASE_ROOT_PASSWORD=
 OMBI_DATABASE_USER=
 OMBI_DATABASE_USER_PASSWORD=
 # Ombi (Service Details) END
+
+# MeshCentral (Service Details) BEGIN
+MESHCENTRAL_INIT_ENV=true
+MESHCENTRAL_DATABASE_NAME=
+MESHCENTRAL_DATABASE_ROOT_PASSWORD=
+MESHCENTRAL_DATABASE_USER=
+MESHCENTRAL_DATABASE_USER_PASSWORD=
+# MeshCentral (Service Details) END
+
+# Navidrome (Service Details) BEGIN
+NAVIDROME_INIT_ENV=true
+NAVIDROME_ADMIN_USERNAME=
+NAVIDROME_ADMIN_PASSWORD=
+NAVIDROME_ADMIN_EMAIL_ADDRESS=
+# Navidrome (Service Details) END
 
 # Service Details END
 EOFCF
@@ -30564,6 +30583,34 @@ function initServicesCredentials()
     OMBI_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar OMBI_DATABASE_USER_PASSWORD $OMBI_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$MESHCENTRAL_DATABASE_NAME" ]; then
+    MESHCENTRAL_DATABASE_NAME=meshcentraldb
+    updateConfigVar MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_NAME
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_ROOT_PASSWORD" ]; then
+    MESHCENTRAL_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MESHCENTRAL_DATABASE_ROOT_PASSWORD $MESHCENTRAL_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_USER" ]; then
+    MESHCENTRAL_DATABASE_USER=meshcentral-user
+    updateConfigVar MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER
+  fi
+  if [ -z "$MESHCENTRAL_DATABASE_USER_PASSWORD" ]; then
+    MESHCENTRAL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MESHCENTRAL_DATABASE_USER_PASSWORD $MESHCENTRAL_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$NAVIDROME_ADMIN_USERNAME" ]; then
+    NAVIDROME_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_navidrome"
+    updateConfigVar NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_USERNAME
+  fi
+  if [ -z "$NAVIDROME_ADMIN_PASSWORD" ]; then
+    NAVIDROME_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar NAVIDROME_ADMIN_PASSWORD $NAVIDROME_ADMIN_PASSWORD
+  fi
+  if [ -z "$NAVIDROME_ADMIN_EMAIL_ADDRESS" ]; then
+    NAVIDROME_ADMIN_EMAIL_ADDRESS=$NAVIDROME_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar NAVIDROME_ADMIN_EMAIL_ADDRESS $NAVIDROME_ADMIN_EMAIL_ADDRESS
+  fi
 
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -30825,6 +30872,8 @@ function initServiceVars()
   checkAddSvc "SVCD_MATRIX_SYNAPSE=matrix,synapse,other,user,Synapse,synapse,le"
   checkAddSvc "SVCD_MATOMO=matomo,matomo,primary,admin,Matomo,matomo,hshq"
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
+  checkAddSvc "SVCD_MESHCENTRAL=meshcentral,meshcentral,primary,admin,MeshCentral,meshcentral,hshq"
+  checkAddSvc "SVCD_NAVIDROME=navidrome,navidrome,other,user,Navidrome,navidrome,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
   checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
@@ -31029,6 +31078,10 @@ function installStackByName()
       installqBittorrent $is_integrate ;;
     ombi)
       installOmbi $is_integrate ;;
+    meshcentral)
+      installMeshCentral $is_integrate ;;
+    navidrome)
+      installNavidrome $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -31199,6 +31252,10 @@ function performUpdateStackByName()
       performUpdateqBittorrent "$portainerToken" ;;
     ombi)
       performUpdateOmbi "$portainerToken" ;;
+    meshcentral)
+      performUpdateMeshCentral "$portainerToken" ;;
+    navidrome)
+      performUpdateNavidrome "$portainerToken" ;;
     heimdall)
       performUpdateHeimdall "$portainerToken" ;;
     ofelia)
@@ -31259,6 +31316,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MEALIE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_NAVIDROME.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NEXTCLOUD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
@@ -31294,6 +31352,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
@@ -31433,6 +31492,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31548,6 +31609,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SABNZBD}-Admin" https://$SUB_SABNZBD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SABNZBD_ADMIN_USERNAME $SABNZBD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_QBITTORRENT}-Admin" https://$SUB_QBITTORRENT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $QBITTORRENT_ADMIN_USERNAME $QBITTORRENT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31916,6 +31979,12 @@ function getHeimdallOrderFromSub()
     "$SUB_OMBI_APP")
       order_num=93
       ;;
+    "$SUB_MESHCENTRAL")
+      order_num=94
+      ;;
+    "$SUB_NAVIDROME")
+      order_num=95
+      ;;
     *)
       ;;
   esac
@@ -31930,13 +31999,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
 }
 
 function getScriptImageByContainerName()
@@ -32575,6 +32644,15 @@ function getScriptImageByContainerName()
     "ombi-app")
       container_image=$IMG_OMBI_APP
       ;;
+    "meshcentral-db")
+      container_image=$IMG_MYSQL
+      ;;
+    "meshcentral-app")
+      container_image=$IMG_MESHCENTRAL
+      ;;
+    "navidrome-app")
+      container_image=$IMG_NAVIDROME
+      ;;
     *)
       ;;
   esac
@@ -32627,6 +32705,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "SABnzbd" "SABNZBD_INIT_ENV=false,SABNZBD_ADMIN_USERNAME=,SABNZBD_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "qBittorrent" "QBITTORRENT_INIT_ENV=false,QBITTORRENT_ADMIN_USERNAME=,QBITTORRENT_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Ombi" "OMBI_INIT_ENV=false,OMBI_ADMIN_USERNAME=,OMBI_ADMIN_PASSWORD=,OMBI_ADMIN_EMAIL_ADDRESS=,OMBI_DATABASE_NAME=,OMBI_DATABASE_ROOT_PASSWORD=,OMBI_DATABASE_USER=,OMBI_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "MeshCentral" "MESHCENTRAL_INIT_ENV=false,MESHCENTRAL_DATABASE_NAME=,MESHCENTRAL_DATABASE_ROOT_PASSWORD=,MESHCENTRAL_DATABASE_USER=,MESHCENTRAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Navidrome" "NAVIDROME_INIT_ENV=false,NAVIDROME_ADMIN_USERNAME=,NAVIDROME_ADMIN_PASSWORD=,NAVIDROME_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME=" $CONFIG_FILE false
@@ -43228,6 +43308,9 @@ services:
       - \${HSHQ_STACKS_DIR}/jellyfin/config:/config
       - \${HSHQ_STACKS_DIR}/jellyfin/cache:/cache
       - \${HSHQ_STACKS_DIR}/jellyfin/media:/media
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/movies:/sharedmovies
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/tv:/sharedtv
 #    devices:
 #      - /dev/dri/renderD128:/dev/dri/renderD128
 #      - /dev/dri/card0:/dev/dri/card0
@@ -57704,6 +57787,7 @@ EOFOT
 "Matomo" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
 "Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD
 "Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
+"MeshCentral" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
 "Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
@@ -60859,6 +60943,429 @@ function performUpdateOmbi()
       curImageList=mariadb:10.7.3,linuxserver/ombi:4.47.1
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
       image_update_map[1]="linuxserver/ombi:4.47.1,linuxserver/ombi:4.47.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# MeshCentral
+function installMeshCentral()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory meshcentral "MeshCentral"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName meshcentral-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName meshcentral-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/meshcentral
+  mkdir $HSHQ_STACKS_DIR/meshcentral/config
+  mkdir $HSHQ_STACKS_DIR/meshcentral/db
+  mkdir $HSHQ_STACKS_DIR/meshcentral/dbexport
+  mkdir $HSHQ_STACKS_DIR/meshcentral/data
+  mkdir $HSHQ_STACKS_DIR/meshcentral/files
+  mkdir $HSHQ_STACKS_DIR/meshcentral/web
+  mkdir $HSHQ_STACKS_DIR/meshcentral/backups
+  chmod 777 $HSHQ_STACKS_DIR/meshcentral/dbexport
+  initServicesCredentials
+  set +e
+  outputConfigMeshCentral
+  installStack meshcentral meshcentral-app "" $HOME/meshcentral.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  if ! [ "$MESHCENTRAL_INIT_ENV" = "true" ]; then
+    sendEmail -s "MeshCentral Admin Login Info" -b "MeshCentral Admin Username: $LDAP_ADMIN_USER_USERNAME\nMeshCentral Admin Password: $LDAP_ADMIN_USER_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MESHCENTRAL_INIT_ENV=true
+    updateConfigVar MESHCENTRAL_INIT_ENV $MESHCENTRAL_INIT_ENV
+  fi
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy https://meshcentral-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>transport http {\n"
+  inner_block=$inner_block">>>>>>>>>>tls\n"
+  inner_block=$inner_block">>>>>>>>>>tls_insecure_skip_verify\n"
+  inner_block=$inner_block">>>>>>>>}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MESHCENTRAL $MANAGETLS_MESHCENTRAL "$is_integrate_hshq" $NETDEFAULT_MESHCENTRAL "$inner_block"
+  insertSubAuthelia $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll meshcentral "$FMLNAME_MESHCENTRAL" $USERTYPE_MESHCENTRAL "https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN" "meshcentral.png" "$(getHeimdallOrderFromSub $SUB_MESHCENTRAL $USERTYPE_MESHCENTRAL)"
+    restartAllCaddyContainers
+    checkAddDBConnection true meshcentral "$FMLNAME_MESHCENTRAL" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigMeshCentral()
+{
+  cat <<EOFMT > $HOME/meshcentral-compose.yml
+$STACK_VERSION_PREFIX meshcentral $(getScriptStackVersion meshcentral)
+
+services:
+  meshcentral-db:
+    image: $(getScriptImageByContainerName meshcentral-db)
+    container_name: meshcentral-db
+    hostname: meshcentral-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-meshcentral-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-meshcentral-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/meshcentral/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.meshcentral-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.meshcentral-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.meshcentral-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.meshcentral-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.meshcentral-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.meshcentral-hourly-db.email-from=MeshCentral Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.meshcentral-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.meshcentral-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.meshcentral-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.meshcentral-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.meshcentral-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.meshcentral-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.meshcentral-monthly-db.email-from=MeshCentral Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.meshcentral-monthly-db.mail-only-on-error=false"
+    environment:
+      - MYSQL_DATABASE=$MESHCENTRAL_DATABASE_NAME
+      - MYSQL_ROOT_PASSWORD=$MESHCENTRAL_DATABASE_ROOT_PASSWORD
+      - MYSQL_USER=$MESHCENTRAL_DATABASE_USER
+      - MYSQL_PASSWORD=$MESHCENTRAL_DATABASE_USER_PASSWORD
+
+  meshcentral-app:
+    image: $(getScriptImageByContainerName meshcentral-app)
+    container_name: meshcentral-app
+    hostname: meshcentral-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - meshcentral-db
+    networks:
+      - int-meshcentral-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ldap-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/opt/meshcentral/meshcentral-data/root-cert-public.crt:ro
+      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/opt/meshcentral/meshcentral-data/root-cert-private.key:ro
+      - v-meshcentral-data:/opt/meshcentral/meshcentral-data
+      - v-meshcentral-files:/opt/meshcentral/meshcentral-files
+      - v-meshcentral-web:/opt/meshcentral/meshcentral-web
+      - v-meshcentral-backups:/opt/meshcentral/meshcentral-backups
+
+volumes:
+  v-meshcentral-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/db
+  v-meshcentral-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/data
+  v-meshcentral-files:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/files
+  v-meshcentral-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/web
+  v-meshcentral-backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/meshcentral/backups
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-meshcentral-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/meshcentral.env
+TZ=\${TZ}
+NODE_ENV=production
+DYNAMIC_CONFIG=false
+HOSTNAME=$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN
+EOFMT
+
+  cat <<EOFMT > $HSHQ_STACKS_DIR/meshcentral/data/config.json
+{
+  "\$schema": "https://raw.githubusercontent.com/Ylianst/MeshCentral/master/meshcentral-config-schema.json",
+  "settings": {
+    "plugins":{
+      "enabled": false
+    },
+    "cert": "$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN",
+    "_WANonly": true,
+    "_LANonly": true,
+    "sessionKey": "$(pwgen -c -n 32 1)",
+    "port": 443,
+    "_aliasPort": 443,
+    "redirPort": 80,
+    "_redirAliasPort": 80,
+    "AgentPong": 300,
+    "trustedProxy": true,
+    "SelfUpdate": false,
+    "AllowFraming": false,
+    "WebRTC": false,
+    "_mongoDb": "",
+    "_postgres": {
+      "host": "",
+      "port": "",
+      "user": "",
+      "password": "",
+      "database": ""
+    },
+    "mariaDB": {
+      "host": "meshcentral-db",
+      "port": "3306",
+      "user": "$MESHCENTRAL_DATABASE_USER",
+      "password": "$MESHCENTRAL_DATABASE_USER_PASSWORD",
+      "database": "$MESHCENTRAL_DATABASE_NAME"
+    }
+  },
+  "domains": {
+    "": {
+      "title": "$HOMESERVER_NAME",
+      "title2": "MeshCentral",
+      "minify": false,
+      "NewAccounts": true,
+      "localSessionRecording": true,
+      "certUrl": "https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/",
+      "allowedOrigin": false,
+      "auth": "ldap",
+      "ldapUserName": "uid",
+      "ldapUserKey": "uid",
+      "ldapOptions": {
+        "url": "$LDAPS_URI",
+        "bindDN": "$LDAP_READONLY_USER_BIND_DN",
+        "bindCredentials": "$LDAP_READONLY_USER_PASSWORD",
+        "searchBase": "ou=people,$LDAP_BASE_DN",
+        "searchFilter": "(&(uid={{username}})(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))"
+      }
+    }
+  },
+  "smtp": {
+    "host": "$SMTP_HOSTNAME",
+    "port": $SMTP_HOSTPORT,
+    "from": "$EMAIL_SMTP_EMAIL_ADDRESS",
+    "tls": false,
+    "verifyEmail": false
+  }
+}
+EOFMT
+
+}
+
+function performUpdateMeshCentral()
+{
+  perform_stack_name=meshcentral
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Navidrome
+function installNavidrome()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory exampleservice "Navidrome"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName navidrome-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/navidrome
+  mkdir $HSHQ_STACKS_DIR/navidrome/config
+  mkdir $HSHQ_STACKS_DIR/navidrome/data
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $NAVIDROME_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $NAVIDROME_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigNavidrome
+  installStack navidrome navidrome-app "Navidrome server is ready" $HOME/navidrome.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$NAVIDROME_INIT_ENV" = "true" ]; then
+    sendEmail -s "Navidrome Admin Login Info" -b "Navidrome Admin Username: $NAVIDROME_ADMIN_USERNAME\nNavidrome Admin Password: $NAVIDROME_ADMIN_PASSWORD\nNavidrome Admin Email: $NAVIDROME_ADMIN_EMAIL_ADDRESS\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    NAVIDROME_INIT_ENV=true
+    updateConfigVar NAVIDROME_INIT_ENV $NAVIDROME_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://navidrome-app:4533 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_NAVIDROME $MANAGETLS_NAVIDROME "$is_integrate_hshq" $NETDEFAULT_NAVIDROME "$inner_block"
+  insertSubAuthelia $SUB_NAVIDROME.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll navidrome "$FMLNAME_NAVIDROME" $USERTYPE_NAVIDROME "https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN" "navidrome.png" "$(getHeimdallOrderFromSub $SUB_NAVIDROME $USERTYPE_NAVIDROME)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigNavidrome()
+{
+  cat <<EOFMT > $HOME/navidrome-compose.yml
+$STACK_VERSION_PREFIX navidrome $(getScriptStackVersion navidrome)
+
+services:
+  navidrome-app:
+    image: $(getScriptImageByContainerName navidrome-app)
+    container_name: navidrome-app
+    hostname: navidrome-app
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/navidrome/data:/data
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+
+  cat <<EOFMT > $HOME/navidrome.env
+TZ=\${TZ}
+ND_ENABLEINSIGHTSCOLLECTOR=false
+ND_BASEURL=https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN
+EOFMT
+
+}
+
+function performUpdateNavidrome()
+{
+  perform_stack_name=navidrome
+  prepPerformUpdate "$1"
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=exampleimage
+      image_update_map[0]="exampleimage,exampleimage"
     ;;
     *)
       is_upgrade_error=true
@@ -69333,6 +69840,14 @@ SQLPAD_CONNECTIONS__mealie__username=$MEALIE_DATABASE_USER
 SQLPAD_CONNECTIONS__mealie__password=$MEALIE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__mealie__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__mealie__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__meshcentral__name=MeshCentral
+SQLPAD_CONNECTIONS__meshcentral__driver=mysql
+SQLPAD_CONNECTIONS__meshcentral__host=meshcentral-db
+SQLPAD_CONNECTIONS__meshcentral__database=$MESHCENTRAL_DATABASE_NAME
+SQLPAD_CONNECTIONS__meshcentral__username=$MESHCENTRAL_DATABASE_USER
+SQLPAD_CONNECTIONS__meshcentral__password=$MESHCENTRAL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__meshcentral__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__meshcentral__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
