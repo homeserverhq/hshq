@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=181
+HSHQ_LIB_SCRIPT_VERSION=182
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -43308,9 +43308,9 @@ services:
       - \${HSHQ_STACKS_DIR}/jellyfin/config:/config
       - \${HSHQ_STACKS_DIR}/jellyfin/cache:/cache
       - \${HSHQ_STACKS_DIR}/jellyfin/media:/media
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/movies:/sharedmovies
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/tv:/sharedtv
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/movies:/sharedmovies:ro
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/tv:/sharedtv:ro
 #    devices:
 #      - /dev/dri/renderD128:/dev/dri/renderD128
 #      - /dev/dri/card0:/dev/dri/card0
@@ -61209,12 +61209,17 @@ EOFMT
       "auth": "ldap",
       "ldapUserName": "uid",
       "ldapUserKey": "uid",
+      "ldapUserGroups": "memberOf",
+      "ldapUserRequiredGroupMembership": [ "cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN" ],
+      "ldapSiteAdminGroups": [ "cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN" ],
+      "ldapSyncWithUserGroups": true,
       "ldapOptions": {
         "url": "$LDAPS_URI",
         "bindDN": "$LDAP_READONLY_USER_BIND_DN",
         "bindCredentials": "$LDAP_READONLY_USER_PASSWORD",
         "searchBase": "ou=people,$LDAP_BASE_DN",
-        "searchFilter": "(&(uid={{username}})(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))"
+        "searchFilter": "(uid={{username}})",
+        "searchAttributes": [ "*", "memberOf" ]
       }
     }
   },
@@ -61335,7 +61340,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${HSHQ_STACKS_DIR}/navidrome/data:/data
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
 
 networks:
   dock-proxy-net:
