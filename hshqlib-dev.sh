@@ -61160,7 +61160,7 @@ NODE_ENV=production
 DYNAMIC_CONFIG=false
 HOSTNAME=$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN
 EOFMT
-  # V182 fix
+
   cat <<EOFMT > $HSHQ_STACKS_DIR/meshcentral/data/config.json
 {
   "\$schema": "https://raw.githubusercontent.com/Ylianst/MeshCentral/master/meshcentral-config-schema.json",
