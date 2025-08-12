@@ -9288,14 +9288,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailrelay-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mail-relay-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mail-relay-redis:/data
 
 volumes:
   caddy-certs:
@@ -20971,14 +20971,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mailu-redis:/data
 
   admin:
     image: $IMG_MAILU_ADMIN
@@ -27656,8 +27656,8 @@ function getUpdateAssets()
       curGitTries=0
       break
     fi
-    echo "($((curGitTries+1)) of $maxGitTries) There was an error pulling the contents from the HSHQ assets Github repository, trying again in 5 seconds..."
-    sleep 5
+    echo "($((curGitTries+1)) of $maxGitTries) There was an error pulling the contents from the HSHQ assets Github repository, trying again in 10 seconds..."
+    sleep 10
     ((curGitTries++))
   done
   if [ $curGitTries -ge $maxGitTries ]; then
@@ -27670,15 +27670,23 @@ function pullImage()
   image_to_pull=$1
   secs_mult=60
   set +e
+  if [ -z "$image_to_pull" ]; then
+    echo "ERROR: The image is empty."
+    return 3
+  fi
   # Check if custom image, and if it exists
   if [ "$(checkIsCustomImage $image_to_pull)" = "true" ]; then
-    if [ $(docker image ls --format "table {{.Repository}}:{{.Tag}}" | grep $image_to_pull) ]; then
+    if ! [ -z $(docker image ls --format "table {{.Repository}}:{{.Tag}}" | grep "$image_to_pull" | head -1) ]; then
       echo "Custom image exists, returning..."
       return
     else
       echo "ERROR: This custom image ($image_to_pull) doesn't exist."
       return 3
     fi
+  fi
+  if ! [ -z $(docker image ls --format "table {{.Repository}}:{{.Tag}}" | grep "$image_to_pull" | head -1) ]; then
+    echo "Image ($image_to_pull) already in local registry..."
+    return
   fi
   # Check if registry is indicated, if not, then add mirror.gcr.io to front
   if [ $(grep -o "/" <<< "$image_to_pull" | wc -l) -lt 2 ] && ! [ ${image_to_pull:0:13} = "mirror.gcr.io" ]; then
@@ -27706,8 +27714,8 @@ function pullImage()
     fi
     ((num_tries++))
     if [ $is_success -ne 0 ]; then
-      echo "There was an error pulling the image, retrying in 5 seconds..."
-      sleep 5
+      echo "There was an error pulling the image, retrying in 10 seconds..."
+      sleep 10
     fi
   done
   if [ $is_success -ne 0 ]; then
@@ -27914,8 +27922,10 @@ function replaceRedisBlock()
   stackName="$1"
   containerName="$2"
   redisImg="$3"
+  isIncludeVolume="$4"
+  set +e
   lineStart="  $containerName:"
-  lineEnd="$(grep REDIS_PASSWORD=.* $HOME/$stackName-compose.yml)"
+  lineEnd="$(grep REDIS_PASSWORD=.* $HOME/$stackName-compose.yml | head -1)"
   rpass="$(echo $lineEnd | cut -d"=" -f2)"
   replaceText=""
   replaceText=$replaceText">>$containerName:\n"
@@ -27927,12 +27937,19 @@ function replaceRedisBlock()
   replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
   replaceText=$replaceText">>>>command: redis-server\n"
   replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  if ! [ "$isIncludeVolume" = "false" ]; then
+    replaceText=$replaceText">>>>>>--appendonly yes\n"
+  else
+    replaceText=$replaceText">>>>>>--appendonly no\n"
+  fi
   replaceText=$replaceText">>>>networks:\n"
   replaceText=$replaceText">>>>>>- int-$stackName-net\n"
   replaceText=$replaceText">>>>volumes:\n"
   replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
   replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText">>>>>>- v-$stackName-redis:/data\n"
+  if ! [ "$isIncludeVolume" = "false" ]; then
+    replaceText=$replaceText">>>>>>- v-$stackName-redis:/data\n"
+  fi
   replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/$stackName-compose.yml false ">"
   cat -s $HOME/${stackName}-compose.yml > $HOME/${stackName}.tmp
   mv $HOME/${stackName}.tmp $HOME/${stackName}-compose.yml
@@ -27942,12 +27959,12 @@ function replaceRedisBlock()
 function loadPinnedDockerImages()
 {
   # Common images
-  IMG_ELASTICSEARCH=mirror.gcr.io/elasticsearch:8.17.4
+  IMG_ELASTICSEARCH=mirror.gcr.io/elasticsearch:9.1.1
   IMG_MEILISEARCH=mirror.gcr.io/getmeili/meilisearch:v1.16.0
   IMG_MYSQL=mirror.gcr.io/mariadb:10.7.3
   IMG_NGINX=mirror.gcr.io/nginx:1.28.0-alpine
   IMG_POSTGRES=mirror.gcr.io/postgres:15.0-bullseye
-  IMG_REDIS=mirror.gcr.io/bitnami/redis:8.2.0
+  IMG_REDIS=mirror.gcr.io/redis:8.2.0-bookworm
   IMG_ALPINE=mirror.gcr.io/alpine:3.22.1
 
   # Stack specific images
@@ -27993,74 +28010,74 @@ function loadPinnedDockerImages()
   IMG_GUACAMOLE_GUACD=mirror.gcr.io/guacamole/guacd:1.6.0
   IMG_GUACAMOLE_WEB=mirror.gcr.io/guacamole/guacamole:1.6.0
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
-  IMG_HOMARR_APP=ghcr.io/homarr-labs/homarr:v1.18.1
-  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2025.4.0
+  IMG_HOMARR_APP=ghcr.io/homarr-labs/homarr:v1.32.0
+  IMG_HOMEASSISTANT_APP=mirror.gcr.io/homeassistant/home-assistant:2025.8.1
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
-  IMG_HOMEASSISTANT_NODERED=nodered/node-red:4.0.9-22
-  IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.1.3
+  IMG_HOMEASSISTANT_NODERED=mirror.gcr.io/nodered/node-red:4.1.0-22
+  IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.3.1
   IMG_HUGINN_APP=ghcr.io/huginn/huginn:1e0c359a46b1e84eb8c658404212eaf693b30e61
   IMG_IMMICH_DB=tensorchord/pgvecto-rs:pg14-v0.3.0
-  IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v1.131.3
-  IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v1.131.3
+  IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v1.137.3
+  IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v1.137.3
   IMG_INFLUXDB=mirror.gcr.io/influxdb:2.7.12-alpine
   IMG_INVIDIOUS_WEB=quay.io/invidious/invidious:master
   IMG_INVIDIOUS_COMPANION=quay.io/invidious/invidious-companion:latest
   IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
-  IMG_JELLYFIN=jellyfin/jellyfin:10.10.6
+  IMG_JELLYFIN=mirror.gcr.io/jellyfin/jellyfin:10.10.7
   IMG_JITSI_WEB=jitsi/web:stable-10431
   IMG_JITSI_PROSODY=jitsi/prosody:stable-10431
   IMG_JITSI_JICOFO=jitsi/jicofo:stable-10431
   IMG_JITSI_JVB=jitsi/jvb:stable-10431
   IMG_JUPYTER=continuumio/anaconda3:2024.10-1
-  IMG_KASM=lscr.io/linuxserver/kasm:1.16.1-ls68
+  IMG_KASM=lscr.io/linuxserver/kasm:1.17.0-ls88
   IMG_KEILA=pentacent/keila:0.17.1
-  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.9.3
+  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.11.5
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
   IMG_MAIL_RELAY_UNBOUND=mvance/unbound:1.19.0
-  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.36
-  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.36
-  IMG_MAILU_ANTIVIRUS=clamav/clamav-debian:1.4.2
-  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.36
-  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.36
-  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.36
-  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.36
-  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.36
-  IMG_MAILU_TIKA=apache/tika:3.1.0.0-full
-  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.36
-  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.36
-  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.36
-  IMG_MASTODON_APP=tootsuite/mastodon:v4.3.7
-  IMG_MASTODON_STREAMING=tootsuite/mastodon-streaming:v4.3.7
-  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.96
-  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.127.1
-  IMG_MATOMO_APP=matomo:5.3.1-fpm-alpine
-  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v2.8.0
+  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.37
+  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.37
+  IMG_MAILU_ANTIVIRUS=mirror.gcr.io/clamav/clamav-debian:1.4.3
+  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.37
+  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.37
+  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.37
+  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.37
+  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.37
+  IMG_MAILU_TIKA=mirror.gcr.io/apache/tika:3.2.2.0-full
+  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.37
+  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.37
+  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.37
+  IMG_MASTODON_APP=mirror.gcr.io/tootsuite/mastodon:v4.3.11
+  IMG_MASTODON_STREAMING=mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11
+  IMG_MATRIX_ELEMENT=mirror.gcr.io/vectorim/element-web:v1.11.109
+  IMG_MATRIX_SYNAPSE=mirror.gcr.io/matrixdotorg/synapse:v1.136.0
+  IMG_MATOMO_APP=mirror.gcr.io/matomo:5.3.2-fpm-alpine
+  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v3.0.2
   IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.48
   IMG_NAVIDROME=deluan/navidrome:0.58.0
-  IMG_NETDATA=netdata/netdata:v2.3.2
-  IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
-  IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
-  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250512_082954
-  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
-  IMG_NTFY=binwiederhier/ntfy:v2.11.0
+  IMG_NETDATA=mirror.gcr.io/netdata/netdata:v2.6.1
+  IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:31.0.7-fpm-alpine
+  IMG_NEXTCLOUD_IMAGINARY=mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851
+  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250811_115851
+  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
+  IMG_NTFY=mirror.gcr.io/binwiederhier/ntfy:v2.14.0
   IMG_NODE_EXPORTER=mirror.gcr.io/prom/node-exporter:v1.9.1
-  IMG_OFELIA=mcuadros/ofelia:0.3.16
+  IMG_OFELIA=mirror.gcr.io/mcuadros/ofelia:0.3.18
   IMG_OMBI_APP=linuxserver/ombi:4.47.1
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
-  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.14.7
-  IMG_PAPERLESS_GOTENBERG=gotenberg/gotenberg:8.19.1
-  IMG_PAPERLESS_TIKA=apache/tika:3.1.0.0
-  IMG_PASTEFY=interaapps/pastefy:7.0.3
+  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.17.1
+  IMG_PAPERLESS_GOTENBERG=mirror.gcr.io/gotenberg/gotenberg:8.21
+  IMG_PAPERLESS_TIKA=mirror.gcr.io/apache/tika:3.2.2.0-full
+  IMG_PASTEFY=mirror.gcr.io/interaapps/pastefy:7.1.4
   IMG_PEERTUBE_APP=chocobozzz/peertube:v7.1.0-bookworm
-  IMG_PENPOT_BACKEND=penpotapp/backend:2.5.4
-  IMG_PENPOT_FRONTEND=penpotapp/frontend:2.5.4
-  IMG_PENPOT_EXPORTER=penpotapp/exporter:2.5.4
-  IMG_PHOTOPRISM_APP=photoprism/photoprism:240915
+  IMG_PENPOT_BACKEND=mirror.gcr.io/penpotapp/backend:2.8.1
+  IMG_PENPOT_FRONTEND=mirror.gcr.io/penpotapp/frontend:2.8.1
+  IMG_PENPOT_EXPORTER=mirror.gcr.io/penpotapp/exporter:2.8.1
+  IMG_PHOTOPRISM_APP=mirror.gcr.io/photoprism/photoprism:250707
   IMG_PIPED_FRONTEND=1337kavin/piped-frontend:latest
   IMG_PIPED_PROXY=1337kavin/piped-proxy:latest
   IMG_PIPED_API=1337kavin/piped:latest
@@ -28072,7 +28089,7 @@ function loadPinnedDockerImages()
   IMG_QBITTORRENT=linuxserver/qbittorrent:5.1.2
   IMG_REMOTELY=immybot/remotely:1037
   IMG_SABNZBD=linuxserver/sabnzbd:4.5.1
-  IMG_SEARXNG=searxng/searxng:2025.4.1-e6308b816
+  IMG_SEARXNG=mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d
   IMG_SERVARR_SONARR=linuxserver/sonarr:4.0.15
   IMG_SERVARR_RADARR=linuxserver/radarr:5.27.1-nightly
   IMG_SERVARR_LIDARR=linuxserver/lidarr:2.13.1-nightly
@@ -28080,26 +28097,26 @@ function loadPinnedDockerImages()
   IMG_SERVARR_BAZARR=linuxserver/bazarr:1.5.2
   IMG_SERVARR_MYLAR3=linuxserver/mylar3:0.8.2
   IMG_SERVARR_PROWLARR=linuxserver/prowlarr:2.0.1-nightly
-  IMG_SHLINK_APP=shlinkio/shlink:4.4.6
-  IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.3.0
+  IMG_SHLINK_APP=mirror.gcr.io/shlinkio/shlink:4.5.0
+  IMG_SHLINK_WEB=mirror.gcr.io/shlinkio/shlink-web-client:4.5.0
   IMG_SNIPPETBOX=pawelmalak/snippet-box:latest
   IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:1.3.0
-  IMG_SQLPAD=sqlpad/sqlpad:7.5.3
-  IMG_STIRLINGPDF=frooodle/s-pdf:0.45.0
-  IMG_SYNCTHING=syncthing/syncthing:1.29.4
+  IMG_SQLPAD=mirror.gcr.io/sqlpad/sqlpad:7.5.5
+  IMG_STIRLINGPDF=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
+  IMG_SYNCTHING=mirror.gcr.io/syncthing/syncthing:2.0.0
   IMG_TOMCAT=tomcat:11
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.16-alpine
-  IMG_VAULTWARDEN_APP=vaultwarden/server:1.33.2-alpine
-  IMG_VAULTWARDEN_LDAP=vividboarder/vaultwarden_ldap:2.1.1
-  IMG_WALLABAG=wallabag/wallabag:2.6.10
+  IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.34.3-alpine
+  IMG_VAULTWARDEN_LDAP=mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2
+  IMG_WALLABAG=mirror.gcr.io/wallabag/wallabag:2.6.13
   IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.11.2
   IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.11.2
   IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.11.2
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS=requarks/wiki:2.5.307
   IMG_WIREGUARD=mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81
-  IMG_WORDPRESS=wordpress:php8.3-apache
-  IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.22.7
+  IMG_WORDPRESS=mirror.gcr.io/wordpress:php8.4-apache
+  IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.24.7
 }
 
 function getScriptStackVersion()
@@ -28115,57 +28132,57 @@ function getScriptStackVersion()
     openldap)
       echo "v1" ;;
     mailu)
-      echo "v5" ;;
+      echo "v6" ;;
     wazuh)
       echo "v7" ;;
     collabora)
       echo "v8" ;;
     nextcloud)
-      echo "v9" ;;
+      echo "v10" ;;
     jitsi)
       echo "v8" ;;
     matrix)
-      echo "v7" ;;
+      echo "v8" ;;
     wikijs)
       echo "v4" ;;
     duplicati)
       echo "v6" ;;
     mastodon)
-      echo "v8" ;;
+      echo "v9" ;;
     dozzle)
       echo "v7" ;;
     searxng)
-      echo "v6" ;;
+      echo "v7" ;;
     jellyfin)
-      echo "v5" ;;
+      echo "v6" ;;
     filebrowser)
       echo "v7" ;;
     photoprism)
-      echo "v2" ;;
+      echo "v3" ;;
     guacamole)
       echo "v4" ;;
     authelia)
       echo "v6" ;;
     wordpress)
-      echo "v2" ;;
+      echo "v3" ;;
     ghost)
       echo "v8" ;;
     peertube)
-      echo "v6" ;;
+      echo "v7" ;;
     homeassistant)
-      echo "v8" ;;
+      echo "v9" ;;
     gitlab)
       echo "v7" ;;
     vaultwarden)
-      echo "v7" ;;
+      echo "v8" ;;
     discourse)
       echo "v7" ;;
     syncthing)
-      echo "v7" ;;
+      echo "v8" ;;
     codeserver)
       echo "v7" ;;
     shlink)
-      echo "v6" ;;
+      echo "v7" ;;
     firefly)
       echo "v9" ;;
     excalidraw)
@@ -28179,21 +28196,21 @@ function getScriptStackVersion()
     gitea)
       echo "v8" ;;
     mealie)
-      echo "v8" ;;
+      echo "v9" ;;
     kasm)
-      echo "v6" ;;
+      echo "v7" ;;
     ntfy)
-      echo "v4" ;;
+      echo "v5" ;;
     remotely)
       echo "v4" ;;
     calibre)
       echo "v7" ;;
     netdata)
-      echo "v5" ;;
+      echo "v6" ;;
     linkwarden)
-      echo "v6" ;;
+      echo "v7" ;;
     stirlingpdf)
-      echo "v6" ;;
+      echo "v7" ;;
     bar-assistant)
       echo "v6" ;;
     freshrss)
@@ -28201,15 +28218,15 @@ function getScriptStackVersion()
     keila)
       echo "v5" ;;
     wallabag)
-      echo "v3" ;;
+      echo "v4" ;;
     jupyter)
       echo "v4" ;;
     paperless)
-      echo "v4" ;;
+      echo "v5" ;;
     speedtest-tracker-local)
-      echo "v5" ;;
+      echo "v6" ;;
     speedtest-tracker-vpn)
-      echo "v5" ;;
+      echo "v6" ;;
     heimdall)
       echo "v1" ;;
     changedetection)
@@ -28225,25 +28242,25 @@ function getScriptStackVersion()
     grampsweb)
       echo "v4" ;;
     penpot)
-      echo "v2" ;;
+      echo "v3" ;;
     espocrm)
       echo "v3" ;;
     immich)
-      echo "v2" ;;
+      echo "v4" ;;
     homarr)
-      echo "v3" ;;
+      echo "v4" ;;
     matomo)
-      echo "v1" ;;
+      echo "v2" ;;
     pastefy)
-      echo "v1" ;;
+      echo "v2" ;;
     snippetbox)
       echo "v1" ;;
     aistack)
       echo "v1" ;;
     pixelfed)
-      echo "v1" ;;
+      echo "v2" ;;
     yamtrack)
-      echo "v1" ;;
+      echo "v2" ;;
     servarr)
       echo "v1" ;;
     sabnzbd)
@@ -28257,9 +28274,9 @@ function getScriptStackVersion()
     navidrome)
       echo "v1" ;;
     ofelia)
-      echo "v5" ;;
+      echo "v6" ;;
     sqlpad)
-      echo "v7" ;;
+      echo "v8" ;;
     caddy-*)
       echo "v5" ;;
     clientdns-*)
@@ -32102,7 +32119,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_MAILU_UNBOUND
       ;;
     "mailu-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "mailu-admin")
       container_image=$IMG_MAILU_ADMIN
@@ -32147,10 +32164,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_COLLABORA
       ;;
     "nextcloud-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "nextcloud-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "nextcloud-app")
       container_image=$IMG_NEXTCLOUD_APP
@@ -32165,7 +32182,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_NEXTCLOUD_IMAGINARY
       ;;
     "nextcloud-web")
-      container_image=nginx:1.27.4-alpine
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
       ;;
     "nextcloud-talkhpb")
       container_image=$IMG_NEXTCLOUD_TALKHPB
@@ -32186,13 +32203,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_JITSI_JVB
       ;;
     "matrix-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "matrix-synapse")
       container_image=$IMG_MATRIX_SYNAPSE
       ;;
     "matrix-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "matrix-element-private")
       container_image=$IMG_MATRIX_ELEMENT
@@ -32210,13 +32227,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_DUPLICATI
       ;;
     "mastodon-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "mastodon-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "mastodon-redis-cache")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "mastodon-app")
       container_image=$IMG_MASTODON_APP
@@ -32228,22 +32245,22 @@ function getScriptImageByContainerName()
       container_image=$IMG_MASTODON_APP
       ;;
     "mastodon-web")
-      container_image=nginx:1.27.4-alpine
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
       ;;
     "mastodon-elasticsearch")
-      container_image=elasticsearch:8.17.4
+      container_image=mirror.gcr.io/elasticsearch:9.1.1
       ;;
     "dozzle")
       container_image=$IMG_DOZZLE
       ;;
     "searxng-caddy")
-      container_image=$IMG_CADDY
+      container_image=mirror.gcr.io/caddy:2.10.0
       ;;
     "searxng-app")
       container_image=$IMG_SEARXNG
       ;;
     "searxng-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "jellyfin")
       container_image=$IMG_JELLYFIN
@@ -32252,7 +32269,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_FILEBROWSER
       ;;
     "photoprism-db")
-      container_image=mariadb:10.7.3
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "photoprism-app")
       container_image=$IMG_PHOTOPRISM_APP
@@ -32270,10 +32287,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_AUTHELIA
       ;;
     "authelia-redis")
-      container_image=mirror.gcr.io/postgres:17.5-bookworm
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "wordpress-db")
-      container_image=mariadb:10.7.3
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "wordpress-web")
       container_image=$IMG_WORDPRESS
@@ -32285,16 +32302,16 @@ function getScriptImageByContainerName()
       container_image=$IMG_GHOST
       ;;
     "peertube-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "peertube-app")
       container_image=$IMG_PEERTUBE_APP
       ;;
     "peertube-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "homeassistant-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "homeassistant-app")
       container_image=$IMG_HOMEASSISTANT_APP
@@ -32318,7 +32335,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "vaultwarden-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "vaultwarden-app")
       container_image=$IMG_VAULTWARDEN_APP
@@ -32345,7 +32362,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_CODESERVER
       ;;
     "shlink-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "shlink-app")
       container_image=$IMG_SHLINK_APP
@@ -32354,7 +32371,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_SHLINK_WEB
       ;;
     "shlink-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "firefly-db")
       container_image=mirror.gcr.io/postgres:15.0-bullseye
@@ -32369,7 +32386,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/alpine:3.22.1
       ;;
     "firefly-redis")
-      container_image=mirror.gcr.io/postgres:17.5-bookworm
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "excalidraw-storage")
       container_image=$IMG_EXCALIDRAW_STORAGE
@@ -32381,7 +32398,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_EXCALIDRAW_WEB
       ;;
     "excalidraw-redis")
-      container_image=mirror.gcr.io/postgres:17.5-bookworm
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "drawio-plantuml")
       container_image=$IMG_DRAWIO_PLANTUML
@@ -32408,7 +32425,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_GITEA_APP
       ;;
     "mealie-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "mealie-app")
       container_image=$IMG_MEALIE
@@ -32435,7 +32452,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_NETDATA
       ;;
     "linkwarden-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "linkwarden-app")
       container_image=$IMG_LINKWARDEN
@@ -32471,10 +32488,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_KEILA
       ;;
     "wallabag-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "wallabag-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "wallabag-app")
       container_image=$IMG_WALLABAG
@@ -32483,10 +32500,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_JUPYTER
       ;;
     "paperless-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "paperless-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "paperless-app")
       container_image=$IMG_PAPERLESS_APP
@@ -32498,13 +32515,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_PAPERLESS_TIKA
       ;;
     "speedtest-tracker-local-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "speedtest-tracker-local-app")
       container_image=$IMG_SPEEDTEST_TRACKER_APP
       ;;
     "speedtest-tracker-vpn-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "speedtest-tracker-vpn-app")
       container_image=$IMG_SPEEDTEST_TRACKER_APP
@@ -32561,13 +32578,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_GRAMPSWEB
       ;;
     "grampsweb-redis")
-      container_image=mirror.gcr.io/bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "penpot-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "penpot-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "penpot-backend")
       container_image=$IMG_PENPOT_BACKEND
@@ -32600,22 +32617,22 @@ function getScriptImageByContainerName()
       container_image=$IMG_IMMICH_ML
       ;;
     "immich-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "homarr-app")
       container_image=$IMG_HOMARR_APP
       ;;
     "matomo-db")
-      container_image=mariadb:10.7.3
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "matomo-app")
       container_image=$IMG_MATOMO_APP
       ;;
     "matomo-web")
-      container_image=nginx:1.27.4-alpine
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
       ;;
     "pastefy-db")
-      container_image=mariadb:10.7.3
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "pastefy-app")
       container_image=$IMG_PASTEFY
@@ -32648,7 +32665,7 @@ function getScriptImageByContainerName()
       container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "pixelfed-db")
-      container_image=mariadb:10.7.3
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "pixelfed-app")
       container_image=$IMG_PIXELFED_MOD_APP
@@ -32657,16 +32674,16 @@ function getScriptImageByContainerName()
       container_image=$IMG_PIXELFED_MOD_APP
       ;;
     "pixelfed-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "yamtrack-db")
-      container_image=postgres:15.0-bullseye
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "yamtrack-app")
       container_image=$IMG_YAMTRACK_APP
       ;;
     "yamtrack-redis")
-      container_image=bitnami/redis:7.4.2
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "servarr-sonarr")
       container_image=$IMG_SERVARR_SONARR
@@ -32846,7 +32863,9 @@ function checkIsCustomImage()
       ;;
   esac
 }
+
 # Stacks Installation/Update Functions
+# =====================================
 
 # Portainer
 function installPortainer()
@@ -37357,14 +37376,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -37617,14 +37636,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -37939,21 +37958,41 @@ function performUpdateMailu()
       image_update_map[12]="apache/tika:2.9.2.1-full,apache/tika:3.1.0.0-full"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=bitnami/redis:7.4.2,ghcr.io/mailu/admin:2024.06.36,ghcr.io/mailu/rspamd:2024.06.36,clamav/clamav-debian:1.4.2,ghcr.io/mailu/fetchmail:2024.06.36,ghcr.io/mailu/nginx:2024.06.36,ghcr.io/mailu/dovecot:2024.06.36,ghcr.io/mailu/oletools:2024.06.36,ghcr.io/mailu/postfix:2024.06.36,ghcr.io/mailu/unbound:2024.06.36,ghcr.io/mailu/radicale:2024.06.36,ghcr.io/mailu/webmail:2024.06.36,apache/tika:3.1.0.0-full
-      image_update_map[0]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[1]="ghcr.io/mailu/admin:2024.06.36,ghcr.io/mailu/admin:2024.06.36"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.36,ghcr.io/mailu/rspamd:2024.06.36"
-      image_update_map[3]="clamav/clamav-debian:1.4.2,clamav/clamav-debian:1.4.2"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.36,ghcr.io/mailu/fetchmail:2024.06.36"
-      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.36,ghcr.io/mailu/nginx:2024.06.36"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.36,ghcr.io/mailu/dovecot:2024.06.36"
-      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.36,ghcr.io/mailu/oletools:2024.06.36"
-      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.36,ghcr.io/mailu/postfix:2024.06.36"
-      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.36,ghcr.io/mailu/unbound:2024.06.36"
-      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.36,ghcr.io/mailu/radicale:2024.06.36"
-      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.36,ghcr.io/mailu/webmail:2024.06.36"
-      image_update_map[12]="apache/tika:3.1.0.0-full,apache/tika:3.1.0.0-full"
+      image_update_map[0]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.36,ghcr.io/mailu/admin:2024.06.37"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.36,ghcr.io/mailu/rspamd:2024.06.37"
+      image_update_map[3]="clamav/clamav-debian:1.4.2,mirror.gcr.io/clamav/clamav:1.4.3"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.36,ghcr.io/mailu/fetchmail:2024.06.37"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.36,ghcr.io/mailu/nginx:2024.06.37"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.36,ghcr.io/mailu/dovecot:2024.06.37"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.36,ghcr.io/mailu/oletools:2024.06.37"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.36,ghcr.io/mailu/postfix:2024.06.37"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.36,ghcr.io/mailu/unbound:2024.06.37"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.36,ghcr.io/mailu/radicale:2024.06.37"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.36,ghcr.io/mailu/webmail:2024.06.37"
+      image_update_map[12]="apache/tika:3.1.0.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMailuFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/redis:8.2.0-bookworm,ghcr.io/mailu/admin:2024.06.37,ghcr.io/mailu/rspamd:2024.06.37,clamav/clamav-debian:1.4.2,ghcr.io/mailu/fetchmail:2024.06.37,ghcr.io/mailu/nginx:2024.06.37,ghcr.io/mailu/dovecot:2024.06.37,ghcr.io/mailu/oletools:2024.06.37,ghcr.io/mailu/postfix:2024.06.37,ghcr.io/mailu/unbound:2024.06.37,ghcr.io/mailu/radicale:2024.06.37,ghcr.io/mailu/webmail:2024.06.37,mirror.gcr.io/apache/tika:3.2.2.0-full
+      image_update_map[0]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.37,ghcr.io/mailu/admin:2024.06.37"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.37,ghcr.io/mailu/rspamd:2024.06.37"
+      image_update_map[3]="mirror.gcr.io/clamav/clamav:1.4.3,mirror.gcr.io/clamav/clamav:1.4.3"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.37,ghcr.io/mailu/fetchmail:2024.06.37"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.37,ghcr.io/mailu/nginx:2024.06.37"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.37,ghcr.io/mailu/dovecot:2024.06.37"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.37,ghcr.io/mailu/oletools:2024.06.37"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.37,ghcr.io/mailu/postfix:2024.06.37"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.37,ghcr.io/mailu/unbound:2024.06.37"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.37,ghcr.io/mailu/radicale:2024.06.37"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.37,ghcr.io/mailu/webmail:2024.06.37"
+      image_update_map[12]="mirror.gcr.io/apache/tika:3.2.2.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
     ;;
     *)
       is_upgrade_error=true
@@ -38061,6 +38100,29 @@ function mfMailuV111Bugfix()
   fi
   sudo chown -R 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
   sudo rm -fr $HSHQ_STACKS_DIR/mailu/clamav/tmp*
+}
+
+function mfMailuFixRedisCompose()
+{
+  lineStart="  redis:"
+  lineEnd="      - ALLOW_EMPTY_PASSWORD=yes"
+  replaceText=""
+  replaceText=$replaceText">>redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: mailu-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- dock-mailu-ext-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-mailu-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/mailu-compose.yml false ">"
+  cat -s $HOME/mailu-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/mailu-compose.yml
 }
 
 # Wazuh
@@ -39686,17 +39748,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $NEXTCLOUD_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-nextcloud-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - TZ=$TZ
-      - ALLOW_EMPTY_PASSWORD=no
-      - REDIS_PASSWORD=$NEXTCLOUD_REDIS_PASSWORD
-      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-      - REDIS_TLS_ENABLED=no
 
   nextcloud-app:
     image: $(getScriptImageByContainerName nextcloud-app)
@@ -40007,14 +40066,14 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $NEXTCLOUD_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-nextcloud-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - ALLOW_EMPTY_PASSWORD=no
-      - REDIS_PASSWORD=$NEXTCLOUD_REDIS_PASSWORD
 
   nextcloud-app:
     image: $(getScriptImageByContainerName nextcloud-app)
@@ -40572,15 +40631,30 @@ function performUpdateNextcloud()
       return
     ;;
     9)
-      newVer=v9
+      newVer=v10
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine,ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
-      image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
-      image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
-      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250512_082954"
-      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="nextcloud:31.0.2-fpm-alpine,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851"
+      image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250811_115851"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      performMaintenanceNextcloud
+      return
+    ;;
+    10)
+      newVer=v10
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/nextcloud:31.0.7-fpm-alpine,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine"
+      image_update_map[3]="mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851"
+      image_update_map[4]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk:20250811_115851"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851"
     ;;
     *)
       is_upgrade_error=true
@@ -40664,6 +40738,11 @@ function mfNextcloudAddTalkHPB()
   updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
   insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
   restartAllCaddyContainers
+}
+
+function mfNextcloudFixRedisCompose()
+{
+  replaceRedisBlock nextcloud nextcloud-redis mirror.gcr.io/redis:8.2.0-bookworm false
 }
 
 # Jitsi
@@ -41121,13 +41200,14 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MATRIX_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-matrix-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - REDIS_PASSWORD=$MATRIX_REDIS_PASSWORD
 
   matrix-element-private:
     image: $(getScriptImageByContainerName matrix-element-private)
@@ -41417,12 +41497,23 @@ function performUpdateMatrix()
       image_update_map[3]="vectorim/element-web:v1.11.83,vectorim/element-web:v1.11.96"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.127.1,bitnami/redis:7.4.2,vectorim/element-web:v1.11.96
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="matrixdotorg/synapse:v1.127.1,matrixdotorg/synapse:v1.127.1"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[3]="vectorim/element-web:v1.11.96,vectorim/element-web:v1.11.96"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="vectorim/element-web:v1.11.96,mirror.gcr.io/vectorim/element-web:v1.11.109"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMatrixFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/matrixdotorg/synapse:v1.136.0,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/vectorim/element-web:v1.11.109
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/matrixdotorg/synapse:v1.136.0,mirror.gcr.io/matrixdotorg/synapse:v1.136.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/vectorim/element-web:v1.11.109,mirror.gcr.io/vectorim/element-web:v1.11.109"
     ;;
     *)
       is_upgrade_error=true
@@ -41527,6 +41618,11 @@ function outputMatrixElementJSONConfig()
 }
 EOFEL
 
+}
+
+function mfMatrixFixRedisCompose()
+{
+  replaceRedisBlock matrix matrix-redis mirror.gcr.io/redis:8.2.0-bookworm false
 }
 
 # Wikijs
@@ -42321,14 +42417,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
+      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $(getScriptImageByContainerName mastodon-redis-cache)
@@ -42336,13 +42433,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
 
   mastodon-app:
     image: $(getScriptImageByContainerName mastodon-app)
@@ -42611,7 +42709,7 @@ function performUpdateMastodon()
       image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
       # This update simply fixes the mastodon-streaming issue, i.e. it has its own container and a few aspects of the docker compose needed an update
       # See https://github.com/mastodon/mastodon/pull/31554/files/51638f89b57613f01b1696b8644478ff4937937b#diff-e45e45baeda1c1e73482975a664062aa56f20c03dd9d64a827aba57775bed0d3
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateMastodonV7
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon true mfUpdateMastodonV7
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42626,14 +42724,27 @@ function performUpdateMastodon()
       image_update_map[5]="tootsuite/mastodon-streaming:v4.3.1,tootsuite/mastodon-streaming:v4.3.7"
     ;;
     8)
-      newVer=v8
-      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,tootsuite/mastodon:v4.3.7,nginx:1.27.4-alpine,elasticsearch:8.12.2,tootsuite/mastodon-streaming:v4.3.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      newVer=v9
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,tootsuite/mastodon:v4.3.7,nginx:1.27.4-alpine,elasticsearch:8.17.4,tootsuite/mastodon-streaming:v4.3.7
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[2]="tootsuite/mastodon:v4.3.7,tootsuite/mastodon:v4.3.7"
-      image_update_map[3]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
-      image_update_map[4]="elasticsearch:8.17.4,elasticsearch:8.17.4"
-      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.7,tootsuite/mastodon-streaming:v4.3.7"
+      image_update_map[3]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[4]="elasticsearch:8.17.4,mirror.gcr.io/elasticsearch:9.1.1"
+      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.7,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon true mfMastodonFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/tootsuite/mastodon:v4.3.11,mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/elasticsearch:9.1.1,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/tootsuite/mastodon:v4.3.11,mirror.gcr.io/tootsuite/mastodon:v4.3.11"
+      image_update_map[3]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[4]="mirror.gcr.io/elasticsearch:9.1.1,mirror.gcr.io/elasticsearch:9.1.1"
+      image_update_map[5]="mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11"
     ;;
     *)
       is_upgrade_error=true
@@ -42678,12 +42789,15 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/bitnami/redis/data
+      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $mastodon_redis_image
@@ -42692,6 +42806,9 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
@@ -42830,6 +42947,50 @@ function mfClearStaticAssetsMastodon()
     sleep 3
   fi
   clearStaticAssetsMastodon
+}
+
+function mfMastodonFixRedisCompose()
+{
+  set +e
+  lineStart="  mastodon-redis:"
+  lineEnd="$(grep REDIS_PASSWORD=.* $HOME/mastodon-compose.yml | tail -1)"
+  rpass="$(echo $lineEnd | cut -d"=" -f2)"
+  replaceText=""
+  replaceText=$replaceText">>mastodon-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: mastodon-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-mastodon-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-mastodon-redis:/data\n\n"
+  replaceText=$replaceText">>mastodon-redis-cache:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: mastodon-redis-cache\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-mastodon-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/mastodon-compose.yml false ">"
+  cat -s $HOME/mastodon-compose.yml > $HOME/mastodon.tmp
+  mv $HOME/mastodon.tmp $HOME/mastodon-compose.yml
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/mastodon/redis/*
 }
 
 # Dozzle
@@ -43100,14 +43261,15 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $SEARXNG_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-searxng-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-searxng-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$SEARXNG_REDIS_PASSWORD
+      - v-searxng-redis:/data
 
 volumes:
   v-searxng-redis:
@@ -43279,37 +43441,59 @@ function performUpdateSearxNG()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v6
-      curImageList=searxng/searxng:2023.8.19-018b0a932
-      image_update_map[0]="searxng/searxng:2023.8.19-018b0a932,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2023.8.19-018b0a932,caddy:2.7.6,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2023.8.19-018b0a932,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.7.6,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     2)
-      newVer=v6
-      curImageList=searxng/searxng:2023.12.29-27e26b3d6
-      image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2023.12.29-27e26b3d6,caddy:2.7.6,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.7.6,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
-      newVer=v6
-      curImageList=searxng/searxng:2024.3.15-e2af3e497
-      image_update_map[0]="searxng/searxng:2024.3.15-e2af3e497,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2024.3.15-e2af3e497,caddy:2.7.6,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2024.3.15-e2af3e497,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.7.6,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     4)
-      newVer=v6
-      curImageList=searxng/searxng:2024.7.29-3196e7e86
-      image_update_map[0]="searxng/searxng:2024.7.29-3196e7e86,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2024.7.29-3196e7e86,caddy:2.8.4,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2024.7.29-3196e7e86,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.8.4,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     5)
       newVer=v6
-      curImageList=searxng/searxng:2024.10.31-fa108c140
+      curImageList=searxng/searxng:2024.10.31-fa108c140,caddy:2.8.4,bitnami/redis:7.0.5
       image_update_map[0]="searxng/searxng:2024.10.31-fa108c140,searxng/searxng:2025.4.1-e6308b816"
+      image_update_map[1]="caddy:2.8.4,caddy:2.9.1"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfSearxngRemoveStartpage false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     6)
-      newVer=v6
-      curImageList=searxng/searxng:2025.4.1-e6308b816
-      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v7
+      curImageList=searxng/searxng:2025.4.1-e6308b816,caddy:2.9.1,bitnami/redis:7.4.2
+      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
+      image_update_map[1]="caddy:2.9.1,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfSearxngFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d,mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
+      image_update_map[1]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -43324,6 +43508,12 @@ function performUpdateSearxNG()
 function mfSearxngRemoveStartpage()
 {
   sed -i "/^search:/,+1d" $HSHQ_STACKS_DIR/searxng/web/settings.yml
+}
+
+function mfSearxngFixRedisCompose()
+{
+  replaceRedisBlock searxng searxng-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/searxng/redis/*
 }
 
 # Jellyfin
@@ -43490,19 +43680,24 @@ function performUpdateJellyfin()
       return
     ;;
     3)
-      newVer=v5
+      newVer=v6
       curImageList=jellyfin/jellyfin:10.9.8
-      image_update_map[0]="jellyfin/jellyfin:10.9.8,jellyfin/jellyfin:10.10.6"
+      image_update_map[0]="jellyfin/jellyfin:10.9.8,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=jellyfin/jellyfin:10.10.0
-      image_update_map[0]="jellyfin/jellyfin:10.10.0,jellyfin/jellyfin:10.10.6"
+      image_update_map[0]="jellyfin/jellyfin:10.10.0,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=jellyfin/jellyfin:10.10.6
-      image_update_map[0]="jellyfin/jellyfin:10.10.6,jellyfin/jellyfin:10.10.6"
+      image_update_map[0]="jellyfin/jellyfin:10.10.6,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/jellyfin/jellyfin:10.10.7
+      image_update_map[0]="mirror.gcr.io/jellyfin/jellyfin:10.10.7,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
     ;;
     *)
       is_upgrade_error=true
@@ -43741,7 +43936,7 @@ function installPhotoPrism()
   sleep 5
   cd ~
   docker compose -f $HOME/photoprism-compose-tmp.yml down -v
-  installStack photoprism photoprism-app "listening on 0.0.0.0:2342" $HOME/photoprism.env
+  installStack photoprism photoprism-app "listening on 0.0.0.0:2342" $HOME/photoprism.env 10
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -44022,10 +44217,16 @@ function performUpdatePhotoPrism()
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mariadb:10.7.3,photoprism/photoprism:240915
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="photoprism/photoprism:240915,photoprism/photoprism:240915"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="photoprism/photoprism:240915,mirror.gcr.io/photoprism/photoprism:250707"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/photoprism/photoprism:250707
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/photoprism/photoprism:250707,mirror.gcr.io/photoprism/photoprism:250707"
     ;;
     *)
       is_upgrade_error=true
@@ -45040,10 +45241,16 @@ function performUpdateWordPress()
       image_update_map[1]="wordpress:php8.2-apache,wordpress:php8.3-apache"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mariadb:10.7.3,wordpress:php8.3-apache
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="wordpress:php8.3-apache,wordpress:php8.3-apache"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="wordpress:php8.3-apache,mirror.gcr.io/wordpress:php8.4-apache"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/wordpress:php8.4-apache
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/wordpress:php8.4-apache,mirror.gcr.io/wordpress:php8.4-apache"
     ;;
     *)
       is_upgrade_error=true
@@ -45460,14 +45667,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - int-peertube-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-peertube-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-peertube-redis:/data
 
 volumes:
   v-peertube-assets:
@@ -45592,11 +45799,21 @@ function performUpdatePeerTube()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v7.1.0-bookworm,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="chocobozzz/peertube:v7.1.0-bookworm,chocobozzz/peertube:v7.1.0-bookworm"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="chocobozzz/peertube:v7.1.0-bookworm,mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPeerTubeFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm,mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -45606,6 +45823,31 @@ function performUpdatePeerTube()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfPeerTubeFixRedisCompose()
+{
+  lineStart="  peertube-redis:"
+  lineEnd="      - ALLOW_EMPTY_PASSWORD=yes"
+  replaceText=""
+  replaceText=$replaceText">>peertube-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: peertube-redis\n"
+  replaceText=$replaceText">>>>hostname: peertube-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-peertube-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-peertube-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/peertube-compose.yml false ">"
+  cat -s $HOME/peertube-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/peertube-compose.yml
 }
 
 # HomeAssistant
@@ -46143,13 +46385,22 @@ function performUpdateHomeAssistant()
       return
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2025.4.0,nodered/node-red:4.0.9-22,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="homeassistant/home-assistant:2025.4.0,homeassistant/home-assistant:2025.4.0"
-      image_update_map[2]="nodered/node-red:4.0.9-22,nodered/node-red:4.0.9-22"
-      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
-      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="homeassistant/home-assistant:2025.4.0,mirror.gcr.io/homeassistant/home-assistant:2025.8.1"
+      image_update_map[2]="nodered/node-red:4.0.9-22,mirror.gcr.io/nodered/node-red:4.1.0-22"
+      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.3.1"
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/homeassistant/home-assistant:2025.8.1,mirror.gcr.io/nodered/node-red:4.1.0-22,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.3.1
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/homeassistant/home-assistant:2025.8.1,mirror.gcr.io/homeassistant/home-assistant:2025.8.1"
+      image_update_map[2]="mirror.gcr.io/nodered/node-red:4.1.0-22,mirror.gcr.io/nodered/node-red:4.1.0-22"
+      image_update_map[3]="mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.3.1,ghcr.io/tasmoadmin/tasmoadmin:v4.3.1"
     ;;
     *)
       is_upgrade_error=true
@@ -46370,6 +46621,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $GITLAB_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-gitlab-net
     volumes:
@@ -46570,7 +46822,7 @@ function performUpdateGitlab()
     ;;
     8)
       newVer=v8
-      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/bitnami/redis:8.2.0
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0"
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
@@ -46587,7 +46839,7 @@ function performUpdateGitlab()
 
 function mfGitlabFixRedisCompose()
 {
-  replaceRedisBlock gitlab gitlab-redis mirror.gcr.io/redis:8.2.0-bookworm
+  replaceRedisBlock gitlab gitlab-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_NONBACKUP_DIR/gitlab/redis/*
 }
 
@@ -46853,25 +47105,32 @@ function performUpdateVaultwarden()
       return
     ;;
     5)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.5-alpine,vividboarder/vaultwarden_ldap:2.0.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.30.5-alpine,vaultwarden/server:1.33.2-alpine"
-      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.1,vividboarder/vaultwarden_ldap:2.1.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.30.5-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.1,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.32.3-alpine,vividboarder/vaultwarden_ldap:2.0.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.32.3-alpine,vaultwarden/server:1.33.2-alpine"
-      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.2,vividboarder/vaultwarden_ldap:2.1.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.32.3-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.2,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.33.2-alpine,vividboarder/vaultwarden_ldap:2.1.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.33.2-alpine,vaultwarden/server:1.33.2-alpine"
-      image_update_map[2]="vividboarder/vaultwarden_ldap:2.1.1,vividboarder/vaultwarden_ldap:2.1.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.33.2-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="vividboarder/vaultwarden_ldap:2.1.1,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/vaultwarden/server:1.34.3-alpine,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.34.3-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
     ;;
     *)
       is_upgrade_error=true
@@ -47062,6 +47321,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $DISCOURSE_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-discourse-net
     volumes:
@@ -47374,14 +47634,19 @@ function performUpdateSyncthing()
       image_update_map[0]="syncthing/syncthing:1.27.9,syncthing/syncthing:1.29.4"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=syncthing/syncthing:1.28.0
-      image_update_map[0]="syncthing/syncthing:1.28.0,syncthing/syncthing:1.29.4"
+      image_update_map[0]="syncthing/syncthing:1.28.0,mirror.gcr.io/syncthing/syncthing:2.0.0"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=syncthing/syncthing:1.29.4
-      image_update_map[0]="syncthing/syncthing:1.29.4,syncthing/syncthing:1.29.4"
+      image_update_map[0]="syncthing/syncthing:1.29.4,mirror.gcr.io/syncthing/syncthing:2.0.0"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/syncthing/syncthing:2.0.0
+      image_update_map[0]="mirror.gcr.io/syncthing/syncthing:2.0.0,mirror.gcr.io/syncthing/syncthing:2.0.0"
     ;;
     *)
       is_upgrade_error=true
@@ -47827,14 +48092,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $SHLINK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-shlink-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-shlink-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=\$SHLINK_REDIS_PASSWORD
+      - v-shlink-redis:/data
 
 volumes:
   v-shlink-redis:
@@ -47953,12 +48219,23 @@ function performUpdateShlink()
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,shlinkio/shlink:4.4.6,shlinkio/shlink-web-client:4.3.0,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="shlinkio/shlink:4.4.6,shlinkio/shlink:4.4.6"
-      image_update_map[2]="shlinkio/shlink-web-client:4.3.0,shlinkio/shlink-web-client:4.3.0"
-      image_update_map[3]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:4.4.6,mirror.gcr.io/shlinkio/shlink:4.5.0"
+      image_update_map[2]="shlinkio/shlink-web-client:4.3.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0"
+      image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfShlinkFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/shlinkio/shlink:4.5.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/shlinkio/shlink:4.5.0,mirror.gcr.io/shlinkio/shlink:4.5.0"
+      image_update_map[2]="mirror.gcr.io/shlinkio/shlink-web-client:4.5.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -48011,6 +48288,12 @@ SHLINK_REDIS_PASSWORD=$SHLINK_REDIS_PASSWORD
 REDIS_SERVERS=tcp://:$SHLINK_REDIS_PASSWORD@shlink-redis:6379
 
 EOFST
+}
+
+function mfShlinkFixRedisCompose()
+{
+  replaceRedisBlock shlink shlink-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/shlink/redis/*
 }
 
 # Firefly
@@ -48229,6 +48512,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $FIREFLY_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-firefly-net
     volumes:
@@ -48425,7 +48709,7 @@ function mfFireflyAddImporterAndCron()
 
 function mfFireflyFixRedisCompose()
 {
-  replaceRedisBlock firefly firefly-redis mirror.gcr.io/redis:8.2.0-bookworm
+  replaceRedisBlock firefly firefly-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_NONBACKUP_DIR/firefly/redis/*
 }
 
@@ -48593,6 +48877,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $EXCALIDRAW_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-excalidraw-net
     volumes:
@@ -48676,7 +48961,7 @@ function performUpdateExcalidraw()
 
 function mfExcalidrawFixRedisCompose()
 {
-  replaceRedisBlock excalidraw excalidraw-redis mirror.gcr.io/redis:8.2.0-bookworm
+  replaceRedisBlock excalidraw excalidraw-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_STACKS_DIR/excalidraw/redis/*
 }
 
@@ -49876,10 +50161,16 @@ function performUpdateMealie()
       image_update_map[1]="ghcr.io/mealie-recipes/mealie:v2.1.0,ghcr.io/mealie-recipes/mealie:v2.8.0"
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v2.8.0
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v2.8.0,ghcr.io/mealie-recipes/mealie:v2.8.0"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v2.8.0,ghcr.io/mealie-recipes/mealie:v3.0.2"
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v3.0.2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v3.0.2,ghcr.io/mealie-recipes/mealie:v3.0.2"
     ;;
     *)
       is_upgrade_error=true
@@ -50038,9 +50329,14 @@ function performUpdateKasm()
       image_update_map[0]="lscr.io/linuxserver/kasm:1.16.0-ls44,lscr.io/linuxserver/kasm:1.16.1-ls68"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=lscr.io/linuxserver/kasm:1.16.1-ls68
-      image_update_map[0]="lscr.io/linuxserver/kasm:1.16.1-ls68,lscr.io/linuxserver/kasm:1.16.1-ls68"
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.16.1-ls68,lscr.io/linuxserver/kasm:1.17.0-ls88"
+    ;;
+    7)
+      newVer=v7
+      curImageList=lscr.io/linuxserver/kasm:1.17.0-ls88
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.17.0-ls88,lscr.io/linuxserver/kasm:1.17.0-ls88"
     ;;
     *)
       is_upgrade_error=true
@@ -50518,24 +50814,29 @@ function performUpdateNTFY()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.7.0
-      image_update_map[0]="binwiederhier/ntfy:v2.7.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.7.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     2)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.8.0
-      image_update_map[0]="binwiederhier/ntfy:v2.8.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.8.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.9.0
-      image_update_map[0]="binwiederhier/ntfy:v2.9.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.9.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.11.0
-      image_update_map[0]="binwiederhier/ntfy:v2.11.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.11.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/binwiederhier/ntfy:v2.14.0
+      image_update_map[0]="mirror.gcr.io/binwiederhier/ntfy:v2.14.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     *)
       is_upgrade_error=true
@@ -51196,9 +51497,14 @@ function performUpdateNetdata()
       image_update_map[0]="netdata/netdata:v1.47.5,netdata/netdata:v2.3.2"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=netdata/netdata:v2.3.2
-      image_update_map[0]="netdata/netdata:v2.3.2,netdata/netdata:v2.3.2"
+      image_update_map[0]="netdata/netdata:v2.3.2,mirror.gcr.io/netdata/netdata:v2.6.1"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/netdata/netdata:v2.6.1
+      image_update_map[0]="mirror.gcr.io/netdata/netdata:v2.6.1,mirror.gcr.io/netdata/netdata:v2.6.1"
     ;;
     *)
       is_upgrade_error=true
@@ -51443,10 +51749,16 @@ function performUpdateLinkwarden()
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.7.1,ghcr.io/linkwarden/linkwarden:v2.9.3"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.9.3
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.9.3,ghcr.io/linkwarden/linkwarden:v2.9.3"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.9.3,ghcr.io/linkwarden/linkwarden:v2.11.5"
+    ;;
+    7)
+      newVer=v7
+      curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.11.5
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.11.5,ghcr.io/linkwarden/linkwarden:v2.11.5"
     ;;
     *)
       is_upgrade_error=true
@@ -51576,14 +51888,19 @@ function performUpdateStirlingPDF()
       image_update_map[0]="frooodle/s-pdf:0.26.1,frooodle/s-pdf:0.45.0"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=frooodle/s-pdf:0.31.1
-      image_update_map[0]="frooodle/s-pdf:0.31.1,frooodle/s-pdf:0.45.0"
+      image_update_map[0]="frooodle/s-pdf:0.31.1,mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=frooodle/s-pdf:0.45.0
-      image_update_map[0]="frooodle/s-pdf:0.45.0,frooodle/s-pdf:0.45.0"
+      image_update_map[0]="frooodle/s-pdf:0.45.0,mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
+      image_update_map[0]="mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0,mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0"
     ;;
     *)
       is_upgrade_error=true
@@ -51741,6 +52058,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-bar-assistant-net
     volumes:
@@ -52006,7 +52324,7 @@ function mfUpdateBarAssistantV4()
 
 function mfBarAssistantFixRedisCompose()
 {
-  replaceRedisBlock bar-assistant bar-assistant-redis mirror.gcr.io/redis:8.2.0-bookworm
+  replaceRedisBlock bar-assistant bar-assistant-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_NONBACKUP_DIR/bar-assistant/redis/*
 }
 
@@ -52682,14 +53000,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $WALLABAG_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-wallabag-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-wallabag-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$WALLABAG_REDIS_PASSWORD
+      - v-wallabag-redis:/data
 
   wallabag-app:
     image: $(getScriptImageByContainerName wallabag-app)
@@ -52802,11 +53121,21 @@ function performUpdateWallabag()
       image_update_map[2]="wallabag/wallabag:2.6.9,wallabag/wallabag:2.6.10"
     ;;
     3)
-      newVer=v3
-      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,wallabag/wallabag:2.6.10
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[2]="wallabag/wallabag:2.6.10,wallabag/wallabag:2.6.10"
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,wallabag/wallabag:2.6.10
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="wallabag/wallabag:2.6.10,mirror.gcr.io/wallabag/wallabag:2.6.13"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfWallabagFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/wallabag/wallabag:2.6.13
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/wallabag/wallabag:2.6.13,mirror.gcr.io/wallabag/wallabag:2.6.13"
     ;;
     *)
       is_upgrade_error=true
@@ -52816,6 +53145,12 @@ function performUpdateWallabag()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfWallabagFixRedisCompose()
+{
+  replaceRedisBlock wallabag wallabag-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/wallabag/redis/*
 }
 
 # Jupyter
@@ -53162,14 +53497,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $PAPERLESS_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-paperless-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$PAPERLESS_REDIS_PASSWORD
+      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -53300,13 +53636,25 @@ function performUpdatePaperless()
       return
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,gotenberg/gotenberg:8.19.1,apache/tika:3.1.0.0,ghcr.io/paperless-ngx/paperless-ngx:2.14.7,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gotenberg/gotenberg:8.19.1,gotenberg/gotenberg:8.19.1"
-      image_update_map[2]="apache/tika:3.1.0.0,apache/tika:3.1.0.0"
-      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.14.7,ghcr.io/paperless-ngx/paperless-ngx:2.14.7"
-      image_update_map[4]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="gotenberg/gotenberg:8.19.1,mirror.gcr.io/gotenberg/gotenberg:8.21"
+      image_update_map[2]="apache/tika:3.1.0.0,mirror.gcr.io/apache/tika:3.2.2.0-full"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.14.7,ghcr.io/paperless-ngx/paperless-ngx:2.17.1"
+      image_update_map[4]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPaperlessFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.21,mirror.gcr.io/apache/tika:3.2.2.0-full,ghcr.io/paperless-ngx/paperless-ngx:2.17.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.21,mirror.gcr.io/gotenberg/gotenberg:8.21"
+      image_update_map[2]="mirror.gcr.io/apache/tika:3.2.2.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.17.1,ghcr.io/paperless-ngx/paperless-ngx:2.17.1"
+      image_update_map[4]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -53334,6 +53682,12 @@ function mfPaperlessUpdatePythonCertPath()
   if [ $? -ne 0 ]; then
     echo "PYTHON_VER=python3.12" >> $HOME/paperless.env
   fi
+}
+
+function mfPaperlessFixRedisCompose()
+{
+  replaceRedisBlock paperless paperless-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/paperless/redis/*
 }
 
 # Speedtest Tracker Local
@@ -53584,10 +53938,16 @@ function performUpdateSpeedtestTrackerLocal()
       image_update_map[1]="linuxserver/speedtest-tracker:0.20.8,linuxserver/speedtest-tracker:1.3.0"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:1.3.0
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,linuxserver/speedtest-tracker:1.3.0"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
     ;;
     *)
       is_upgrade_error=true
@@ -53850,10 +54210,16 @@ function performUpdateSpeedtestTrackerVPN()
       image_update_map[1]="linuxserver/speedtest-tracker:0.20.8,linuxserver/speedtest-tracker:1.3.0"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:1.3.0
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,linuxserver/speedtest-tracker:1.3.0"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
     ;;
     *)
       is_upgrade_error=true
@@ -55250,7 +55616,7 @@ services:
     depends_on:
       - grampsweb-redis
     networks:
-      - dock-grampsweb-net
+      - int-grampsweb-net
       - dock-proxy-net
       - dock-internalmail-net
     volumes:
@@ -55280,7 +55646,7 @@ services:
     depends_on:
       - grampsweb-redis
     networks:
-      - dock-grampsweb-net
+      - int-grampsweb-net
       - dock-internalmail-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -55305,12 +55671,15 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $GRAMPSWEB_REDIS_PASSWORD
+      --appendonly yes
     networks:
-      - dock-grampsweb-net
+      - int-grampsweb-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-grampsweb-redis:/bitnami/redis/data
+      - v-grampsweb-redis:/data
 
 volumes:
   v-grampsweb-redis:
@@ -55375,7 +55744,7 @@ networks:
   dock-internalmail-net:
     name: dock-internalmail
     external: true
-  dock-grampsweb-net:
+  int-grampsweb-net:
     driver: bridge
     internal: true
     ipam:
@@ -55405,28 +55774,31 @@ function performUpdateGrampsWeb()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v3
       curImageList=ghcr.io/gramps-project/grampsweb:v24.8.0,bitnami/redis:7.0.5
-      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v24.8.0,ghcr.io/gramps-project/grampsweb:25.7.3"
-      image_update_map[1]="bitnami/redis:7.0.5,mirror.gcr.io/bitnami/redis:8.2.0"
+      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v24.8.0,ghcr.io/gramps-project/grampsweb:v25.4.0"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     2)
-      newVer=v4
+      newVer=v3
       curImageList=ghcr.io/gramps-project/grampsweb:v24.10.0,bitnami/redis:7.0.5
-      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v24.10.0,ghcr.io/gramps-project/grampsweb:25.7.3"
-      image_update_map[1]="bitnami/redis:7.0.5,mirror.gcr.io/bitnami/redis:8.2.0"
+      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v24.10.0,ghcr.io/gramps-project/grampsweb:v25.4.0"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     3)
       newVer=v4
       curImageList=ghcr.io/gramps-project/grampsweb:v25.4.0,bitnami/redis:7.4.2
       image_update_map[0]="ghcr.io/gramps-project/grampsweb:v25.4.0,ghcr.io/gramps-project/grampsweb:25.7.3"
-      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/bitnami/redis:8.2.0"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGrampsWebFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     4)
       newVer=v4
-      curImageList=ghcr.io/gramps-project/grampsweb:25.7.3,mirror.gcr.io/bitnami/redis:8.2.0
+      curImageList=ghcr.io/gramps-project/grampsweb:25.7.3,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="ghcr.io/gramps-project/grampsweb:25.7.3,ghcr.io/gramps-project/grampsweb:25.7.3"
-      image_update_map[1]="mirror.gcr.io/bitnami/redis:8.2.0,mirror.gcr.io/bitnami/redis:8.2.0"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -55436,6 +55808,33 @@ function performUpdateGrampsWeb()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfGrampsWebFixRedisCompose()
+{
+  lineStart="  grampsweb-redis:"
+  lineEnd="      - v-grampsweb-redis:/bitnami/redis/data"
+  replaceText=""
+  replaceText=$replaceText">>grampsweb-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: grampsweb-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $GRAMPSWEB_REDIS_PASSWORD\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-grampsweb-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-grampsweb-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/grampsweb-compose.yml false ">"
+  cat -s $HOME/grampsweb-compose.yml > $HOME/grampsweb.tmp
+  mv $HOME/grampsweb.tmp $HOME/grampsweb-compose.yml
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/grampsweb/redis/*
+  sed -i "s/dock-grampsweb-net/int-grampsweb-net/g" $HOME/grampsweb-compose.yml
 }
 
 # Penpot
@@ -55637,14 +56036,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $PENPOT_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-penpot-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-penpot-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$PENPOT_REDIS_PASSWORD
+      - v-penpot-redis:/data
 
 volumes:
   v-penpot-db:
@@ -55746,13 +56146,25 @@ function performUpdatePenpot()
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=postgres:15.0-bullseye,penpotapp/backend:2.5.4,penpotapp/frontend:2.5.4,penpotapp/exporter:2.5.4,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="penpotapp/backend:2.5.4,penpotapp/backend:2.5.4"
-      image_update_map[2]="penpotapp/frontend:2.5.4,penpotapp/frontend:2.5.4"
-      image_update_map[3]="penpotapp/exporter:2.5.4,penpotapp/exporter:2.5.4"
-      image_update_map[4]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="penpotapp/backend:2.5.4,mirror.gcr.io/penpotapp/backend:2.8.1"
+      image_update_map[2]="penpotapp/frontend:2.5.4,mirror.gcr.io/penpotapp/frontend:2.8.1"
+      image_update_map[3]="penpotapp/exporter:2.5.4,mirror.gcr.io/penpotapp/exporter:2.8.1"
+      image_update_map[4]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPenpotFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/penpotapp/backend:2.8.1,mirror.gcr.io/penpotapp/frontend:2.8.1,mirror.gcr.io/penpotapp/exporter:2.8.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/penpotapp/backend:2.8.1mirror.gcr.io/penpotapp/backend:2.8.1"
+      image_update_map[2]="mirror.gcr.io/penpotapp/frontend:2.8.1,mirror.gcr.io/penpotapp/frontend:2.8.1"
+      image_update_map[3]="mirror.gcr.io/penpotapp/exporter:2.8.1,mirror.gcr.io/penpotapp/exporter:2.8.1"
+      image_update_map[4]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -55782,6 +56194,12 @@ function mfPenpotFixPort()
   updateCaddyBlocks $SUB_PENPOT $MANAGETLS_PENPOT "$is_integrate_hshq" $NETDEFAULT_PENPOT "$inner_block"
   set +e
   restartAllCaddyContainers
+}
+
+function mfPenpotFixRedisCompose()
+{
+  replaceRedisBlock penpot penpot-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/penpot/redis/*
 }
 
 # EspoCRM
@@ -56267,14 +56685,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $IMMICH_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-immich-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-immich-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$IMMICH_REDIS_PASSWORD
+      - v-immich-redis:/data
 
 volumes:
   v-immich-cache:
@@ -56557,12 +56976,32 @@ function performUpdateImmich()
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     2)
-      newVer=v2
-      curImageList=tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
-      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0"
-      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.131.3"
-      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3"
-      image_update_map[3]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      # Must go to v1.132.0 first, then to v1.137.3
+      newVer=v3
+      curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
+      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.132.0"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.132.0"
+      image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfImmichFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v4
+      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.132.0,ghcr.io/immich-app/immich-machine-learning:v1.132.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.132.0,ghcr.io/immich-app/immich-server:v1.137.3"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.132.0,ghcr.io/immich-app/immich-machine-learning:v1.137.3"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-server:v1.137.3"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -56572,6 +57011,12 @@ function performUpdateImmich()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfImmichFixRedisCompose()
+{
+  replaceRedisBlock immich immich-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/immich/redis/*
 }
 
 # Homarr
@@ -56754,9 +57199,14 @@ function performUpdateHomarr()
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=ghcr.io/homarr-labs/homarr:v1.18.1
-      image_update_map[0]="ghcr.io/homarr-labs/homarr:v1.18.1,ghcr.io/homarr-labs/homarr:v1.18.1"
+      image_update_map[0]="ghcr.io/homarr-labs/homarr:v1.18.1,ghcr.io/homarr-labs/homarr:v1.32.0"
+    ;;
+    4)
+      newVer=v4
+      curImageList=ghcr.io/homarr-labs/homarr:v1.32.0
+      image_update_map[0]="ghcr.io/homarr-labs/homarr:v1.32.0,ghcr.io/homarr-labs/homarr:v1.32.0"
     ;;
     *)
       is_upgrade_error=true
@@ -57052,11 +57502,18 @@ function performUpdateMatomo()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mariadb:10.7.3,matomo:5.3.1-fpm-alpine,nginx:1.27.4-alpine
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="matomo:5.3.1-fpm-alpine,matomo:5.3.1-fpm-alpine"
-      image_update_map[2]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="matomo:5.3.1-fpm-alpine,mirror.gcr.io/matomo:5.3.2-fpm-alpine"
+      image_update_map[2]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/matomo:5.3.2-fpm-alpine,mirror.gcr.io/nginx:1.28.0-alpine
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/matomo:5.3.2-fpm-alpine,mirror.gcr.io/matomo:5.3.2-fpm-alpine"
+      image_update_map[2]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -57251,10 +57708,16 @@ function performUpdatePastefy()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mariadb:10.7.3,interaapps/pastefy:7.0.3
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="interaapps/pastefy:7.0.3,interaapps/pastefy:7.0.3"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="interaapps/pastefy:7.0.3,mirror.gcr.io/interaapps/pastefy:7.1.4"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/interaapps/pastefy:7.1.4
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/interaapps/pastefy:7.1.4,mirror.gcr.io/interaapps/pastefy:7.1.4"
     ;;
     *)
       is_upgrade_error=true
@@ -57722,6 +58185,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-aistack-net
     volumes:
@@ -57934,6 +58398,7 @@ services:
       - no-new-privileges:true
     command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-aistack-net
     volumes:
@@ -58358,7 +58823,7 @@ function performUpdateAIStack()
 
 function mfAIStackFixRedisCompose()
 {
-  replaceRedisBlock aistack aistack-redis mirror.gcr.io/redis:8.2.0-bookworm
+  replaceRedisBlock aistack aistack-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_NONBACKUP_DIR/aistack/redis/*
 }
 
@@ -58545,14 +59010,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $PIXELFED_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-pixelfed-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-pixelfed-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$PIXELFED_REDIS_PASSWORD
+      - v-pixelfed-redis:/data
 
 volumes:
   v-pixelfed-appstorage:
@@ -59803,9 +60269,21 @@ function performUpdatePixelfed()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=exampleimage
-      image_update_map[0]="exampleimage,exampleimage"
+      newVer=v2
+      curImageList=mariadb:10.7.3,hshq/pixelfed:v1,bitnami/redis:7.4.2
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="hshq/pixelfed:v1,hshq/pixelfed:v1"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPixelfedFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mariadb:10.7.3,hshq/pixelfed:v1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="hshq/pixelfed:v1,hshq/pixelfed:v1"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -59815,6 +60293,12 @@ function performUpdatePixelfed()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfPixelfedFixRedisCompose()
+{
+  replaceRedisBlock pixelfed pixelfed-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/pixelfed/redis/*
 }
 
 # Yamtrack
@@ -59958,14 +60442,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $YAMTRACK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-yamtrack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-yamtrack-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$YAMTRACK_REDIS_PASSWORD
+      - v-yamtrack-redis:/data
 
 volumes:
   v-yamtrack-db:
@@ -60054,9 +60539,21 @@ function performUpdateYamtrack()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=exampleimage
-      image_update_map[0]="exampleimage,exampleimage"
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,ghcr.io/fuzzygrim/yamtrack:0.22.7,bitnami/redis:7.4.2
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/fuzzygrim/yamtrack:0.22.7,ghcr.io/fuzzygrim/yamtrack:0.24.7"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfYamtrackFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/fuzzygrim/yamtrack:0.24.7,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/fuzzygrim/yamtrack:0.24.7,ghcr.io/fuzzygrim/yamtrack:0.24.7"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -60066,6 +60563,12 @@ function performUpdateYamtrack()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfYamtrackFixRedisCompose()
+{
+  replaceRedisBlock yamtrack yamtrack-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/yamtrack/redis/*
 }
 
 # Servarr
@@ -62087,29 +62590,34 @@ function performUpdateOfelia()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:v0.3.7
-      image_update_map[0]="mcuadros/ofelia:v0.3.7,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:v0.3.7,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     2)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:v0.3.9
-      image_update_map[0]="mcuadros/ofelia:v0.3.9,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:v0.3.9,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     3)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:0.3.10
-      image_update_map[0]="mcuadros/ofelia:0.3.10,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:0.3.10,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:0.3.13
-      image_update_map[0]="mcuadros/ofelia:0.3.13,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:0.3.13,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:0.3.16
-      image_update_map[0]="mcuadros/ofelia:0.3.16,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:0.3.16,mirror.gcr.io/mcuadros/ofelia:0.3.18"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/mcuadros/ofelia:0.3.18
+      image_update_map[0]="mirror.gcr.io/mcuadros/ofelia:0.3.18,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     *)
       is_upgrade_error=true
@@ -70372,22 +70880,22 @@ SQLPAD_CONNECTIONS__shlink__username=$SHLINK_DATABASE_USER
 SQLPAD_CONNECTIONS__shlink__password=$SHLINK_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__shlink__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__shlink__idleTimeoutSeconds=900
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__name=$FMLNAME_SPEEDTEST_TRACKER_LOCAL
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__driver=postgres
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__host=speedtest-tracker-local-db
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__database=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__username=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__password=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__multiStatementTransactionEnabled='false'
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__idleTimeoutSeconds=900
-SQLPAD_CONNECTIONS__speedtesttrackervpn__name=$FMLNAME_SPEEDTEST_TRACKER_VPN
-SQLPAD_CONNECTIONS__speedtesttrackervpn__driver=postgres
-SQLPAD_CONNECTIONS__speedtesttrackervpn__host=speedtest-tracker-vpn-db
-SQLPAD_CONNECTIONS__speedtesttrackervpn__database=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-SQLPAD_CONNECTIONS__speedtesttrackervpn__username=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
-SQLPAD_CONNECTIONS__speedtesttrackervpn__password=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
-SQLPAD_CONNECTIONS__speedtesttrackervpn__multiStatementTransactionEnabled='false'
-SQLPAD_CONNECTIONS__speedtesttrackervpn__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__speedtest-tracker-local__name=$FMLNAME_SPEEDTEST_TRACKER_LOCAL
+SQLPAD_CONNECTIONS__speedtest-tracker-local__driver=postgres
+SQLPAD_CONNECTIONS__speedtest-tracker-local__host=speedtest-tracker-local-db
+SQLPAD_CONNECTIONS__speedtest-tracker-local__database=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+SQLPAD_CONNECTIONS__speedtest-tracker-local__username=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+SQLPAD_CONNECTIONS__speedtest-tracker-local__password=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__speedtest-tracker-local__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__speedtest-tracker-local__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__name=$FMLNAME_SPEEDTEST_TRACKER_VPN
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__driver=postgres
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__host=speedtest-tracker-vpn-db
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__database=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__username=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__password=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__vaultwarden__name=Vaultwarden
 SQLPAD_CONNECTIONS__vaultwarden__driver=postgres
 SQLPAD_CONNECTIONS__vaultwarden__host=vaultwarden-db
@@ -70465,14 +70973,19 @@ function performUpdateSQLPad()
       image_update_map[0]="sqlpad/sqlpad:7.4.4,sqlpad/sqlpad:7.5.3"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=sqlpad/sqlpad:7.5.1
-      image_update_map[0]="sqlpad/sqlpad:7.5.1,sqlpad/sqlpad:7.5.3"
+      image_update_map[0]="sqlpad/sqlpad:7.5.1,mirror.gcr.io/sqlpad/sqlpad:7.5.5"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=sqlpad/sqlpad:7.5.3
-      image_update_map[0]="sqlpad/sqlpad:7.5.3,sqlpad/sqlpad:7.5.3"
+      image_update_map[0]="sqlpad/sqlpad:7.5.3,mirror.gcr.io/sqlpad/sqlpad:7.5.5"
+    ;;
+    8)
+      newVer=v8
+      curImageList=sqlpad/sqlpad:7.5.3
+      image_update_map[0]="mirror.gcr.io/sqlpad/sqlpad:7.5.5,mirror.gcr.io/sqlpad/sqlpad:7.5.5"
     ;;
     *)
       is_upgrade_error=true
