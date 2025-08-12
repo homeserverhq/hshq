@@ -27667,17 +27667,29 @@ function getUpdateAssets()
 
 function pullImage()
 {
-  img_and_version=$1
+  image_to_pull=$1
   secs_mult=60
+  set +e
+  # Check if custom image, and if it exists
+  if [ "$(checkIsCustomImage $image_to_pull)" = "true" ]; then
+    if [ $(docker image ls --format "table {{.Repository}}:{{.Tag}}" | grep $image_to_pull) ]; then
+      echo "Custom image exists, returning..."
+      return
+    else
+      echo "ERROR: This custom image ($image_to_pull) doesn't exist."
+      return 3
+    fi
+  fi
   # Check if registry is indicated, if not, then add mirror.gcr.io to front
-  if [ $(grep -o "/" <<< "$img_and_version" | wc -l) -lt 2 ] && ! [ ${img_and_version:0:13} = "mirror.gcr.io" ]; then
-    img_and_version="mirror.gcr.io/$img_and_version"
+  if [ $(grep -o "/" <<< "$image_to_pull" | wc -l) -lt 2 ] && ! [ ${image_to_pull:0:13} = "mirror.gcr.io" ]; then
+    img_and_version="mirror.gcr.io/$image_to_pull"
+  else
+    img_and_version="$image_to_pull"
   fi
   logHSHQEvent info "Pulling Image: $img_and_version"
   echo "Pulling Image: $img_and_version"
   is_success=1
   num_tries=1
-  set +e
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
     if [ $num_tries -lt $(($MAX_DOCKER_PULL_TRIES-1)) ]; then
@@ -27764,7 +27776,7 @@ function getScriptStackVersionNumber()
 function removeImageCSVList()
 {
   img_csv_list=$1
-  echo "Removing images: $img_csv_list"
+  set +e
   img_list=($(echo $img_csv_list | tr "," "\n"))
   for rm_img in "${img_list[@]}"
   do
@@ -27806,11 +27818,9 @@ function upgradeStack()
   # This function modifies the variable stack_upgrade_report
   # with the results of the upgrade process. It is up to the 
   # caller to do something with it.
-
   # This function also depends on the array, image_update_map, 
   # to be set by the caller prior to entry, since passing
   # arrays as arguments in bash is a headache.
-
   comp_stack_name=$1
   comp_stack_id=$2
   old_ver=$3
@@ -27821,17 +27831,14 @@ function upgradeStack()
   stackModFunction=$8
   isReinstallStack=$9
   stackReinstallModFunction=${10}
-
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
-
   if [ "$(checkImageList $cur_img_list $upgrade_compose_file)" = "false" ]; then
     is_upgrade_error=true
     stack_upgrade_report="ERROR ($comp_stack_name): Container image mismatch, stack version: $old_ver, image list: $cur_img_list"
     return
   fi
-
   # Even though the image list (cur_img_list) matches the corresponding
   # items in the update map (image_update_map), they are both used as
   # a deliberate means of double-checking the intended images. This next
@@ -27892,6 +27899,7 @@ function upgradeStack()
       restartStackIfRunning $comp_stack_name 3 "$portainerToken"
     fi
   fi
+  set +e
   removeImageCSVList "$rm_image_list"
   stack_upgrade_report="${stack_upgrade_report}${comp_stack_name}: Upgraded from $old_ver to $new_ver"
 }
@@ -27910,23 +27918,24 @@ function replaceRedisBlock()
   lineEnd="$(grep REDIS_PASSWORD=.* $HOME/$stackName-compose.yml)"
   rpass="$(echo $lineEnd | cut -d"=" -f2)"
   replaceText=""
-  replaceText=$replaceText"<<$containerName:\n"
-  replaceText=$replaceText"<<<<image: $redisImg\n"
-  replaceText=$replaceText"<<<<container_name: $containerName\n"
-  replaceText=$replaceText"<<<<restart: unless-stopped\n"
-  replaceText=$replaceText"<<<<security_opt:\n"
-  replaceText=$replaceText"<<<<<<- no-new-privileges:true\n"
-  replaceText=$replaceText"<<<<command: >\n"
-  replaceText=$replaceText"<<<<<<redis-server\n"
-  replaceText=$replaceText"<<<<<<--requirepass $rpass\n"
-  replaceText=$replaceText"<<<<networks:\n"
-  replaceText=$replaceText"<<<<<<- int-$stackName-net\n"
-  replaceText=$replaceText"<<<<volumes:\n"
-  replaceText=$replaceText"<<<<<<- /etc/localtime:/etc/localtime:ro\n"
-  replaceText=$replaceText"<<<<<<- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText"<<<<<<- v-$stackName-redis:/data\n"
-  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/$stackName-compose.yml false "<"
-  cat -s $HOME/$stackName-compose.yml > $HOME/$stackName-compose.yml
+  replaceText=$replaceText">>$containerName:\n"
+  replaceText=$replaceText">>>>image: $redisImg\n"
+  replaceText=$replaceText">>>>container_name: $containerName\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-$stackName-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-$stackName-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/$stackName-compose.yml false ">"
+  cat -s $HOME/${stackName}-compose.yml > $HOME/${stackName}.tmp
+  mv $HOME/${stackName}.tmp $HOME/${stackName}-compose.yml
 }
 
 # Services Functions
@@ -27946,9 +27955,9 @@ function loadPinnedDockerImages()
   IMG_AISTACK_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0
   IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v2
   IMG_AISTACK_OPENTELEMETRY=mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1
-  IMG_AISTACK_LANGFUSE=mirror.gcr.io/langfuse/langfuse:3.96.2
+  IMG_AISTACK_LANGFUSE=mirror.gcr.io/langfuse/langfuse:2.87.0
   IMG_AISTACK_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.11.4
-  IMG_AISTACK_OPENWEBUI=ghcr.io/open-webui/open-webui:git-30d0f8b
+  IMG_AISTACK_OPENWEBUI=ghcr.io/open-webui/open-webui:0.6.22
   IMG_AUTHELIA=mirror.gcr.io/authelia/authelia:4.39.6
   IMG_BARASSISTANT_APP=mirror.gcr.io/barassistant/server:5.6.1
   IMG_BARASSISTANT_SALTRIM=mirror.gcr.io/barassistant/salt-rim:4.6.0
@@ -27978,7 +27987,7 @@ function loadPinnedDockerImages()
   IMG_FRESHRSS=mirror.gcr.io/freshrss/freshrss:1.26.3
   IMG_GHOST=mirror.gcr.io/ghost:6.0.0-alpine
   IMG_GITEA_APP=mirror.gcr.io/gitea/gitea:1.24.4
-  IMG_GITLAB_APP=mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0
+  IMG_GITLAB_APP=mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0
   IMG_GRAFANA=mirror.gcr.io/grafana/grafana-oss:12.1.0
   IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:25.7.3
   IMG_GUACAMOLE_GUACD=mirror.gcr.io/guacamole/guacd:1.6.0
@@ -28230,7 +28239,7 @@ function getScriptStackVersion()
     snippetbox)
       echo "v1" ;;
     aistack)
-      echo "v2" ;;
+      echo "v1" ;;
     pixelfed)
       echo "v1" ;;
     yamtrack)
@@ -32306,7 +32315,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_GITLAB_APP
       ;;
     "gitlab-redis")
-      container_image=mirror.gcr.io/postgres:17.5-bookworm
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "vaultwarden-db")
       container_image=postgres:15.0-bullseye
@@ -32793,12 +32802,10 @@ function getHomeServerPortsList()
   echo "$portsList"
 }
 
+# Custom images
 function buildOrPullImage()
 {
   curImg="$1"
-  # At some point need to rework this function to be more generalized.
-  # But at the moment, there are only 3 custom images, so a simple case statement will do.
-  # The mindsdb image in the AIStack is still an issue, need a solution for it.
   case "$curImg" in
     "filedrop/filedrop:1")
       buildImageFileDropV1
@@ -32807,10 +32814,35 @@ function buildOrPullImage()
       buildImagePixelfedV1
       ;;
     "hshq/mindsdb:v1")
-      echo "hshq/mindsdb:v1 - This image must be rebuilt by user."
+      buildMindsDBImageV1
+      ;;
+    "hshq/mindsdb:v2")
+      buildMindsDBImageV2
       ;;
     *)
       pullImage "$curImg"
+      ;;
+  esac
+}
+
+function checkIsCustomImage()
+{
+  curImg="$1"
+  case "$curImg" in
+    "filedrop/filedrop:1")
+      echo "true"
+      ;;
+    "hshq/pixelfed:v1")
+      echo "true"
+      ;;
+    "hshq/mindsdb:v1")
+      echo "true"
+      ;;
+    "hshq/mindsdb:v2")
+      echo "true"
+      ;;
+    *)
+      echo "false"
       ;;
   esac
 }
@@ -44254,28 +44286,32 @@ function performUpdateGuacamole()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
-      curImageList=guacamole/guacd:1.5.3,guacamole/guacamole:1.5.3
+      newVer=v4
+      curImageList=guacamole/guacd:1.5.3,guacamole/guacamole:1.5.3,mariadb:10.7.3
       image_update_map[0]="guacamole/guacd:1.5.3,mirror.gcr.io/guacamole/guacd:1.6.0"
       image_update_map[1]="guacamole/guacamole:1.5.3,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
     ;;
     2)
-      newVer=v3
-      curImageList=guacamole/guacd:1.5.4,guacamole/guacamole:1.5.4
+      newVer=v4
+      curImageList=guacamole/guacd:1.5.4,guacamole/guacamole:1.5.4,mariadb:10.7.3
       image_update_map[0]="guacamole/guacd:1.5.4,mirror.gcr.io/guacamole/guacd:1.6.0"
       image_update_map[1]="guacamole/guacamole:1.5.4,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
     ;;
     3)
-      newVer=v3
-      curImageList=guacamole/guacd:1.5.5,guacamole/guacamole:1.5.5
+      newVer=v4
+      curImageList=guacamole/guacd:1.5.5,guacamole/guacamole:1.5.5,mariadb:10.7.3
       image_update_map[0]="guacamole/guacd:1.5.5,mirror.gcr.io/guacamole/guacd:1.6.0"
       image_update_map[1]="guacamole/guacamole:1.5.5,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
     ;;
     4)
       newVer=v4
-      curImageList=mirror.gcr.io/guacamole/guacd:1.6.0,mirror.gcr.io/guacamole/guacamole:1.6.0
+      curImageList=mirror.gcr.io/guacamole/guacd:1.6.0,mirror.gcr.io/guacamole/guacamole:1.6.0,mirror.gcr.io/mariadb:10.7.3
       image_update_map[0]="mirror.gcr.io/guacamole/guacd:1.6.0,mirror.gcr.io/guacamole/guacd:1.6.0"
       image_update_map[1]="mirror.gcr.io/guacamole/guacamole:1.6.0,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
     ;;
     *)
       is_upgrade_error=true
@@ -44414,8 +44450,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $(cat $HSHQ_SECRETS_DIR/authelia_redis_password.txt)
       --tls-port 6379
       --port 0
@@ -44703,7 +44738,7 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.39.1,bitnami/redis:7.4.2
       image_update_map[0]="authelia/authelia:4.39.1,mirror.gcr.io/authelia/authelia:4.39.6"
       image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfAutheliaFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -44712,9 +44747,6 @@ function performUpdateAuthelia()
       curImageList=mirror.gcr.io/authelia/authelia:4.39.6,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/authelia/authelia:4.39.6,mirror.gcr.io/authelia/authelia:4.39.6"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfAutheliaFixRedisCompose
-      perform_update_report="${perform_update_report}$stack_upgrade_report"
-      return
     ;;
     *)
       is_upgrade_error=true
@@ -44787,30 +44819,37 @@ function mfAutheliaFixRedisCompose()
   lineEnd="$(grep REDIS_PASSWORD=.* $HOME/authelia-compose.yml)"
   rpass="$(echo $lineEnd | cut -d"=" -f2)"
   replaceText=""
-  replaceText=$replaceText"<<authelia-redis:\n"
-  replaceText=$replaceText"<<<<image: mirror.gcr.io/redis:8.2.0-bookworm\n"
-  replaceText=$replaceText"<<<<container_name: authelia-redis\n"
-  replaceText=$replaceText"<<<<restart: unless-stopped\n"
-  replaceText=$replaceText"<<<<security_opt:\n"
-  replaceText=$replaceText"<<<<<<- no-new-privileges:true\n"
-  replaceText=$replaceText"<<<<command: >\n"
-  replaceText=$replaceText"<<<<<<redis-server\n"
-  replaceText=$replaceText"<<<<<<--requirepass $rpass\n"
-  replaceText=$replaceText"<<<<<<--tls-port 6379\n"
-  replaceText=$replaceText"<<<<<<--port 0\n"
-  replaceText=$replaceText"<<<<<<--tls-cert-file /tls/authelia-redis.crt\n"
-  replaceText=$replaceText"<<<<<<--tls-key-file /tls/authelia-redis.key\n"
-  replaceText=$replaceText"<<<<<<--tls-ca-cert-file /tls/${CERTS_ROOT_CA_NAME}.crt\n"
-  replaceText=$replaceText"<<<<<<--tls-auth-clients no\n"
-  replaceText=$replaceText"<<<<<<--appendonly no\n"
-  replaceText=$replaceText"<<<<networks:\n"
-  replaceText=$replaceText"<<<<<<- int-authelia-net\n"
-  replaceText=$replaceText"<<<<volumes:\n"
-  replaceText=$replaceText"<<<<<<- /etc/localtime:/etc/localtime:ro\n"
-  replaceText=$replaceText"<<<<<<- /etc/timezone:/etc/timezone:ro\n"
-  replaceText=$replaceText"<<<<<<- v-authelia-redis:/data\n"
-  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/authelia-compose.yml false "<"
-  cat -s $HOME/authelia-compose.yml > $HOME/authelia-compose.yml
+  replaceText=$replaceText">>authelia-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: authelia-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  replaceText=$replaceText">>>>>>--tls-port 6379\n"
+  replaceText=$replaceText">>>>>>--port 0\n"
+  replaceText=$replaceText">>>>>>--tls-cert-file /tls/authelia-redis.crt\n"
+  replaceText=$replaceText">>>>>>--tls-key-file /tls/authelia-redis.key\n"
+  replaceText=$replaceText">>>>>>--tls-ca-cert-file /tls/${CERTS_ROOT_CA_NAME}.crt\n"
+  replaceText=$replaceText">>>>>>--tls-auth-clients no\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-authelia-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/ssl/certs:/etc/ssl/certs:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/share/ca-certificates:/usr/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/authelia-compose.yml false ">"
+  cat -s $HOME/authelia-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/authelia-compose.yml
   sed -i "/ALLOW_EMPTY_PASSWORD=.*/d" $HOME/authelia.env
   sed -i "/REDIS_DISABLE_COMMANDS=.*/d" $HOME/authelia.env
   sed -i "/REDIS_AOF_ENABLED=.*/d" $HOME/authelia.env
@@ -46329,8 +46368,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $GITLAB_REDIS_PASSWORD
     networks:
       - int-gitlab-net
@@ -46499,16 +46537,41 @@ function performUpdateGitlab()
       newVer=v7
       curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:17.10.3-ce.0,bitnami/redis:7.4.2
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
-      image_update_map[1]="gitlab/gitlab-ce:17.10.3-ce.0,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0"
+      image_update_map[1]="gitlab/gitlab-ce:17.10.3-ce.0,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0"
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGitlabFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
+      echo -e "\n\n========================================================================"
+      echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
+      echo -e "  by Gitlab! To disable it, go to Admin -> Settings -> Metrics and"
+      echo -e "  profiling -> Event tracking. For more details, see this link:"
+      echo -e "  https://docs.gitlab.com/17.11/administration/settings/event_data/"
+      echo -e "========================================================================\n"
       return
     ;;
     7)
       newVer=v7
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/bitnami/redis:8.2.0
+      # Version 8, which upgrades Gitlab to 18.x requires Postgres 16.x or higher.
+      # So we'll halt upgrades here for now until database import/export mechanisms
+      # have been added.
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      echo -e "\n\n========================================================================"
+      echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
+      echo -e "  by Gitlab! To disable it, go to Admin -> Settings -> Metrics and"
+      echo -e "  profiling -> Event tracking. For more details, see this link:"
+      echo -e "  https://docs.gitlab.com/17.11/administration/settings/event_data/"
+      echo -e "========================================================================\n"
+      return
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/bitnami/redis:8.2.0
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0"
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
@@ -46997,8 +47060,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $DISCOURSE_REDIS_PASSWORD
     networks:
       - int-discourse-net
@@ -48165,8 +48227,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $FIREFLY_REDIS_PASSWORD
     networks:
       - int-firefly-net
@@ -48530,8 +48591,7 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $EXCALIDRAW_REDIS_PASSWORD
     networks:
       - int-excalidraw-net
@@ -51679,8 +51739,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $BARASSISTANT_REDIS_PASSWORD
     networks:
       - int-bar-assistant-net
@@ -55359,7 +55418,7 @@ function performUpdateGrampsWeb()
     ;;
     3)
       newVer=v4
-      curImageList=ghcr.io/gramps-project/grampsweb:v25.4.0,bitnami/redis:7.0.5
+      curImageList=ghcr.io/gramps-project/grampsweb:v25.4.0,bitnami/redis:7.4.2
       image_update_map[0]="ghcr.io/gramps-project/grampsweb:v25.4.0,ghcr.io/gramps-project/grampsweb:25.7.3"
       image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/bitnami/redis:8.2.0"
     ;;
@@ -57661,8 +57720,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
     networks:
       - int-aistack-net
@@ -57874,8 +57932,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: >
-      redis-server
+    command: redis-server
       --requirepass $AISTACK_REDIS_PASSWORD
     networks:
       - int-aistack-net
@@ -58252,20 +58309,22 @@ function buildMindsDBImage()
 
 function performUpdateAIStack()
 {
-  perform_stack_name=mindsdb
+  perform_stack_name=aistack
   prepPerformUpdate "$1"
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
+      # There's a bug when upgrading MindsDB:
+      # ModuleNotFoundError: No module named 'langfuse'
       newVer=v2
       curImageList=postgres:15.0-bullseye,hshq/mindsdb:v1,otel/opentelemetry-collector-contrib:0.116.1,langfuse/langfuse:2.87.0,ollama/ollama:0.6.8,ghcr.io/open-webui/open-webui:git-aa37482,bitnami/redis:7.4.2
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="hshq/mindsdb:v1,hshq/mindsdb:v2"
       image_update_map[2]="otel/opentelemetry-collector-contrib:0.116.1,mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1"
-      image_update_map[3]="langfuse/langfuse:2.87.0,mirror.gcr.io/langfuse/langfuse:3.96.2"
+      image_update_map[3]="langfuse/langfuse:2.87.0,mirror.gcr.io/langfuse/langfuse:2.87.0"
       image_update_map[4]="ollama/ollama:0.6.8,mirror.gcr.io/ollama/ollama:0.11.4"
-      image_update_map[5]="ghcr.io/open-webui/open-webui:git-aa37482,ghcr.io/open-webui/open-webui:git-30d0f8b"
+      image_update_map[5]="ghcr.io/open-webui/open-webui:git-aa37482,ghcr.io/open-webui/open-webui:0.6.22"
       image_update_map[6]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       buildMindsDBImageV2
       if [ $? -ne 0 ]; then
@@ -58278,13 +58337,13 @@ function performUpdateAIStack()
     ;;
     2)
       newVer=v2
-      curImageList=mirror.gcr.io/postgres:15.0-bullseye,hshq/mindsdb:v2,mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1,mirror.gcr.io/langfuse/langfuse:3.96.2,mirror.gcr.io/ollama/ollama:0.11.4,ghcr.io/open-webui/open-webui:git-30d0f8b,mirror.gcr.io/redis:8.2.0-bookworm
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,hshq/mindsdb:v2,mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1,mirror.gcr.io/langfuse/langfuse:2.87.0,mirror.gcr.io/ollama/ollama:0.11.4,ghcr.io/open-webui/open-webui:0.6.22,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="hshq/mindsdb:v2,hshq/mindsdb:v2"
       image_update_map[2]="mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1,mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1"
-      image_update_map[3]="mirror.gcr.io/langfuse/langfuse:3.96.2,mirror.gcr.io/langfuse/langfuse:3.96.2"
+      image_update_map[3]="mirror.gcr.io/langfuse/langfuse:2.87.0,mirror.gcr.io/langfuse/langfuse:2.87.0"
       image_update_map[4]="mirror.gcr.io/ollama/ollama:0.11.4,mirror.gcr.io/ollama/ollama:0.11.4"
-      image_update_map[5]="ghcr.io/open-webui/open-webui:git-30d0f8b,ghcr.io/open-webui/open-webui:git-30d0f8b"
+      image_update_map[5]="ghcr.io/open-webui/open-webui:0.6.22,ghcr.io/open-webui/open-webui:0.6.22"
       image_update_map[6]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
