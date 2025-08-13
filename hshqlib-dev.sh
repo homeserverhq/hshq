@@ -9919,12 +9919,13 @@ EOFWQ
 function installFileBrowser()
 {
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser
-  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/db
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/srv
+  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/db
+  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/config
   RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
   FILEBROWSER_PASSWORD_HASH=\$(htpasswd -bnBC 10 "" \$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/')
   outputConfigFileBrowser
-  installStack filebrowser filebrowser "Listening on" \$HOME/filebrowser.env
+  installStack filebrowser filebrowser "" \$HOME/filebrowser.env
   startStopStack filebrowser stop
 }
 
@@ -9951,6 +9952,7 @@ services:
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/srv:/srv
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/db:/database
+      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/config:/config
 
 networks:
   dock-proxy-net:
@@ -41928,7 +41930,7 @@ SETTINGS_ENCRYPTION_KEY=$DUPLICATI_SETTINGS_ENCRYPTION_KEY
 CLI_ARGS=--webservice-password=$DUPLICATI_ADMIN_PASSWORD
 EOFDP
   generateCert duplicati duplicati
-  installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env
+  installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing Duplicati"
@@ -43779,6 +43781,7 @@ function installFileBrowser()
   mkdir $HSHQ_STACKS_DIR/filebrowser
   mkdir $HSHQ_STACKS_DIR/filebrowser/db
   mkdir $HSHQ_STACKS_DIR/filebrowser/srv
+  mkdir $HSHQ_STACKS_DIR/filebrowser/config
   initServicesCredentials
   FILEBROWSER_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $FILEBROWSER_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
 
@@ -43811,6 +43814,29 @@ function installFileBrowser()
 
 function outputConfigFileBrowser()
 {
+  outputComposeFileBrowser
+  cat <<EOFJF > $HOME/filebrowser.env
+UID=$USERID
+GID=$GROUPID
+FB_USERNAME=$FILEBROWSER_USERNAME
+FB_PASSWORD='$FILEBROWSER_PASSWORD_HASH'
+EOFJF
+
+  cat <<EOFJF > $HSHQ_STACKS_DIR/filebrowser/filebrowser.json
+{
+  "port": 80,
+  "baseURL": "",
+  "address": "",
+  "log": "stdout",
+  "database": "/database/filebrowser.db",
+  "root": "/srv"
+}
+EOFJF
+
+}
+
+function outputComposeFileBrowser()
+{
   cat <<EOFJF > $HOME/filebrowser-compose.yml
 $STACK_VERSION_PREFIX filebrowser $(getScriptStackVersion filebrowser)
 
@@ -43832,30 +43858,13 @@ services:
       - \${HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
       - \${HSHQ_STACKS_DIR}/filebrowser/srv:/srv
       - \${HSHQ_STACKS_DIR}/filebrowser/db:/database
+      - \${HSHQ_STACKS_DIR}/filebrowser/config:/config
 
 networks:
   dock-proxy-net:
     name: dock-proxy
     external: true
 
-EOFJF
-
-  cat <<EOFJF > $HOME/filebrowser.env
-UID=$USERID
-GID=$GROUPID
-FB_USERNAME=$FILEBROWSER_USERNAME
-FB_PASSWORD='$FILEBROWSER_PASSWORD_HASH'
-EOFJF
-
-  cat <<EOFJF > $HSHQ_STACKS_DIR/filebrowser/filebrowser.json
-{
-  "port": 80,
-  "baseURL": "",
-  "address": "",
-  "log": "stdout",
-  "database": "/database/filebrowser.db",
-  "root": "/srv"
-}
 EOFJF
 
 }
@@ -43868,34 +43877,37 @@ function performUpdateFileBrowser()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v7
+      newVer=v6
       curImageList=filebrowser/filebrowser:v2.24.2
-      image_update_map[0]="filebrowser/filebrowser:v2.24.2,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
+      image_update_map[0]="filebrowser/filebrowser:v2.24.2,filebrowser/filebrowser:v2.32.0"
     ;;
     2)
-      newVer=v7
+      newVer=v6
       curImageList=filebrowser/filebrowser:v2.26.0
-      image_update_map[0]="filebrowser/filebrowser:v2.26.0,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
+      image_update_map[0]="filebrowser/filebrowser:v2.26.0,filebrowser/filebrowser:v2.32.0"
     ;;
     3)
-      newVer=v7
+      newVer=v6
       curImageList=filebrowser/filebrowser:v2.27.0
-      image_update_map[0]="filebrowser/filebrowser:v2.27.0,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
+      image_update_map[0]="filebrowser/filebrowser:v2.27.0,filebrowser/filebrowser:v2.32.0"
     ;;
     4)
-      newVer=v7
+      newVer=v6
       curImageList=filebrowser/filebrowser:v2.30.0
-      image_update_map[0]="filebrowser/filebrowser:v2.30.0,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
+      image_update_map[0]="filebrowser/filebrowser:v2.30.0,filebrowser/filebrowser:v2.32.0"
     ;;
     5)
-      newVer=v7
+      newVer=v6
       curImageList=filebrowser/filebrowser:v2.31.2
-      image_update_map[0]="filebrowser/filebrowser:v2.31.2,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
+      image_update_map[0]="filebrowser/filebrowser:v2.31.2,filebrowser/filebrowser:v2.32.0"
     ;;
     6)
       newVer=v7
       curImageList=filebrowser/filebrowser:v2.32.0
       image_update_map[0]="filebrowser/filebrowser:v2.32.0,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfFileBrowserAddConfigVol
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     7)
       newVer=v7
@@ -43910,6 +43922,13 @@ function performUpdateFileBrowser()
   esac
   upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfFileBrowserAddConfigVol()
+{
+  mkdir -p $HSHQ_STACKS_DIR/filebrowser/config
+  rm -f $HOME/filebrowser-compose.yml
+  outputComposeFileBrowser
 }
 
 # PhotoPrism
