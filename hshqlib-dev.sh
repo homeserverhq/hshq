@@ -55050,6 +55050,11 @@ function buildImageFileDropV1()
   set +e
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
   git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    sudo rm -fr $HSHQ_BUILD_DIR/filedrop
+    return $retVal
+  fi
   docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
   retVal=$?
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
@@ -59163,13 +59168,25 @@ EOFPF
 
 function buildImagePixelfedV1()
 {
+  set +e
   echo "The Pixelfed image is being built. It can take up to 15 minutes for the process to complete, so please be patient."
   img_ver=v0.12.5.tar.gz
   cd $HSHQ_BUILD_DIR
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
   wget -q4 -O $HSHQ_BUILD_DIR/pixelfed.tar.gz https://github.com/pixelfed/pixelfed/archive/refs/tags/$img_ver
+  rVal=$?
+  if [ $rVal -ne 0 ]; then
+    rm -f $HSHQ_BUILD_DIR/pixelfed.tar.gz
+    cd ~
+    return 6
+  fi
   tar xvzf ./pixelfed.tar.gz >/dev/null
-  rm -f ./pixelfed.tar.gz
+  rVal=$?
+  rm -f $HSHQ_BUILD_DIR/pixelfed.tar.gz
+  if [ $rVal -ne 0 ]; then
+    cd ~
+    return 7
+  fi
   cd pixelfed*
   rm -f app/Http/Controllers/Auth/LoginController.php
   cat <<EOFPF > app/Http/Controllers/Auth/LoginController.php
