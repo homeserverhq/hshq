@@ -2568,14 +2568,16 @@ function performRestorePostcheck()
 function createClientDNSNetworksOnRestore()
 {
   echo "Creating ClientDNS networks..."
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   rsi_numTries=1
   rsi_totalTries=5
   rsi_retVal=1
   rstackIDsQry=""
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -5093,7 +5095,6 @@ function updateListOfStacks()
   stackListArr=($(echo "$1" | tr "," "\n"))
   stacks_need_update_list="$(getStacksToUpdate)"
   setSudoTimeoutInstall
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   report_start_time=$(date)
   full_update_report=""
   full_update_report="${full_update_report}                    Successful                    \n"
@@ -5111,7 +5112,7 @@ function updateListOfStacks()
     if ! [ "$(isItemInCSVList $cur_svc $stacks_need_update_list)" = "true" ]; then
       continue
     fi
-    performUpdateStackByName "$cur_svc" "$portainerToken"
+    performUpdateStackByName "$cur_svc"
     if [ "$is_upgrade_error" = "true" ]; then
       upgrade_error_report="${upgrade_error_report}\n$perform_update_report\n"
     else
@@ -5209,18 +5210,17 @@ function clearRedisTempDataByStackName()
     echo "ERROR: Could not find corresponding redis directory"
     return
   fi
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  stackStatus=$(getStackStatusByName "$stackName" "$portainerToken")
+  stackStatus=$(getStackStatusByName "$stackName")
   if ! [ "$stackStatus" = "1" ]; then
     echo "ERROR: This stack is not currently running"
     return
   fi
   echo "Stopping $stackName..."
-  startStopStack "$stackName" stop "$portainerToken"
+  startStopStack "$stackName" stop
   echo "Clearing redis data..."
   sudo rm -fr $HSHQ_NONBACKUP_DIR/$stackName/redis/*
   echo "Starting $stackName..."
-  startStopStack "$stackName" start "$portainerToken"
+  startStopStack "$stackName" start
   echo "Complete!"
 }
 
@@ -15044,9 +15044,8 @@ function getStackID()
   stackID="NA"
   stackName=$1
   stackName="${stackName//.}"
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   gsid_numTries=1
   gsid_totalTries=5
@@ -15054,7 +15053,7 @@ function getStackID()
   qry=""
   while [ $gsid_numTries -le $gsid_totalTries ]
   do
-    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     gsid_retVal=$?
     if [ $gsid_retVal -eq 0 ]; then
       break
@@ -15086,15 +15085,16 @@ function updateStackByID()
   update_stack_id=$2
   update_compose_file=$3
   update_env_file=$4
-  portainerToken=$5
-
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
   usid_numTries=1
   usid_totalTries=5
   usid_retVal=1
   while [ $usid_numTries -le $usid_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
     usid_retVal=$?
     if [ $usid_retVal -eq 0 ]; then
       break
@@ -15126,16 +15126,29 @@ function restartAllStacks()
   set +e
   skipRestart="$1"
   isOnlyHSHQManaged="$2"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  startStopStack uptimekuma stop "$portainerToken"
-
+  startStopStack uptimekuma stop
   rsi_numTries=1
   rsi_totalTries=5
   rsi_retVal=1
   rstackIDsQry=""
+  tgLock="$(tryGetLock networkchecks restartAllStacks)"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg networkchecks)"
+    strErr="restartAllStacks - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
+    logHSHQEvent warning "$strErr"
+    return
+  fi
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not get Portainer auth token..." 1>&2
+    releaseLock networkchecks restartAllStacks false
+    return
+  fi
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -15144,22 +15157,22 @@ function restartAllStacks()
   done
   if [ $rsi_retVal -ne 0 ]; then
     echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    releaseLock networkchecks restartAllStacks false
     return
   fi
   rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
   rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
-
   numItems=$((${#rstackIDs[@]} - 1))
   for curID in $(seq 0 $numItems);
   do
     echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
+    startStopStackByID ${rstackIDs[$curID]} stop
     sleep 1
   done
   stopPortainer
-  removeDockerNetworks
   sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
   docker container prune -f
+  removeDockerNetworks
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
@@ -15167,21 +15180,21 @@ function restartAllStacks()
   total_tries=10
   num_tries=1
   sleep 5
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   retVal=$?
   while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
   do
     echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
     sleep 5
     ((num_tries++))
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
   if [ $retVal -ne 0 ]; then
     echo "Error getting portainer token, exiting..."
+    releaseLock networkchecks restartAllStacks false
     exit 1
   fi
-
   for curID in $(seq 0 $numItems);
   do
     if ! [ -z "$skipRestart" ]; then
@@ -15197,10 +15210,11 @@ function restartAllStacks()
       fi
     fi
     echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} start $portainerToken
+    startStopStackByID ${rstackIDs[$curID]} start
     sleep 3
   done
-  startStopStack uptimekuma start "$portainerToken"
+  startStopStack uptimekuma start
+  releaseLock networkchecks restartAllStacks false
   if ! [ -z "$ras_curE" ]; then
     set -e
   fi
@@ -15271,11 +15285,7 @@ function updateStackEnv()
 {
   updateStackName=$1
   updateModFunction=$2
-  portainerToken=$3
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  updateStackID=$(getStackID $updateStackName "$portainerToken")
+  updateStackID=$(getStackID $updateStackName)
   if [ -z "$updateStackID" ]; then
     echo "ERROR: Could not find stack ID for $updateStackName"
     return 2
@@ -15287,7 +15297,7 @@ function updateStackEnv()
     rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
     return $rtVal
   fi
-  updateStackByID $updateStackName $updateStackID $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env "$portainerToken"
+  updateStackByID $updateStackName $updateStackID $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
   rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
 }
 
@@ -15551,7 +15561,6 @@ function installStack()
   envfile=$4
   sleep_interval=$5
   max_interval=$6
-
   if [ -z "$sleep_interval" ]; then
     sleep_interval=1
   fi
@@ -15620,24 +15629,19 @@ function startStopStack()
 {
   stackname=$1
   startStop=$2
-  portainerToken=$3
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackname "$portainerToken")
+  stackID=$(getStackID $stackname)
   if [ -z "$stackID" ]; then
     return
   fi
-  startStopStackByID $stackID $startStop $portainerToken
+  startStopStackByID $stackID $startStop
 }
 
 function startStopStackByID()
 {
   stackID=$1
   startStop=$2
-  portainerToken=$3
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   sss_numTries=1
   sss_totalTries=5
@@ -15645,9 +15649,9 @@ function startStopStackByID()
   while [ $sss_numTries -le $sss_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $sss_numTries -eq $sss_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     fi
     sss_retVal=$?
     if [ $sss_retVal -eq 0 ]; then
@@ -15668,25 +15672,21 @@ function restartStackIfRunning()
 {
   stackName=$1
   waitTime=$2
-  portainerToken=$3
   if [ "$stackName" = "portainer" ]; then
     # Special case for portainer
     restartPortainer
     return
   fi
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackName "$portainerToken")
+  stackID=$(getStackID $stackName)
   if [ -z "$stackID" ]; then
     return
   fi
-  stackStatus=$(getStackStatusByID $stackID "$portainerToken")
+  stackStatus=$(getStackStatusByID $stackID)
   rssif_rtVal=0
   if [ "$stackStatus" = "1" ]; then
-    startStopStackByID $stackID stop $portainerToken
+    startStopStackByID $stackID stop
     sleep $waitTime
-    startStopStackByID $stackID start $portainerToken
+    startStopStackByID $stackID start
     rssif_rtVal=$?
   fi
   return $rssif_rtVal
@@ -15696,32 +15696,27 @@ function forceRestartStack()
 {
   stackName=$1
   waitTime=$2
-  portainerToken=$3
   if [ "$stackName" = "portainer" ]; then
     # Special case for portainer
     restartPortainer
     return
   fi
   set +e
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackName "$portainerToken")
+  stackID=$(getStackID $stackName)
   if [ -z "$stackID" ]; then
     return
   fi
   set +e
-  startStopStackByID $stackID stop $portainerToken
+  startStopStackByID $stackID stop
   sleep $waitTime
-  startStopStackByID $stackID start $portainerToken
+  startStopStackByID $stackID start
 }
 
 function getStackStatusByID()
 {
   stackID=$1
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   gss_numTries=1
   gss_totalTries=5
@@ -15729,7 +15724,7 @@ function getStackStatusByID()
   stackStatus=""
   while [ $gss_numTries -le $gss_totalTries ]
   do
-    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     gss_retVal=$?
     if [ $gss_retVal -eq 0 ]; then
       break
@@ -15746,26 +15741,21 @@ function getStackStatusByID()
 function getStackStatusByName()
 {
   stackName=$1
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackName "$portainerToken")
+  stackID=$(getStackID $stackName)
   if [ -z "$stackID" ]; then
     return
   fi
-  stackStatus=$(getStackStatusByID $stackID "$portainerToken")
+  stackStatus=$(getStackStatusByID $stackID)
   echo $stackStatus
 }
 
 function deleteStack()
 {
   stackname=$1
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  stackID=$(getStackID $stackname "$portainerToken")
+  stackID=$(getStackID $stackname)
   if [ -z "$stackID" ]; then
     return
   fi
@@ -15774,7 +15764,7 @@ function deleteStack()
   ds_retVal=1
   while [ $ds_numTries -le $ds_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
+    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     ds_retVal=$?
     if [ $ds_retVal -eq 0 ]; then
       break
@@ -20831,9 +20821,8 @@ function version22Update()
   refreshSudo
   set +e
   cdns_stack_name="user1"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  uptimekumaStackID=$(getStackID uptimekuma "$portainerToken")
-  startStopStack uptimekuma stop $portainerToken > /dev/null 2>&1
+  uptimekumaStackID=$(getStackID uptimekuma)
+  startStopStack uptimekuma stop > /dev/null 2>&1
   grep "HOMESERVER_HOST_ISPRIVATE_IP" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     HOMESERVER_HOST_ISPRIVATE_IP=$(checkIsIPPrivate "$HOMESERVER_HOST_IP")
@@ -20850,17 +20839,17 @@ function version22Update()
   fi
   set -e
 
-  mailuStackID=$(getStackID mailu "$portainerToken")
-  cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
+  mailuStackID=$(getStackID mailu)
+  cdnsStackID=$(getStackID clientdns-${cdns_stack_name})
 
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Name'))
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]}-1))
 
   for curID in $(seq 0 $numItems);
   do
     echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
+    startStopStackByID ${rstackIDs[$curID]} stop
     sleep 1
   done
 
@@ -20889,14 +20878,14 @@ function version22Update()
   total_tries=10
   num_tries=1
   sleep 5
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   retVal=$?
   while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
   do
     echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
     sleep 5
     ((num_tries++))
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
   if [ $retVal -ne 0 ]; then
@@ -21178,7 +21167,7 @@ EOFMC
   sed -i "s|^SUBNET=.*|SUBNET=${NET_MAILU_EXT_SUBNET}|g" $HOME/mailu.env
   sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${NET_MAILU_EXT_SUBNET_PREFIX}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/mailu-json.tmp > /dev/null 2>&1
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
 
   if ! [ -z "$cdnsStackID" ]; then
@@ -21252,7 +21241,7 @@ EOFCF
     updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
     sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
     echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
     rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
   fi
 
@@ -21299,13 +21288,13 @@ EOFCF
     num_tries=1
     while [ $num_tries -lt $total_tries ]
     do
-      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
       if [ $? -eq 0 ]; then
         break
       else
         echo "Failed update, retrying ($(($num_tries + 1)) of $total_tries)..."
         sleep 5
-        portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+        PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
       fi
       ((num_tries++))
     done
@@ -22386,18 +22375,17 @@ function version87Update()
   if [ -d $HSHQ_STACKS_DIR/paperless/redis ]; then
     # Move paperless redis to nonbackup directory
     echo "Updating paperless stack..."
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     # Stack status: 1=running, 2=stopped
-    stackStatus=$(getStackStatusByName paperless "$portainerToken")
+    stackStatus=$(getStackStatusByName paperless)
     mkdir -p $HSHQ_NONBACKUP_DIR/paperless
     mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
     if [ "$stackStatus" = "1" ]; then
-      startStopStack paperless stop "$portainerToken"
+      startStopStack paperless stop
     fi
-    updateStackEnv paperless mvFixRedisDir "$portainerToken"
+    updateStackEnv paperless mvFixRedisDir
     sudo rm -fr $HSHQ_STACKS_DIR/paperless/redis
     if ! [ "$stackStatus" = "1" ]; then
-      startStopStack paperless stop "$portainerToken"
+      startStopStack paperless stop
     fi
   fi
 }
@@ -23009,16 +22997,15 @@ EOFRS
   updateSysctl true
   outputMaintenanceScripts
   outputWGDockInternetScript
-  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  jitsiStackID=$(getStackID jitsi "$PORTAINER_TOKEN")
+  jitsiStackID=$(getStackID jitsi)
   if ! [ -z "$jitsiStackID" ]; then
-    updateStackEnv jitsi outputEnvJitsi "$PORTAINER_TOKEN"
+    updateStackEnv jitsi outputEnvJitsi
   fi
-  stackID=$(getStackID caddy-home "$PORTAINER_TOKEN")
+  stackID=$(getStackID caddy-home)
   if ! [ -z "$stackID" ]; then
     echo "Fixing caddy-home name..."
     # Reinsatll caddy-home stack
-    deleteStack caddy-home "$PORTAINER_TOKEN"
+    deleteStack caddy-home
     sudo mv $HSHQ_STACKS_DIR/caddy-home $HSHQ_STACKS_DIR/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
     outputConfigCaddy home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME home $(getHSHostIPVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME) $HOMESERVER_HOST_PRIMARY_INTERFACE_IP home na na na "$(getHSHostSubnetVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME)" "$(getNonPrivateConnectingIP)"
     installStack caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME "serving initial configuration" $HOME/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME.env
@@ -23232,6 +23219,7 @@ function version181Update()
 function version183Update()
 {
   performAptInstall ffmpeg > /dev/null 2>&1
+  outputMaintenanceScripts
 }
 
 function updateRelayServerWithScript()
@@ -23837,11 +23825,13 @@ function setVersionOnStacks()
   refreshSudo
   strSetVersionReport=""
   stackListArr=($(echo ${HSHQ_REQUIRED_STACKS}","${HSHQ_OPTIONAL_STACKS} | tr "," "\n"))
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   for curStack in "${stackListArr[@]}"
   do
     echo "Versioning ${curStack} stack..."
-    stackID=$(getStackID $curStack "$portainerToken")
+    stackID=$(getStackID $curStack)
     if ! [ "$curStack" = "portainer" ] && [ -z "$stackID" ]; then
       continue
     fi
@@ -24296,7 +24286,7 @@ function setVersionOnStacks()
     strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
   done
   # Special case for Caddy
-  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
   caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("caddy-")) | .Id'))
   caddy_stack_names=($(echo $qry | jq -r '.[] | select (.Name | startswith("caddy-")) | .Name'))
   i=-1
@@ -25221,19 +25211,19 @@ function restartStacksOnBoot()
   num_tries=1
   total_tries=20
   logHSHQEvent info "restartStacksOnBoot - BEGIN"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   retVal=$?
   while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
   do
     sleep 10
     ((num_tries++))
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
   logHSHQEvent info "restartStacksOnBoot - Got Portainer token..."
   if [ $retVal -eq 0 ]; then
     logHSHQEvent info "restartStacksOnBoot - Restarting HomeAssistant stack (if running)..."
-    restartStackIfRunning homeassistant 15 $portainerToken > /dev/null
+    restartStackIfRunning homeassistant 15 > /dev/null
     if [ $retVal -ne 0 ]; then
       logHSHQEvent error "restartStacksOnBoot - Problem restarting HomeAssistant stack..."
     fi
@@ -25377,7 +25367,7 @@ source <(sudo cat $HSHQ_PLAINTEXT_ROOT_CONFIG)
 source $HSHQ_PLAINTEXT_USER_CONFIG
 
 caddy_stack=\$1
-portainerToken=""
+PORTAINER_TOKEN=""
 function main()
 {
   startStopStack \$caddy_stack stop
@@ -25390,11 +25380,11 @@ function startStopStack()
 {
   stackname=\$1
   startStop=\$2
-  if [ -z "\$portainerToken" ]; then
-    portainerToken="\$(getPortainerToken)"
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="\$(getPortainerToken)"
   fi
-  stackID=\$(getStackID \$stackname "\$portainerToken")
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID > /dev/null
+  stackID=\$(getStackID \$stackname)
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID > /dev/null
 }
 
 function getPortainerToken()
@@ -25407,8 +25397,10 @@ function getStackID()
   stackID="NA"
   stackName=\$1
   stackName="\${stackName//.}"
-  portainerToken=\$2
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="\$(getPortainerToken)"
+  fi
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID)
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -27811,8 +27803,7 @@ function prepPerformUpdate()
   # perform_update_report with the results of the update process.
   # It is up to the caller to do something with it.
   perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  perform_stack_id=$(getStackID $perform_stack_name)
   if [ -z "$perform_stack_id" ]; then
     is_upgrade_error=true
     perform_update_report="ERROR($perform_stack_name): There was a problem with the Portainer API. If this error persists, try restarting Portainer."
@@ -27840,10 +27831,9 @@ function upgradeStack()
   new_ver=$4
   cur_img_list="$5"
   upgrade_compose_file=$6
-  portainerToken="$7"
-  stackModFunction=$8
-  isReinstallStack=$9
-  stackReinstallModFunction=${10}
+  stackModFunction=$7
+  isReinstallStack=$8
+  stackReinstallModFunction=$9
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
@@ -27903,7 +27893,7 @@ function upgradeStack()
   if [ "$isStartStackFromStopped" = "true" ] && [ "$isReinstallStack" = "false" ]; then
     unset isStartStackFromStopped
     isStartStackFromStopped=""
-    startStopStack $comp_stack_name start "$portainerToken"
+    startStopStack $comp_stack_name start
     if [ $? -ne 0 ]; then
       is_upgrade_error=true
       stack_upgrade_report="ERROR ($comp_stack_name): There was a problem restarting the stopped stack."
@@ -27922,14 +27912,14 @@ function upgradeStack()
         stack_upgrade_report="ERROR ($comp_stack_name): There was an issue with the reinstall modify function."
         return
       fi
-      updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env "$portainerToken"
+      updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env
       if [ $? -ne 0 ]; then
         is_upgrade_error=true
         stack_upgrade_report="ERROR ($comp_stack_name): There was a problem updating the stack."
         return
       fi
     else
-      restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+      restartStackIfRunning $comp_stack_name 3
       if [ $? -ne 0 ]; then
         is_upgrade_error=true
         stack_upgrade_report="ERROR ($comp_stack_name): There was a problem restarting the stack."
@@ -31210,170 +31200,169 @@ function installStackByName()
 function performUpdateStackByName()
 {
   stack_name=$1
-  portainerToken="$2"
   case "$stack_name" in
     portainer)
       performUpdatePortainer ;;
     adguard)
-      performUpdateAdGuard "$portainerToken" ;;
+      performUpdateAdGuard ;;
     sysutils)
-      performUpdateSysUtils "$portainerToken" ;;
+      performUpdateSysUtils ;;
     openldap)
-      performUpdateOpenLDAP "$portainerToken" ;;
+      performUpdateOpenLDAP ;;
     mailu)
-      performUpdateMailu "$portainerToken" ;;
+      performUpdateMailu ;;
     wazuh)
-      performUpdateWazuh "$portainerToken" ;;
+      performUpdateWazuh ;;
     collabora)
-      performUpdateCollabora "$portainerToken" ;;
+      performUpdateCollabora ;;
     nextcloud)
-      performUpdateNextcloud "$portainerToken" ;;
+      performUpdateNextcloud ;;
     jitsi)
-      performUpdateJitsi "$portainerToken" ;;
+      performUpdateJitsi ;;
     matrix)
-      performUpdateMatrix "$portainerToken" ;;
+      performUpdateMatrix ;;
     wikijs)
-      performUpdateWikijs "$portainerToken" ;;
+      performUpdateWikijs ;;
     duplicati)
-      performUpdateDuplicati "$portainerToken" ;;
+      performUpdateDuplicati ;;
     mastodon)
-      performUpdateMastodon "$portainerToken" ;;
+      performUpdateMastodon ;;
     dozzle)
-      performUpdateDozzle "$portainerToken" ;;
+      performUpdateDozzle ;;
     searxng)
-      performUpdateSearxNG "$portainerToken" ;;
+      performUpdateSearxNG ;;
     jellyfin)
-      performUpdateJellyfin "$portainerToken" ;;
+      performUpdateJellyfin ;;
     filebrowser)
-      performUpdateFileBrowser "$portainerToken" ;;
+      performUpdateFileBrowser ;;
     photoprism)
-      performUpdatePhotoPrism "$portainerToken" ;;
+      performUpdatePhotoPrism ;;
     guacamole)
-      performUpdateGuacamole "$portainerToken" ;;
+      performUpdateGuacamole ;;
     authelia)
-      performUpdateAuthelia "$portainerToken" ;;
+      performUpdateAuthelia ;;
     wordpress)
-      performUpdateWordPress "$portainerToken" ;;
+      performUpdateWordPress ;;
     ghost)
-      performUpdateGhost "$portainerToken" ;;
+      performUpdateGhost ;;
     peertube)
-      performUpdatePeerTube "$portainerToken" ;;
+      performUpdatePeerTube ;;
     homeassistant)
-      performUpdateHomeAssistant "$portainerToken" ;;
+      performUpdateHomeAssistant ;;
     gitlab)
-      performUpdateGitlab "$portainerToken" ;;
+      performUpdateGitlab ;;
     vaultwarden)
-      performUpdateVaultwarden "$portainerToken" ;;
+      performUpdateVaultwarden ;;
     discourse)
-      performUpdateDiscourse "$portainerToken" ;;
+      performUpdateDiscourse ;;
     syncthing)
-      performUpdateSyncthing "$portainerToken" ;;
+      performUpdateSyncthing ;;
     codeserver)
-      performUpdateCodeServer "$portainerToken" ;;
+      performUpdateCodeServer ;;
     shlink)
-      performUpdateShlink "$portainerToken" ;;
+      performUpdateShlink ;;
     firefly)
-      performUpdateFirefly "$portainerToken" ;;
+      performUpdateFirefly ;;
     excalidraw)
-      performUpdateExcalidraw "$portainerToken" ;;
+      performUpdateExcalidraw ;;
     drawio)
-      performUpdateDrawIO "$portainerToken" ;;
+      performUpdateDrawIO ;;
     invidious)
-      performUpdateInvidious "$portainerToken" ;;
+      performUpdateInvidious ;;
     ittools)
-      performUpdateITTools "$portainerToken" ;;
+      performUpdateITTools ;;
     gitea)
-      performUpdateGitea "$portainerToken" ;;
+      performUpdateGitea ;;
     mealie)
-      performUpdateMealie "$portainerToken" ;;
+      performUpdateMealie ;;
     kasm)
-      performUpdateKasm "$portainerToken" ;;
+      performUpdateKasm ;;
     ntfy)
-      performUpdateNTFY "$portainerToken" ;;
+      performUpdateNTFY ;;
     remotely)
-      performUpdateRemotely "$portainerToken" ;;
+      performUpdateRemotely ;;
     calibre)
-      performUpdateCalibre "$portainerToken" ;;
+      performUpdateCalibre ;;
     netdata)
-      performUpdateNetdata "$portainerToken" ;;
+      performUpdateNetdata ;;
     linkwarden)
-      performUpdateLinkwarden "$portainerToken" ;;
+      performUpdateLinkwarden ;;
     stirlingpdf)
-      performUpdateStirlingPDF "$portainerToken" ;;
+      performUpdateStirlingPDF ;;
     bar-assistant)
-      performUpdateBarAssistant "$portainerToken" ;;
+      performUpdateBarAssistant ;;
     freshrss)
-      performUpdateFreshRSS "$portainerToken" ;;
+      performUpdateFreshRSS ;;
     keila)
-      performUpdateKeila "$portainerToken" ;;
+      performUpdateKeila ;;
     wallabag)
-      performUpdateWallabag "$portainerToken" ;;
+      performUpdateWallabag ;;
     jupyter)
-      performUpdateJupyter "$portainerToken" ;;
+      performUpdateJupyter ;;
     paperless)
-      performUpdatePaperless "$portainerToken" ;;
+      performUpdatePaperless ;;
     speedtest-tracker-local)
-      performUpdateSpeedtestTrackerLocal "$portainerToken" ;;
+      performUpdateSpeedtestTrackerLocal ;;
     speedtest-tracker-vpn)
-      performUpdateSpeedtestTrackerVPN "$portainerToken" ;;
+      performUpdateSpeedtestTrackerVPN ;;
     changedetection)
-      performUpdateChangeDetection "$portainerToken" ;;
+      performUpdateChangeDetection ;;
     huginn)
-      performUpdateHuginn "$portainerToken" ;;
+      performUpdateHuginn ;;
     coturn)
-      performUpdateCoturn "$portainerToken" ;;
+      performUpdateCoturn ;;
     filedrop)
-      performUpdateFileDrop "$portainerToken" ;;
+      performUpdateFileDrop ;;
     piped)
-      performUpdatePiped "$portainerToken" ;;
+      performUpdatePiped ;;
     grampsweb)
-      performUpdateGrampsWeb "$portainerToken" ;;
+      performUpdateGrampsWeb ;;
     penpot)
-      performUpdatePenpot "$portainerToken" ;;
+      performUpdatePenpot ;;
     espocrm)
-      performUpdateEspoCRM "$portainerToken" ;;
+      performUpdateEspoCRM ;;
     immich)
-      performUpdateImmich "$portainerToken" ;;
+      performUpdateImmich ;;
     homarr)
-      performUpdateHomarr "$portainerToken" ;;
+      performUpdateHomarr ;;
     matomo)
-      performUpdateMatomo "$portainerToken" ;;
+      performUpdateMatomo ;;
     pastefy)
-      performUpdatePastefy "$portainerToken" ;;
+      performUpdatePastefy ;;
     snippetbox)
-      performUpdateSnippetBox "$portainerToken" ;;
+      performUpdateSnippetBox ;;
     aistack)
-      performUpdateAIStack "$portainerToken" ;;
+      performUpdateAIStack ;;
     pixelfed)
-      performUpdatePixelfed "$portainerToken" ;;
+      performUpdatePixelfed ;;
     yamtrack)
-      performUpdateYamtrack "$portainerToken" ;;
+      performUpdateYamtrack ;;
     servarr)
-      performUpdateServarr "$portainerToken" ;;
+      performUpdateServarr ;;
     sabnzbd)
-      performUpdateSABnzbd "$portainerToken" ;;
+      performUpdateSABnzbd ;;
     qbittorrent)
-      performUpdateqBittorrent "$portainerToken" ;;
+      performUpdateqBittorrent ;;
     ombi)
-      performUpdateOmbi "$portainerToken" ;;
+      performUpdateOmbi ;;
     meshcentral)
-      performUpdateMeshCentral "$portainerToken" ;;
+      performUpdateMeshCentral ;;
     navidrome)
-      performUpdateNavidrome "$portainerToken" ;;
+      performUpdateNavidrome ;;
     heimdall)
-      performUpdateHeimdall "$portainerToken" ;;
+      performUpdateHeimdall ;;
     ofelia)
-      performUpdateOfelia "$portainerToken" ;;
+      performUpdateOfelia ;;
     script-server)
-      performUpdateScriptServer "$portainerToken" ;;
+      performUpdateScriptServer ;;
     sqlpad)
-      performUpdateSQLPad "$portainerToken" ;;
+      performUpdateSQLPad ;;
     uptimekuma)
-      performUpdateUptimeKuma "$portainerToken" ;;
+      performUpdateUptimeKuma ;;
     caddy-*)
-      performUpdateCaddy "$portainerToken" "$stack_name" ;;
+      performUpdateCaddy "$stack_name" ;;
     clientdns-*)
-      performUpdateClientDNS "$portainerToken" "$stack_name" ;;
+      performUpdateClientDNS "$stack_name" ;;
   esac
 }
 
@@ -33123,7 +33112,6 @@ function performUpdatePortainer()
   # with the results of the update process. It is up to the 
   # caller to do something with it.
   perform_update_report=""
-  portainerToken="$1"
   perform_compose=$HSHQ_STACKS_DIR/portainer/docker-compose.yml
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
@@ -33153,7 +33141,7 @@ function performUpdatePortainer()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "0" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "0" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -33163,7 +33151,7 @@ function restartPortainer()
   sleep 3
   startPortainer
   if ! [ -z "$PORTAINER_ADMIN_USERNAME" ] && ! [ -z "$PORTAINER_ADMIN_PASSWORD" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
 }
 
@@ -33581,7 +33569,7 @@ function modFunAdguardFixMSS()
 function performUpdateAdGuard()
 {
   perform_stack_name=adguard
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -33626,7 +33614,7 @@ function performUpdateAdGuard()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -36424,7 +36412,7 @@ EOFJS
 function performUpdateSysUtils()
 {
   perform_stack_name=sysutils
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -36435,7 +36423,7 @@ function performUpdateSysUtils()
       image_update_map[1]="prom/prometheus:v2.46.0,prom/prometheus:v2.50.1"
       image_update_map[2]="prom/node-exporter:v1.6.1,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.1-alpine,influxdb:2.7.5-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddPrometheusWeb false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -36446,7 +36434,7 @@ function performUpdateSysUtils()
       image_update_map[1]="prom/prometheus:v2.48.1,prom/prometheus:v2.50.1"
       image_update_map[2]="prom/node-exporter:v1.7.0,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.4-alpine,influxdb:2.7.5-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddPrometheusWeb false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -36505,7 +36493,7 @@ function performUpdateSysUtils()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -37093,7 +37081,7 @@ EOFLB
 function performUpdateOpenLDAP()
 {
   perform_stack_name=openldap
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -37110,7 +37098,7 @@ function performUpdateOpenLDAP()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -37913,7 +37901,7 @@ EOFRS
 function performUpdateMailu()
 {
   perform_stack_name=mailu
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -37965,7 +37953,7 @@ function performUpdateMailu()
       image_update_map[10]="ghcr.io/mailu/radicale:2.0.39,ghcr.io/mailu/radicale:2024.06.24"
       image_update_map[11]="ghcr.io/mailu/webmail:2.0.39,ghcr.io/mailu/webmail:2024.06.24"
       image_update_map[12]="apache/tika:2.9.2.1-full,apache/tika:2.9.2.1-full"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMailuV4Update
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfMailuV4Update
       mfMailuV4PostUpdate
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -38003,7 +37991,7 @@ function performUpdateMailu()
       image_update_map[10]="ghcr.io/mailu/radicale:2024.06.36,ghcr.io/mailu/radicale:2024.06.37"
       image_update_map[11]="ghcr.io/mailu/webmail:2024.06.36,ghcr.io/mailu/webmail:2024.06.37"
       image_update_map[12]="apache/tika:3.1.0.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMailuFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfMailuFixRedisCompose
       mfMailuV5PostUpdate
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -38031,7 +38019,7 @@ function performUpdateMailu()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -38108,16 +38096,15 @@ function mailuV111Bugfix()
   if sudo test -d ${HSHQ_STACKS_DIR}/mailu/clamav; then
     return
   fi
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  mailu_stack_id=$(getStackID mailu "$portainerToken")
+  mailu_stack_id=$(getStackID mailu)
   mailu_compose=$HSHQ_STACKS_DIR/portainer/compose/$mailu_stack_id/docker-compose.yml
   mailu_stack_firstline=$(sudo sed -n 1p $mailu_compose)
   mailu_stack_ver=$(getVersionFromComposeLine "$mailu_stack_firstline")
   if [ "$mailu_stack_ver" = "1" ] || [ "$mailu_stack_ver" = "2" ] || [ "$mailu_stack_ver" = "3" ]; then
     return
   fi
-  startStopStack mailu stop "$portainerToken"
-  updateStackEnv mailu mfMailuV111Bugfix "$portainerToken"
+  startStopStack mailu stop
+  updateStackEnv mailu mfMailuV111Bugfix
 }
 
 function mfMailuV111Bugfix()
@@ -38945,7 +38932,7 @@ EOFWZ
 function performUpdateWazuh()
 {
   perform_stack_name=wazuh
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -38977,7 +38964,7 @@ function performUpdateWazuh()
       image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
       image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.7.3"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateWazuhStackJavaMem
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateWazuhStackJavaMem
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -38988,7 +38975,7 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.9.1"
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.9.1"
       updateWazuhAgents "4.9.1-1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" outputWazuhDashboardConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" outputWazuhDashboardConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -38999,7 +38986,7 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.9.1,wazuh/wazuh-indexer:4.11.2"
       image_update_map[2]="wazuh/wazuh-dashboard:4.9.1,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -39011,7 +38998,7 @@ function performUpdateWazuh()
       image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
       # Don't forget to test version412WazuhUpdate
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" version412WazuhUpdate false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" version412WazuhUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -39021,7 +39008,7 @@ function performUpdateWazuh()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -39284,7 +39271,7 @@ EOFCO
 function performUpdateCollabora()
 {
   perform_stack_name=collabora
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -39334,7 +39321,7 @@ function performUpdateCollabora()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -40575,7 +40562,7 @@ EOFNG
 function performUpdateNextcloud()
 {
   perform_stack_name=nextcloud
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -40614,7 +40601,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:27.1.7-fpm-alpine,nextcloud:28.0.8-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfNextcloudUpdateNGINXConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfNextcloudUpdateNGINXConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
@@ -40637,7 +40624,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:29.0.8-fpm-alpine,nextcloud:30.0.1-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfNextcloudUpdateNGINXConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfNextcloudUpdateNGINXConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       return
@@ -40650,7 +40637,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:30.0.1-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.27.4-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfNextcloudUpdateNGINXConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfNextcloudUpdateNGINXConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       return
@@ -40663,7 +40650,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudAddTalkHPB
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudAddTalkHPB
       docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turn\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_PRIMARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
@@ -40682,7 +40669,7 @@ function performUpdateNextcloud()
       image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
       image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250811_115851"
       image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       return
@@ -40704,7 +40691,7 @@ function performUpdateNextcloud()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
   performMaintenanceNextcloud
 }
@@ -40966,7 +40953,7 @@ EOFJT
 function performUpdateJitsi()
 {
   perform_stack_name=jitsi
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -41040,7 +41027,7 @@ function performUpdateJitsi()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -41486,7 +41473,7 @@ EOFJT
 function performUpdateMatrix()
 {
   perform_stack_name=matrix
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -41545,7 +41532,7 @@ function performUpdateMatrix()
       image_update_map[1]="matrixdotorg/synapse:v1.127.1,matrixdotorg/synapse:v1.127.1"
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[3]="vectorim/element-web:v1.11.96,mirror.gcr.io/vectorim/element-web:v1.11.109"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMatrixFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfMatrixFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -41563,7 +41550,7 @@ function performUpdateMatrix()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -41858,7 +41845,7 @@ EOFWJ
 function performUpdateWikijs()
 {
   perform_stack_name=wikijs
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -41892,7 +41879,7 @@ function performUpdateWikijs()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -42016,7 +42003,7 @@ EOFDP
 function performUpdateDuplicati()
 {
   perform_stack_name=duplicati
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -42029,7 +42016,7 @@ function performUpdateDuplicati()
       newVer=v4
       curImageList=linuxserver/duplicati:2.0.8
       image_update_map[0]="linuxserver/duplicati:2.0.8,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiAddSettingsEncryptionKey
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfDuplicatiAddSettingsEncryptionKey
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42042,7 +42029,7 @@ function performUpdateDuplicati()
       newVer=v6
       curImageList=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
       image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiUpdateEnv
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfDuplicatiUpdateEnv
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42062,7 +42049,7 @@ function performUpdateDuplicati()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -42672,10 +42659,10 @@ EOFMD
 function performUpdateMastodon()
 {
   perform_stack_name=mastodon
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # Stack status: 1=running, 2=stopped
-  stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  stackStatus=$(getStackStatusByID $perform_stack_id)
   if [ -z "$stackStatus" ]; then
     is_upgrade_error=true
     perform_update_report="ERROR ($perform_stack_name): Could not get stack status"
@@ -42693,7 +42680,7 @@ function performUpdateMastodon()
       image_update_map[4]="elasticsearch:8.8.1,elasticsearch:8.12.2"
       # This upgrade requires a migration
       prepMastodonMigrate postgres:15.0-bullseye bitnami/redis:7.0.5 tootsuite/mastodon:v4.2.3 $perform_stack_id
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfMigrateMastodon false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfMigrateMastodon false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42737,7 +42724,7 @@ function performUpdateMastodon()
       echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
       echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$MASTODON_ARE_KEY_DERIVATION_SALT" >> $HSHQ_STACKS_DIR/mastodon/stack.env
       echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$MASTODON_ARE_PRIMARY_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfMigrateMastodon true mfUpdateMastodonV7
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfMigrateMastodon true mfUpdateMastodonV7
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42751,7 +42738,7 @@ function performUpdateMastodon()
       image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
       # This update simply fixes the mastodon-streaming issue, i.e. it has its own container and a few aspects of the docker compose needed an update
       # See https://github.com/mastodon/mastodon/pull/31554/files/51638f89b57613f01b1696b8644478ff4937937b#diff-e45e45baeda1c1e73482975a664062aa56f20c03dd9d64a827aba57775bed0d3
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon true mfUpdateMastodonV7
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon true mfUpdateMastodonV7
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42774,7 +42761,7 @@ function performUpdateMastodon()
       image_update_map[3]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
       image_update_map[4]="elasticsearch:8.17.4,mirror.gcr.io/elasticsearch:9.1.1"
       image_update_map[5]="tootsuite/mastodon-streaming:v4.3.7,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon true mfMastodonFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon true mfMastodonFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42794,7 +42781,7 @@ function performUpdateMastodon()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -42950,7 +42937,7 @@ function mfMigrateMastodon()
 {
   if [ "$stackStatus" = "1" ];then
     # Stack is running, stop it, then migrate
-    startStopStack mastodon stop "$portainerToken"
+    startStopStack mastodon stop
     isStartStackFromStopped=true
     sleep 3
   fi
@@ -42984,7 +42971,7 @@ function mfClearStaticAssetsMastodon()
 {
   if [ "$stackStatus" = "1" ];then
     # Stack is running, stop it, then clear assets
-    startStopStack mastodon stop "$portainerToken"
+    startStopStack mastodon stop
     isStartStackFromStopped=true
     sleep 3
   fi
@@ -43129,7 +43116,7 @@ EOFDZ
 function performUpdateDozzle()
 {
   perform_stack_name=dozzle
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -43175,7 +43162,7 @@ function performUpdateDozzle()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -43478,7 +43465,7 @@ EOFSE
 function performUpdateSearxNG()
 {
   perform_stack_name=searxng
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -43516,7 +43503,7 @@ function performUpdateSearxNG()
       image_update_map[0]="searxng/searxng:2024.10.31-fa108c140,searxng/searxng:2025.4.1-e6308b816"
       image_update_map[1]="caddy:2.8.4,caddy:2.9.1"
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfSearxngRemoveStartpage false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfSearxngRemoveStartpage false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -43526,7 +43513,7 @@ function performUpdateSearxNG()
       image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
       image_update_map[1]="caddy:2.9.1,mirror.gcr.io/caddy:2.10.0"
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfSearxngFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfSearxngFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -43543,7 +43530,7 @@ function performUpdateSearxNG()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -43699,7 +43686,7 @@ EOFLD
 function performUpdateJellyfin()
 {
   perform_stack_name=jellyfin
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -43707,7 +43694,7 @@ function performUpdateJellyfin()
       newVer=v3
       curImageList=jellyfin/jellyfin:10.8.10
       image_update_map[0]="jellyfin/jellyfin:10.8.10,jellyfin/jellyfin:10.9.8"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" notifyJellyfinLDAPPluginUpdate false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" notifyJellyfinLDAPPluginUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       sendEmailJellyfinLDAPPluginUpdate
       return
@@ -43716,7 +43703,7 @@ function performUpdateJellyfin()
       newVer=v3
       curImageList=jellyfin/jellyfin:10.8.13
       image_update_map[0]="jellyfin/jellyfin:10.8.13,jellyfin/jellyfin:10.9.8"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" notifyJellyfinLDAPPluginUpdate false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" notifyJellyfinLDAPPluginUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       sendEmailJellyfinLDAPPluginUpdate
       return
@@ -43747,7 +43734,7 @@ function performUpdateJellyfin()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -43872,7 +43859,7 @@ EOFJF
 function performUpdateFileBrowser()
 {
   perform_stack_name=filebrowser
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -43905,7 +43892,7 @@ function performUpdateFileBrowser()
       newVer=v7
       curImageList=filebrowser/filebrowser:v2.32.0
       image_update_map[0]="filebrowser/filebrowser:v2.32.0,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfFileBrowserAddConfigVol
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfFileBrowserAddConfigVol
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -43920,7 +43907,7 @@ function performUpdateFileBrowser()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -44259,7 +44246,7 @@ EOFPP
 function performUpdatePhotoPrism()
 {
   perform_stack_name=photoprism
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -44268,7 +44255,7 @@ function performUpdatePhotoPrism()
       curImageList=mariadb:10.7.3,photoprism/photoprism:220901-bullseye
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
       image_update_map[1]="photoprism/photoprism:220901-bullseye,photoprism/photoprism:240915"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdatePhotoPrismV2
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdatePhotoPrismV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       sendEmail -s "PhotoPrism Admin Login Info" -b "PhotoPrism Admin Username: $PHOTOPRISM_ADMIN_USERNAME\nPhotoPrism Admin Password: $PHOTOPRISM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
       PHOTOPRISM_INIT_ENV=true
@@ -44293,7 +44280,7 @@ function performUpdatePhotoPrism()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -44541,7 +44528,7 @@ EOFGC
 function performUpdateGuacamole()
 {
   perform_stack_name=guacamole
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -44579,7 +44566,7 @@ function performUpdateGuacamole()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -44959,7 +44946,7 @@ EOFAC
 function performUpdateAuthelia()
 {
   perform_stack_name=authelia
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -44968,7 +44955,7 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateAutheliaConfig
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateAutheliaConfig
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -44989,7 +44976,7 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.38.17,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.38.17,authelia/authelia:4.39.1"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAutheliaFixConfigV133 false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -44998,7 +44985,7 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.39.1,bitnami/redis:7.4.2
       image_update_map[0]="authelia/authelia:4.39.1,mirror.gcr.io/authelia/authelia:4.39.6"
       image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfAutheliaFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfAutheliaFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -45014,7 +45001,7 @@ function performUpdateAuthelia()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -45289,7 +45276,7 @@ EOFWP
 function performUpdateWordPress()
 {
   perform_stack_name=wordpress
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -45317,7 +45304,7 @@ function performUpdateWordPress()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -45496,7 +45483,7 @@ EOFGW
 function performUpdateGhost()
 {
   perform_stack_name=ghost
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -45554,7 +45541,7 @@ function performUpdateGhost()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -45818,7 +45805,7 @@ EOFPT
 function performUpdatePeerTube()
 {
   perform_stack_name=peertube
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -45863,7 +45850,7 @@ function performUpdatePeerTube()
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="chocobozzz/peertube:v7.1.0-bookworm,mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm"
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPeerTubeFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPeerTubeFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -45880,7 +45867,7 @@ function performUpdatePeerTube()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -46364,7 +46351,7 @@ function outputHASSPanels()
 function performUpdateHomeAssistant()
 {
   perform_stack_name=homeassistant
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -46376,7 +46363,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -46388,7 +46375,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -46418,7 +46405,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.1.7,nodered/node-red:4.0.2"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.0.1,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateHASSiFramesConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfUpdateHASSiFramesConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -46439,7 +46426,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:4.0.5,nodered/node-red:4.0.9-22"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfHomeAssistantUpdatePythonCertPath
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfHomeAssistantUpdatePythonCertPath
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -46467,7 +46454,7 @@ function performUpdateHomeAssistant()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -46805,7 +46792,7 @@ EOFGL
 function performUpdateGitlab()
 {
   perform_stack_name=gitlab
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -46850,7 +46837,7 @@ function performUpdateGitlab()
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="gitlab/gitlab-ce:17.10.3-ce.0,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0"
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGitlabFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGitlabFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       echo -e "\n\n========================================================================"
       echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
@@ -46869,7 +46856,7 @@ function performUpdateGitlab()
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0"
       image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       echo -e "\n\n========================================================================"
       echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
@@ -46892,7 +46879,7 @@ function performUpdateGitlab()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47119,7 +47106,7 @@ EOFVW
 function performUpdateVaultwarden()
 {
   perform_stack_name=vaultwarden
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -47129,7 +47116,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.29.1-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47139,7 +47126,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.1-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47149,7 +47136,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.2-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47159,7 +47146,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.5-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47197,7 +47184,7 @@ function performUpdateVaultwarden()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47459,7 +47446,7 @@ EOFDC
 function performUpdateDiscourse()
 {
   perform_stack_name=discourse
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -47528,7 +47515,7 @@ function performUpdateDiscourse()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47663,7 +47650,7 @@ EOFST
 function performUpdateSyncthing()
 {
   perform_stack_name=syncthing
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -47713,7 +47700,7 @@ function performUpdateSyncthing()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47913,7 +47900,7 @@ EOFCS
 function performUpdateCodeServer()
 {
   perform_stack_name=codeserver
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -47921,7 +47908,7 @@ function performUpdateCodeServer()
       newVer=v4
       curImageList=codercom/code-server:4.16.1
       image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.22.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47929,7 +47916,7 @@ function performUpdateCodeServer()
       newVer=v4
       curImageList=codercom/code-server:4.20.0
       image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.22.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47964,7 +47951,7 @@ function performUpdateCodeServer()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -48216,7 +48203,7 @@ EOFST
 function performUpdateShlink()
 {
   perform_stack_name=shlink
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -48227,7 +48214,7 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:3.6.3,shlinkio/shlink:4.0.3"
       image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -48238,7 +48225,7 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:3.7.2,shlinkio/shlink:4.0.3"
       image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -48250,13 +48237,13 @@ function performUpdateShlink()
       image_update_map[2]="shlinkio/shlink-web-client:4.0.0,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       if [ "$stackStatus" = "1" ];then
-        startStopStack shlink stop "$portainerToken"
+        startStopStack shlink stop
         sleep 3
       fi
       sudo rm -fr $HSHQ_NONBACKUP_DIR/shlink/redis/*
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfShlinkFixRedisUrl
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfShlinkFixRedisUrl
       if [ "$stackStatus" = "2" ];then
-        startStopStack shlink stop "$portainerToken"
+        startStopStack shlink stop
       fi
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -48284,7 +48271,7 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:4.4.6,mirror.gcr.io/shlinkio/shlink:4.5.0"
       image_update_map[2]="shlinkio/shlink-web-client:4.3.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0"
       image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfShlinkFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfShlinkFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -48302,7 +48289,7 @@ function performUpdateShlink()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -48652,7 +48639,7 @@ EOFFF
 function performUpdateFirefly()
 {
   perform_stack_name=firefly
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -48704,7 +48691,7 @@ function performUpdateFirefly()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="fireflyiii/core:version-6.2.10,fireflyiii/core:version-6.2.10"
       image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfFireflyAddImporterAndCron
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfFireflyAddImporterAndCron
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -48716,7 +48703,7 @@ function performUpdateFirefly()
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[3]="fireflyiii/data-importer:version-1.6.1,mirror.gcr.io/fireflyiii/data-importer:version-1.7.9"
       image_update_map[4]="alpine:3.21.3,mirror.gcr.io/alpine:3.22.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfFireflyFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfFireflyFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -48735,7 +48722,7 @@ function performUpdateFirefly()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -48985,7 +48972,7 @@ EOFEX
 function performUpdateExcalidraw()
 {
   perform_stack_name=excalidraw
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -48996,7 +48983,7 @@ function performUpdateExcalidraw()
       image_update_map[1]="kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
       image_update_map[2]="kiliandeca/excalidraw,mirror.gcr.io/kiliandeca/excalidraw"
       image_update_map[3]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfExcalidrawFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfExcalidrawFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -49014,7 +49001,7 @@ function performUpdateExcalidraw()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -49201,7 +49188,7 @@ EOFDI
 function performUpdateDrawIO()
 {
   perform_stack_name=drawio
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -49260,7 +49247,7 @@ function performUpdateDrawIO()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -49693,7 +49680,7 @@ EOFIV
 function performUpdateInvidious()
 {
   perform_stack_name=invidious
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -49702,7 +49689,7 @@ function performUpdateInvidious()
       curImageList=postgres:15.0-bullseye,quay.io/invidious/invidious:latest
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="quay.io/invidious/invidious:latest,quay.io/invidious/invidious:latest"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfInvidiousAddCompanion
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfInvidiousAddCompanion
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -49719,7 +49706,7 @@ function performUpdateInvidious()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -49911,7 +49898,7 @@ EOFGL
 function performUpdateGitea()
 {
   perform_stack_name=gitea
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -49950,7 +49937,7 @@ function performUpdateGitea()
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.22.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="gitea/gitea:1.22.3,gitea/gitea:1.23.6"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGiteaRemoveDeprecatedEnvVars
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGiteaRemoveDeprecatedEnvVars
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -49959,7 +49946,7 @@ function performUpdateGitea()
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.23.6
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="gitea/gitea:1.23.6,mirror.gcr.io/gitea/gitea:1.24.4"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGiteaRemoveDeprecatedEnvVars
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGiteaRemoveDeprecatedEnvVars
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -49975,7 +49962,7 @@ function performUpdateGitea()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50043,14 +50030,15 @@ function installMealie()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll mealie "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" "mealie.png" "$(getHeimdallOrderFromSub $SUB_MEALIE $USERTYPE_MEALIE)"
     restartAllCaddyContainers
-
-    mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
-    adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
+    #mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
+    #adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
     # Can't seem to get httpie to work, so switching to curl
     #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
     # API is broken in v1.3.2, so we'll go direct to DB
-    docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS' where id='$adminid';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
-    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
+    # API is broken again. We'll just do everything via DB...
+    pwHash=$(htpasswd -bnBC 10 "" $MEALIE_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
+    docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS', password='$pwHash', admin=true where username='admin';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
+    #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
   fi
 }
 
@@ -50195,7 +50183,7 @@ EOFGL
 function performUpdateMealie()
 {
   perform_stack_name=mealie
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -50261,7 +50249,7 @@ function performUpdateMealie()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50382,7 +50370,7 @@ EOFGL
 function performUpdateKasm()
 {
   perform_stack_name=kasm
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -50427,7 +50415,7 @@ function performUpdateKasm()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50892,7 +50880,7 @@ EOFNT
 function performUpdateNTFY()
 {
   perform_stack_name=ntfy
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -50927,7 +50915,7 @@ function performUpdateNTFY()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51012,7 +51000,7 @@ EOFNT
 function performUpdateITTools()
 {
   perform_stack_name=ittools
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51027,7 +51015,7 @@ function performUpdateITTools()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51142,7 +51130,7 @@ EOFRM
 function performUpdateRemotely()
 {
   perform_stack_name=remotely
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51175,7 +51163,7 @@ function performUpdateRemotely()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51369,7 +51357,7 @@ EOFPY
 function performUpdateCalibre()
 {
   perform_stack_name=calibre
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51421,7 +51409,7 @@ function performUpdateCalibre()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51555,7 +51543,7 @@ EOFDZ
 function performUpdateNetdata()
 {
   perform_stack_name=netdata
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51595,7 +51583,7 @@ function performUpdateNetdata()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51797,7 +51785,7 @@ EOFIM
 function performUpdateLinkwarden()
 {
   perform_stack_name=linkwarden
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51849,7 +51837,7 @@ function performUpdateLinkwarden()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51946,7 +51934,7 @@ EOFDZ
 function performUpdateStirlingPDF()
 {
   perform_stack_name=stirlingpdf
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51991,7 +51979,7 @@ function performUpdateStirlingPDF()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -52297,7 +52285,7 @@ EOFBA
 function performUpdateBarAssistant()
 {
   perform_stack_name=bar-assistant
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -52330,7 +52318,7 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       image_update_map[3]="barassistant/salt-rim:2.15.0,barassistant/salt-rim:3.2.1"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData true mfUpdateBarAssistantV4
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfUpdateBarAssistantV4
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -52342,7 +52330,7 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[3]="barassistant/salt-rim:3.2.1,mirror.gcr.io/barassistant/salt-rim:4.6.0"
       image_update_map[4]="nginx:1.25.3-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData true mfBarAssistantFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfBarAssistantFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -52354,7 +52342,7 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[3]="barassistant/salt-rim:4.1.0,mirror.gcr.io/barassistant/salt-rim:4.6.0"
       image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData true mfBarAssistantFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfBarAssistantFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -52373,7 +52361,7 @@ function performUpdateBarAssistant()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -52389,7 +52377,7 @@ function mfClearMeiliData()
 {
   if [ "$stackStatus" = "1" ];then
     # Stack is running, stop it, then clear data
-    startStopStack bar-assistant stop "$portainerToken"
+    startStopStack bar-assistant stop
     isStartStackFromStopped=true
     sleep 3
   fi
@@ -52659,7 +52647,7 @@ EOFIM
 function performUpdateFreshRSS()
 {
   perform_stack_name=freshrss
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -52699,7 +52687,7 @@ function performUpdateFreshRSS()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -52897,7 +52885,7 @@ EOFBA
 function performUpdateKeila()
 {
   perform_stack_name=keila
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -52937,7 +52925,7 @@ function performUpdateKeila()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53185,7 +53173,7 @@ EOFPT
 function performUpdateWallabag()
 {
   perform_stack_name=wallabag
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -53209,7 +53197,7 @@ function performUpdateWallabag()
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[2]="wallabag/wallabag:2.6.10,mirror.gcr.io/wallabag/wallabag:2.6.13"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfWallabagFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfWallabagFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -53226,7 +53214,7 @@ function performUpdateWallabag()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53337,7 +53325,7 @@ EOFDZ
 function performUpdateJupyter()
 {
   perform_stack_name=jupyter
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -53367,7 +53355,7 @@ function performUpdateJupyter()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53684,7 +53672,7 @@ EOFIM
 function performUpdatePaperless()
 {
   perform_stack_name=paperless
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -53714,7 +53702,7 @@ function performUpdatePaperless()
       image_update_map[2]="apache/tika:3.0.0.0,apache/tika:3.1.0.0"
       image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.13.2,ghcr.io/paperless-ngx/paperless-ngx:2.14.7"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPaperlessUpdatePythonCertPath
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessUpdatePythonCertPath
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -53726,7 +53714,7 @@ function performUpdatePaperless()
       image_update_map[2]="apache/tika:3.1.0.0,mirror.gcr.io/apache/tika:3.2.2.0-full"
       image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.14.7,ghcr.io/paperless-ngx/paperless-ngx:2.17.1"
       image_update_map[4]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPaperlessFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -53745,7 +53733,7 @@ function performUpdatePaperless()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53986,7 +53974,7 @@ EOFDS
 function performUpdateSpeedtestTrackerLocal()
 {
   perform_stack_name=speedtest-tracker-local
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -54038,7 +54026,7 @@ function performUpdateSpeedtestTrackerLocal()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54258,7 +54246,7 @@ EOFDS
 function performUpdateSpeedtestTrackerVPN()
 {
   perform_stack_name=speedtest-tracker-vpn
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -54310,7 +54298,7 @@ function performUpdateSpeedtestTrackerVPN()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54498,7 +54486,7 @@ EOFCD
 function performUpdateChangeDetection()
 {
   perform_stack_name=changedetection
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -54544,7 +54532,7 @@ function performUpdateChangeDetection()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54757,7 +54745,7 @@ EOFDZ
 function performUpdateHuginn()
 {
   perform_stack_name=huginn
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -54785,7 +54773,7 @@ function performUpdateHuginn()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54970,7 +54958,7 @@ function updateCoturnAllowedIPs()
 function performUpdateCoturn()
 {
   perform_stack_name=coturn
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -55000,7 +54988,7 @@ function performUpdateCoturn()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -55109,7 +55097,7 @@ EOFDZ
 function performUpdateFileDrop()
 {
   perform_stack_name=filedrop
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -55124,7 +55112,7 @@ function performUpdateFileDrop()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -55572,7 +55560,7 @@ EOFPI
 function performUpdatePiped()
 {
   perform_stack_name=piped
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -55602,7 +55590,7 @@ function performUpdatePiped()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -55661,9 +55649,8 @@ function installGrampsWeb()
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(6,'BASE_URL','https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(7,'EMAIL_USE_TLS','0');"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  startStopStack grampsweb stop "$portainerToken"
-  startStopStack grampsweb start "$portainerToken"
+  startStopStack grampsweb stop
+  startStopStack grampsweb start
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -55857,7 +55844,7 @@ EOFPI
 function performUpdateGrampsWeb()
 {
   perform_stack_name=grampsweb
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -55878,7 +55865,7 @@ function performUpdateGrampsWeb()
       curImageList=ghcr.io/gramps-project/grampsweb:v25.4.0,bitnami/redis:7.4.2
       image_update_map[0]="ghcr.io/gramps-project/grampsweb:v25.4.0,ghcr.io/gramps-project/grampsweb:25.7.3"
       image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGrampsWebFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGrampsWebFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -55894,7 +55881,7 @@ function performUpdateGrampsWeb()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -56217,7 +56204,7 @@ EOFPI
 function performUpdatePenpot()
 {
   perform_stack_name=penpot
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -56229,7 +56216,7 @@ function performUpdatePenpot()
       image_update_map[2]="penpotapp/frontend:2.2.1,penpotapp/frontend:2.5.4"
       image_update_map[3]="penpotapp/exporter:2.2.1,penpotapp/exporter:2.5.4"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfPenpotFixPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfPenpotFixPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -56241,7 +56228,7 @@ function performUpdatePenpot()
       image_update_map[2]="penpotapp/frontend:2.5.4,mirror.gcr.io/penpotapp/frontend:2.8.1"
       image_update_map[3]="penpotapp/exporter:2.5.4,mirror.gcr.io/penpotapp/exporter:2.8.1"
       image_update_map[4]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPenpotFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPenpotFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -56260,7 +56247,7 @@ function performUpdatePenpot()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -56559,7 +56546,7 @@ EOFPI
 function performUpdateEspoCRM()
 {
   perform_stack_name=espocrm
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -56587,7 +56574,7 @@ function performUpdateEspoCRM()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -57051,7 +57038,7 @@ EOFIM
 function performUpdateImmich()
 {
   perform_stack_name=immich
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -57071,7 +57058,7 @@ function performUpdateImmich()
       image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.132.0"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.132.0"
       image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfImmichFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -57097,7 +57084,7 @@ function performUpdateImmich()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -57269,7 +57256,7 @@ EOFIM
 function performUpdateHomarr()
 {
   perform_stack_name=homarr
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -57302,7 +57289,7 @@ function performUpdateHomarr()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -57585,7 +57572,7 @@ EOFMT
 function performUpdateMatomo()
 {
   perform_stack_name=matomo
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -57609,7 +57596,7 @@ function performUpdateMatomo()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -57791,7 +57778,7 @@ EOFMT
 function performUpdatePastefy()
 {
   perform_stack_name=pastefy
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -57813,7 +57800,7 @@ function performUpdatePastefy()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -57907,7 +57894,7 @@ EOFMT
 function performUpdateSnippetBox()
 {
   perform_stack_name=snippetbox
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -57922,7 +57909,7 @@ function performUpdateSnippetBox()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -58863,7 +58850,7 @@ function buildMindsDBImage()
 function performUpdateAIStack()
 {
   perform_stack_name=aistack
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -58884,7 +58871,7 @@ function performUpdateAIStack()
         perform_update_report="ERROR ($perform_stack_name): Could not build new MindsDB image"
         return
       fi
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfAIStackFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfAIStackFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -58905,7 +58892,7 @@ function performUpdateAIStack()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -59252,10 +59239,10 @@ EOFPF
 function buildImagePixelfedV1()
 {
   set +e
-  echo -e "/n========================================================================"
+  echo -e "\n========================================================================"
   echo -e "  The Pixelfed image is being built. It can take up to 15 minutes for"
   echo -e "  the process to complete, so please be patient."
-  echo -e "========================================================================/n"
+  echo -e "========================================================================\n"
   img_ver=v0.12.5.tar.gz
   cd $HSHQ_BUILD_DIR
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
@@ -60367,7 +60354,7 @@ EOFPF
 function performUpdatePixelfed()
 {
   perform_stack_name=pixelfed
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -60377,7 +60364,7 @@ function performUpdatePixelfed()
       image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
       image_update_map[1]="hshq/pixelfed:v1,hshq/pixelfed:v1"
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPixelfedFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPixelfedFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -60394,7 +60381,7 @@ function performUpdatePixelfed()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -60637,7 +60624,7 @@ EOFIM
 function performUpdateYamtrack()
 {
   perform_stack_name=yamtrack
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -60647,7 +60634,7 @@ function performUpdateYamtrack()
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="ghcr.io/fuzzygrim/yamtrack:0.22.7,ghcr.io/fuzzygrim/yamtrack:0.24.7"
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfYamtrackFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfYamtrackFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -60664,7 +60651,7 @@ function performUpdateYamtrack()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61364,7 +61351,7 @@ EOFMT
 function performUpdateServarr()
 {
   perform_stack_name=servarr
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -61385,7 +61372,7 @@ function performUpdateServarr()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61605,7 +61592,7 @@ EOFMT
 function performUpdateSABnzbd()
 {
   perform_stack_name=sabnzbd
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -61620,7 +61607,7 @@ function performUpdateSABnzbd()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61770,7 +61757,7 @@ EOFMT
 function performUpdateqBittorrent()
 {
   perform_stack_name=qbittorrent
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -61785,7 +61772,7 @@ function performUpdateqBittorrent()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61979,7 +61966,7 @@ EOFOB
 function performUpdateOmbi()
 {
   perform_stack_name=ombi
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -61995,7 +61982,7 @@ function performUpdateOmbi()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -62283,7 +62270,7 @@ EOFMT
 function performUpdateMeshCentral()
 {
   perform_stack_name=meshcentral
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -62298,7 +62285,7 @@ function performUpdateMeshCentral()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -62408,7 +62395,7 @@ EOFMT
 function performUpdateNavidrome()
 {
   perform_stack_name=navidrome
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -62423,7 +62410,7 @@ function performUpdateNavidrome()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -62600,7 +62587,7 @@ EOFMT
 function performUpdateExampleService()
 {
   perform_stack_name=exampleservice
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -62615,7 +62602,7 @@ function performUpdateExampleService()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -62688,7 +62675,7 @@ EOFRM
 function performUpdateOfelia()
 {
   perform_stack_name=ofelia
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -62728,7 +62715,7 @@ function performUpdateOfelia()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -65995,10 +65982,10 @@ decryptConfigFileAndLoadEnvNoPrompts
 set +e
 echo "Testing Portainer"
 echo "Getting auth token..."
-portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
+PORTAINER_TOKEN="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
 if [ \$? -eq 0 ]; then
   echo "Querying stacks..."
-  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
+  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID)
   if [ \$? -eq 0 ]; then
     echo "Succesfully executed query, connection is good!"
   else
@@ -71046,7 +71033,7 @@ EOFSP
 function performUpdateSQLPad()
 {
   perform_stack_name=sqlpad
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -71096,7 +71083,7 @@ function performUpdateSQLPad()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -71593,7 +71580,7 @@ EOFHL
 function performUpdateHeimdall()
 {
   perform_stack_name=heimdall
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -71608,7 +71595,7 @@ function performUpdateHeimdall()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -72405,7 +72392,7 @@ EOFCE
 function performUpdateCaddy()
 {
   perform_stack_name=$2
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -72440,7 +72427,7 @@ function performUpdateCaddy()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -72731,7 +72718,7 @@ EOFCF
 function performUpdateClientDNS()
 {
   perform_stack_name=$2
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -72759,7 +72746,7 @@ function performUpdateClientDNS()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -72872,7 +72859,7 @@ EOFUK
 function performUpdateUptimeKuma()
 {
   perform_stack_name=uptimekuma
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -72907,7 +72894,7 @@ function performUpdateUptimeKuma()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
