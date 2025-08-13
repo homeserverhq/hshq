@@ -15680,11 +15680,14 @@ function restartStackIfRunning()
     return
   fi
   stackStatus=$(getStackStatusByID $stackID "$portainerToken")
+  rssif_rtVal=0
   if [ "$stackStatus" = "1" ]; then
     startStopStackByID $stackID stop $portainerToken
     sleep $waitTime
     startStopStackByID $stackID start $portainerToken
+    rssif_rtVal=$?
   fi
+  return $rssif_rtVal
 }
 
 function forceRestartStack()
@@ -27890,10 +27893,20 @@ function upgradeStack()
   sudo sed -i "1s|.*|$STACK_VERSION_PREFIX $comp_stack_name $new_ver|" $upgrade_compose_file
   set +e
   $stackModFunction
+  if [ $? -ne 0 ]; then
+    is_upgrade_error=true
+    stack_upgrade_report="ERROR ($comp_stack_name): There was an issue with the modify function."
+    return
+  fi
   if [ "$isStartStackFromStopped" = "true" ] && [ "$isReinstallStack" = "false" ]; then
     unset isStartStackFromStopped
     isStartStackFromStopped=""
     startStopStack $comp_stack_name start "$portainerToken"
+    if [ $? -ne 0 ]; then
+      is_upgrade_error=true
+      stack_upgrade_report="ERROR ($comp_stack_name): There was a problem restarting the stopped stack."
+      return
+    fi
   else
     if [ "$isReinstallStack" = "true" ]; then
       sudo cp $upgrade_compose_file $HOME/${comp_stack_name}-compose.yml
@@ -27902,9 +27915,24 @@ function upgradeStack()
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}.env
       set +e
       $stackReinstallModFunction
+      if [ $? -ne 0 ]; then
+        is_upgrade_error=true
+        stack_upgrade_report="ERROR ($comp_stack_name): There was an issue with the reinstall modify function."
+        return
+      fi
       updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env "$portainerToken"
+      if [ $? -ne 0 ]; then
+        is_upgrade_error=true
+        stack_upgrade_report="ERROR ($comp_stack_name): There was a problem updating the stack."
+        return
+      fi
     else
       restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+      if [ $? -ne 0 ]; then
+        is_upgrade_error=true
+        stack_upgrade_report="ERROR ($comp_stack_name): There was a problem restarting the stack."
+        return
+      fi
     fi
   fi
   set +e
@@ -37974,6 +38002,7 @@ function performUpdateMailu()
       image_update_map[11]="ghcr.io/mailu/webmail:2024.06.36,ghcr.io/mailu/webmail:2024.06.37"
       image_update_map[12]="apache/tika:3.1.0.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMailuFixRedisCompose
+      mfMailuV5PostUpdate
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -38123,6 +38152,17 @@ function mfMailuFixRedisCompose()
   replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/mailu-compose.yml false ">"
   cat -s $HOME/mailu-compose.yml > $HOME/ac.tmp
   mv $HOME/ac.tmp $HOME/mailu-compose.yml
+}
+
+function mfMailuV5PostUpdate()
+{
+  echo "Waiting for mailu stack to initialize..."
+  waitForStack "Listening at: http://0.0.0.0:8080" mailu-admin
+  sleep 15
+  echo "Restarting mailu stack..."
+  startStopStack mailu stop
+  sleep 1
+  startStopStack mailu start
 }
 
 # Wazuh
@@ -48961,7 +49001,35 @@ function performUpdateExcalidraw()
 
 function mfExcalidrawFixRedisCompose()
 {
-  replaceRedisBlock excalidraw excalidraw-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  lineStart="  excalidraw-redis:"
+  lineEnd="      - v-excalidraw-redis:/bitnami/redis/data"
+  replaceText=""
+  replaceText=$replaceText">>excalidraw-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: excalidraw-redis\n"
+  replaceText=$replaceText">>>>hostname: excalidraw-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $EXCALIDRAW_REDIS_PASSWORD\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-excalidraw-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/ssl/certs:/etc/ssl/certs:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/share/ca-certificates:/usr/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- v-excalidraw-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/excalidraw-compose.yml false ">"
+  cat -s $HOME/excalidraw-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/excalidraw-compose.yml
+  sed -i "/ALLOW_EMPTY_PASSWORD=.*/d" $HOME/excalidraw.env
+  sed -i "/REDIS_PASSWORD=.*/d" $HOME/excalidraw.env
+  sed -i "/REDIS_DISABLE_COMMANDS=.*/d" $HOME/excalidraw.env
   sudo rm -fr $HSHQ_STACKS_DIR/excalidraw/redis/*
 }
 
@@ -49923,15 +49991,12 @@ function installMealie()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/mealie
   mkdir $HSHQ_STACKS_DIR/mealie/app
   mkdir $HSHQ_STACKS_DIR/mealie/db
   mkdir $HSHQ_STACKS_DIR/mealie/dbexport
   chmod 777 $HSHQ_STACKS_DIR/mealie/dbexport
-
   initServicesCredentials
-
   set +e
   docker exec mailu-admin flask mailu alias-delete $MEALIE_ADMIN_EMAIL_ADDRESS
   sleep 5
@@ -49942,7 +50007,6 @@ function installMealie()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MEALIE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -52247,7 +52311,7 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       image_update_map[3]="barassistant/salt-rim:2.15.0,barassistant/salt-rim:3.2.1"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateBarAssistantV4
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData true mfUpdateBarAssistantV4
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -52259,7 +52323,7 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[3]="barassistant/salt-rim:3.2.1,mirror.gcr.io/barassistant/salt-rim:4.6.0"
       image_update_map[4]="nginx:1.25.3-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfBarAssistantFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData true mfBarAssistantFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -52271,7 +52335,7 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[3]="barassistant/salt-rim:4.1.0,mirror.gcr.io/barassistant/salt-rim:4.6.0"
       image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfBarAssistantFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData true mfBarAssistantFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -54894,22 +54958,22 @@ function performUpdateCoturn()
     1)
       newVer=v4
       curImageList=coturn/coturn:4.6
-      image_update_map[0]="coturn/coturn:4.6,mirror.gcr.io/collabora/code:25.04.4.2.1"
+      image_update_map[0]="coturn/coturn:4.6,mirror.gcr.io/coturn/coturn:4.7.0"
     ;;
     2)
       newVer=v4
       curImageList=coturn/coturn:4.6.2
-      image_update_map[0]="coturn/coturn:4.6.2,mirror.gcr.io/collabora/code:25.04.4.2.1"
+      image_update_map[0]="coturn/coturn:4.6.2,mirror.gcr.io/coturn/coturn:4.7.0"
     ;;
     3)
       newVer=v4
       curImageList=coturn/coturn:4.6.3
-      image_update_map[0]="coturn/coturn:4.6.3,mirror.gcr.io/collabora/code:25.04.4.2.1"
+      image_update_map[0]="coturn/coturn:4.6.3,mirror.gcr.io/coturn/coturn:4.7.0"
     ;;
     4)
       newVer=v4
       curImageList=coturn/coturn:4.6.3
-      image_update_map[0]="mirror.gcr.io/collabora/code:25.04.4.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
+      image_update_map[0]="mirror.gcr.io/coturn/coturn:4.7.0,mirror.gcr.io/coturn/coturn:4.7.0"
     ;;
     *)
       is_upgrade_error=true
