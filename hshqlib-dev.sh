@@ -59169,7 +59169,10 @@ EOFPF
 function buildImagePixelfedV1()
 {
   set +e
-  echo "The Pixelfed image is being built. It can take up to 15 minutes for the process to complete, so please be patient."
+  echo -e "/n========================================================================"
+  echo -e "  The Pixelfed image is being built. It can take up to 15 minutes for"
+  echo -e "  the process to complete, so please be patient."
+  echo -e "========================================================================/n"
   img_ver=v0.12.5.tar.gz
   cd $HSHQ_BUILD_DIR
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
