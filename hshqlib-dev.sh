@@ -57008,7 +57008,15 @@ EOFPI
   }
 }
 EOFIM
+  outputImmichAutheliaOIDC
+  curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
+insert into "user"(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
+EOFIM
+}
 
+function outputImmichAutheliaOIDC()
+{
   cat <<EOFIM > $HOME/immich.oidc
 # Authelia OIDC Client immich BEGIN
       - client_id: immich
@@ -57025,13 +57033,14 @@ EOFIM
           - profile
           - email
           - groups
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+        access_token_signed_response_alg: none
         userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
 # Authelia OIDC Client immich END
-EOFIM
-
-  curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
-  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
-insert into users(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
 EOFIM
 }
 
@@ -57092,6 +57101,10 @@ function mfImmichFixRedisCompose()
 {
   replaceRedisBlock immich immich-redis mirror.gcr.io/redis:8.2.0-bookworm true
   sudo rm -fr $HSHQ_NONBACKUP_DIR/immich/redis/*
+  outputImmichAutheliaOIDC
+  oidcBlock=$(cat $HOME/immich.oidc)
+  rm -f $HOME/immich.oidc
+  insertOIDCClientAuthelia immich "$oidcBlock"
 }
 
 # Homarr
