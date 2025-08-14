@@ -40732,8 +40732,10 @@ function performUpdateNextcloud()
 
 function performMaintenanceNextcloud()
 {
-  echo "Performing maintenance on Nextcloud, this could take a few minutes..."
-  waitForStack "ready to handle connections" nextcloud-app 3600 5
+  echo -e "\n========================================================================"
+  echo -e "  Performing maintenance on Nextcloud, this could take a few minutes..."
+  echo -e "========================================================================\n"
+  waitForStack "ready to handle connections" nextcloud-app 3600 15
   if [ "$isStackReady" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
     docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
@@ -57139,13 +57141,18 @@ function performUpdateImmich()
     2)
       # Must go to v1.132.0 first, then to v1.137.3
       newVer=v3
-      curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
-      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      curImageList=tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
+      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
       image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.132.0"
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.132.0"
       image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichFixRedisCompose
-      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      if [ $? -eq 0 ]; then
+        is_upgrade_error=true
+        perform_update_report="WARNING ($perform_stack_name): If the Immich service does not work after this upgrade, then try restarting the stack (in Portainer)."
+      else
+        perform_update_report="${perform_update_report}$stack_upgrade_report"
+      fi
       return
     ;;
     3)
