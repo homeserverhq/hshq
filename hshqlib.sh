@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=182
+HSHQ_LIB_SCRIPT_VERSION=183
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -198,7 +198,7 @@ function init()
   SS_UPDATING=updating
   SS_REMOVING=removing
   SS_RUNNING=running
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
@@ -2568,14 +2568,16 @@ function performRestorePostcheck()
 function createClientDNSNetworksOnRestore()
 {
   echo "Creating ClientDNS networks..."
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   rsi_numTries=1
   rsi_totalTries=5
   rsi_retVal=1
   rstackIDsQry=""
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -5093,7 +5095,6 @@ function updateListOfStacks()
   stackListArr=($(echo "$1" | tr "," "\n"))
   stacks_need_update_list="$(getStacksToUpdate)"
   setSudoTimeoutInstall
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   report_start_time=$(date)
   full_update_report=""
   full_update_report="${full_update_report}                    Successful                    \n"
@@ -5111,7 +5112,7 @@ function updateListOfStacks()
     if ! [ "$(isItemInCSVList $cur_svc $stacks_need_update_list)" = "true" ]; then
       continue
     fi
-    performUpdateStackByName "$cur_svc" "$portainerToken"
+    performUpdateStackByName "$cur_svc"
     if [ "$is_upgrade_error" = "true" ]; then
       upgrade_error_report="${upgrade_error_report}\n$perform_update_report\n"
     else
@@ -5209,18 +5210,17 @@ function clearRedisTempDataByStackName()
     echo "ERROR: Could not find corresponding redis directory"
     return
   fi
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  stackStatus=$(getStackStatusByName "$stackName" "$portainerToken")
+  stackStatus=$(getStackStatusByName "$stackName")
   if ! [ "$stackStatus" = "1" ]; then
     echo "ERROR: This stack is not currently running"
     return
   fi
   echo "Stopping $stackName..."
-  startStopStack "$stackName" stop "$portainerToken"
+  startStopStack "$stackName" stop
   echo "Clearing redis data..."
   sudo rm -fr $HSHQ_NONBACKUP_DIR/$stackName/redis/*
   echo "Starting $stackName..."
-  startStopStack "$stackName" start "$portainerToken"
+  startStopStack "$stackName" start
   echo "Complete!"
 }
 
@@ -9288,14 +9288,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailrelay-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mail-relay-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mail-relay-redis:/data
 
 volumes:
   caddy-certs:
@@ -9919,12 +9919,13 @@ EOFWQ
 function installFileBrowser()
 {
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser
-  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/db
   mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/srv
+  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/db
+  mkdir \$RELAYSERVER_HSHQ_STACKS_DIR/filebrowser/config
   RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD=$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD
   FILEBROWSER_PASSWORD_HASH=\$(htpasswd -bnBC 10 "" \$RELAYSERVER_FILEBROWSER_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/')
   outputConfigFileBrowser
-  installStack filebrowser filebrowser "Listening on" \$HOME/filebrowser.env
+  installStack filebrowser filebrowser "" \$HOME/filebrowser.env
   startStopStack filebrowser stop
 }
 
@@ -9951,6 +9952,7 @@ services:
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/srv:/srv
       - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/db:/database
+      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/config:/config
 
 networks:
   dock-proxy-net:
@@ -13101,7 +13103,7 @@ function removeMyNetworkPrimaryVPN()
   resetRelayServerData
   updateSvcsIPChanges
   checkUpdateAllIPTables removeMyNetworkPrimaryVPN
-
+  outputStackListsScriptServer
 }
 
 function removeMyNetworkHomeServerVPNConnection()
@@ -15040,11 +15042,14 @@ function getPortainerToken()
 function getStackID()
 {
   stackID="NA"
-  stackName=$1
+  stackName="$1"
+  if [ -z "$stackName" ]; then
+    echo "ERROR (getStackID): The stack name is empty..." 1>&2
+    return
+  fi
   stackName="${stackName//.}"
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   gsid_numTries=1
   gsid_totalTries=5
@@ -15052,7 +15057,7 @@ function getStackID()
   qry=""
   while [ $gsid_numTries -le $gsid_totalTries ]
   do
-    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     gsid_retVal=$?
     if [ $gsid_retVal -eq 0 ]; then
       break
@@ -15084,15 +15089,16 @@ function updateStackByID()
   update_stack_id=$2
   update_compose_file=$3
   update_env_file=$4
-  portainerToken=$5
-
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
   usid_numTries=1
   usid_totalTries=5
   usid_retVal=1
   while [ $usid_numTries -le $usid_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
     usid_retVal=$?
     if [ $usid_retVal -eq 0 ]; then
       break
@@ -15124,16 +15130,29 @@ function restartAllStacks()
   set +e
   skipRestart="$1"
   isOnlyHSHQManaged="$2"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  startStopStack uptimekuma stop "$portainerToken"
-
+  startStopStack uptimekuma stop
   rsi_numTries=1
   rsi_totalTries=5
   rsi_retVal=1
   rstackIDsQry=""
+  tgLock="$(tryGetLock networkchecks restartAllStacks)"
+  if ! [ "$tgLock" = "true" ]; then
+    checkRes="$(getLockOpenMsg networkchecks)"
+    strErr="restartAllStacks - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
+    logHSHQEvent warning "$strErr"
+    return
+  fi
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not get Portainer auth token..." 1>&2
+    releaseLock networkchecks restartAllStacks false
+    return
+  fi
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -15142,22 +15161,22 @@ function restartAllStacks()
   done
   if [ $rsi_retVal -ne 0 ]; then
     echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    releaseLock networkchecks restartAllStacks false
     return
   fi
   rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
   rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
-
   numItems=$((${#rstackIDs[@]} - 1))
   for curID in $(seq 0 $numItems);
   do
     echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
+    startStopStackByID ${rstackIDs[$curID]} stop
     sleep 1
   done
   stopPortainer
-  removeDockerNetworks
   sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
   docker container prune -f
+  removeDockerNetworks
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
@@ -15165,21 +15184,21 @@ function restartAllStacks()
   total_tries=10
   num_tries=1
   sleep 5
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   retVal=$?
   while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
   do
     echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
     sleep 5
     ((num_tries++))
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
   if [ $retVal -ne 0 ]; then
     echo "Error getting portainer token, exiting..."
+    releaseLock networkchecks restartAllStacks false
     exit 1
   fi
-
   for curID in $(seq 0 $numItems);
   do
     if ! [ -z "$skipRestart" ]; then
@@ -15195,10 +15214,11 @@ function restartAllStacks()
       fi
     fi
     echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} start $portainerToken
+    startStopStackByID ${rstackIDs[$curID]} start
     sleep 3
   done
-  startStopStack uptimekuma start "$portainerToken"
+  startStopStack uptimekuma start
+  releaseLock networkchecks restartAllStacks false
   if ! [ -z "$ras_curE" ]; then
     set -e
   fi
@@ -15269,11 +15289,7 @@ function updateStackEnv()
 {
   updateStackName=$1
   updateModFunction=$2
-  portainerToken=$3
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  updateStackID=$(getStackID $updateStackName "$portainerToken")
+  updateStackID=$(getStackID $updateStackName)
   if [ -z "$updateStackID" ]; then
     echo "ERROR: Could not find stack ID for $updateStackName"
     return 2
@@ -15285,7 +15301,7 @@ function updateStackEnv()
     rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
     return $rtVal
   fi
-  updateStackByID $updateStackName $updateStackID $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env "$portainerToken"
+  updateStackByID $updateStackName $updateStackID $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
   rm -f $HOME/${updateStackName}-compose.yml $HOME/${updateStackName}.env
 }
 
@@ -15549,7 +15565,6 @@ function installStack()
   envfile=$4
   sleep_interval=$5
   max_interval=$6
-
   if [ -z "$sleep_interval" ]; then
     sleep_interval=1
   fi
@@ -15618,24 +15633,20 @@ function startStopStack()
 {
   stackname=$1
   startStop=$2
-  portainerToken=$3
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackname "$portainerToken")
+  stackID=$(getStackID $stackname)
   if [ -z "$stackID" ]; then
     return
   fi
-  startStopStackByID $stackID $startStop $portainerToken
+  startStopStackByID $stackID $startStop
 }
 
 function startStopStackByID()
 {
   stackID=$1
   startStop=$2
-  portainerToken=$3
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  set +e
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   sss_numTries=1
   sss_totalTries=5
@@ -15643,9 +15654,9 @@ function startStopStackByID()
   while [ $sss_numTries -le $sss_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $sss_numTries -eq $sss_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     fi
     sss_retVal=$?
     if [ $sss_retVal -eq 0 ]; then
@@ -15658,7 +15669,7 @@ function startStopStackByID()
   done
   if [ $sss_retVal -ne 0 ]; then
     echo "ERROR: Could not $startStop stack (ID=$stackID) in Portainer..." 1>&2
-    return
+    return $sss_retVal
   fi
 }
 
@@ -15666,57 +15677,51 @@ function restartStackIfRunning()
 {
   stackName=$1
   waitTime=$2
-  portainerToken=$3
   if [ "$stackName" = "portainer" ]; then
     # Special case for portainer
     restartPortainer
     return
   fi
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackName "$portainerToken")
+  stackID=$(getStackID $stackName)
   if [ -z "$stackID" ]; then
     return
   fi
-  stackStatus=$(getStackStatusByID $stackID "$portainerToken")
+  stackStatus=$(getStackStatusByID $stackID)
+  rssif_rtVal=0
   if [ "$stackStatus" = "1" ]; then
-    startStopStackByID $stackID stop $portainerToken
+    startStopStackByID $stackID stop
     sleep $waitTime
-    startStopStackByID $stackID start $portainerToken
+    startStopStackByID $stackID start
+    rssif_rtVal=$?
   fi
+  return $rssif_rtVal
 }
 
 function forceRestartStack()
 {
   stackName=$1
   waitTime=$2
-  portainerToken=$3
   if [ "$stackName" = "portainer" ]; then
     # Special case for portainer
     restartPortainer
     return
   fi
   set +e
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackName "$portainerToken")
+  stackID=$(getStackID $stackName)
   if [ -z "$stackID" ]; then
     return
   fi
   set +e
-  startStopStackByID $stackID stop $portainerToken
+  startStopStackByID $stackID stop
   sleep $waitTime
-  startStopStackByID $stackID start $portainerToken
+  startStopStackByID $stackID start
 }
 
 function getStackStatusByID()
 {
   stackID=$1
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
   gss_numTries=1
   gss_totalTries=5
@@ -15724,7 +15729,7 @@ function getStackStatusByID()
   stackStatus=""
   while [ $gss_numTries -le $gss_totalTries ]
   do
-    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
     gss_retVal=$?
     if [ $gss_retVal -eq 0 ]; then
       break
@@ -15741,26 +15746,21 @@ function getStackStatusByID()
 function getStackStatusByName()
 {
   stackName=$1
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  stackID=$(getStackID $stackName "$portainerToken")
+  stackID=$(getStackID $stackName)
   if [ -z "$stackID" ]; then
     return
   fi
-  stackStatus=$(getStackStatusByID $stackID "$portainerToken")
+  stackStatus=$(getStackStatusByID $stackID)
   echo $stackStatus
 }
 
 function deleteStack()
 {
   stackname=$1
-  portainerToken=$2
-  if [ -z "$portainerToken" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  stackID=$(getStackID $stackname "$portainerToken")
+  stackID=$(getStackID $stackname)
   if [ -z "$stackID" ]; then
     return
   fi
@@ -15769,7 +15769,7 @@ function deleteStack()
   ds_retVal=1
   while [ $ds_numTries -le $ds_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
+    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
     ds_retVal=$?
     if [ $ds_retVal -eq 0 ]; then
       break
@@ -16582,12 +16582,12 @@ function sendEmail()
   max_email_tries=5
   while [ $num_email_tries -lt $max_email_tries ]
   do
+    rm -f dead.letter
     echo -e "$email_body" | timeout $MAILX_TIMEOUT mailx -s "$email_subj" -a "From: $email_from" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" $email_attachments "$email_to"
     if [ $? -eq 0 ]; then
       break
     fi
     echo "ERROR: Could not send email, retrying ($num_email_tries of $max_email_tries)..."
-    rm -f dead.letter
     sleep 3
     ((num_email_tries++))
   done
@@ -18793,6 +18793,7 @@ user_pref("browser.startup.couldRestoreSession.count", 1);
 user_pref("browser.startup.page", 3);
 user_pref("browser.urlbar.placeholderName", "DuckDuckGo");
 user_pref("browser.urlbar.placeholderName.private", "DuckDuckGo");
+user_pref("dom.media.webcodecs.enabled", true);
 
 // Always dark mode:)
 user_pref("layout.css.prefers-color-scheme.content-override", 0);
@@ -20733,6 +20734,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=181
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 183 ]; then
+    echo "Updating to Version 183..."
+    version183Update
+    HSHQ_VERSION=183
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20819,9 +20826,8 @@ function version22Update()
   refreshSudo
   set +e
   cdns_stack_name="user1"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  uptimekumaStackID=$(getStackID uptimekuma "$portainerToken")
-  startStopStack uptimekuma stop $portainerToken > /dev/null 2>&1
+  uptimekumaStackID=$(getStackID uptimekuma)
+  startStopStack uptimekuma stop > /dev/null 2>&1
   grep "HOMESERVER_HOST_ISPRIVATE_IP" $CONFIG_FILE > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     HOMESERVER_HOST_ISPRIVATE_IP=$(checkIsIPPrivate "$HOMESERVER_HOST_IP")
@@ -20838,17 +20844,17 @@ function version22Update()
   fi
   set -e
 
-  mailuStackID=$(getStackID mailu "$portainerToken")
-  cdnsStackID=$(getStackID clientdns-${cdns_stack_name} "$portainerToken")
+  mailuStackID=$(getStackID mailu)
+  cdnsStackID=$(getStackID clientdns-${cdns_stack_name})
 
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Name'))
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]}-1))
 
   for curID in $(seq 0 $numItems);
   do
     echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} stop $portainerToken
+    startStopStackByID ${rstackIDs[$curID]} stop
     sleep 1
   done
 
@@ -20877,14 +20883,14 @@ function version22Update()
   total_tries=10
   num_tries=1
   sleep 5
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   retVal=$?
   while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
   do
     echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
     sleep 5
     ((num_tries++))
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
   if [ $retVal -ne 0 ]; then
@@ -20964,14 +20970,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mailu-redis:/data
 
   admin:
     image: $IMG_MAILU_ADMIN
@@ -21166,7 +21172,7 @@ EOFMC
   sed -i "s|^SUBNET=.*|SUBNET=${NET_MAILU_EXT_SUBNET}|g" $HOME/mailu.env
   sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${NET_MAILU_EXT_SUBNET_PREFIX}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/mailu-json.tmp > /dev/null 2>&1
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
 
   if ! [ -z "$cdnsStackID" ]; then
@@ -21240,7 +21246,7 @@ EOFCF
     updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
     sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
     echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
     rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
   fi
 
@@ -21287,13 +21293,13 @@ EOFCF
     num_tries=1
     while [ $num_tries -lt $total_tries ]
     do
-      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
       if [ $? -eq 0 ]; then
         break
       else
         echo "Failed update, retrying ($(($num_tries + 1)) of $total_tries)..."
         sleep 5
-        portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+        PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
       fi
       ((num_tries++))
     done
@@ -22374,18 +22380,17 @@ function version87Update()
   if [ -d $HSHQ_STACKS_DIR/paperless/redis ]; then
     # Move paperless redis to nonbackup directory
     echo "Updating paperless stack..."
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     # Stack status: 1=running, 2=stopped
-    stackStatus=$(getStackStatusByName paperless "$portainerToken")
+    stackStatus=$(getStackStatusByName paperless)
     mkdir -p $HSHQ_NONBACKUP_DIR/paperless
     mkdir -p $HSHQ_NONBACKUP_DIR/paperless/redis
     if [ "$stackStatus" = "1" ]; then
-      startStopStack paperless stop "$portainerToken"
+      startStopStack paperless stop
     fi
-    updateStackEnv paperless mvFixRedisDir "$portainerToken"
+    updateStackEnv paperless mvFixRedisDir
     sudo rm -fr $HSHQ_STACKS_DIR/paperless/redis
     if ! [ "$stackStatus" = "1" ]; then
-      startStopStack paperless stop "$portainerToken"
+      startStopStack paperless stop
     fi
   fi
 }
@@ -22997,16 +23002,15 @@ EOFRS
   updateSysctl true
   outputMaintenanceScripts
   outputWGDockInternetScript
-  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  jitsiStackID=$(getStackID jitsi "$PORTAINER_TOKEN")
+  jitsiStackID=$(getStackID jitsi)
   if ! [ -z "$jitsiStackID" ]; then
-    updateStackEnv jitsi outputEnvJitsi "$PORTAINER_TOKEN"
+    updateStackEnv jitsi outputEnvJitsi
   fi
-  stackID=$(getStackID caddy-home "$PORTAINER_TOKEN")
+  stackID=$(getStackID caddy-home)
   if ! [ -z "$stackID" ]; then
     echo "Fixing caddy-home name..."
     # Reinsatll caddy-home stack
-    deleteStack caddy-home "$PORTAINER_TOKEN"
+    deleteStack caddy-home
     sudo mv $HSHQ_STACKS_DIR/caddy-home $HSHQ_STACKS_DIR/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME
     outputConfigCaddy home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME home $(getHSHostIPVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME) $HOMESERVER_HOST_PRIMARY_INTERFACE_IP home na na na "$(getHSHostSubnetVarName $HOMESERVER_HOST_PRIMARY_INTERFACE_NAME)" "$(getNonPrivateConnectingIP)"
     installStack caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME "serving initial configuration" $HOME/caddy-home-$HOMESERVER_HOST_PRIMARY_INTERFACE_NAME.env
@@ -23215,6 +23219,12 @@ function version181Update()
     updateConfigVar DISCOURSE_ADMIN_USERNAME $DISCOURSE_ADMIN_USERNAME
   fi
   mkdir -p $HSHQ_STACKS_DIR/shared/rdata/media/{audio,books,comics,misc,movies,software,tv}
+}
+
+function version183Update()
+{
+  performAptInstall ffmpeg > /dev/null 2>&1
+  outputMaintenanceScripts
 }
 
 function updateRelayServerWithScript()
@@ -23820,11 +23830,13 @@ function setVersionOnStacks()
   refreshSudo
   strSetVersionReport=""
   stackListArr=($(echo ${HSHQ_REQUIRED_STACKS}","${HSHQ_OPTIONAL_STACKS} | tr "," "\n"))
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
   for curStack in "${stackListArr[@]}"
   do
     echo "Versioning ${curStack} stack..."
-    stackID=$(getStackID $curStack "$portainerToken")
+    stackID=$(getStackID $curStack)
     if ! [ "$curStack" = "portainer" ] && [ -z "$stackID" ]; then
       continue
     fi
@@ -24279,7 +24291,7 @@ function setVersionOnStacks()
     strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
   done
   # Special case for Caddy
-  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $portainerToken" endpointId==$PORTAINER_ENDPOINT_ID)
+  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
   caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("caddy-")) | .Id'))
   caddy_stack_names=($(echo $qry | jq -r '.[] | select (.Name | startswith("caddy-")) | .Name'))
   i=-1
@@ -25204,19 +25216,19 @@ function restartStacksOnBoot()
   num_tries=1
   total_tries=20
   logHSHQEvent info "restartStacksOnBoot - BEGIN"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   retVal=$?
   while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
   do
     sleep 10
     ((num_tries++))
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
     retVal=$?
   done
   logHSHQEvent info "restartStacksOnBoot - Got Portainer token..."
   if [ $retVal -eq 0 ]; then
     logHSHQEvent info "restartStacksOnBoot - Restarting HomeAssistant stack (if running)..."
-    restartStackIfRunning homeassistant 15 $portainerToken > /dev/null
+    restartStackIfRunning homeassistant 15 > /dev/null
     if [ $retVal -ne 0 ]; then
       logHSHQEvent error "restartStacksOnBoot - Problem restarting HomeAssistant stack..."
     fi
@@ -25360,7 +25372,7 @@ source <(sudo cat $HSHQ_PLAINTEXT_ROOT_CONFIG)
 source $HSHQ_PLAINTEXT_USER_CONFIG
 
 caddy_stack=\$1
-portainerToken=""
+PORTAINER_TOKEN=""
 function main()
 {
   startStopStack \$caddy_stack stop
@@ -25373,11 +25385,11 @@ function startStopStack()
 {
   stackname=\$1
   startStop=\$2
-  if [ -z "\$portainerToken" ]; then
-    portainerToken="\$(getPortainerToken)"
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="\$(getPortainerToken)"
   fi
-  stackID=\$(getStackID \$stackname "\$portainerToken")
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID > /dev/null
+  stackID=\$(getStackID \$stackname)
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID > /dev/null
 }
 
 function getPortainerToken()
@@ -25390,8 +25402,10 @@ function getStackID()
   stackID="NA"
   stackName=\$1
   stackName="\${stackName//.}"
-  portainerToken=\$2
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
+  if [ -z "\$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="\$(getPortainerToken)"
+  fi
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID)
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -27644,8 +27658,8 @@ function getUpdateAssets()
       curGitTries=0
       break
     fi
-    echo "($((curGitTries+1)) of $maxGitTries) There was an error pulling the contents from the HSHQ assets Github repository, trying again in 5 seconds..."
-    sleep 5
+    echo "($((curGitTries+1)) of $maxGitTries) There was an error pulling the contents from the HSHQ assets Github repository, trying again in 10 seconds..."
+    sleep 10
     ((curGitTries++))
   done
   if [ $curGitTries -ge $maxGitTries ]; then
@@ -27655,17 +27669,37 @@ function getUpdateAssets()
 
 function pullImage()
 {
-  img_and_version=$1
+  image_to_pull=$1
   secs_mult=60
+  set +e
+  if [ -z "$image_to_pull" ]; then
+    echo "ERROR: The image is empty."
+    return 3
+  fi
+  # Check if custom image, and if it exists
+  if [ "$(checkIsCustomImage $image_to_pull)" = "true" ]; then
+    if ! [ -z $(docker image ls --format "table {{.Repository}}:{{.Tag}}" | grep "$image_to_pull" | head -1) ]; then
+      echo "Custom image exists, returning..."
+      return
+    else
+      echo "ERROR: This custom image ($image_to_pull) doesn't exist."
+      return 3
+    fi
+  fi
+  if ! [ -z $(docker image ls --format "table {{.Repository}}:{{.Tag}}" | grep "$image_to_pull" | head -1) ]; then
+    echo "Image ($image_to_pull) already in local registry..."
+    return
+  fi
   # Check if registry is indicated, if not, then add mirror.gcr.io to front
-  if [ $(grep -o "/" <<< "$img_and_version" | wc -l) -lt 2 ]; then
-    img_and_version="mirror.gcr.io/$img_and_version"
+  if [ $(grep -o "/" <<< "$image_to_pull" | wc -l) -lt 2 ] && ! [ ${image_to_pull:0:13} = "mirror.gcr.io" ]; then
+    img_and_version="mirror.gcr.io/$image_to_pull"
+  else
+    img_and_version="$image_to_pull"
   fi
   logHSHQEvent info "Pulling Image: $img_and_version"
   echo "Pulling Image: $img_and_version"
   is_success=1
   num_tries=1
-  set +e
   while [ $is_success -ne 0 ] && [ $num_tries -lt $MAX_DOCKER_PULL_TRIES ]
   do
     if [ $num_tries -lt $(($MAX_DOCKER_PULL_TRIES-1)) ]; then
@@ -27682,8 +27716,8 @@ function pullImage()
     fi
     ((num_tries++))
     if [ $is_success -ne 0 ]; then
-      echo "There was an error pulling the image, retrying in 5 seconds..."
-      sleep 5
+      echo "There was an error pulling the image, retrying in 10 seconds..."
+      sleep 10
     fi
   done
   if [ $is_success -ne 0 ]; then
@@ -27752,11 +27786,15 @@ function getScriptStackVersionNumber()
 function removeImageCSVList()
 {
   img_csv_list=$1
+  set +e
   img_list=($(echo $img_csv_list | tr "," "\n"))
   for rm_img in "${img_list[@]}"
   do
     if ! [ -z "$rm_img" ]; then
       docker image rm $rm_img > /dev/null 2>&1
+      if [ $(grep -o "/" <<< "$rm_img" | wc -l) -lt 2 ] && ! [ ${rm_img:0:13} = "mirror.gcr.io" ]; then
+        docker image rm "mirror.gcr.io/$rm_img" > /dev/null 2>&1
+      fi
     fi
   done
 }
@@ -27770,12 +27808,16 @@ function prepPerformUpdate()
   # perform_update_report with the results of the update process.
   # It is up to the caller to do something with it.
   perform_update_report=""
-  portainerToken="$1"
-  perform_stack_id=$(getStackID $perform_stack_name "$portainerToken")
+  if [ -z "$perform_stack_name" ]; then
+    is_upgrade_error=true
+    perform_update_report="ERROR($perform_stack_name): The stack name cannot be empty."
+    return 1
+  fi
+  perform_stack_id=$(getStackID $perform_stack_name)
   if [ -z "$perform_stack_id" ]; then
     is_upgrade_error=true
     perform_update_report="ERROR($perform_stack_name): There was a problem with the Portainer API. If this error persists, try restarting Portainer."
-    return 1
+    return 2
   fi
   perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
@@ -27785,37 +27827,55 @@ function prepPerformUpdate()
   oldVer=v"$perform_stack_ver"
 }
 
+function getComposeImageList()
+{
+  gclComposeFile="$1"
+  gclRet=""
+  set +e
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  gclArr=($(sudo grep "image:" $gclComposeFile))
+  for curImageLine in "${gclArr[@]}"
+  do
+    curImage=$(echo $curImageLine | xargs | cut -d " " -f2)
+    echo "$gclRet" | grep -q "$curImage"
+    if [ $? -ne 0 ]; then
+      if [ -z "$gclRet" ]; then
+        gclRet="$curImage"
+      else
+        gclRet="${gclRet},$curImage"
+      fi
+    fi
+  done
+  IFS=$OLDIFS
+  echo $(sortCSVList "$gclRet")
+}
+
 function upgradeStack()
 {
   # This function modifies the variable stack_upgrade_report
   # with the results of the upgrade process. It is up to the 
   # caller to do something with it.
-
   # This function also depends on the array, image_update_map, 
   # to be set by the caller prior to entry, since passing
   # arrays as arguments in bash is a headache.
-
   comp_stack_name=$1
   comp_stack_id=$2
   old_ver=$3
   new_ver=$4
   cur_img_list="$5"
   upgrade_compose_file=$6
-  portainerToken="$7"
-  stackModFunction=$8
-  isReinstallStack=$9
-  stackReinstallModFunction=${10}
-
+  stackModFunction=$7
+  isReinstallStack=$8
+  stackReinstallModFunction=$9
   rem_image_list=""
   is_upgrade_error=false
   stack_upgrade_report=""
-
   if [ "$(checkImageList $cur_img_list $upgrade_compose_file)" = "false" ]; then
     is_upgrade_error=true
-    stack_upgrade_report="ERROR ($comp_stack_name): Container image mismatch, stack version: $old_ver, image list: $cur_img_list"
+    stack_upgrade_report="ERROR ($comp_stack_name): Container image mismatch, stack version: $old_ver\nExpected image list: $(sortCSVList $cur_img_list)\n  Actual image list: $(getComposeImageList $upgrade_compose_file)"
     return
   fi
-
   # Even though the image list (cur_img_list) matches the corresponding
   # items in the update map (image_update_map), they are both used as
   # a deliberate means of double-checking the intended images. This next
@@ -27859,10 +27919,20 @@ function upgradeStack()
   sudo sed -i "1s|.*|$STACK_VERSION_PREFIX $comp_stack_name $new_ver|" $upgrade_compose_file
   set +e
   $stackModFunction
+  if [ $? -ne 0 ]; then
+    is_upgrade_error=true
+    stack_upgrade_report="ERROR ($comp_stack_name): There was an issue with the modify function."
+    return
+  fi
   if [ "$isStartStackFromStopped" = "true" ] && [ "$isReinstallStack" = "false" ]; then
     unset isStartStackFromStopped
     isStartStackFromStopped=""
-    startStopStack $comp_stack_name start "$portainerToken"
+    startStopStack $comp_stack_name start
+    if [ $? -ne 0 ]; then
+      is_upgrade_error=true
+      stack_upgrade_report="ERROR ($comp_stack_name): There was a problem restarting the stopped stack."
+      return
+    fi
   else
     if [ "$isReinstallStack" = "true" ]; then
       sudo cp $upgrade_compose_file $HOME/${comp_stack_name}-compose.yml
@@ -27871,11 +27941,27 @@ function upgradeStack()
       sudo chown $USERNAME:$USERNAME $HOME/${comp_stack_name}.env
       set +e
       $stackReinstallModFunction
-      updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env "$portainerToken"
+      if [ $? -ne 0 ]; then
+        is_upgrade_error=true
+        stack_upgrade_report="ERROR ($comp_stack_name): There was an issue with the reinstall modify function."
+        return
+      fi
+      updateStackByID ${comp_stack_name} ${comp_stack_id} $HOME/${comp_stack_name}-compose.yml $HOME/${comp_stack_name}.env
+      if [ $? -ne 0 ]; then
+        is_upgrade_error=true
+        stack_upgrade_report="ERROR ($comp_stack_name): There was a problem updating the stack."
+        return
+      fi
     else
-      restartStackIfRunning $comp_stack_name 3 "$portainerToken"
+      restartStackIfRunning "$comp_stack_name" 5
+      if [ $? -ne 0 ]; then
+        is_upgrade_error=true
+        stack_upgrade_report="ERROR ($comp_stack_name): There was a problem restarting the stack."
+        return
+      fi
     fi
   fi
+  set +e
   removeImageCSVList "$rm_image_list"
   stack_upgrade_report="${stack_upgrade_report}${comp_stack_name}: Upgraded from $old_ver to $new_ver"
 }
@@ -27885,124 +27971,167 @@ function doNothing()
   return
 }
 
+function replaceRedisBlock()
+{
+  stackName="$1"
+  containerName="$2"
+  redisImg="$3"
+  isIncludeVolume="$4"
+  set +e
+  lineStart="  $containerName:"
+  lineEnd="$(grep REDIS_PASSWORD=.* $HOME/$stackName-compose.yml | head -1)"
+  rpass="$(echo $lineEnd | cut -d"=" -f2)"
+  replaceText=""
+  replaceText=$replaceText">>$containerName:\n"
+  replaceText=$replaceText">>>>image: $redisImg\n"
+  replaceText=$replaceText">>>>container_name: $containerName\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  if ! [ "$isIncludeVolume" = "false" ]; then
+    replaceText=$replaceText">>>>>>--appendonly yes\n"
+  else
+    replaceText=$replaceText">>>>>>--appendonly no\n"
+  fi
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-$stackName-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  if ! [ "$isIncludeVolume" = "false" ]; then
+    replaceText=$replaceText">>>>>>- v-$stackName-redis:/data\n"
+  fi
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/$stackName-compose.yml false ">"
+  cat -s $HOME/${stackName}-compose.yml > $HOME/${stackName}.tmp
+  mv $HOME/${stackName}.tmp $HOME/${stackName}-compose.yml
+}
+
 # Services Functions
 function loadPinnedDockerImages()
 {
+  # Common images
+  IMG_ELASTICSEARCH=mirror.gcr.io/elasticsearch:9.1.1
+  IMG_MEILISEARCH=mirror.gcr.io/getmeili/meilisearch:v1.16.0
+  IMG_MYSQL=mirror.gcr.io/mariadb:10.7.3
+  IMG_NGINX=mirror.gcr.io/nginx:1.28.0-alpine
+  IMG_POSTGRES=mirror.gcr.io/postgres:15.0-bullseye
+  IMG_REDIS=mirror.gcr.io/redis:8.2.0-bookworm
+  IMG_ALPINE=mirror.gcr.io/alpine:3.22.1
+
+  # Stack specific images
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
-  IMG_AISTACK_MINDSDB_APP=mindsdb/mindsdb:v25.4.5.0
-  IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v1
-  IMG_AISTACK_OPENTELEMETRY=otel/opentelemetry-collector-contrib:0.116.1
-  IMG_AISTACK_LANGFUSE=langfuse/langfuse:2.87.0
-  IMG_AISTACK_OLLAMA_SERVER=ollama/ollama:0.6.8
-  IMG_AISTACK_OPENWEBUI=ghcr.io/open-webui/open-webui:git-aa37482
-  IMG_AUTHELIA=authelia/authelia:4.39.1
-  IMG_BARASSISTANT_APP=barassistant/server:5.2.0
-  IMG_BARASSISTANT_SALTRIM=barassistant/salt-rim:4.1.0
-  IMG_CADDY=caddy:2.9.1
-  IMG_CALIBRE_SERVER=linuxserver/calibre:8.2.1
-  IMG_CALIBRE_WEB=linuxserver/calibre-web:0.6.24
+  IMG_AISTACK_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0
+  IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v2
+  IMG_AISTACK_OPENTELEMETRY=mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1
+  IMG_AISTACK_LANGFUSE=mirror.gcr.io/langfuse/langfuse:2.87.0
+  IMG_AISTACK_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.11.4
+  IMG_AISTACK_OPENWEBUI=ghcr.io/open-webui/open-webui:0.6.22
+  IMG_AUTHELIA=mirror.gcr.io/authelia/authelia:4.39.6
+  IMG_BARASSISTANT_APP=mirror.gcr.io/barassistant/server:5.6.1
+  IMG_BARASSISTANT_SALTRIM=mirror.gcr.io/barassistant/salt-rim:4.6.0
+  IMG_CADDY=mirror.gcr.io/caddy:2.10.0
+  IMG_CALIBRE_SERVER=mirror.gcr.io/linuxserver/calibre:8.8.0
+  IMG_CALIBRE_WEB=mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342
   IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.50.8
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
-  IMG_CODESERVER=codercom/code-server:4.98.2
-  IMG_COLLABORA=collabora/code:24.04.13.2.1
-  IMG_COTURN=coturn/coturn:4.6.3
-  IMG_DISCOURSE=bitnami/discourse:3.3.2
-  IMG_DNSMASQ=jpillora/dnsmasq:1.1
-  IMG_DOZZLE=amir20/dozzle:v6.1.1
-  IMG_DRAWIO_PLANTUML=jgraph/plantuml-server
-  IMG_DRAWIO_EXPORT=jgraph/export-server
-  IMG_DRAWIO_WEB=jgraph/drawio:26.2.2
-  IMG_DUPLICATI=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
-  IMG_EXCALIDRAW_SERVER=excalidraw/excalidraw-room
-  IMG_EXCALIDRAW_STORAGE=kiliandeca/excalidraw-storage-backend
-  IMG_EXCALIDRAW_WEB=kiliandeca/excalidraw
-  IMG_ESPOCRM_APP=espocrm/espocrm:9.0.6-apache
-  IMG_FILEBROWSER=filebrowser/filebrowser:v2.32.0
+  IMG_CODESERVER=mirror.gcr.io/codercom/code-server:4.102.2
+  IMG_COLLABORA=mirror.gcr.io/collabora/code:25.04.4.2.1
+  IMG_COTURN=mirror.gcr.io/coturn/coturn:4.7.0
+  IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
+  IMG_DNSMASQ=mirror.gcr.io/jpillora/dnsmasq:1.1
+  IMG_DOZZLE=mirror.gcr.io/amir20/dozzle:v6.1.1
+  IMG_DRAWIO_PLANTUML=mirror.gcr.io/jgraph/plantuml-server
+  IMG_DRAWIO_EXPORT=mirror.gcr.io/jgraph/export-server
+  IMG_DRAWIO_WEB=mirror.gcr.io/jgraph/drawio:28.0.7
+  IMG_DUPLICATI=mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256
+  IMG_EXCALIDRAW_SERVER=mirror.gcr.io/excalidraw/excalidraw-room
+  IMG_EXCALIDRAW_STORAGE=mirror.gcr.io/kiliandeca/excalidraw-storage-backend
+  IMG_EXCALIDRAW_WEB=mirror.gcr.io/kiliandeca/excalidraw
+  IMG_ESPOCRM_APP=mirror.gcr.io/espocrm/espocrm:9.1.8-apache
+  IMG_FILEBROWSER=mirror.gcr.io/filebrowser/filebrowser:v2.42.3
   IMG_FILEDROP=filedrop/filedrop:1
-  IMG_FIREFLY_APP=fireflyiii/core:version-6.2.10
-  IMG_FIREFLY_IMPORTER=fireflyiii/data-importer:version-1.6.1
-  IMG_FIREFLY_CRON=alpine:3.21.3
-  IMG_FRESHRSS=freshrss/freshrss:1.26.1
-  IMG_GHOST=ghost:5.115.1-alpine
-  IMG_GITEA_APP=gitea/gitea:1.23.6
-  IMG_GITLAB_APP=gitlab/gitlab-ce:17.10.3-ce.0
-  IMG_GRAFANA=grafana/grafana-oss:11.6.0
-  IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:v25.4.0
-  IMG_GUACAMOLE_GUACD=guacamole/guacd:1.5.5
-  IMG_GUACAMOLE_WEB=guacamole/guacamole:1.5.5
+  IMG_FIREFLY_APP=mirror.gcr.io/fireflyiii/core:version-6.2.21
+  IMG_FIREFLY_IMPORTER=mirror.gcr.io/fireflyiii/data-importer:version-1.7.9
+  IMG_FRESHRSS=mirror.gcr.io/freshrss/freshrss:1.26.3
+  IMG_GHOST=mirror.gcr.io/ghost:6.0.0-alpine
+  IMG_GITEA_APP=mirror.gcr.io/gitea/gitea:1.24.4
+  IMG_GITLAB_APP=mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0
+  IMG_GRAFANA=mirror.gcr.io/grafana/grafana-oss:12.1.0
+  IMG_GRAMPSWEB=ghcr.io/gramps-project/grampsweb:25.7.3
+  IMG_GUACAMOLE_GUACD=mirror.gcr.io/guacamole/guacd:1.6.0
+  IMG_GUACAMOLE_WEB=mirror.gcr.io/guacamole/guacamole:1.6.0
   IMG_HEIMDALL=linuxserver/heimdall:2.4.13
-  IMG_HOMARR_APP=ghcr.io/homarr-labs/homarr:v1.18.1
-  IMG_HOMEASSISTANT_APP=homeassistant/home-assistant:2025.4.0
+  IMG_HOMARR_APP=ghcr.io/homarr-labs/homarr:v1.32.0
+  IMG_HOMEASSISTANT_APP=mirror.gcr.io/homeassistant/home-assistant:2025.8.1
   IMG_HOMEASSISTANT_CONFIGURATOR=causticlab/hass-configurator-docker:0.5.2
-  IMG_HOMEASSISTANT_NODERED=nodered/node-red:4.0.9-22
-  IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.1.3
+  IMG_HOMEASSISTANT_NODERED=mirror.gcr.io/nodered/node-red:4.1.0-22
+  IMG_HOMEASSISTANT_TASMOADMIN=ghcr.io/tasmoadmin/tasmoadmin:v4.3.1
   IMG_HUGINN_APP=ghcr.io/huginn/huginn:1e0c359a46b1e84eb8c658404212eaf693b30e61
   IMG_IMMICH_DB=tensorchord/pgvecto-rs:pg14-v0.3.0
-  IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v1.131.3
-  IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v1.131.3
-  IMG_INFLUXDB=influxdb:2.7.11-alpine
+  IMG_IMMICH_APP=ghcr.io/immich-app/immich-server:v1.137.3
+  IMG_IMMICH_ML=ghcr.io/immich-app/immich-machine-learning:v1.137.3
+  IMG_INFLUXDB=mirror.gcr.io/influxdb:2.7.12-alpine
   IMG_INVIDIOUS_WEB=quay.io/invidious/invidious:master
   IMG_INVIDIOUS_COMPANION=quay.io/invidious/invidious-companion:latest
   IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
-  IMG_JELLYFIN=jellyfin/jellyfin:10.10.6
+  IMG_JELLYFIN=mirror.gcr.io/jellyfin/jellyfin:10.10.7
   IMG_JITSI_WEB=jitsi/web:stable-10431
   IMG_JITSI_PROSODY=jitsi/prosody:stable-10431
   IMG_JITSI_JICOFO=jitsi/jicofo:stable-10431
   IMG_JITSI_JVB=jitsi/jvb:stable-10431
   IMG_JUPYTER=continuumio/anaconda3:2024.10-1
-  IMG_KASM=lscr.io/linuxserver/kasm:1.16.1-ls68
+  IMG_KASM=lscr.io/linuxserver/kasm:1.17.0-ls88
   IMG_KEILA=pentacent/keila:0.17.1
-  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.9.3
+  IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.11.5
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
   IMG_MAIL_RELAY_CLAMAV=clamav/clamav:1.2.1
   IMG_MAIL_RELAY_UNBOUND=mvance/unbound:1.19.0
-  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.36
-  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.36
-  IMG_MAILU_ANTIVIRUS=clamav/clamav-debian:1.4.2
-  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.36
-  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.36
-  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.36
-  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.36
-  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.36
-  IMG_MAILU_TIKA=apache/tika:3.1.0.0-full
-  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.36
-  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.36
-  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.36
-  IMG_MASTODON_APP=tootsuite/mastodon:v4.3.7
-  IMG_MASTODON_STREAMING=tootsuite/mastodon-streaming:v4.3.7
-  IMG_MASTODON_ELASTICSEARCH=elasticsearch:8.17.4
-  IMG_MATRIX_ELEMENT=vectorim/element-web:v1.11.96
-  IMG_MATRIX_SYNAPSE=matrixdotorg/synapse:v1.127.1
-  IMG_MATOMO_APP=matomo:5.3.1-fpm-alpine
-  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v2.8.0
+  IMG_MAILU_ADMIN=ghcr.io/mailu/admin:2024.06.37
+  IMG_MAILU_ANTISPAM=ghcr.io/mailu/rspamd:2024.06.37
+  IMG_MAILU_ANTIVIRUS=mirror.gcr.io/clamav/clamav-debian:1.4.3
+  IMG_MAILU_FETCHMAIL=ghcr.io/mailu/fetchmail:2024.06.37
+  IMG_MAILU_FRONT=ghcr.io/mailu/nginx:2024.06.37
+  IMG_MAILU_IMAP=ghcr.io/mailu/dovecot:2024.06.37
+  IMG_MAILU_OLETOOLS=ghcr.io/mailu/oletools:2024.06.37
+  IMG_MAILU_SMTP=ghcr.io/mailu/postfix:2024.06.37
+  IMG_MAILU_TIKA=mirror.gcr.io/apache/tika:3.2.2.0-full
+  IMG_MAILU_UNBOUND=ghcr.io/mailu/unbound:2024.06.37
+  IMG_MAILU_WEBDAV=ghcr.io/mailu/radicale:2024.06.37
+  IMG_MAILU_WEBMAIL=ghcr.io/mailu/webmail:2024.06.37
+  IMG_MASTODON_APP=mirror.gcr.io/tootsuite/mastodon:v4.3.11
+  IMG_MASTODON_STREAMING=mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11
+  IMG_MATRIX_ELEMENT=mirror.gcr.io/vectorim/element-web:v1.11.109
+  IMG_MATRIX_SYNAPSE=mirror.gcr.io/matrixdotorg/synapse:v1.136.0
+  IMG_MATOMO_APP=mirror.gcr.io/matomo:5.3.2-fpm-alpine
+  IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v3.0.2
   IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.48
-  IMG_MEILISEARCH=getmeili/meilisearch:v1.6
-  IMG_MYSQL=mariadb:10.7.3
   IMG_NAVIDROME=deluan/navidrome:0.58.0
-  IMG_NETDATA=netdata/netdata:v2.3.2
-  IMG_NEXTCLOUD_APP=nextcloud:31.0.2-fpm-alpine
-  IMG_NEXTCLOUD_IMAGINARY=nextcloud/aio-imaginary:20250325_084656
-  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250512_082954
-  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
-  IMG_NGINX=nginx:1.27.4-alpine
-  IMG_NTFY=binwiederhier/ntfy:v2.11.0
-  IMG_NODE_EXPORTER=prom/node-exporter:v1.9.1
-  IMG_OFELIA=mcuadros/ofelia:0.3.16
+  IMG_NETDATA=mirror.gcr.io/netdata/netdata:v2.6.1
+  IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:31.0.7-fpm-alpine
+  IMG_NEXTCLOUD_IMAGINARY=mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851
+  IMG_NEXTCLOUD_TALKHPB=ghcr.io/nextcloud-releases/aio-talk:20250811_115851
+  IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
+  IMG_NTFY=mirror.gcr.io/binwiederhier/ntfy:v2.14.0
+  IMG_NODE_EXPORTER=mirror.gcr.io/prom/node-exporter:v1.9.1
+  IMG_OFELIA=mirror.gcr.io/mcuadros/ofelia:0.3.18
   IMG_OMBI_APP=linuxserver/ombi:4.47.1
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
-  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.14.7
-  IMG_PAPERLESS_GOTENBERG=gotenberg/gotenberg:8.19.1
-  IMG_PAPERLESS_TIKA=apache/tika:3.1.0.0
-  IMG_PASTEFY=interaapps/pastefy:7.0.3
+  IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.17.1
+  IMG_PAPERLESS_GOTENBERG=mirror.gcr.io/gotenberg/gotenberg:8.21
+  IMG_PAPERLESS_TIKA=mirror.gcr.io/apache/tika:3.2.2.0-full
+  IMG_PASTEFY=mirror.gcr.io/interaapps/pastefy:7.1.4
   IMG_PEERTUBE_APP=chocobozzz/peertube:v7.1.0-bookworm
-  IMG_PENPOT_BACKEND=penpotapp/backend:2.5.4
-  IMG_PENPOT_FRONTEND=penpotapp/frontend:2.5.4
-  IMG_PENPOT_EXPORTER=penpotapp/exporter:2.5.4
-  IMG_PHOTOPRISM_APP=photoprism/photoprism:240915
+  IMG_PENPOT_BACKEND=mirror.gcr.io/penpotapp/backend:2.8.1
+  IMG_PENPOT_FRONTEND=mirror.gcr.io/penpotapp/frontend:2.8.1
+  IMG_PENPOT_EXPORTER=mirror.gcr.io/penpotapp/exporter:2.8.1
+  IMG_PHOTOPRISM_APP=mirror.gcr.io/photoprism/photoprism:250707
   IMG_PIPED_FRONTEND=1337kavin/piped-frontend:latest
   IMG_PIPED_PROXY=1337kavin/piped-proxy:latest
   IMG_PIPED_API=1337kavin/piped:latest
@@ -28010,13 +28139,11 @@ function loadPinnedDockerImages()
   IMG_PIXELFED_APP=ghcr.io/jippi/docker-pixelfed:v0.12.5-docker1-apache-8.4-bookworm
   IMG_PIXELFED_MOD_APP=hshq/pixelfed:v1
   IMG_PORTAINER=portainer/portainer-ce:2.21.4-alpine
-  IMG_POSTGRES=postgres:15.0-bullseye
-  IMG_PROMETHEUS=prom/prometheus:v3.2.1
+  IMG_PROMETHEUS=mirror.gcr.io/prom/prometheus:v3.5.0
   IMG_QBITTORRENT=linuxserver/qbittorrent:5.1.2
-  IMG_REDIS=bitnami/redis:7.4.2
   IMG_REMOTELY=immybot/remotely:1037
   IMG_SABNZBD=linuxserver/sabnzbd:4.5.1
-  IMG_SEARXNG=searxng/searxng:2025.4.1-e6308b816
+  IMG_SEARXNG=mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d
   IMG_SERVARR_SONARR=linuxserver/sonarr:4.0.15
   IMG_SERVARR_RADARR=linuxserver/radarr:5.27.1-nightly
   IMG_SERVARR_LIDARR=linuxserver/lidarr:2.13.1-nightly
@@ -28024,26 +28151,26 @@ function loadPinnedDockerImages()
   IMG_SERVARR_BAZARR=linuxserver/bazarr:1.5.2
   IMG_SERVARR_MYLAR3=linuxserver/mylar3:0.8.2
   IMG_SERVARR_PROWLARR=linuxserver/prowlarr:2.0.1-nightly
-  IMG_SHLINK_APP=shlinkio/shlink:4.4.6
-  IMG_SHLINK_WEB=shlinkio/shlink-web-client:4.3.0
+  IMG_SHLINK_APP=mirror.gcr.io/shlinkio/shlink:4.5.0
+  IMG_SHLINK_WEB=mirror.gcr.io/shlinkio/shlink-web-client:4.5.0
   IMG_SNIPPETBOX=pawelmalak/snippet-box:latest
   IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:1.3.0
-  IMG_SQLPAD=sqlpad/sqlpad:7.5.3
-  IMG_STIRLINGPDF=frooodle/s-pdf:0.45.0
-  IMG_SYNCTHING=syncthing/syncthing:1.29.4
+  IMG_SQLPAD=mirror.gcr.io/sqlpad/sqlpad:7.5.5
+  IMG_STIRLINGPDF=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
+  IMG_SYNCTHING=mirror.gcr.io/syncthing/syncthing:2.0.0
   IMG_TOMCAT=tomcat:11
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.16-alpine
-  IMG_VAULTWARDEN_APP=vaultwarden/server:1.33.2-alpine
-  IMG_VAULTWARDEN_LDAP=vividboarder/vaultwarden_ldap:2.1.1
-  IMG_WALLABAG=wallabag/wallabag:2.6.10
+  IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.34.3-alpine
+  IMG_VAULTWARDEN_LDAP=mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2
+  IMG_WALLABAG=mirror.gcr.io/wallabag/wallabag:2.6.13
   IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.11.2
   IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.11.2
   IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.11.2
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS=requarks/wiki:2.5.307
-  IMG_WIREGUARD=linuxserver/wireguard:1.0.20210914-r4-ls72
-  IMG_WORDPRESS=wordpress:php8.3-apache
-  IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.22.7
+  IMG_WIREGUARD=mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81
+  IMG_WORDPRESS=mirror.gcr.io/wordpress:php8.4-apache
+  IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.24.7
 }
 
 function getScriptStackVersion()
@@ -28055,105 +28182,105 @@ function getScriptStackVersion()
     adguard)
       echo "v7" ;;
     sysutils)
-      echo "v7" ;;
+      echo "v8" ;;
     openldap)
       echo "v1" ;;
     mailu)
-      echo "v5" ;;
+      echo "v6" ;;
     wazuh)
       echo "v7" ;;
     collabora)
-      echo "v7" ;;
+      echo "v8" ;;
     nextcloud)
-      echo "v9" ;;
+      echo "v10" ;;
     jitsi)
       echo "v8" ;;
     matrix)
-      echo "v7" ;;
+      echo "v8" ;;
     wikijs)
       echo "v4" ;;
     duplicati)
-      echo "v5" ;;
+      echo "v6" ;;
     mastodon)
-      echo "v8" ;;
+      echo "v9" ;;
     dozzle)
-      echo "v6" ;;
+      echo "v7" ;;
     searxng)
-      echo "v6" ;;
+      echo "v8" ;;
     jellyfin)
-      echo "v5" ;;
+      echo "v6" ;;
     filebrowser)
-      echo "v6" ;;
+      echo "v7" ;;
     photoprism)
-      echo "v2" ;;
-    guacamole)
       echo "v3" ;;
+    guacamole)
+      echo "v4" ;;
     authelia)
-      echo "v5" ;;
+      echo "v6" ;;
     wordpress)
-      echo "v2" ;;
+      echo "v3" ;;
     ghost)
-      echo "v7" ;;
+      echo "v8" ;;
     peertube)
-      echo "v6" ;;
+      echo "v7" ;;
     homeassistant)
-      echo "v8" ;;
+      echo "v9" ;;
     gitlab)
-      echo "v6" ;;
+      echo "v7" ;;
     vaultwarden)
-      echo "v7" ;;
-    discourse)
-      echo "v6" ;;
-    syncthing)
-      echo "v7" ;;
-    codeserver)
-      echo "v6" ;;
-    shlink)
-      echo "v6" ;;
-    firefly)
       echo "v8" ;;
+    discourse)
+      echo "v7" ;;
+    syncthing)
+      echo "v8" ;;
+    codeserver)
+      echo "v7" ;;
+    shlink)
+      echo "v8" ;;
+    firefly)
+      echo "v9" ;;
     excalidraw)
-      echo "v1" ;;
+      echo "v3" ;;
     drawio)
-      echo "v6" ;;
+      echo "v7" ;;
     invidious)
       echo "v2" ;;
     ittools)
       echo "v1" ;;
     gitea)
-      echo "v7" ;;
-    mealie)
       echo "v8" ;;
+    mealie)
+      echo "v9" ;;
     kasm)
-      echo "v6" ;;
+      echo "v7" ;;
     ntfy)
-      echo "v4" ;;
+      echo "v5" ;;
     remotely)
       echo "v4" ;;
     calibre)
-      echo "v6" ;;
+      echo "v7" ;;
     netdata)
-      echo "v5" ;;
+      echo "v6" ;;
     linkwarden)
-      echo "v6" ;;
+      echo "v7" ;;
     stirlingpdf)
-      echo "v6" ;;
+      echo "v7" ;;
     bar-assistant)
-      echo "v5" ;;
+      echo "v7" ;;
     freshrss)
-      echo "v4" ;;
+      echo "v5" ;;
     keila)
       echo "v5" ;;
     wallabag)
-      echo "v3" ;;
+      echo "v4" ;;
     jupyter)
       echo "v4" ;;
     paperless)
-      echo "v4" ;;
+      echo "v5" ;;
     speedtest-tracker-local)
-      echo "v5" ;;
+      echo "v6" ;;
     speedtest-tracker-vpn)
-      echo "v5" ;;
+      echo "v6" ;;
     heimdall)
       echo "v1" ;;
     changedetection)
@@ -28161,33 +28288,33 @@ function getScriptStackVersion()
     huginn)
       echo "v3" ;;
     coturn)
-      echo "v3" ;;
+      echo "v4" ;;
     filedrop)
       echo "v1" ;;
     piped)
       echo "v2" ;;
     grampsweb)
-      echo "v3" ;;
+      echo "v4" ;;
     penpot)
-      echo "v2" ;;
-    espocrm)
-      echo "v2" ;;
-    immich)
-      echo "v2" ;;
-    homarr)
       echo "v3" ;;
+    espocrm)
+      echo "v3" ;;
+    immich)
+      echo "v4" ;;
+    homarr)
+      echo "v4" ;;
     matomo)
-      echo "v1" ;;
+      echo "v2" ;;
     pastefy)
-      echo "v1" ;;
+      echo "v2" ;;
     snippetbox)
       echo "v1" ;;
     aistack)
       echo "v1" ;;
     pixelfed)
-      echo "v1" ;;
+      echo "v2" ;;
     yamtrack)
-      echo "v1" ;;
+      echo "v2" ;;
     servarr)
       echo "v1" ;;
     sabnzbd)
@@ -28201,13 +28328,13 @@ function getScriptStackVersion()
     navidrome)
       echo "v1" ;;
     ofelia)
-      echo "v5" ;;
+      echo "v6" ;;
     sqlpad)
-      echo "v7" ;;
+      echo "v8" ;;
     caddy-*)
-      echo "v4" ;;
+      echo "v5" ;;
     clientdns-*)
-      echo "v2" ;;
+      echo "v3" ;;
     uptimekuma)
       echo "v5" ;;
     mail-relay)
@@ -28224,6 +28351,7 @@ function pullDockerImages()
   pullImage $IMG_POSTGRES
   pullImage $IMG_MYSQL
   pullImage $IMG_NGINX
+  pullImage $IMG_ALPINE
   pullImage $IMG_ADGUARD
   pullImage $IMG_GRAFANA
   pullImage $IMG_PROMETHEUS
@@ -28293,7 +28421,6 @@ function pullDockerImages()
   pullImage $IMG_SHLINK_WEB
   pullImage $IMG_FIREFLY_APP
   pullImage $IMG_FIREFLY_IMPORTER
-  pullImage $IMG_FIREFLY_CRON
   pullImage $IMG_EXCALIDRAW_WEB
   pullImage $IMG_EXCALIDRAW_SERVER
   pullImage $IMG_EXCALIDRAW_STORAGE
@@ -28507,6 +28634,7 @@ function pullCommonImages()
   pullImage $IMG_MYSQL
   pullImage $IMG_REDIS
   pullImage $IMG_NGINX
+  pullImage $IMG_ALPINE
 }
 
 function outputEncConfigFile()
@@ -31106,170 +31234,169 @@ function installStackByName()
 function performUpdateStackByName()
 {
   stack_name=$1
-  portainerToken="$2"
   case "$stack_name" in
     portainer)
       performUpdatePortainer ;;
     adguard)
-      performUpdateAdGuard "$portainerToken" ;;
+      performUpdateAdGuard ;;
     sysutils)
-      performUpdateSysUtils "$portainerToken" ;;
+      performUpdateSysUtils ;;
     openldap)
-      performUpdateOpenLDAP "$portainerToken" ;;
+      performUpdateOpenLDAP ;;
     mailu)
-      performUpdateMailu "$portainerToken" ;;
+      performUpdateMailu ;;
     wazuh)
-      performUpdateWazuh "$portainerToken" ;;
+      performUpdateWazuh ;;
     collabora)
-      performUpdateCollabora "$portainerToken" ;;
+      performUpdateCollabora ;;
     nextcloud)
-      performUpdateNextcloud "$portainerToken" ;;
+      performUpdateNextcloud ;;
     jitsi)
-      performUpdateJitsi "$portainerToken" ;;
+      performUpdateJitsi ;;
     matrix)
-      performUpdateMatrix "$portainerToken" ;;
+      performUpdateMatrix ;;
     wikijs)
-      performUpdateWikijs "$portainerToken" ;;
+      performUpdateWikijs ;;
     duplicati)
-      performUpdateDuplicati "$portainerToken" ;;
+      performUpdateDuplicati ;;
     mastodon)
-      performUpdateMastodon "$portainerToken" ;;
+      performUpdateMastodon ;;
     dozzle)
-      performUpdateDozzle "$portainerToken" ;;
+      performUpdateDozzle ;;
     searxng)
-      performUpdateSearxNG "$portainerToken" ;;
+      performUpdateSearxNG ;;
     jellyfin)
-      performUpdateJellyfin "$portainerToken" ;;
+      performUpdateJellyfin ;;
     filebrowser)
-      performUpdateFileBrowser "$portainerToken" ;;
+      performUpdateFileBrowser ;;
     photoprism)
-      performUpdatePhotoPrism "$portainerToken" ;;
+      performUpdatePhotoPrism ;;
     guacamole)
-      performUpdateGuacamole "$portainerToken" ;;
+      performUpdateGuacamole ;;
     authelia)
-      performUpdateAuthelia "$portainerToken" ;;
+      performUpdateAuthelia ;;
     wordpress)
-      performUpdateWordPress "$portainerToken" ;;
+      performUpdateWordPress ;;
     ghost)
-      performUpdateGhost "$portainerToken" ;;
+      performUpdateGhost ;;
     peertube)
-      performUpdatePeerTube "$portainerToken" ;;
+      performUpdatePeerTube ;;
     homeassistant)
-      performUpdateHomeAssistant "$portainerToken" ;;
+      performUpdateHomeAssistant ;;
     gitlab)
-      performUpdateGitlab "$portainerToken" ;;
+      performUpdateGitlab ;;
     vaultwarden)
-      performUpdateVaultwarden "$portainerToken" ;;
+      performUpdateVaultwarden ;;
     discourse)
-      performUpdateDiscourse "$portainerToken" ;;
+      performUpdateDiscourse ;;
     syncthing)
-      performUpdateSyncthing "$portainerToken" ;;
+      performUpdateSyncthing ;;
     codeserver)
-      performUpdateCodeServer "$portainerToken" ;;
+      performUpdateCodeServer ;;
     shlink)
-      performUpdateShlink "$portainerToken" ;;
+      performUpdateShlink ;;
     firefly)
-      performUpdateFirefly "$portainerToken" ;;
+      performUpdateFirefly ;;
     excalidraw)
-      performUpdateExcalidraw "$portainerToken" ;;
+      performUpdateExcalidraw ;;
     drawio)
-      performUpdateDrawIO "$portainerToken" ;;
+      performUpdateDrawIO ;;
     invidious)
-      performUpdateInvidious "$portainerToken" ;;
+      performUpdateInvidious ;;
     ittools)
-      performUpdateITTools "$portainerToken" ;;
+      performUpdateITTools ;;
     gitea)
-      performUpdateGitea "$portainerToken" ;;
+      performUpdateGitea ;;
     mealie)
-      performUpdateMealie "$portainerToken" ;;
+      performUpdateMealie ;;
     kasm)
-      performUpdateKasm "$portainerToken" ;;
+      performUpdateKasm ;;
     ntfy)
-      performUpdateNTFY "$portainerToken" ;;
+      performUpdateNTFY ;;
     remotely)
-      performUpdateRemotely "$portainerToken" ;;
+      performUpdateRemotely ;;
     calibre)
-      performUpdateCalibre "$portainerToken" ;;
+      performUpdateCalibre ;;
     netdata)
-      performUpdateNetdata "$portainerToken" ;;
+      performUpdateNetdata ;;
     linkwarden)
-      performUpdateLinkwarden "$portainerToken" ;;
+      performUpdateLinkwarden ;;
     stirlingpdf)
-      performUpdateStirlingPDF "$portainerToken" ;;
+      performUpdateStirlingPDF ;;
     bar-assistant)
-      performUpdateBarAssistant "$portainerToken" ;;
+      performUpdateBarAssistant ;;
     freshrss)
-      performUpdateFreshRSS "$portainerToken" ;;
+      performUpdateFreshRSS ;;
     keila)
-      performUpdateKeila "$portainerToken" ;;
+      performUpdateKeila ;;
     wallabag)
-      performUpdateWallabag "$portainerToken" ;;
+      performUpdateWallabag ;;
     jupyter)
-      performUpdateJupyter "$portainerToken" ;;
+      performUpdateJupyter ;;
     paperless)
-      performUpdatePaperless "$portainerToken" ;;
+      performUpdatePaperless ;;
     speedtest-tracker-local)
-      performUpdateSpeedtestTrackerLocal "$portainerToken" ;;
+      performUpdateSpeedtestTrackerLocal ;;
     speedtest-tracker-vpn)
-      performUpdateSpeedtestTrackerVPN "$portainerToken" ;;
+      performUpdateSpeedtestTrackerVPN ;;
     changedetection)
-      performUpdateChangeDetection "$portainerToken" ;;
+      performUpdateChangeDetection ;;
     huginn)
-      performUpdateHuginn "$portainerToken" ;;
+      performUpdateHuginn ;;
     coturn)
-      performUpdateCoturn "$portainerToken" ;;
+      performUpdateCoturn ;;
     filedrop)
-      performUpdateFileDrop "$portainerToken" ;;
+      performUpdateFileDrop ;;
     piped)
-      performUpdatePiped "$portainerToken" ;;
+      performUpdatePiped ;;
     grampsweb)
-      performUpdateGrampsWeb "$portainerToken" ;;
+      performUpdateGrampsWeb ;;
     penpot)
-      performUpdatePenpot "$portainerToken" ;;
+      performUpdatePenpot ;;
     espocrm)
-      performUpdateEspoCRM "$portainerToken" ;;
+      performUpdateEspoCRM ;;
     immich)
-      performUpdateImmich "$portainerToken" ;;
+      performUpdateImmich ;;
     homarr)
-      performUpdateHomarr "$portainerToken" ;;
+      performUpdateHomarr ;;
     matomo)
-      performUpdateMatomo "$portainerToken" ;;
+      performUpdateMatomo ;;
     pastefy)
-      performUpdatePastefy "$portainerToken" ;;
+      performUpdatePastefy ;;
     snippetbox)
-      performUpdateSnippetBox "$portainerToken" ;;
+      performUpdateSnippetBox ;;
     aistack)
-      performUpdateAIStack "$portainerToken" ;;
+      performUpdateAIStack ;;
     pixelfed)
-      performUpdatePixelfed "$portainerToken" ;;
+      performUpdatePixelfed ;;
     yamtrack)
-      performUpdateYamtrack "$portainerToken" ;;
+      performUpdateYamtrack ;;
     servarr)
-      performUpdateServarr "$portainerToken" ;;
+      performUpdateServarr ;;
     sabnzbd)
-      performUpdateSABnzbd "$portainerToken" ;;
+      performUpdateSABnzbd ;;
     qbittorrent)
-      performUpdateqBittorrent "$portainerToken" ;;
+      performUpdateqBittorrent ;;
     ombi)
-      performUpdateOmbi "$portainerToken" ;;
+      performUpdateOmbi ;;
     meshcentral)
-      performUpdateMeshCentral "$portainerToken" ;;
+      performUpdateMeshCentral ;;
     navidrome)
-      performUpdateNavidrome "$portainerToken" ;;
+      performUpdateNavidrome ;;
     heimdall)
-      performUpdateHeimdall "$portainerToken" ;;
+      performUpdateHeimdall ;;
     ofelia)
-      performUpdateOfelia "$portainerToken" ;;
+      performUpdateOfelia ;;
     script-server)
-      performUpdateScriptServer "$portainerToken" ;;
+      performUpdateScriptServer ;;
     sqlpad)
-      performUpdateSQLPad "$portainerToken" ;;
+      performUpdateSQLPad ;;
     uptimekuma)
-      performUpdateUptimeKuma "$portainerToken" ;;
+      performUpdateUptimeKuma ;;
     caddy-*)
-      performUpdateCaddy "$portainerToken" "$stack_name" ;;
+      performUpdateCaddy "$stack_name" ;;
     clientdns-*)
-      performUpdateClientDNS "$portainerToken" "$stack_name" ;;
+      performUpdateClientDNS "$stack_name" ;;
   esac
 }
 
@@ -32045,7 +32172,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_MAILU_UNBOUND
       ;;
     "mailu-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "mailu-admin")
       container_image=$IMG_MAILU_ADMIN
@@ -32090,10 +32217,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_COLLABORA
       ;;
     "nextcloud-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "nextcloud-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "nextcloud-app")
       container_image=$IMG_NEXTCLOUD_APP
@@ -32108,7 +32235,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_NEXTCLOUD_IMAGINARY
       ;;
     "nextcloud-web")
-      container_image=$IMG_NGINX
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
       ;;
     "nextcloud-talkhpb")
       container_image=$IMG_NEXTCLOUD_TALKHPB
@@ -32129,13 +32256,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_JITSI_JVB
       ;;
     "matrix-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "matrix-synapse")
       container_image=$IMG_MATRIX_SYNAPSE
       ;;
     "matrix-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "matrix-element-private")
       container_image=$IMG_MATRIX_ELEMENT
@@ -32144,7 +32271,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_MATRIX_ELEMENT
       ;;
     "wikijs-db")
-      container_image=$IMG_POSTGRES
+      container_image=postgres:15.0-bullseye
       ;;
     "wikijs-web")
       container_image=$IMG_WIKIJS
@@ -32153,13 +32280,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_DUPLICATI
       ;;
     "mastodon-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "mastodon-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "mastodon-redis-cache")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "mastodon-app")
       container_image=$IMG_MASTODON_APP
@@ -32171,22 +32298,22 @@ function getScriptImageByContainerName()
       container_image=$IMG_MASTODON_APP
       ;;
     "mastodon-web")
-      container_image=$IMG_NGINX
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
       ;;
     "mastodon-elasticsearch")
-      container_image=$IMG_MASTODON_ELASTICSEARCH
+      container_image=mirror.gcr.io/elasticsearch:9.1.1
       ;;
     "dozzle")
       container_image=$IMG_DOZZLE
       ;;
     "searxng-caddy")
-      container_image=$IMG_CADDY
+      container_image=mirror.gcr.io/caddy:2.10.0
       ;;
     "searxng-app")
       container_image=$IMG_SEARXNG
       ;;
     "searxng-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "jellyfin")
       container_image=$IMG_JELLYFIN
@@ -32195,13 +32322,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_FILEBROWSER
       ;;
     "photoprism-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "photoprism-app")
       container_image=$IMG_PHOTOPRISM_APP
       ;;
     "guacamole-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "guacamole-daemon")
       container_image=$IMG_GUACAMOLE_GUACD
@@ -32213,31 +32340,31 @@ function getScriptImageByContainerName()
       container_image=$IMG_AUTHELIA
       ;;
     "authelia-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "wordpress-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "wordpress-web")
       container_image=$IMG_WORDPRESS
       ;;
     "ghost-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "ghost-web")
       container_image=$IMG_GHOST
       ;;
     "peertube-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "peertube-app")
       container_image=$IMG_PEERTUBE_APP
       ;;
     "peertube-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "homeassistant-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "homeassistant-app")
       container_image=$IMG_HOMEASSISTANT_APP
@@ -32252,16 +32379,16 @@ function getScriptImageByContainerName()
       container_image=$IMG_HOMEASSISTANT_TASMOADMIN
       ;;
     "gitlab-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "gitlab-app")
       container_image=$IMG_GITLAB_APP
       ;;
     "gitlab-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "vaultwarden-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "vaultwarden-app")
       container_image=$IMG_VAULTWARDEN_APP
@@ -32270,7 +32397,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_VAULTWARDEN_LDAP
       ;;
     "discourse-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:17.5-bookworm
       ;;
     "discourse-app")
       container_image=$IMG_DISCOURSE
@@ -32279,7 +32406,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_DISCOURSE
       ;;
     "discourse-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "syncthing")
       container_image=$IMG_SYNCTHING
@@ -32288,7 +32415,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_CODESERVER
       ;;
     "shlink-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "shlink-app")
       container_image=$IMG_SHLINK_APP
@@ -32297,10 +32424,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_SHLINK_WEB
       ;;
     "shlink-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "firefly-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "firefly-app")
       container_image=$IMG_FIREFLY_APP
@@ -32309,10 +32436,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_FIREFLY_IMPORTER
       ;;
     "firefly-cron")
-      container_image=$IMG_FIREFLY_CRON
+      container_image=mirror.gcr.io/alpine:3.22.1
       ;;
     "firefly-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "excalidraw-storage")
       container_image=$IMG_EXCALIDRAW_STORAGE
@@ -32324,7 +32451,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_EXCALIDRAW_WEB
       ;;
     "excalidraw-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "drawio-plantuml")
       container_image=$IMG_DRAWIO_PLANTUML
@@ -32336,7 +32463,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_DRAWIO_WEB
       ;;
     "invidious-db")
-      container_image=$IMG_POSTGRES
+      container_image=postgres:15.0-bullseye
       ;;
     "invidious-web")
       container_image=$IMG_INVIDIOUS_WEB
@@ -32345,13 +32472,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_INVIDIOUS_COMPANION
       ;;
     "gitea-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "gitea-app")
       container_image=$IMG_GITEA_APP
       ;;
     "mealie-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "mealie-app")
       container_image=$IMG_MEALIE
@@ -32378,7 +32505,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_NETDATA
       ;;
     "linkwarden-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "linkwarden-app")
       container_image=$IMG_LINKWARDEN
@@ -32390,34 +32517,34 @@ function getScriptImageByContainerName()
       container_image=$IMG_BARASSISTANT_APP
       ;;
     "bar-assistant-meilisearch")
-      container_image=$IMG_MEILISEARCH
+      container_image=mirror.gcr.io/getmeili/meilisearch:v1.16.0
       ;;
     "bar-assistant-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "bar-assistant-saltrim")
       container_image=$IMG_BARASSISTANT_SALTRIM
       ;;
     "bar-assistant-web")
-      container_image=$IMG_NGINX
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
       ;;
     "freshrss-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "freshrss-app")
       container_image=$IMG_FRESHRSS
       ;;
     "keila-db")
-      container_image=$IMG_POSTGRES
+      container_image=postgres:15.0-bullseye
       ;;
     "keila-app")
       container_image=$IMG_KEILA
       ;;
     "wallabag-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "wallabag-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "wallabag-app")
       container_image=$IMG_WALLABAG
@@ -32426,10 +32553,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_JUPYTER
       ;;
     "paperless-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "paperless-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "paperless-app")
       container_image=$IMG_PAPERLESS_APP
@@ -32441,13 +32568,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_PAPERLESS_TIKA
       ;;
     "speedtest-tracker-local-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "speedtest-tracker-local-app")
       container_image=$IMG_SPEEDTEST_TRACKER_APP
       ;;
     "speedtest-tracker-vpn-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "speedtest-tracker-vpn-app")
       container_image=$IMG_SPEEDTEST_TRACKER_APP
@@ -32459,7 +32586,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME
       ;;
     "huginn-db")
-      container_image=$IMG_POSTGRES
+      container_image=postgres:15.0-bullseye
       ;;
     "huginn-app")
       container_image=$IMG_HUGINN_APP
@@ -32471,7 +32598,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_FILEDROP
       ;;
     "piped-db")
-      container_image=$IMG_POSTGRES
+      container_image=postgres:15.0-bullseye
       ;;
     "piped-frontend")
       container_image=$IMG_PIPED_FRONTEND
@@ -32486,7 +32613,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_PIPED_CRON
       ;;
     "piped-web")
-      container_image=$IMG_NGINX
+      container_image=nginx:1.27.4-alpine
       ;;
     "sqlpad")
       container_image=$IMG_SQLPAD
@@ -32504,13 +32631,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_GRAMPSWEB
       ;;
     "grampsweb-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "penpot-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "penpot-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "penpot-backend")
       container_image=$IMG_PENPOT_BACKEND
@@ -32522,7 +32649,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_PENPOT_EXPORTER
       ;;
     "espocrm-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "espocrm-app")
       container_image=$IMG_ESPOCRM_APP
@@ -32543,22 +32670,22 @@ function getScriptImageByContainerName()
       container_image=$IMG_IMMICH_ML
       ;;
     "immich-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "homarr-app")
       container_image=$IMG_HOMARR_APP
       ;;
     "matomo-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "matomo-app")
       container_image=$IMG_MATOMO_APP
       ;;
     "matomo-web")
-      container_image=$IMG_NGINX
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
       ;;
     "pastefy-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "pastefy-app")
       container_image=$IMG_PASTEFY
@@ -32573,7 +32700,7 @@ function getScriptImageByContainerName()
       container_image=$IMG_AISTACK_MINDSDB_MOD_APP
       ;;
     "aistack-mindsdb-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "aistack-otel")
       container_image=$IMG_AISTACK_OPENTELEMETRY
@@ -32588,10 +32715,10 @@ function getScriptImageByContainerName()
       container_image=$IMG_AISTACK_OPENWEBUI
       ;;
     "aistack-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "pixelfed-db")
-      container_image=$IMG_MYSQL
+      container_image=mirror.gcr.io/mariadb:10.7.3
       ;;
     "pixelfed-app")
       container_image=$IMG_PIXELFED_MOD_APP
@@ -32600,16 +32727,16 @@ function getScriptImageByContainerName()
       container_image=$IMG_PIXELFED_MOD_APP
       ;;
     "pixelfed-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "yamtrack-db")
-      container_image=$IMG_POSTGRES
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
       ;;
     "yamtrack-app")
       container_image=$IMG_YAMTRACK_APP
       ;;
     "yamtrack-redis")
-      container_image=$IMG_REDIS
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
     "servarr-sonarr")
       container_image=$IMG_SERVARR_SONARR
@@ -32639,13 +32766,13 @@ function getScriptImageByContainerName()
       container_image=$IMG_QBITTORRENT
       ;;
     "ombi-db")
-      container_image=$IMG_MYSQL
+      container_image=mariadb:10.7.3
       ;;
     "ombi-app")
       container_image=$IMG_OMBI_APP
       ;;
     "meshcentral-db")
-      container_image=$IMG_MYSQL
+      container_image=mariadb:10.7.3
       ;;
     "meshcentral-app")
       container_image=$IMG_MESHCENTRAL
@@ -32745,12 +32872,10 @@ function getHomeServerPortsList()
   echo "$portsList"
 }
 
+# Custom images
 function buildOrPullImage()
 {
   curImg="$1"
-  # At some point need to rework this function to be more generalized.
-  # But at the moment, there are only 3 custom images, so a simple case statement will do.
-  # The mindsdb image in the AIStack is still an issue, need a solution for it.
   case "$curImg" in
     "filedrop/filedrop:1")
       buildImageFileDropV1
@@ -32759,14 +32884,41 @@ function buildOrPullImage()
       buildImagePixelfedV1
       ;;
     "hshq/mindsdb:v1")
-      echo "hshq/mindsdb:v1 - This image must be rebuilt by user."
+      buildMindsDBImageV1
+      ;;
+    "hshq/mindsdb:v2")
+      buildMindsDBImageV2
       ;;
     *)
       pullImage "$curImg"
       ;;
   esac
 }
+
+function checkIsCustomImage()
+{
+  curImg="$1"
+  case "$curImg" in
+    "filedrop/filedrop:1")
+      echo "true"
+      ;;
+    "hshq/pixelfed:v1")
+      echo "true"
+      ;;
+    "hshq/mindsdb:v1")
+      echo "true"
+      ;;
+    "hshq/mindsdb:v2")
+      echo "true"
+      ;;
+    *)
+      echo "false"
+      ;;
+  esac
+}
+
 # Stacks Installation/Update Functions
+# =====================================
 
 # Portainer
 function installPortainer()
@@ -32994,7 +33146,6 @@ function performUpdatePortainer()
   # with the results of the update process. It is up to the 
   # caller to do something with it.
   perform_update_report=""
-  portainerToken="$1"
   perform_compose=$HSHQ_STACKS_DIR/portainer/docker-compose.yml
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
   perform_stack_ver=$(getVersionFromComposeLine "$perform_stack_firstline")
@@ -33024,7 +33175,7 @@ function performUpdatePortainer()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "0" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "0" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -33034,7 +33185,7 @@ function restartPortainer()
   sleep 3
   startPortainer
   if ! [ -z "$PORTAINER_ADMIN_USERNAME" ] && ! [ -z "$PORTAINER_ADMIN_PASSWORD" ]; then
-    portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
 }
 
@@ -33452,7 +33603,7 @@ function modFunAdguardFixMSS()
 function performUpdateAdGuard()
 {
   perform_stack_name=adguard
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -33497,7 +33648,7 @@ function performUpdateAdGuard()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -36295,7 +36446,7 @@ EOFJS
 function performUpdateSysUtils()
 {
   perform_stack_name=sysutils
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -36306,7 +36457,7 @@ function performUpdateSysUtils()
       image_update_map[1]="prom/prometheus:v2.46.0,prom/prometheus:v2.50.1"
       image_update_map[2]="prom/node-exporter:v1.6.1,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.1-alpine,influxdb:2.7.5-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddPrometheusWeb false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -36317,7 +36468,7 @@ function performUpdateSysUtils()
       image_update_map[1]="prom/prometheus:v2.48.1,prom/prometheus:v2.50.1"
       image_update_map[2]="prom/node-exporter:v1.7.0,prom/node-exporter:v1.7.0"
       image_update_map[3]="influxdb:2.7.4-alpine,influxdb:2.7.5-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddPrometheusWeb false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddPrometheusWeb false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -36347,20 +36498,28 @@ function performUpdateSysUtils()
       image_update_map[3]="influxdb:2.7.8-alpine,influxdb:2.7.10-alpine"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=grafana/grafana-oss:11.3.0,prom/prometheus:v2.55.0,prom/node-exporter:v1.8.2,influxdb:2.7.10-alpine
-      image_update_map[0]="grafana/grafana-oss:11.3.0,grafana/grafana-oss:11.6.0"
-      image_update_map[1]="prom/prometheus:v2.55.0,prom/prometheus:v3.2.1"
-      image_update_map[2]="prom/node-exporter:v1.8.2,prom/node-exporter:v1.9.1"
-      image_update_map[3]="influxdb:2.7.10-alpine,influxdb:2.7.11-alpine"
+      image_update_map[0]="grafana/grafana-oss:11.3.0,mirror.gcr.io/grafana/grafana-oss:12.1.0"
+      image_update_map[1]="prom/prometheus:v2.55.0,mirror.gcr.io/prom/prometheus:v3.5.0"
+      image_update_map[2]="prom/node-exporter:v1.8.2,mirror.gcr.io/prom/node-exporter:v1.9.1"
+      image_update_map[3]="influxdb:2.7.10-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=grafana/grafana-oss:11.6.0,prom/prometheus:v3.2.1,prom/node-exporter:v1.9.1,influxdb:2.7.11-alpine
-      image_update_map[0]="grafana/grafana-oss:11.6.0,grafana/grafana-oss:11.6.0"
-      image_update_map[1]="prom/prometheus:v3.2.1,prom/prometheus:v3.2.1"
-      image_update_map[2]="prom/node-exporter:v1.9.1,prom/node-exporter:v1.9.1"
-      image_update_map[3]="influxdb:2.7.11-alpine,influxdb:2.7.11-alpine"
+      image_update_map[0]="grafana/grafana-oss:11.6.0,mirror.gcr.io/grafana/grafana-oss:12.1.0"
+      image_update_map[1]="prom/prometheus:v3.2.1,mirror.gcr.io/prom/prometheus:v3.5.0"
+      image_update_map[2]="prom/node-exporter:v1.9.1,mirror.gcr.io/prom/node-exporter:v1.9.1"
+      image_update_map[3]="influxdb:2.7.11-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/grafana/grafana-oss:12.1.0,mirror.gcr.io/prom/prometheus:v3.5.0,mirror.gcr.io/prom/node-exporter:v1.9.1,mirror.gcr.io/influxdb:2.7.12-alpine
+      image_update_map[0]="mirror.gcr.io/grafana/grafana-oss:12.1.0,mirror.gcr.io/grafana/grafana-oss:12.1.0"
+      image_update_map[1]="mirror.gcr.io/prom/prometheus:v3.5.0,mirror.gcr.io/prom/prometheus:v3.5.0"
+      image_update_map[2]="mirror.gcr.io/prom/node-exporter:v1.9.1,mirror.gcr.io/prom/node-exporter:v1.9.1"
+      image_update_map[3]="mirror.gcr.io/influxdb:2.7.12-alpine,mirror.gcr.io/influxdb:2.7.12-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -36368,7 +36527,7 @@ function performUpdateSysUtils()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -36956,7 +37115,7 @@ EOFLB
 function performUpdateOpenLDAP()
 {
   perform_stack_name=openldap
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -36973,7 +37132,7 @@ function performUpdateOpenLDAP()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -37269,14 +37428,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -37529,14 +37688,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - dock-mailu-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mailu-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-mailu-redis:/data
 
   admin:
     image: $(getScriptImageByContainerName mailu-admin)
@@ -37776,7 +37935,7 @@ EOFRS
 function performUpdateMailu()
 {
   perform_stack_name=mailu
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -37828,7 +37987,7 @@ function performUpdateMailu()
       image_update_map[10]="ghcr.io/mailu/radicale:2.0.39,ghcr.io/mailu/radicale:2024.06.24"
       image_update_map[11]="ghcr.io/mailu/webmail:2.0.39,ghcr.io/mailu/webmail:2024.06.24"
       image_update_map[12]="apache/tika:2.9.2.1-full,apache/tika:2.9.2.1-full"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfMailuV4Update
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfMailuV4Update
       mfMailuV4PostUpdate
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -37851,21 +38010,42 @@ function performUpdateMailu()
       image_update_map[12]="apache/tika:2.9.2.1-full,apache/tika:3.1.0.0-full"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=bitnami/redis:7.4.2,ghcr.io/mailu/admin:2024.06.36,ghcr.io/mailu/rspamd:2024.06.36,clamav/clamav-debian:1.4.2,ghcr.io/mailu/fetchmail:2024.06.36,ghcr.io/mailu/nginx:2024.06.36,ghcr.io/mailu/dovecot:2024.06.36,ghcr.io/mailu/oletools:2024.06.36,ghcr.io/mailu/postfix:2024.06.36,ghcr.io/mailu/unbound:2024.06.36,ghcr.io/mailu/radicale:2024.06.36,ghcr.io/mailu/webmail:2024.06.36,apache/tika:3.1.0.0-full
-      image_update_map[0]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[1]="ghcr.io/mailu/admin:2024.06.36,ghcr.io/mailu/admin:2024.06.36"
-      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.36,ghcr.io/mailu/rspamd:2024.06.36"
-      image_update_map[3]="clamav/clamav-debian:1.4.2,clamav/clamav-debian:1.4.2"
-      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.36,ghcr.io/mailu/fetchmail:2024.06.36"
-      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.36,ghcr.io/mailu/nginx:2024.06.36"
-      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.36,ghcr.io/mailu/dovecot:2024.06.36"
-      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.36,ghcr.io/mailu/oletools:2024.06.36"
-      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.36,ghcr.io/mailu/postfix:2024.06.36"
-      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.36,ghcr.io/mailu/unbound:2024.06.36"
-      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.36,ghcr.io/mailu/radicale:2024.06.36"
-      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.36,ghcr.io/mailu/webmail:2024.06.36"
-      image_update_map[12]="apache/tika:3.1.0.0-full,apache/tika:3.1.0.0-full"
+      image_update_map[0]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.36,ghcr.io/mailu/admin:2024.06.37"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.36,ghcr.io/mailu/rspamd:2024.06.37"
+      image_update_map[3]="clamav/clamav-debian:1.4.2,mirror.gcr.io/clamav/clamav:1.4.3"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.36,ghcr.io/mailu/fetchmail:2024.06.37"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.36,ghcr.io/mailu/nginx:2024.06.37"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.36,ghcr.io/mailu/dovecot:2024.06.37"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.36,ghcr.io/mailu/oletools:2024.06.37"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.36,ghcr.io/mailu/postfix:2024.06.37"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.36,ghcr.io/mailu/unbound:2024.06.37"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.36,ghcr.io/mailu/radicale:2024.06.37"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.36,ghcr.io/mailu/webmail:2024.06.37"
+      image_update_map[12]="apache/tika:3.1.0.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfMailuFixRedisCompose
+      mfMailuV5PostUpdate
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/redis:8.2.0-bookworm,ghcr.io/mailu/admin:2024.06.37,ghcr.io/mailu/rspamd:2024.06.37,clamav/clamav-debian:1.4.2,ghcr.io/mailu/fetchmail:2024.06.37,ghcr.io/mailu/nginx:2024.06.37,ghcr.io/mailu/dovecot:2024.06.37,ghcr.io/mailu/oletools:2024.06.37,ghcr.io/mailu/postfix:2024.06.37,ghcr.io/mailu/unbound:2024.06.37,ghcr.io/mailu/radicale:2024.06.37,ghcr.io/mailu/webmail:2024.06.37,mirror.gcr.io/apache/tika:3.2.2.0-full
+      image_update_map[0]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[1]="ghcr.io/mailu/admin:2024.06.37,ghcr.io/mailu/admin:2024.06.37"
+      image_update_map[2]="ghcr.io/mailu/rspamd:2024.06.37,ghcr.io/mailu/rspamd:2024.06.37"
+      image_update_map[3]="mirror.gcr.io/clamav/clamav:1.4.3,mirror.gcr.io/clamav/clamav:1.4.3"
+      image_update_map[4]="ghcr.io/mailu/fetchmail:2024.06.37,ghcr.io/mailu/fetchmail:2024.06.37"
+      image_update_map[5]="ghcr.io/mailu/nginx:2024.06.37,ghcr.io/mailu/nginx:2024.06.37"
+      image_update_map[6]="ghcr.io/mailu/dovecot:2024.06.37,ghcr.io/mailu/dovecot:2024.06.37"
+      image_update_map[7]="ghcr.io/mailu/oletools:2024.06.37,ghcr.io/mailu/oletools:2024.06.37"
+      image_update_map[8]="ghcr.io/mailu/postfix:2024.06.37,ghcr.io/mailu/postfix:2024.06.37"
+      image_update_map[9]="ghcr.io/mailu/unbound:2024.06.37,ghcr.io/mailu/unbound:2024.06.37"
+      image_update_map[10]="ghcr.io/mailu/radicale:2024.06.37,ghcr.io/mailu/radicale:2024.06.37"
+      image_update_map[11]="ghcr.io/mailu/webmail:2024.06.37,ghcr.io/mailu/webmail:2024.06.37"
+      image_update_map[12]="mirror.gcr.io/apache/tika:3.2.2.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
     ;;
     *)
       is_upgrade_error=true
@@ -37873,7 +38053,7 @@ function performUpdateMailu()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -37950,16 +38130,15 @@ function mailuV111Bugfix()
   if sudo test -d ${HSHQ_STACKS_DIR}/mailu/clamav; then
     return
   fi
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  mailu_stack_id=$(getStackID mailu "$portainerToken")
+  mailu_stack_id=$(getStackID mailu)
   mailu_compose=$HSHQ_STACKS_DIR/portainer/compose/$mailu_stack_id/docker-compose.yml
   mailu_stack_firstline=$(sudo sed -n 1p $mailu_compose)
   mailu_stack_ver=$(getVersionFromComposeLine "$mailu_stack_firstline")
   if [ "$mailu_stack_ver" = "1" ] || [ "$mailu_stack_ver" = "2" ] || [ "$mailu_stack_ver" = "3" ]; then
     return
   fi
-  startStopStack mailu stop "$portainerToken"
-  updateStackEnv mailu mfMailuV111Bugfix "$portainerToken"
+  startStopStack mailu stop
+  updateStackEnv mailu mfMailuV111Bugfix
 }
 
 function mfMailuV111Bugfix()
@@ -37973,6 +38152,40 @@ function mfMailuV111Bugfix()
   fi
   sudo chown -R 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
   sudo rm -fr $HSHQ_STACKS_DIR/mailu/clamav/tmp*
+}
+
+function mfMailuFixRedisCompose()
+{
+  lineStart="  redis:"
+  lineEnd="      - ALLOW_EMPTY_PASSWORD=yes"
+  replaceText=""
+  replaceText=$replaceText">>redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: mailu-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- dock-mailu-ext-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-mailu-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/mailu-compose.yml false ">"
+  cat -s $HOME/mailu-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/mailu-compose.yml
+}
+
+function mfMailuV5PostUpdate()
+{
+  echo "Waiting for mailu stack to initialize..."
+  waitForStack "Listening at: http://0.0.0.0:8080" mailu-admin
+  sleep 15
+  echo "Restarting mailu stack..."
+  startStopStack mailu stop
+  sleep 1
+  startStopStack mailu start
 }
 
 # Wazuh
@@ -38753,7 +38966,7 @@ EOFWZ
 function performUpdateWazuh()
 {
   perform_stack_name=wazuh
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -38785,7 +38998,7 @@ function performUpdateWazuh()
       image_update_map[0]="wazuh/wazuh-manager:4.7.3,wazuh/wazuh-manager:4.7.3"
       image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.7.3"
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.7.3"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateWazuhStackJavaMem
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateWazuhStackJavaMem
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -38796,7 +39009,7 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.7.3,wazuh/wazuh-indexer:4.9.1"
       image_update_map[2]="wazuh/wazuh-dashboard:4.7.3,wazuh/wazuh-dashboard:4.9.1"
       updateWazuhAgents "4.9.1-1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" outputWazuhDashboardConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" outputWazuhDashboardConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -38807,7 +39020,7 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.9.1,wazuh/wazuh-indexer:4.11.2"
       image_update_map[2]="wazuh/wazuh-dashboard:4.9.1,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -38819,7 +39032,7 @@ function performUpdateWazuh()
       image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
       # Don't forget to test version412WazuhUpdate
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" version412WazuhUpdate false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" version412WazuhUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -38829,7 +39042,7 @@ function performUpdateWazuh()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -39092,44 +39305,49 @@ EOFCO
 function performUpdateCollabora()
 {
   perform_stack_name=collabora
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v7
+      newVer=v8
       curImageList=collabora/code:23.05.5.3.1
-      image_update_map[0]="collabora/code:23.05.5.3.1,collabora/code:24.04.13.2.1"
+      image_update_map[0]="collabora/code:23.05.5.3.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     2)
-      newVer=v7
+      newVer=v8
       curImageList=collabora/code:23.05.6.4.1
-      image_update_map[0]="collabora/code:23.05.6.4.1,collabora/code:24.04.13.2.1"
+      image_update_map[0]="collabora/code:23.05.6.4.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     3)
-      newVer=v7
+      newVer=v8
       curImageList=collabora/code:23.05.8.2.1
-      image_update_map[0]="collabora/code:23.05.8.2.1,collabora/code:24.04.13.2.1"
+      image_update_map[0]="collabora/code:23.05.8.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     4)
-      newVer=v7
+      newVer=v8
       curImageList=collabora/code:23.05.9.4.1
-      image_update_map[0]="collabora/code:23.05.9.4.1,collabora/code:24.04.13.2.1"
+      image_update_map[0]="collabora/code:23.05.9.4.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     5)
-      newVer=v7
+      newVer=v8
       curImageList=collabora/code:24.04.5.2.1
-      image_update_map[0]="collabora/code:24.04.5.2.1,collabora/code:24.04.13.2.1"
+      image_update_map[0]="collabora/code:24.04.5.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=collabora/code:24.04.9.1.1
-      image_update_map[0]="collabora/code:24.04.9.1.1,collabora/code:24.04.13.2.1"
+      image_update_map[0]="collabora/code:24.04.9.1.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=collabora/code:24.04.13.2.1
-      image_update_map[0]="collabora/code:24.04.13.2.1,collabora/code:24.04.13.2.1"
+      image_update_map[0]="collabora/code:24.04.13.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/collabora/code:25.04.4.2.1
+      image_update_map[0]="mirror.gcr.io/collabora/code:25.04.4.2.1,mirror.gcr.io/collabora/code:25.04.4.2.1"
     ;;
     *)
       is_upgrade_error=true
@@ -39137,7 +39355,7 @@ function performUpdateCollabora()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -39593,17 +39811,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $NEXTCLOUD_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-nextcloud-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - TZ=$TZ
-      - ALLOW_EMPTY_PASSWORD=no
-      - REDIS_PASSWORD=$NEXTCLOUD_REDIS_PASSWORD
-      - REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-      - REDIS_TLS_ENABLED=no
 
   nextcloud-app:
     image: $(getScriptImageByContainerName nextcloud-app)
@@ -39914,14 +40129,14 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $NEXTCLOUD_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-nextcloud-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - ALLOW_EMPTY_PASSWORD=no
-      - REDIS_PASSWORD=$NEXTCLOUD_REDIS_PASSWORD
 
   nextcloud-app:
     image: $(getScriptImageByContainerName nextcloud-app)
@@ -40381,7 +40596,7 @@ EOFNG
 function performUpdateNextcloud()
 {
   perform_stack_name=nextcloud
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -40420,7 +40635,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:27.1.7-fpm-alpine,nextcloud:28.0.8-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfNextcloudUpdateNGINXConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfNextcloudUpdateNGINXConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
@@ -40443,7 +40658,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:29.0.8-fpm-alpine,nextcloud:30.0.1-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:latest"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfNextcloudUpdateNGINXConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfNextcloudUpdateNGINXConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       return
@@ -40456,7 +40671,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:30.0.1-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:latest,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.27.4-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfNextcloudUpdateNGINXConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfNextcloudUpdateNGINXConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       performMaintenanceNextcloud
       return
@@ -40469,7 +40684,7 @@ function performUpdateNextcloud()
       image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
       image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
       image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfNextcloudAddTalkHPB
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudAddTalkHPB
       docker exec -u www-data nextcloud-app php occ config:app:set spreed turn_servers --value="[{\"schemes\":\"turn\",\"server\":\"$SUB_COTURN.$HOMESERVER_DOMAIN:$COTURN_PRIMARY_PORT\",\"secret\":\"$COTURN_STATIC_SECRET\",\"protocols\":\"udp,tcp\"}]" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed signaling_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKHPB.$HOMESERVER_DOMAIN\/standalone-signaling\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_SIGNALING_SECRET\"}" > /dev/null 2>&1
       docker exec -u www-data nextcloud-app php occ config:app:set spreed recording_servers --value="{\"servers\":[{\"server\":\"https:\/\/$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\",\"verify\":true}],\"secret\":\"$NEXTCLOUD_TALKHPB_RECORDING_SECRET\"}" > /dev/null 2>&1
@@ -40479,15 +40694,30 @@ function performUpdateNextcloud()
       return
     ;;
     9)
-      newVer=v9
+      newVer=v10
       curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,nextcloud:31.0.2-fpm-alpine,nextcloud/aio-imaginary:20250325_084656,nginx:1.27.4-alpine,ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[2]="nextcloud:31.0.2-fpm-alpine,nextcloud:31.0.2-fpm-alpine"
-      image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,nextcloud/aio-imaginary:20250325_084656"
-      image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
-      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250512_082954"
-      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="nextcloud:31.0.2-fpm-alpine,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine"
+      image_update_map[3]="nextcloud/aio-imaginary:20250325_084656,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851"
+      image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250512_082954,ghcr.io/nextcloud-releases/aio-talk:20250811_115851"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250512_082954,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfNextcloudFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      performMaintenanceNextcloud
+      return
+    ;;
+    10)
+      newVer=v10
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851,mirror.gcr.io/nginx:1.28.0-alpine,ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/nextcloud:31.0.7-fpm-alpine,mirror.gcr.io/nextcloud:31.0.7-fpm-alpine"
+      image_update_map[3]="mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851,mirror.gcr.io/nextcloud/aio-imaginary:20250811_115851"
+      image_update_map[4]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[5]="ghcr.io/nextcloud-releases/aio-talk:20250811_115851,ghcr.io/nextcloud-releases/aio-talk:20250811_115851"
+      image_update_map[6]="ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851,ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851"
     ;;
     *)
       is_upgrade_error=true
@@ -40495,15 +40725,17 @@ function performUpdateNextcloud()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
   performMaintenanceNextcloud
 }
 
 function performMaintenanceNextcloud()
 {
-  echo "Performing maintenance on Nextcloud, this could take a few minutes..."
-  waitForStack "ready to handle connections" nextcloud-app 3600 5
+  echo -e "\n========================================================================"
+  echo -e "  Performing maintenance on Nextcloud, this could take a few minutes..."
+  echo -e "========================================================================\n"
+  waitForStack "ready to handle connections" nextcloud-app 3600 15
   if [ "$isStackReady" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
     docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
@@ -40571,6 +40803,11 @@ function mfNextcloudAddTalkHPB()
   updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
   insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
   restartAllCaddyContainers
+}
+
+function mfNextcloudFixRedisCompose()
+{
+  replaceRedisBlock nextcloud nextcloud-redis mirror.gcr.io/redis:8.2.0-bookworm false
 }
 
 # Jitsi
@@ -40752,7 +40989,7 @@ EOFJT
 function performUpdateJitsi()
 {
   perform_stack_name=jitsi
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -40826,7 +41063,7 @@ function performUpdateJitsi()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -41028,13 +41265,14 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MATRIX_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-matrix-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - REDIS_PASSWORD=$MATRIX_REDIS_PASSWORD
 
   matrix-element-private:
     image: $(getScriptImageByContainerName matrix-element-private)
@@ -41271,7 +41509,7 @@ EOFJT
 function performUpdateMatrix()
 {
   perform_stack_name=matrix
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -41324,12 +41562,23 @@ function performUpdateMatrix()
       image_update_map[3]="vectorim/element-web:v1.11.83,vectorim/element-web:v1.11.96"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,matrixdotorg/synapse:v1.127.1,bitnami/redis:7.4.2,vectorim/element-web:v1.11.96
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="matrixdotorg/synapse:v1.127.1,matrixdotorg/synapse:v1.127.1"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[3]="vectorim/element-web:v1.11.96,vectorim/element-web:v1.11.96"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="vectorim/element-web:v1.11.96,mirror.gcr.io/vectorim/element-web:v1.11.109"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfMatrixFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/matrixdotorg/synapse:v1.136.0,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/vectorim/element-web:v1.11.109
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/matrixdotorg/synapse:v1.136.0,mirror.gcr.io/matrixdotorg/synapse:v1.136.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/vectorim/element-web:v1.11.109,mirror.gcr.io/vectorim/element-web:v1.11.109"
     ;;
     *)
       is_upgrade_error=true
@@ -41337,7 +41586,7 @@ function performUpdateMatrix()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -41434,6 +41683,11 @@ function outputMatrixElementJSONConfig()
 }
 EOFEL
 
+}
+
+function mfMatrixFixRedisCompose()
+{
+  replaceRedisBlock matrix matrix-redis mirror.gcr.io/redis:8.2.0-bookworm false
 }
 
 # Wikijs
@@ -41627,7 +41881,7 @@ EOFWJ
 function performUpdateWikijs()
 {
   perform_stack_name=wikijs
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -41661,7 +41915,7 @@ function performUpdateWikijs()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -41699,7 +41953,7 @@ SETTINGS_ENCRYPTION_KEY=$DUPLICATI_SETTINGS_ENCRYPTION_KEY
 CLI_ARGS=--webservice-password=$DUPLICATI_ADMIN_PASSWORD
 EOFDP
   generateCert duplicati duplicati
-  installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env
+  installStack duplicati duplicati "\[ls.io-init\] done" $HOME/duplicati.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
     echo "ERROR: There was a problem installing Duplicati"
@@ -41785,7 +42039,7 @@ EOFDP
 function performUpdateDuplicati()
 {
   perform_stack_name=duplicati
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -41798,7 +42052,7 @@ function performUpdateDuplicati()
       newVer=v4
       curImageList=linuxserver/duplicati:2.0.8
       image_update_map[0]="linuxserver/duplicati:2.0.8,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiAddSettingsEncryptionKey
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfDuplicatiAddSettingsEncryptionKey
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -41808,17 +42062,22 @@ function performUpdateDuplicati()
       image_update_map[0]="linuxserver/duplicati:2.1.0,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
-      image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfDuplicatiUpdateEnv
+      image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfDuplicatiUpdateEnv
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246
-      image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246"
+      image_update_map[0]="linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls246,mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256
+      image_update_map[0]="mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256,mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256"
     ;;
     *)
       is_upgrade_error=true
@@ -41826,7 +42085,7 @@ function performUpdateDuplicati()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -42223,14 +42482,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
+      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $(getScriptImageByContainerName mastodon-redis-cache)
@@ -42238,13 +42498,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    environment:
-      - REDIS_PASSWORD=$MASTODON_REDIS_PASSWORD
 
   mastodon-app:
     image: $(getScriptImageByContainerName mastodon-app)
@@ -42434,10 +42695,10 @@ EOFMD
 function performUpdateMastodon()
 {
   perform_stack_name=mastodon
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # Stack status: 1=running, 2=stopped
-  stackStatus=$(getStackStatusByID $perform_stack_id "$portainerToken")
+  stackStatus=$(getStackStatusByID $perform_stack_id)
   if [ -z "$stackStatus" ]; then
     is_upgrade_error=true
     perform_update_report="ERROR ($perform_stack_name): Could not get stack status"
@@ -42455,7 +42716,7 @@ function performUpdateMastodon()
       image_update_map[4]="elasticsearch:8.8.1,elasticsearch:8.12.2"
       # This upgrade requires a migration
       prepMastodonMigrate postgres:15.0-bullseye bitnami/redis:7.0.5 tootsuite/mastodon:v4.2.3 $perform_stack_id
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfMigrateMastodon false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfMigrateMastodon false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42499,7 +42760,7 @@ function performUpdateMastodon()
       echo "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$MASTODON_ARE_DETERMINISTIC_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
       echo "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$MASTODON_ARE_KEY_DERIVATION_SALT" >> $HSHQ_STACKS_DIR/mastodon/stack.env
       echo "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$MASTODON_ARE_PRIMARY_KEY" >> $HSHQ_STACKS_DIR/mastodon/stack.env
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfMigrateMastodon true mfUpdateMastodonV7
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfMigrateMastodon true mfUpdateMastodonV7
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42513,7 +42774,7 @@ function performUpdateMastodon()
       image_update_map[4]="elasticsearch:8.12.2,elasticsearch:8.12.2"
       # This update simply fixes the mastodon-streaming issue, i.e. it has its own container and a few aspects of the docker compose needed an update
       # See https://github.com/mastodon/mastodon/pull/31554/files/51638f89b57613f01b1696b8644478ff4937937b#diff-e45e45baeda1c1e73482975a664062aa56f20c03dd9d64a827aba57775bed0d3
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateMastodonV7
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon true mfUpdateMastodonV7
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -42528,14 +42789,27 @@ function performUpdateMastodon()
       image_update_map[5]="tootsuite/mastodon-streaming:v4.3.1,tootsuite/mastodon-streaming:v4.3.7"
     ;;
     8)
-      newVer=v8
-      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,tootsuite/mastodon:v4.3.7,nginx:1.27.4-alpine,elasticsearch:8.12.2,tootsuite/mastodon-streaming:v4.3.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      newVer=v9
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,tootsuite/mastodon:v4.3.7,nginx:1.27.4-alpine,elasticsearch:8.17.4,tootsuite/mastodon-streaming:v4.3.7
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[2]="tootsuite/mastodon:v4.3.7,tootsuite/mastodon:v4.3.7"
-      image_update_map[3]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
-      image_update_map[4]="elasticsearch:8.17.4,elasticsearch:8.17.4"
-      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.7,tootsuite/mastodon-streaming:v4.3.7"
+      image_update_map[3]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[4]="elasticsearch:8.17.4,mirror.gcr.io/elasticsearch:9.1.1"
+      image_update_map[5]="tootsuite/mastodon-streaming:v4.3.7,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon true mfMastodonFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/tootsuite/mastodon:v4.3.11,mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/elasticsearch:9.1.1,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/tootsuite/mastodon:v4.3.11,mirror.gcr.io/tootsuite/mastodon:v4.3.11"
+      image_update_map[3]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[4]="mirror.gcr.io/elasticsearch:9.1.1,mirror.gcr.io/elasticsearch:9.1.1"
+      image_update_map[5]="mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11,mirror.gcr.io/tootsuite/mastodon-streaming:v4.3.11"
     ;;
     *)
       is_upgrade_error=true
@@ -42543,7 +42817,7 @@ function performUpdateMastodon()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearStaticAssetsMastodon false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearStaticAssetsMastodon false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -42580,12 +42854,15 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-mastodon-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-mastodon-redis:/bitnami/redis/data
+      - v-mastodon-redis:/data
 
   mastodon-redis-cache:
     image: $mastodon_redis_image
@@ -42594,6 +42871,9 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $MASTODON_REDIS_PASSWORD
+      --appendonly no
     networks:
       - int-mastodon-net
     volumes:
@@ -42693,7 +42973,7 @@ function mfMigrateMastodon()
 {
   if [ "$stackStatus" = "1" ];then
     # Stack is running, stop it, then migrate
-    startStopStack mastodon stop "$portainerToken"
+    startStopStack mastodon stop
     isStartStackFromStopped=true
     sleep 3
   fi
@@ -42727,11 +43007,55 @@ function mfClearStaticAssetsMastodon()
 {
   if [ "$stackStatus" = "1" ];then
     # Stack is running, stop it, then clear assets
-    startStopStack mastodon stop "$portainerToken"
+    startStopStack mastodon stop
     isStartStackFromStopped=true
     sleep 3
   fi
   clearStaticAssetsMastodon
+}
+
+function mfMastodonFixRedisCompose()
+{
+  set +e
+  lineStart="  mastodon-redis:"
+  lineEnd="$(grep REDIS_PASSWORD=.* $HOME/mastodon-compose.yml | tail -1)"
+  rpass="$(echo $lineEnd | cut -d"=" -f2)"
+  replaceText=""
+  replaceText=$replaceText">>mastodon-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: mastodon-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-mastodon-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-mastodon-redis:/data\n\n"
+  replaceText=$replaceText">>mastodon-redis-cache:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: mastodon-redis-cache\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-mastodon-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/mastodon-compose.yml false ">"
+  cat -s $HOME/mastodon-compose.yml > $HOME/mastodon.tmp
+  mv $HOME/mastodon.tmp $HOME/mastodon-compose.yml
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/mastodon/redis/*
 }
 
 # Dozzle
@@ -42828,40 +43152,45 @@ EOFDZ
 function performUpdateDozzle()
 {
   perform_stack_name=dozzle
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v6
+      newVer=v7
       curImageList=amir20/dozzle:v4.10.26
-      image_update_map[0]="amir20/dozzle:v4.10.26,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v4.10.26,mirror.gcr.io/amir20/dozzle:v6.1.1"
     ;;
     2)
-      newVer=v6
+      newVer=v7
       curImageList=amir20/dozzle:v5.8.1
-      image_update_map[0]="amir20/dozzle:v5.8.1,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v5.8.1,mirror.gcr.io/amir20/dozzle:v6.1.1"
     ;;
     3)
-      newVer=v6
+      newVer=v7
       curImageList=amir20/dozzle:v6.0.8
-      image_update_map[0]="amir20/dozzle:v6.0.8,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v6.0.8,mirror.gcr.io/amir20/dozzle:v6.1.1"
     ;;
     4)
-      newVer=v6
+      newVer=v7
       curImageList=amir20/dozzle:v6.1.1
-      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v6.1.1,mirror.gcr.io/amir20/dozzle:v6.1.1"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=amir20/dozzle:v8.7.1
-      image_update_map[0]="amir20/dozzle:v8.7.1,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v8.7.1,mirror.gcr.io/amir20/dozzle:v6.1.1"
     ;;
     6)
       # Reverting back to v6.1.1, since v8.7.1 uses a lot more CPU at idle
-      newVer=v6
+      newVer=v7
       curImageList=amir20/dozzle:v6.1.1
-      image_update_map[0]="amir20/dozzle:v6.1.1,amir20/dozzle:v6.1.1"
+      image_update_map[0]="amir20/dozzle:v6.1.1,mirror.gcr.io/amir20/dozzle:v6.1.1"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/amir20/dozzle:v6.1.1
+      image_update_map[0]="mirror.gcr.io/amir20/dozzle:v6.1.1,mirror.gcr.io/amir20/dozzle:v6.1.1"
     ;;
     *)
       is_upgrade_error=true
@@ -42869,7 +43198,7 @@ function performUpdateDozzle()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -42997,14 +43326,15 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $SEARXNG_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-searxng-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-searxng-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$SEARXNG_REDIS_PASSWORD
+      - v-searxng-redis:/data
 
 volumes:
   v-searxng-redis:
@@ -43171,42 +43501,74 @@ EOFSE
 function performUpdateSearxNG()
 {
   perform_stack_name=searxng
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v6
-      curImageList=searxng/searxng:2023.8.19-018b0a932
-      image_update_map[0]="searxng/searxng:2023.8.19-018b0a932,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2023.8.19-018b0a932,caddy:2.7.6,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2023.8.19-018b0a932,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.7.6,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     2)
-      newVer=v6
-      curImageList=searxng/searxng:2023.12.29-27e26b3d6
-      image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2023.12.29-27e26b3d6,caddy:2.7.6,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2023.12.29-27e26b3d6,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.7.6,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
-      newVer=v6
-      curImageList=searxng/searxng:2024.3.15-e2af3e497
-      image_update_map[0]="searxng/searxng:2024.3.15-e2af3e497,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2024.3.15-e2af3e497,caddy:2.7.6,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2024.3.15-e2af3e497,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.7.6,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     4)
-      newVer=v6
-      curImageList=searxng/searxng:2024.7.29-3196e7e86
-      image_update_map[0]="searxng/searxng:2024.7.29-3196e7e86,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v5
+      curImageList=searxng/searxng:2024.7.29-3196e7e86,caddy:2.8.4,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2024.7.29-3196e7e86,searxng/searxng:2024.10.31-fa108c140"
+      image_update_map[1]="caddy:2.8.4,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     5)
       newVer=v6
-      curImageList=searxng/searxng:2024.10.31-fa108c140
+      curImageList=searxng/searxng:2024.10.31-fa108c140,caddy:2.8.4,bitnami/redis:7.0.5
       image_update_map[0]="searxng/searxng:2024.10.31-fa108c140,searxng/searxng:2025.4.1-e6308b816"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfSearxngRemoveStartpage false
+      image_update_map[1]="caddy:2.8.4,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfSearxngRemoveStartpage false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     6)
-      newVer=v6
-      curImageList=searxng/searxng:2025.4.1-e6308b816
-      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,searxng/searxng:2025.4.1-e6308b816"
+      newVer=v8
+      curImageList=searxng/searxng:2025.4.1-e6308b816,caddy:2.8.4,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
+      image_update_map[1]="caddy:2.8.4,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[2]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfSearxngFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v8
+      curImageList=searxng/searxng:2025.4.1-e6308b816,caddy:2.9.1,bitnami/redis:7.4.2
+      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
+      image_update_map[1]="caddy:2.9.1,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfSearxngFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d,mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
+      image_update_map[1]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -43214,13 +43576,19 @@ function performUpdateSearxNG()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 function mfSearxngRemoveStartpage()
 {
   sed -i "/^search:/,+1d" $HSHQ_STACKS_DIR/searxng/web/settings.yml
+}
+
+function mfSearxngFixRedisCompose()
+{
+  replaceRedisBlock searxng searxng-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/searxng/redis/*
 }
 
 # Jellyfin
@@ -43364,7 +43732,7 @@ EOFLD
 function performUpdateJellyfin()
 {
   perform_stack_name=jellyfin
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -43372,7 +43740,7 @@ function performUpdateJellyfin()
       newVer=v3
       curImageList=jellyfin/jellyfin:10.8.10
       image_update_map[0]="jellyfin/jellyfin:10.8.10,jellyfin/jellyfin:10.9.8"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" notifyJellyfinLDAPPluginUpdate false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" notifyJellyfinLDAPPluginUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       sendEmailJellyfinLDAPPluginUpdate
       return
@@ -43381,25 +43749,30 @@ function performUpdateJellyfin()
       newVer=v3
       curImageList=jellyfin/jellyfin:10.8.13
       image_update_map[0]="jellyfin/jellyfin:10.8.13,jellyfin/jellyfin:10.9.8"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" notifyJellyfinLDAPPluginUpdate false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" notifyJellyfinLDAPPluginUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       sendEmailJellyfinLDAPPluginUpdate
       return
     ;;
     3)
-      newVer=v5
+      newVer=v6
       curImageList=jellyfin/jellyfin:10.9.8
-      image_update_map[0]="jellyfin/jellyfin:10.9.8,jellyfin/jellyfin:10.10.6"
+      image_update_map[0]="jellyfin/jellyfin:10.9.8,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=jellyfin/jellyfin:10.10.0
-      image_update_map[0]="jellyfin/jellyfin:10.10.0,jellyfin/jellyfin:10.10.6"
+      image_update_map[0]="jellyfin/jellyfin:10.10.0,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=jellyfin/jellyfin:10.10.6
-      image_update_map[0]="jellyfin/jellyfin:10.10.6,jellyfin/jellyfin:10.10.6"
+      image_update_map[0]="jellyfin/jellyfin:10.10.6,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/jellyfin/jellyfin:10.10.7
+      image_update_map[0]="mirror.gcr.io/jellyfin/jellyfin:10.10.7,mirror.gcr.io/jellyfin/jellyfin:10.10.7"
     ;;
     *)
       is_upgrade_error=true
@@ -43407,7 +43780,7 @@ function performUpdateJellyfin()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -43441,6 +43814,7 @@ function installFileBrowser()
   mkdir $HSHQ_STACKS_DIR/filebrowser
   mkdir $HSHQ_STACKS_DIR/filebrowser/db
   mkdir $HSHQ_STACKS_DIR/filebrowser/srv
+  mkdir $HSHQ_STACKS_DIR/filebrowser/config
   initServicesCredentials
   FILEBROWSER_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $FILEBROWSER_PASSWORD | tr -d ':\n' | sed 's/$2y/$2a/')
 
@@ -43473,6 +43847,29 @@ function installFileBrowser()
 
 function outputConfigFileBrowser()
 {
+  outputComposeFileBrowser
+  cat <<EOFJF > $HOME/filebrowser.env
+UID=$USERID
+GID=$GROUPID
+FB_USERNAME=$FILEBROWSER_USERNAME
+FB_PASSWORD='$FILEBROWSER_PASSWORD_HASH'
+EOFJF
+
+  cat <<EOFJF > $HSHQ_STACKS_DIR/filebrowser/filebrowser.json
+{
+  "port": 80,
+  "baseURL": "",
+  "address": "",
+  "log": "stdout",
+  "database": "/database/filebrowser.db",
+  "root": "/srv"
+}
+EOFJF
+
+}
+
+function outputComposeFileBrowser()
+{
   cat <<EOFJF > $HOME/filebrowser-compose.yml
 $STACK_VERSION_PREFIX filebrowser $(getScriptStackVersion filebrowser)
 
@@ -43494,6 +43891,7 @@ services:
       - \${HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
       - \${HSHQ_STACKS_DIR}/filebrowser/srv:/srv
       - \${HSHQ_STACKS_DIR}/filebrowser/db:/database
+      - \${HSHQ_STACKS_DIR}/filebrowser/config:/config
 
 networks:
   dock-proxy-net:
@@ -43502,30 +43900,12 @@ networks:
 
 EOFJF
 
-  cat <<EOFJF > $HOME/filebrowser.env
-UID=$USERID
-GID=$GROUPID
-FB_USERNAME=$FILEBROWSER_USERNAME
-FB_PASSWORD='$FILEBROWSER_PASSWORD_HASH'
-EOFJF
-
-  cat <<EOFJF > $HSHQ_STACKS_DIR/filebrowser/filebrowser.json
-{
-  "port": 80,
-  "baseURL": "",
-  "address": "",
-  "log": "stdout",
-  "database": "/database/filebrowser.db",
-  "root": "/srv"
-}
-EOFJF
-
 }
 
 function performUpdateFileBrowser()
 {
   perform_stack_name=filebrowser
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -43555,9 +43935,17 @@ function performUpdateFileBrowser()
       image_update_map[0]="filebrowser/filebrowser:v2.31.2,filebrowser/filebrowser:v2.32.0"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=filebrowser/filebrowser:v2.32.0
-      image_update_map[0]="filebrowser/filebrowser:v2.32.0,filebrowser/filebrowser:v2.32.0"
+      image_update_map[0]="filebrowser/filebrowser:v2.32.0,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfFileBrowserAddConfigVol
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/filebrowser/filebrowser:v2.42.3
+      image_update_map[0]="mirror.gcr.io/filebrowser/filebrowser:v2.42.3,mirror.gcr.io/filebrowser/filebrowser:v2.42.3"
     ;;
     *)
       is_upgrade_error=true
@@ -43565,8 +43953,15 @@ function performUpdateFileBrowser()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfFileBrowserAddConfigVol()
+{
+  mkdir -p $HSHQ_STACKS_DIR/filebrowser/config
+  rm -f $HOME/filebrowser-compose.yml
+  outputComposeFileBrowser
 }
 
 # PhotoPrism
@@ -43633,7 +44028,7 @@ function installPhotoPrism()
   sleep 5
   cd ~
   docker compose -f $HOME/photoprism-compose-tmp.yml down -v
-  installStack photoprism photoprism-app "listening on 0.0.0.0:2342" $HOME/photoprism.env
+  installStack photoprism photoprism-app "listening on 0.0.0.0:2342" $HOME/photoprism.env 10
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -43897,7 +44292,7 @@ EOFPP
 function performUpdatePhotoPrism()
 {
   perform_stack_name=photoprism
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -43906,7 +44301,7 @@ function performUpdatePhotoPrism()
       curImageList=mariadb:10.7.3,photoprism/photoprism:220901-bullseye
       image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
       image_update_map[1]="photoprism/photoprism:220901-bullseye,photoprism/photoprism:240915"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdatePhotoPrismV2
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdatePhotoPrismV2
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       sendEmail -s "PhotoPrism Admin Login Info" -b "PhotoPrism Admin Username: $PHOTOPRISM_ADMIN_USERNAME\nPhotoPrism Admin Password: $PHOTOPRISM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
       PHOTOPRISM_INIT_ENV=true
@@ -43914,10 +44309,16 @@ function performUpdatePhotoPrism()
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mariadb:10.7.3,photoprism/photoprism:240915
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="photoprism/photoprism:240915,photoprism/photoprism:240915"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="photoprism/photoprism:240915,mirror.gcr.io/photoprism/photoprism:250707"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/photoprism/photoprism:250707
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/photoprism/photoprism:250707,mirror.gcr.io/photoprism/photoprism:250707"
     ;;
     *)
       is_upgrade_error=true
@@ -43925,7 +44326,7 @@ function performUpdatePhotoPrism()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -44173,27 +44574,37 @@ EOFGC
 function performUpdateGuacamole()
 {
   perform_stack_name=guacamole
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
-      curImageList=guacamole/guacd:1.5.3,guacamole/guacamole:1.5.3
-      image_update_map[0]="guacamole/guacd:1.5.3,guacamole/guacd:1.5.5"
-      image_update_map[1]="guacamole/guacamole:1.5.3,guacamole/guacamole:1.5.5"
+      newVer=v4
+      curImageList=guacamole/guacd:1.5.3,guacamole/guacamole:1.5.3,mariadb:10.7.3
+      image_update_map[0]="guacamole/guacd:1.5.3,mirror.gcr.io/guacamole/guacd:1.6.0"
+      image_update_map[1]="guacamole/guacamole:1.5.3,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
     ;;
     2)
-      newVer=v3
-      curImageList=guacamole/guacd:1.5.4,guacamole/guacamole:1.5.4
-      image_update_map[0]="guacamole/guacd:1.5.4,guacamole/guacd:1.5.5"
-      image_update_map[1]="guacamole/guacamole:1.5.4,guacamole/guacamole:1.5.5"
+      newVer=v4
+      curImageList=guacamole/guacd:1.5.4,guacamole/guacamole:1.5.4,mariadb:10.7.3
+      image_update_map[0]="guacamole/guacd:1.5.4,mirror.gcr.io/guacamole/guacd:1.6.0"
+      image_update_map[1]="guacamole/guacamole:1.5.4,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
     ;;
     3)
-      newVer=v3
-      curImageList=guacamole/guacd:1.5.5,guacamole/guacamole:1.5.5
-      image_update_map[0]="guacamole/guacd:1.5.5,guacamole/guacd:1.5.5"
-      image_update_map[1]="guacamole/guacamole:1.5.5,guacamole/guacamole:1.5.5"
+      newVer=v4
+      curImageList=guacamole/guacd:1.5.5,guacamole/guacamole:1.5.5,mariadb:10.7.3
+      image_update_map[0]="guacamole/guacd:1.5.5,mirror.gcr.io/guacamole/guacd:1.6.0"
+      image_update_map[1]="guacamole/guacamole:1.5.5,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/guacamole/guacd:1.6.0,mirror.gcr.io/guacamole/guacamole:1.6.0,mirror.gcr.io/mariadb:10.7.3
+      image_update_map[0]="mirror.gcr.io/guacamole/guacd:1.6.0,mirror.gcr.io/guacamole/guacd:1.6.0"
+      image_update_map[1]="mirror.gcr.io/guacamole/guacamole:1.6.0,mirror.gcr.io/guacamole/guacamole:1.6.0"
+      image_update_map[3]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
     ;;
     *)
       is_upgrade_error=true
@@ -44201,7 +44612,7 @@ function performUpdateGuacamole()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -44332,6 +44743,15 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $(cat $HSHQ_SECRETS_DIR/authelia_redis_password.txt)
+      --tls-port 6379
+      --port 0
+      --tls-cert-file /tls/authelia-redis.crt
+      --tls-key-file /tls/authelia-redis.key
+      --tls-ca-cert-file /tls/${CERTS_ROOT_CA_NAME}.crt
+      --tls-auth-clients no
+      --appendonly no
     networks:
       - int-authelia-net
     volumes:
@@ -44344,8 +44764,6 @@ services:
       - \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro
       - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
       - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
-    environment:
-      - REDIS_PASSWORD=$(cat $HSHQ_SECRETS_DIR/authelia_redis_password.txt)
 
 secrets:
   authelia_jwt_secret:
@@ -44389,16 +44807,6 @@ AUTHELIA_SESSION_SECRET_FILE=/run/secrets/authelia_session_secret
 AUTHELIA_STORAGE_ENCRYPTION_KEY_FILE=/run/secrets/authelia_storage_encryption_key
 AUTHELIA_AUTHENTICATION_BACKEND_LDAP_PASSWORD_FILE=/run/secrets/ldap_admin_user_password
 AUTHELIA_SESSION_REDIS_PASSWORD_FILE=/run/secrets/authelia_redis_password
-ALLOW_EMPTY_PASSWORD=no
-REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
-REDIS_AOF_ENABLED=no
-REDIS_TLS_ENABLED=yes
-REDIS_TLS_PORT=6379
-REDIS_TLS_CERT_FILE=/tls/authelia-redis.crt
-REDIS_TLS_KEY_FILE=/tls/authelia-redis.key
-REDIS_TLS_CA_FILE=/tls/${CERTS_ROOT_CA_NAME}.crt
-REDIS_TLS_DH_PARAMS_FILE=/tls/dhparam.pem
-REDIS_TLS_AUTH_CLIENTS=no
 X_AUTHELIA_CONFIG_FILTERS=template
 EOFAE
 
@@ -44584,7 +44992,7 @@ EOFAC
 function performUpdateAuthelia()
 {
   perform_stack_name=authelia
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -44593,39 +45001,45 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.37.5,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.37.5,authelia/authelia:4.38.2"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateAutheliaConfig
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfUpdateAutheliaConfig
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
-      newVer=v5
+      newVer=v4
       curImageList=authelia/authelia:4.38.2,bitnami/redis:7.0.5
-      image_update_map[0]="authelia/authelia:4.38.2,authelia/authelia:4.39.1"
-      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      image_update_map[0]="authelia/authelia:4.38.2,authelia/authelia:4.38.17"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
-      newVer=v5
+      newVer=v4
       curImageList=authelia/authelia:4.38.9,bitnami/redis:7.0.5
-      image_update_map[0]="authelia/authelia:4.38.9,authelia/authelia:4.39.1"
-      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      image_update_map[0]="authelia/authelia:4.38.9,authelia/authelia:4.38.17"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     4)
       newVer=v5
       curImageList=authelia/authelia:4.38.17,bitnami/redis:7.0.5
       image_update_map[0]="authelia/authelia:4.38.17,authelia/authelia:4.39.1"
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAutheliaFixConfigV133 false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=authelia/authelia:4.39.1,bitnami/redis:7.4.2
-      image_update_map[0]="authelia/authelia:4.39.1,authelia/authelia:4.39.1"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAutheliaFixConfigV133 false
+      image_update_map[0]="authelia/authelia:4.39.1,mirror.gcr.io/authelia/authelia:4.39.6"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAutheliaFixConfigV133 true mfAutheliaFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/authelia/authelia:4.39.6,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/authelia/authelia:4.39.6,mirror.gcr.io/authelia/authelia:4.39.6"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -44633,7 +45047,7 @@ function performUpdateAuthelia()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -44690,6 +45104,55 @@ function outputAutheliaIDPSecretsV108()
   if ! [ -f $HSHQ_STACKS_DIR/authelia/config/secrets/jwks-key.pem ]; then
     openssl genrsa -out $HSHQ_STACKS_DIR/authelia/config/secrets/jwks-key.pem 2048
   fi
+}
+
+function mfAutheliaFixRedisCompose()
+{
+  lineStart="  authelia-redis:"
+  lineEnd="$(grep REDIS_PASSWORD=.* $HOME/authelia-compose.yml)"
+  rpass="$(echo $lineEnd | cut -d"=" -f2)"
+  replaceText=""
+  replaceText=$replaceText">>authelia-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: authelia-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $rpass\n"
+  replaceText=$replaceText">>>>>>--tls-port 6379\n"
+  replaceText=$replaceText">>>>>>--port 0\n"
+  replaceText=$replaceText">>>>>>--tls-cert-file /tls/authelia-redis.crt\n"
+  replaceText=$replaceText">>>>>>--tls-key-file /tls/authelia-redis.key\n"
+  replaceText=$replaceText">>>>>>--tls-ca-cert-file /tls/${CERTS_ROOT_CA_NAME}.crt\n"
+  replaceText=$replaceText">>>>>>--tls-auth-clients no\n"
+  replaceText=$replaceText">>>>>>--appendonly no\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-authelia-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/ssl/certs:/etc/ssl/certs:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/share/ca-certificates:/usr/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro\n"
+  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/authelia-compose.yml false ">"
+  cat -s $HOME/authelia-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/authelia-compose.yml
+  sed -i "/ALLOW_EMPTY_PASSWORD=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_DISABLE_COMMANDS=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_AOF_ENABLED=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_TLS_ENABLED=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_TLS_PORT=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_TLS_CERT_FILE=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_TLS_KEY_FILE=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_TLS_CA_FILE=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_TLS_DH_PARAMS_FILE=.*/d" $HOME/authelia.env
+  sed -i "/REDIS_TLS_AUTH_CLIENTS=.*/d" $HOME/authelia.env
 }
 
 # WordPress
@@ -44859,7 +45322,7 @@ EOFWP
 function performUpdateWordPress()
 {
   perform_stack_name=wordpress
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -44870,10 +45333,16 @@ function performUpdateWordPress()
       image_update_map[1]="wordpress:php8.2-apache,wordpress:php8.3-apache"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mariadb:10.7.3,wordpress:php8.3-apache
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="wordpress:php8.3-apache,wordpress:php8.3-apache"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="wordpress:php8.3-apache,mirror.gcr.io/wordpress:php8.4-apache"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/wordpress:php8.4-apache
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/wordpress:php8.4-apache,mirror.gcr.io/wordpress:php8.4-apache"
     ;;
     *)
       is_upgrade_error=true
@@ -44881,7 +45350,7 @@ function performUpdateWordPress()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -45060,7 +45529,7 @@ EOFGW
 function performUpdateGhost()
 {
   perform_stack_name=ghost
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -45089,22 +45558,28 @@ function performUpdateGhost()
       image_update_map[1]="ghost:5.80.3-alpine,ghost:5.88.2-alpine"
     ;;
     5)
-      newVer=v7
+      newVer=v8
       curImageList=mariadb:10.7.3,ghost:5.88.2-alpine
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.88.2-alpine,ghost:5.115.1-alpine"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="ghost:5.88.2-alpine,mirror.gcr.io/ghost:6.0.0-alpine"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=mariadb:10.7.3,ghost:5.98.1-alpine
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.98.1-alpine,ghost:5.115.1-alpine"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="ghost:5.98.1-alpine,mirror.gcr.io/ghost:6.0.0-alpine"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=mariadb:10.7.3,ghost:5.115.1-alpine
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="ghost:5.115.1-alpine,ghost:5.115.1-alpine"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="ghost:5.115.1-alpine,mirror.gcr.io/ghost:6.0.0-alpine"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/ghost:6.0.0-alpine
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/ghost:6.0.0-alpine,mirror.gcr.io/ghost:6.0.0-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -45112,7 +45587,7 @@ function performUpdateGhost()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -45284,14 +45759,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --appendonly yes
     networks:
       - int-peertube-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-peertube-redis:/bitnami/redis/data
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+      - v-peertube-redis:/data
 
 volumes:
   v-peertube-assets:
@@ -45376,7 +45851,7 @@ EOFPT
 function performUpdatePeerTube()
 {
   perform_stack_name=peertube
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -45416,11 +45891,21 @@ function performUpdatePeerTube()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,chocobozzz/peertube:v7.1.0-bookworm,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="chocobozzz/peertube:v7.1.0-bookworm,chocobozzz/peertube:v7.1.0-bookworm"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="chocobozzz/peertube:v7.1.0-bookworm,mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPeerTubeFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm,mirror.gcr.io/chocobozzz/peertube:v7.2.3-bookworm"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -45428,8 +45913,33 @@ function performUpdatePeerTube()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfPeerTubeFixRedisCompose()
+{
+  lineStart="  peertube-redis:"
+  lineEnd="      - ALLOW_EMPTY_PASSWORD=yes"
+  replaceText=""
+  replaceText=$replaceText">>peertube-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: peertube-redis\n"
+  replaceText=$replaceText">>>>hostname: peertube-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-peertube-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-peertube-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/peertube-compose.yml false ">"
+  cat -s $HOME/peertube-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/peertube-compose.yml
 }
 
 # HomeAssistant
@@ -45887,7 +46397,7 @@ function outputHASSPanels()
 function performUpdateHomeAssistant()
 {
   perform_stack_name=homeassistant
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -45899,7 +46409,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -45911,7 +46421,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.0.2,nodered/node-red:3.1.7"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v3.1.0,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfV4UpdateHASS false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfV4UpdateHASS false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -45941,7 +46451,7 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:3.1.7,nodered/node-red:4.0.2"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.0.1,ghcr.io/tasmoadmin/tasmoadmin:v4.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateHASSiFramesConfig false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfUpdateHASSiFramesConfig false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -45962,18 +46472,27 @@ function performUpdateHomeAssistant()
       image_update_map[2]="nodered/node-red:4.0.5,nodered/node-red:4.0.9-22"
       image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
       image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfHomeAssistantUpdatePythonCertPath
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfHomeAssistantUpdatePythonCertPath
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=postgres:15.0-bullseye,homeassistant/home-assistant:2025.4.0,nodered/node-red:4.0.9-22,causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="homeassistant/home-assistant:2025.4.0,homeassistant/home-assistant:2025.4.0"
-      image_update_map[2]="nodered/node-red:4.0.9-22,nodered/node-red:4.0.9-22"
-      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,causticlab/hass-configurator-docker:0.5.2"
-      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.1.3"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="homeassistant/home-assistant:2025.4.0,mirror.gcr.io/homeassistant/home-assistant:2025.8.1"
+      image_update_map[2]="nodered/node-red:4.0.9-22,mirror.gcr.io/nodered/node-red:4.1.0-22"
+      image_update_map[3]="causticlab/hass-configurator-docker:0.5.2,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.1.3,ghcr.io/tasmoadmin/tasmoadmin:v4.3.1"
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/homeassistant/home-assistant:2025.8.1,mirror.gcr.io/nodered/node-red:4.1.0-22,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2,ghcr.io/tasmoadmin/tasmoadmin:v4.3.1
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/homeassistant/home-assistant:2025.8.1,mirror.gcr.io/homeassistant/home-assistant:2025.8.1"
+      image_update_map[2]="mirror.gcr.io/nodered/node-red:4.1.0-22,mirror.gcr.io/nodered/node-red:4.1.0-22"
+      image_update_map[3]="mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2,mirror.gcr.io/causticlab/hass-configurator-docker:0.5.2"
+      image_update_map[4]="ghcr.io/tasmoadmin/tasmoadmin:v4.3.1,ghcr.io/tasmoadmin/tasmoadmin:v4.3.1"
     ;;
     *)
       is_upgrade_error=true
@@ -45981,7 +46500,7 @@ function performUpdateHomeAssistant()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -46192,14 +46711,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $GITLAB_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-gitlab-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-gitlab-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$GITLAB_REDIS_PASSWORD
+      - v-gitlab-redis:/data
 
 volumes:
   v-gitlab-redis:
@@ -46318,7 +46838,7 @@ EOFGL
 function performUpdateGitlab()
 {
   perform_stack_name=gitlab
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -46358,11 +46878,46 @@ function performUpdateGitlab()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,gitlab/gitlab-ce:17.10.3-ce.0,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitlab/gitlab-ce:17.10.3-ce.0,gitlab/gitlab-ce:17.10.3-ce.0"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="gitlab/gitlab-ce:17.10.3-ce.0,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGitlabFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      echo -e "\n\n========================================================================"
+      echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
+      echo -e "  by Gitlab! To disable it, go to Admin -> Settings -> Metrics and"
+      echo -e "  profiling -> Event tracking. For more details, see this link:"
+      echo -e "  https://docs.gitlab.com/17.11/administration/settings/event_data/"
+      echo -e "========================================================================\n"
+      return
+    ;;
+    7)
+      newVer=v7
+      # Version 8, which upgrades Gitlab to 18.x requires Postgres 16.x or higher.
+      # So we'll halt upgrades here for now until database import/export mechanisms
+      # have been added.
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0,mirror.gcr.io/gitlab/gitlab-ce:17.11.6-ce.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      echo -e "\n\n========================================================================"
+      echo -e "  WARNING: User telemetry and event tracking has been forcebly enabled"
+      echo -e "  by Gitlab! To disable it, go to Admin -> Settings -> Metrics and"
+      echo -e "  profiling -> Event tracking. For more details, see this link:"
+      echo -e "  https://docs.gitlab.com/17.11/administration/settings/event_data/"
+      echo -e "========================================================================\n"
+      return
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0,mirror.gcr.io/gitlab/gitlab-ce:18.2.1-ce.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -46370,8 +46925,14 @@ function performUpdateGitlab()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfGitlabFixRedisCompose()
+{
+  replaceRedisBlock gitlab gitlab-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/gitlab/redis/*
 }
 
 # Vaultwarden
@@ -46591,7 +47152,7 @@ EOFVW
 function performUpdateVaultwarden()
 {
   perform_stack_name=vaultwarden
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -46601,7 +47162,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.29.1-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -46611,7 +47172,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.1-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -46621,7 +47182,7 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.2-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -46631,30 +47192,37 @@ function performUpdateVaultwarden()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="vaultwarden/server:1.30.5-alpine,vaultwarden/server:1.30.5-alpine"
       image_update_map[2]="thegeeklab/vaultwarden-ldap:0.6.2,vividboarder/vaultwarden_ldap:2.0.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfReplaceVaultwardenLDAPConnector
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfReplaceVaultwardenLDAPConnector
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     5)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.30.5-alpine,vividboarder/vaultwarden_ldap:2.0.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.30.5-alpine,vaultwarden/server:1.33.2-alpine"
-      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.1,vividboarder/vaultwarden_ldap:2.1.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.30.5-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.1,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.32.3-alpine,vividboarder/vaultwarden_ldap:2.0.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.32.3-alpine,vaultwarden/server:1.33.2-alpine"
-      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.2,vividboarder/vaultwarden_ldap:2.1.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.32.3-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="vividboarder/vaultwarden_ldap:2.0.2,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,vaultwarden/server:1.33.2-alpine,vividboarder/vaultwarden_ldap:2.1.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="vaultwarden/server:1.33.2-alpine,vaultwarden/server:1.33.2-alpine"
-      image_update_map[2]="vividboarder/vaultwarden_ldap:2.1.1,vividboarder/vaultwarden_ldap:2.1.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="vaultwarden/server:1.33.2-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="vividboarder/vaultwarden_ldap:2.1.1,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/vaultwarden/server:1.34.3-alpine,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/vaultwarden/server:1.34.3-alpine,mirror.gcr.io/vaultwarden/server:1.34.3-alpine"
+      image_update_map[2]="mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2,mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2"
     ;;
     *)
       is_upgrade_error=true
@@ -46662,7 +47230,7 @@ function performUpdateVaultwarden()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -46843,14 +47411,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $DISCOURSE_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-discourse-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-discourse-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$DISCOURSE_REDIS_PASSWORD
+      - v-discourse-redis:/data
 
 volumes:
   v-discourse-redis:
@@ -46923,7 +47492,7 @@ EOFDC
 function performUpdateDiscourse()
 {
   perform_stack_name=discourse
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -46960,18 +47529,31 @@ function performUpdateDiscourse()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,bitnami/discourse:3.2.5,bitnami/redis:7.0.5
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/discourse:3.2.5,bitnami/discourse:3.4.1"
-      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:17.5-bookworm"
+      image_update_map[1]="bitnami/discourse:3.2.5,mirror.gcr.io/bitnami/discourse:3.4.7"
+      image_update_map[2]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Discourse cannot be upgraded to the next version. You must export your data from this instance, uninstall and reinstall Discourse, then import your data into the new instance."
+      return
     ;;
     6)
-      newVer=v6
-      curImageList=postgres:15.0-bullseye,bitnami/discourse:3.3.2,bitnami/redis:7.0.5
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/discourse:3.3.2,bitnami/discourse:3.3.2"
-      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
+      newVer=v7
+      curImageList=postgres:15.0-bullseye,bitnami/discourse:3.3.2,bitnami/redis:7.4.2
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:17.5-bookworm"
+      image_update_map[1]="bitnami/discourse:3.3.2,mirror.gcr.io/bitnami/discourse:3.4.7"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): This version of Discourse cannot be upgraded to the next version. You must export your data from this instance, uninstall and reinstall Discourse, then import your data into the new instance."
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/bitnami/discourse:3.4.7,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:17.5-bookworm,mirror.gcr.io/postgres:17.5-bookworm"
+      image_update_map[1]="mirror.gcr.io/bitnami/discourse:3.4.7,mirror.gcr.io/bitnami/discourse:3.4.7"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -46979,7 +47561,7 @@ function performUpdateDiscourse()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47114,7 +47696,7 @@ EOFST
 function performUpdateSyncthing()
 {
   perform_stack_name=syncthing
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -47144,14 +47726,19 @@ function performUpdateSyncthing()
       image_update_map[0]="syncthing/syncthing:1.27.9,syncthing/syncthing:1.29.4"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=syncthing/syncthing:1.28.0
-      image_update_map[0]="syncthing/syncthing:1.28.0,syncthing/syncthing:1.29.4"
+      image_update_map[0]="syncthing/syncthing:1.28.0,mirror.gcr.io/syncthing/syncthing:2.0.0"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=syncthing/syncthing:1.29.4
-      image_update_map[0]="syncthing/syncthing:1.29.4,syncthing/syncthing:1.29.4"
+      image_update_map[0]="syncthing/syncthing:1.29.4,mirror.gcr.io/syncthing/syncthing:2.0.0"
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/syncthing/syncthing:2.0.0
+      image_update_map[0]="mirror.gcr.io/syncthing/syncthing:2.0.0,mirror.gcr.io/syncthing/syncthing:2.0.0"
     ;;
     *)
       is_upgrade_error=true
@@ -47159,7 +47746,7 @@ function performUpdateSyncthing()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47359,7 +47946,7 @@ EOFCS
 function performUpdateCodeServer()
 {
   perform_stack_name=codeserver
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -47367,7 +47954,7 @@ function performUpdateCodeServer()
       newVer=v4
       curImageList=codercom/code-server:4.16.1
       image_update_map[0]="codercom/code-server:4.16.1,codercom/code-server:4.22.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47375,7 +47962,7 @@ function performUpdateCodeServer()
       newVer=v4
       curImageList=codercom/code-server:4.20.0
       image_update_map[0]="codercom/code-server:4.20.0,codercom/code-server:4.22.1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfAddConfigsMountCodeServer false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAddConfigsMountCodeServer false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47385,19 +47972,24 @@ function performUpdateCodeServer()
       image_update_map[0]="codercom/code-server:4.20.1,codercom/code-server:4.22.1"
     ;;
     4)
-      newVer=v6
+      newVer=v7
       curImageList=codercom/code-server:4.22.1
-      image_update_map[0]="codercom/code-server:4.22.1,codercom/code-server:4.98.2"
+      image_update_map[0]="codercom/code-server:4.22.1,mirror.gcr.io/codercom/code-server:4.102.2"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=codercom/code-server:4.93.1
-      image_update_map[0]="codercom/code-server:4.93.1,codercom/code-server:4.98.2"
+      image_update_map[0]="codercom/code-server:4.93.1,mirror.gcr.io/codercom/code-server:4.102.2"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=codercom/code-server:4.98.2
-      image_update_map[0]="codercom/code-server:4.98.2,codercom/code-server:4.98.2"
+      image_update_map[0]="codercom/code-server:4.98.2,mirror.gcr.io/codercom/code-server:4.102.2"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/codercom/code-server:4.102.2
+      image_update_map[0]="mirror.gcr.io/codercom/code-server:4.102.2,mirror.gcr.io/codercom/code-server:4.102.2"
     ;;
     *)
       is_upgrade_error=true
@@ -47405,7 +47997,7 @@ function performUpdateCodeServer()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47592,14 +48184,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $SHLINK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-shlink-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-shlink-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=\$SHLINK_REDIS_PASSWORD
+      - v-shlink-redis:/data
 
 volumes:
   v-shlink-redis:
@@ -47656,7 +48249,7 @@ EOFST
 function performUpdateShlink()
 {
   perform_stack_name=shlink
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -47667,7 +48260,7 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:3.6.3,shlinkio/shlink:4.0.3"
       image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47678,7 +48271,7 @@ function performUpdateShlink()
       image_update_map[1]="shlinkio/shlink:3.7.2,shlinkio/shlink:4.0.3"
       image_update_map[2]="shlinkio/shlink-web-client:3.10.2,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfUpdateShlinkInternalWebUIPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfUpdateShlinkInternalWebUIPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -47690,13 +48283,13 @@ function performUpdateShlink()
       image_update_map[2]="shlinkio/shlink-web-client:4.0.0,shlinkio/shlink-web-client:4.0.1"
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       if [ "$stackStatus" = "1" ];then
-        startStopStack shlink stop "$portainerToken"
+        startStopStack shlink stop
         sleep 3
       fi
       sudo rm -fr $HSHQ_NONBACKUP_DIR/shlink/redis/*
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfShlinkFixRedisUrl
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfShlinkFixRedisUrl
       if [ "$stackStatus" = "2" ];then
-        startStopStack shlink stop "$portainerToken"
+        startStopStack shlink stop
       fi
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -47718,12 +48311,34 @@ function performUpdateShlink()
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     6)
-      newVer=v6
+      newVer=v8
+      curImageList=postgres:15.0-bullseye,shlinkio/shlink:4.4.6,shlinkio/shlink-web-client:4.3.0,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:4.4.6,mirror.gcr.io/shlinkio/shlink:4.5.0"
+      image_update_map[2]="shlinkio/shlink-web-client:4.3.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0"
+      image_update_map[3]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfShlinkFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v8
       curImageList=postgres:15.0-bullseye,shlinkio/shlink:4.4.6,shlinkio/shlink-web-client:4.3.0,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="shlinkio/shlink:4.4.6,shlinkio/shlink:4.4.6"
-      image_update_map[2]="shlinkio/shlink-web-client:4.3.0,shlinkio/shlink-web-client:4.3.0"
-      image_update_map[3]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:4.4.6,mirror.gcr.io/shlinkio/shlink:4.5.0"
+      image_update_map[2]="shlinkio/shlink-web-client:4.3.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0"
+      image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfShlinkFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/shlinkio/shlink:4.5.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/shlinkio/shlink:4.5.0,mirror.gcr.io/shlinkio/shlink:4.5.0"
+      image_update_map[2]="mirror.gcr.io/shlinkio/shlink-web-client:4.5.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -47731,7 +48346,7 @@ function performUpdateShlink()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -47776,6 +48391,12 @@ SHLINK_REDIS_PASSWORD=$SHLINK_REDIS_PASSWORD
 REDIS_SERVERS=tcp://:$SHLINK_REDIS_PASSWORD@shlink-redis:6379
 
 EOFST
+}
+
+function mfShlinkFixRedisCompose()
+{
+  replaceRedisBlock shlink shlink-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/shlink/redis/*
 }
 
 # Firefly
@@ -47992,14 +48613,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $FIREFLY_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-firefly-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-firefly-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$FIREFLY_REDIS_PASSWORD
+      - v-firefly-redis:/data
 
 volumes:
   v-firefly-db:
@@ -48074,7 +48696,7 @@ EOFFF
 function performUpdateFirefly()
 {
   perform_stack_name=firefly
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -48126,18 +48748,30 @@ function performUpdateFirefly()
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="fireflyiii/core:version-6.2.10,fireflyiii/core:version-6.2.10"
       image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfFireflyAddImporterAndCron
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfFireflyAddImporterAndCron
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=postgres:15.0-bullseye,fireflyiii/core:version-6.2.10,bitnami/redis:7.4.2,fireflyiii/data-importer:version-1.6.1,alpine:3.21.3
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="fireflyiii/core:version-6.2.10,fireflyiii/core:version-6.2.10"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[3]="fireflyiii/data-importer:version-1.6.1,fireflyiii/data-importer:version-1.6.1"
-      image_update_map[4]="alpine:3.21.3,alpine:3.21.3"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="fireflyiii/core:version-6.2.10,mirror.gcr.io/fireflyiii/core:version-6.2.21"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="fireflyiii/data-importer:version-1.6.1,mirror.gcr.io/fireflyiii/data-importer:version-1.7.9"
+      image_update_map[4]="alpine:3.21.3,mirror.gcr.io/alpine:3.22.1"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfFireflyFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/fireflyiii/core:version-6.2.21,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/fireflyiii/data-importer:version-1.7.9,mirror.gcr.io/alpine:3.22.1
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/fireflyiii/core:version-6.2.21,mirror.gcr.io/fireflyiii/core:version-6.2.21"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/fireflyiii/data-importer:version-1.7.9,mirror.gcr.io/fireflyiii/data-importer:version-1.7.9"
+      image_update_map[4]="mirror.gcr.io/alpine:3.22.1,mirror.gcr.io/alpine:3.22.1"
     ;;
     *)
       is_upgrade_error=true
@@ -48145,7 +48779,7 @@ function performUpdateFirefly()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -48174,6 +48808,12 @@ function mfFireflyAddImporterAndCron()
   insertSubAuthelia $SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   insertEnableSvcAll firefly "$FMLNAME_FIREFLY_IMPORTER" $USERTYPE_FIREFLY_IMPORTER "https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN" "firefly-importer.png" "$(getHeimdallOrderFromSub $SUB_FIREFLY_IMPORTER $USERTYPE_FIREFLY_IMPORTER)"
   restartAllCaddyContainers
+}
+
+function mfFireflyFixRedisCompose()
+{
+  replaceRedisBlock firefly firefly-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/firefly/redis/*
 }
 
 # Excalidraw
@@ -48338,6 +48978,9 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $EXCALIDRAW_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-excalidraw-net
     volumes:
@@ -48346,7 +48989,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-excalidraw-redis:/bitnami/redis/data
+      - v-excalidraw-redis:/data
 
 volumes:
   v-excalidraw-redis:
@@ -48386,16 +49029,39 @@ EOFEX
 function performUpdateExcalidraw()
 {
   perform_stack_name=excalidraw
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw
-      image_update_map[0]="excalidraw/excalidraw-room,excalidraw/excalidraw-room"
-      image_update_map[1]="kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw-storage-backend"
-      image_update_map[2]="kiliandeca/excalidraw,kiliandeca/excalidraw"
+      newVer=v3
+      curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw,bitnami/redis:7.0.5
+      image_update_map[0]="excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
+      image_update_map[1]="kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
+      image_update_map[2]="kiliandeca/excalidraw,mirror.gcr.io/kiliandeca/excalidraw"
+      image_update_map[3]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfExcalidrawFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v3
+      curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw,bitnami/redis:7.4.2
+      image_update_map[0]="excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
+      image_update_map[1]="kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
+      image_update_map[2]="kiliandeca/excalidraw,mirror.gcr.io/kiliandeca/excalidraw"
+      image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfExcalidrawFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
+      image_update_map[1]="mirror.gcr.io/kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
+      image_update_map[2]="mirror.gcr.io/kiliandeca/excalidraw,mirror.gcr.io/kiliandeca/excalidraw"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -48403,8 +49069,42 @@ function performUpdateExcalidraw()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfExcalidrawFixRedisCompose()
+{
+  lineStart="  excalidraw-redis:"
+  lineEnd="      - v-excalidraw-redis:/bitnami/redis/data"
+  replaceText=""
+  replaceText=$replaceText">>excalidraw-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: excalidraw-redis\n"
+  replaceText=$replaceText">>>>hostname: excalidraw-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $EXCALIDRAW_REDIS_PASSWORD\n"
+  replaceText=$replaceText">>>>>>--appendonly yes\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-excalidraw-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/ssl/certs:/etc/ssl/certs:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/share/ca-certificates:/usr/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro\n"
+  replaceText=$replaceText">>>>>>- v-excalidraw-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/excalidraw-compose.yml false ">"
+  cat -s $HOME/excalidraw-compose.yml > $HOME/ac.tmp
+  mv $HOME/ac.tmp $HOME/excalidraw-compose.yml
+  sed -i "/ALLOW_EMPTY_PASSWORD=.*/d" $HOME/excalidraw.env
+  sed -i "/REDIS_PASSWORD=.*/d" $HOME/excalidraw.env
+  sed -i "/REDIS_DISABLE_COMMANDS=.*/d" $HOME/excalidraw.env
+  sudo rm -fr $HSHQ_STACKS_DIR/excalidraw/redis/*
 }
 
 # DrawIO
@@ -48556,7 +49256,7 @@ EOFDI
 function performUpdateDrawIO()
 {
   perform_stack_name=drawio
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -48582,25 +49282,32 @@ function performUpdateDrawIO()
       image_update_map[2]="jgraph/export-server,jgraph/export-server"
     ;;
     4)
-      newVer=v6
+      newVer=v7
       curImageList=jgraph/drawio:24.7.5,jgraph/plantuml-server,jgraph/export-server
-      image_update_map[0]="jgraph/drawio:24.7.5,jgraph/drawio:26.2.2"
-      image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
-      image_update_map[2]="jgraph/export-server,jgraph/export-server"
+      image_update_map[0]="jgraph/drawio:24.7.5,mirror.gcr.io/jgraph/drawio:28.0.7"
+      image_update_map[1]="jgraph/plantuml-server,mirror.gcr.io/jgraph/plantuml-server"
+      image_update_map[2]="jgraph/export-server,mirror.gcr.io/jgraph/export-server"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=jgraph/drawio:24.7.17,jgraph/plantuml-server,jgraph/export-server
-      image_update_map[0]="jgraph/drawio:24.7.17,jgraph/drawio:26.2.2"
-      image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
-      image_update_map[2]="jgraph/export-server,jgraph/export-server"
+      image_update_map[0]="jgraph/drawio:24.7.17,mirror.gcr.io/jgraph/drawio:28.0.7"
+      image_update_map[1]="jgraph/plantuml-server,mirror.gcr.io/jgraph/plantuml-server"
+      image_update_map[2]="jgraph/export-server,mirror.gcr.io/jgraph/export-server"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=jgraph/drawio:26.2.2,jgraph/plantuml-server,jgraph/export-server
-      image_update_map[0]="jgraph/drawio:26.2.2,jgraph/drawio:26.2.2"
-      image_update_map[1]="jgraph/plantuml-server,jgraph/plantuml-server"
-      image_update_map[2]="jgraph/export-server,jgraph/export-server"
+      image_update_map[0]="jgraph/drawio:26.2.2,mirror.gcr.io/jgraph/drawio:28.0.7"
+      image_update_map[1]="jgraph/plantuml-server,mirror.gcr.io/jgraph/plantuml-server"
+      image_update_map[2]="jgraph/export-server,mirror.gcr.io/jgraph/export-server"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/jgraph/drawio:28.0.7,mirror.gcr.io/jgraph/plantuml-server,mirror.gcr.io/jgraph/export-server
+      image_update_map[0]="mirror.gcr.io/jgraph/drawio:28.0.7,mirror.gcr.io/jgraph/drawio:28.0.7"
+      image_update_map[1]="mirror.gcr.io/jgraph/plantuml-server,mirror.gcr.io/jgraph/plantuml-server"
+      image_update_map[2]="mirror.gcr.io/jgraph/export-server,mirror.gcr.io/jgraph/export-server"
     ;;
     *)
       is_upgrade_error=true
@@ -48608,7 +49315,7 @@ function performUpdateDrawIO()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -49041,7 +49748,7 @@ EOFIV
 function performUpdateInvidious()
 {
   perform_stack_name=invidious
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -49050,7 +49757,7 @@ function performUpdateInvidious()
       curImageList=postgres:15.0-bullseye,quay.io/invidious/invidious:latest
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="quay.io/invidious/invidious:latest,quay.io/invidious/invidious:latest"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfInvidiousAddCompanion
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfInvidiousAddCompanion
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -49067,7 +49774,7 @@ function performUpdateInvidious()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -49259,7 +49966,7 @@ EOFGL
 function performUpdateGitea()
 {
   perform_stack_name=gitea
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -49298,18 +50005,24 @@ function performUpdateGitea()
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.22.3
       image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
       image_update_map[1]="gitea/gitea:1.22.3,gitea/gitea:1.23.6"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGiteaRemoveDeprecatedEnvVars
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGiteaRemoveDeprecatedEnvVars
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=postgres:15.0-bullseye,gitea/gitea:1.23.6
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gitea/gitea:1.23.6,gitea/gitea:1.23.6"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfGiteaRemoveDeprecatedEnvVars
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="gitea/gitea:1.23.6,mirror.gcr.io/gitea/gitea:1.24.4"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGiteaRemoveDeprecatedEnvVars
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
+    ;;
+    8)
+      newVer=v8
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gitea/gitea:1.24.4
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gitea/gitea:1.24.4,mirror.gcr.io/gitea/gitea:1.24.4"
     ;;
     *)
       is_upgrade_error=true
@@ -49317,7 +50030,7 @@ function performUpdateGitea()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -49352,15 +50065,12 @@ function installMealie()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/mealie
   mkdir $HSHQ_STACKS_DIR/mealie/app
   mkdir $HSHQ_STACKS_DIR/mealie/db
   mkdir $HSHQ_STACKS_DIR/mealie/dbexport
   chmod 777 $HSHQ_STACKS_DIR/mealie/dbexport
-
   initServicesCredentials
-
   set +e
   docker exec mailu-admin flask mailu alias-delete $MEALIE_ADMIN_EMAIL_ADDRESS
   sleep 5
@@ -49371,7 +50081,6 @@ function installMealie()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MEALIE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -49389,14 +50098,15 @@ function installMealie()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll mealie "$FMLNAME_MEALIE" $USERTYPE_MEALIE "https://$SUB_MEALIE.$HOMESERVER_DOMAIN" "mealie.png" "$(getHeimdallOrderFromSub $SUB_MEALIE $USERTYPE_MEALIE)"
     restartAllCaddyContainers
-
-    mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
-    adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
+    #mealie_token=$(http -f --verify=no --timeout=300 --print="b" POST https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/auth/token username=changeme@example.com password=MyPassword | jq -r '.access_token')
+    #adminid=$(http -f --verify=no --timeout=300 --print="b" GET https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users "Authorization: Bearer $mealie_token" | jq '.items[0].id' | tr -d '"')
     # Can't seem to get httpie to work, so switching to curl
     #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/$adminid" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"username\": \"$MEALIE_ADMIN_USERNAME\",\"fullName\": \"$HOMESERVER_NAME Mealie Admin\",\"email\": \"$MEALIE_ADMIN_EMAIL_ADDRESS\",\"group\":\"Home\",\"admin\": true}" > /dev/null 2>&1
     # API is broken in v1.3.2, so we'll go direct to DB
-    docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS' where id='$adminid';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
-    curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
+    # API is broken again. We'll just do everything via DB...
+    pwHash=$(htpasswd -bnBC 10 "" $MEALIE_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
+    docker exec mealie-db bash -c "PGPASSWORD=$MEALIE_DATABASE_USER_PASSWORD echo \"update users set full_name='$HOMESERVER_NAME Mealie Admin', username='$MEALIE_ADMIN_USERNAME', email='$MEALIE_ADMIN_EMAIL_ADDRESS', password='$pwHash', admin=true where username='admin';\" | psql -U $MEALIE_DATABASE_USER $MEALIE_DATABASE_NAME"
+    #curl -X "PUT" "https://$SUB_MEALIE.$HOMESERVER_DOMAIN/api/users/password" -H "accept: application/json" -H "Content-Type: application/json" -H "Authorization: Bearer $mealie_token" -d "{\"currentPassword\": \"MyPassword\",\"newPassword\": \"$MEALIE_ADMIN_PASSWORD\"}" > /dev/null 2>&1
   fi
 }
 
@@ -49541,7 +50251,7 @@ EOFGL
 function performUpdateMealie()
 {
   perform_stack_name=mealie
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -49590,10 +50300,16 @@ function performUpdateMealie()
       image_update_map[1]="ghcr.io/mealie-recipes/mealie:v2.1.0,ghcr.io/mealie-recipes/mealie:v2.8.0"
     ;;
     8)
-      newVer=v8
+      newVer=v9
       curImageList=postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v2.8.0
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v2.8.0,ghcr.io/mealie-recipes/mealie:v2.8.0"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v2.8.0,ghcr.io/mealie-recipes/mealie:v3.0.2"
+    ;;
+    9)
+      newVer=v9
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/mealie-recipes/mealie:v3.0.2
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/mealie-recipes/mealie:v3.0.2,ghcr.io/mealie-recipes/mealie:v3.0.2"
     ;;
     *)
       is_upgrade_error=true
@@ -49601,7 +50317,7 @@ function performUpdateMealie()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -49722,7 +50438,7 @@ EOFGL
 function performUpdateKasm()
 {
   perform_stack_name=kasm
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -49752,9 +50468,14 @@ function performUpdateKasm()
       image_update_map[0]="lscr.io/linuxserver/kasm:1.16.0-ls44,lscr.io/linuxserver/kasm:1.16.1-ls68"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=lscr.io/linuxserver/kasm:1.16.1-ls68
-      image_update_map[0]="lscr.io/linuxserver/kasm:1.16.1-ls68,lscr.io/linuxserver/kasm:1.16.1-ls68"
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.16.1-ls68,lscr.io/linuxserver/kasm:1.17.0-ls88"
+    ;;
+    7)
+      newVer=v7
+      curImageList=lscr.io/linuxserver/kasm:1.17.0-ls88
+      image_update_map[0]="lscr.io/linuxserver/kasm:1.17.0-ls88,lscr.io/linuxserver/kasm:1.17.0-ls88"
     ;;
     *)
       is_upgrade_error=true
@@ -49762,7 +50483,7 @@ function performUpdateKasm()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50227,29 +50948,34 @@ EOFNT
 function performUpdateNTFY()
 {
   perform_stack_name=ntfy
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.7.0
-      image_update_map[0]="binwiederhier/ntfy:v2.7.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.7.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     2)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.8.0
-      image_update_map[0]="binwiederhier/ntfy:v2.8.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.8.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.9.0
-      image_update_map[0]="binwiederhier/ntfy:v2.9.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.9.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=binwiederhier/ntfy:v2.11.0
-      image_update_map[0]="binwiederhier/ntfy:v2.11.0,binwiederhier/ntfy:v2.11.0"
+      image_update_map[0]="binwiederhier/ntfy:v2.11.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/binwiederhier/ntfy:v2.14.0
+      image_update_map[0]="mirror.gcr.io/binwiederhier/ntfy:v2.14.0,mirror.gcr.io/binwiederhier/ntfy:v2.14.0"
     ;;
     *)
       is_upgrade_error=true
@@ -50257,7 +50983,7 @@ function performUpdateNTFY()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50342,7 +51068,7 @@ EOFNT
 function performUpdateITTools()
 {
   perform_stack_name=ittools
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -50357,7 +51083,7 @@ function performUpdateITTools()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50472,7 +51198,7 @@ EOFRM
 function performUpdateRemotely()
 {
   perform_stack_name=remotely
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -50505,7 +51231,7 @@ function performUpdateRemotely()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50699,7 +51425,7 @@ EOFPY
 function performUpdateCalibre()
 {
   perform_stack_name=calibre
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -50728,16 +51454,22 @@ function performUpdateCalibre()
       image_update_map[1]="linuxserver/calibre-web:0.6.22,linuxserver/calibre-web:0.6.23"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=linuxserver/calibre:7.20.0,linuxserver/calibre-web:0.6.23
-      image_update_map[0]="linuxserver/calibre:7.20.0,linuxserver/calibre:8.2.1"
-      image_update_map[1]="linuxserver/calibre-web:0.6.23,linuxserver/calibre-web:0.6.24"
+      image_update_map[0]="linuxserver/calibre:7.20.0,mirror.gcr.io/linuxserver/calibre:8.8.0"
+      image_update_map[1]="linuxserver/calibre-web:0.6.23,mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=linuxserver/calibre:8.2.1,linuxserver/calibre-web:0.6.24
-      image_update_map[0]="linuxserver/calibre:8.2.1,linuxserver/calibre:8.2.1"
-      image_update_map[1]="linuxserver/calibre-web:0.6.24,linuxserver/calibre-web:0.6.24"
+      image_update_map[0]="linuxserver/calibre:8.2.1,mirror.gcr.io/linuxserver/calibre:8.8.0"
+      image_update_map[1]="linuxserver/calibre-web:0.6.24,mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/linuxserver/calibre:8.8.0,mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342
+      image_update_map[0]="mirror.gcr.io/linuxserver/calibre:8.8.0,mirror.gcr.io/linuxserver/calibre:8.8.0"
+      image_update_map[1]="mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342,mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342"
     ;;
     *)
       is_upgrade_error=true
@@ -50745,7 +51477,7 @@ function performUpdateCalibre()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -50879,7 +51611,7 @@ EOFDZ
 function performUpdateNetdata()
 {
   perform_stack_name=netdata
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -50904,9 +51636,14 @@ function performUpdateNetdata()
       image_update_map[0]="netdata/netdata:v1.47.5,netdata/netdata:v2.3.2"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=netdata/netdata:v2.3.2
-      image_update_map[0]="netdata/netdata:v2.3.2,netdata/netdata:v2.3.2"
+      image_update_map[0]="netdata/netdata:v2.3.2,mirror.gcr.io/netdata/netdata:v2.6.1"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/netdata/netdata:v2.6.1
+      image_update_map[0]="mirror.gcr.io/netdata/netdata:v2.6.1,mirror.gcr.io/netdata/netdata:v2.6.1"
     ;;
     *)
       is_upgrade_error=true
@@ -50914,7 +51651,7 @@ function performUpdateNetdata()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51116,7 +51853,7 @@ EOFIM
 function performUpdateLinkwarden()
 {
   perform_stack_name=linkwarden
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51151,10 +51888,16 @@ function performUpdateLinkwarden()
       image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.7.1,ghcr.io/linkwarden/linkwarden:v2.9.3"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.9.3
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.9.3,ghcr.io/linkwarden/linkwarden:v2.9.3"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.9.3,ghcr.io/linkwarden/linkwarden:v2.11.5"
+    ;;
+    7)
+      newVer=v7
+      curImageList=postgres:15.0-bullseye,ghcr.io/linkwarden/linkwarden:v2.11.5
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/linkwarden/linkwarden:v2.11.5,ghcr.io/linkwarden/linkwarden:v2.11.5"
     ;;
     *)
       is_upgrade_error=true
@@ -51162,7 +51905,7 @@ function performUpdateLinkwarden()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51259,7 +52002,7 @@ EOFDZ
 function performUpdateStirlingPDF()
 {
   perform_stack_name=stirlingpdf
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51284,14 +52027,19 @@ function performUpdateStirlingPDF()
       image_update_map[0]="frooodle/s-pdf:0.26.1,frooodle/s-pdf:0.45.0"
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=frooodle/s-pdf:0.31.1
-      image_update_map[0]="frooodle/s-pdf:0.31.1,frooodle/s-pdf:0.45.0"
+      image_update_map[0]="frooodle/s-pdf:0.31.1,mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0"
     ;;
     6)
-      newVer=v6
+      newVer=v7
       curImageList=frooodle/s-pdf:0.45.0
-      image_update_map[0]="frooodle/s-pdf:0.45.0,frooodle/s-pdf:0.45.0"
+      image_update_map[0]="frooodle/s-pdf:0.45.0,mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0"
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
+      image_update_map[0]="mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0,mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0"
     ;;
     *)
       is_upgrade_error=true
@@ -51299,7 +52047,7 @@ function performUpdateStirlingPDF()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51447,14 +52195,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $BARASSISTANT_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-bar-assistant-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-bar-assistant-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$BARASSISTANT_REDIS_PASSWORD
+      - v-bar-assistant-redis:/data
 
   bar-assistant-saltrim:
     image: $(getScriptImageByContainerName bar-assistant-saltrim)
@@ -51604,7 +52353,7 @@ EOFBA
 function performUpdateBarAssistant()
 {
   perform_stack_name=bar-assistant
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -51637,27 +52386,54 @@ function performUpdateBarAssistant()
       image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       image_update_map[3]="barassistant/salt-rim:2.15.0,barassistant/salt-rim:3.2.1"
       image_update_map[4]="nginx:1.25.3-alpine,nginx:1.25.3-alpine"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfUpdateBarAssistantV4
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfUpdateBarAssistantV4
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=barassistant/server:4.0.3,getmeili/meilisearch:v1.6,bitnami/redis:7.0.5,barassistant/salt-rim:3.2.1,nginx:1.25.3-alpine
-      image_update_map[0]="barassistant/server:4.0.3,barassistant/server:5.2.0"
-      image_update_map[1]="getmeili/meilisearch:v1.6,getmeili/meilisearch:v1.13.3"
-      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      image_update_map[3]="barassistant/salt-rim:3.2.1,barassistant/salt-rim:4.1.0"
-      image_update_map[4]="nginx:1.25.3-alpine,nginx:1.27.4-alpine"
+      image_update_map[0]="barassistant/server:4.0.3,mirror.gcr.io/barassistant/server:5.6.1"
+      image_update_map[1]="getmeili/meilisearch:v1.6,mirror.gcr.io/getmeili/meilisearch:v1.16.0"
+      image_update_map[2]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="barassistant/salt-rim:3.2.1,mirror.gcr.io/barassistant/salt-rim:4.6.0"
+      image_update_map[4]="nginx:1.25.3-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfBarAssistantFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
     ;;
     5)
-      newVer=v5
+      newVer=v7
+      curImageList=barassistant/server:5.2.0,getmeili/meilisearch:v1.6,bitnami/redis:7.4.2,barassistant/salt-rim:4.1.0,nginx:1.27.4-alpine
+      image_update_map[0]="barassistant/server:5.2.0,mirror.gcr.io/barassistant/server:5.6.1"
+      image_update_map[1]="getmeili/meilisearch:v1.6,mirror.gcr.io/getmeili/meilisearch:v1.16.0"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="barassistant/salt-rim:4.1.0,mirror.gcr.io/barassistant/salt-rim:4.6.0"
+      image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfBarAssistantFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    6)
+      newVer=v7
       curImageList=barassistant/server:5.2.0,getmeili/meilisearch:v1.13.3,bitnami/redis:7.4.2,barassistant/salt-rim:4.1.0,nginx:1.27.4-alpine
-      image_update_map[0]="barassistant/server:5.2.0,barassistant/server:5.2.0"
-      image_update_map[1]="getmeili/meilisearch:v1.13.3,getmeili/meilisearch:v1.13.3"
-      image_update_map[2]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[3]="barassistant/salt-rim:4.1.0,barassistant/salt-rim:4.1.0"
-      image_update_map[4]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      image_update_map[0]="barassistant/server:5.2.0,mirror.gcr.io/barassistant/server:5.6.1"
+      image_update_map[1]="getmeili/meilisearch:v1.13.3,mirror.gcr.io/getmeili/meilisearch:v1.16.0"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="barassistant/salt-rim:4.1.0,mirror.gcr.io/barassistant/salt-rim:4.6.0"
+      image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfBarAssistantFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
+      curImageList=mirror.gcr.io/barassistant/server:5.6.1,mirror.gcr.io/getmeili/meilisearch:v1.16.0,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/barassistant/salt-rim:4.6.0,mirror.gcr.io/nginx:1.28.0-alpine
+      image_update_map[0]="mirror.gcr.io/barassistant/server:5.6.1,mirror.gcr.io/barassistant/server:5.6.1"
+      image_update_map[1]="mirror.gcr.io/getmeili/meilisearch:v1.16.0,mirror.gcr.io/getmeili/meilisearch:v1.16.0"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/barassistant/salt-rim:4.6.0,mirror.gcr.io/barassistant/salt-rim:4.6.0"
+      image_update_map[4]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -51665,7 +52441,7 @@ function performUpdateBarAssistant()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfClearMeiliData false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -51681,7 +52457,7 @@ function mfClearMeiliData()
 {
   if [ "$stackStatus" = "1" ];then
     # Stack is running, stop it, then clear data
-    startStopStack bar-assistant stop "$portainerToken"
+    startStopStack bar-assistant stop
     isStartStackFromStopped=true
     sleep 3
   fi
@@ -51695,6 +52471,12 @@ function mfUpdateBarAssistantV4()
   sed -i "s/localhost:3000/localhost:8080/g" $HOME/bar-assistant-compose.yml
   sed -i "s/bar-assistant-app:3000/bar-assistant-app:8080/g" $HSHQ_STACKS_DIR/bar-assistant/web/nginx.conf
   sudo chown -R 33:33 $HSHQ_STACKS_DIR/bar-assistant/app
+}
+
+function mfBarAssistantFixRedisCompose()
+{
+  replaceRedisBlock bar-assistant bar-assistant-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/bar-assistant/redis/*
 }
 
 # FreshRSS
@@ -51945,33 +52727,39 @@ EOFIM
 function performUpdateFreshRSS()
 {
   perform_stack_name=freshrss
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,freshrss/freshrss:1.23.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="freshrss/freshrss:1.23.1,freshrss/freshrss:1.26.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="freshrss/freshrss:1.23.1,mirror.gcr.io/freshrss/freshrss:1.26.3"
     ;;
     2)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,freshrss/freshrss:1.24.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="freshrss/freshrss:1.24.1,freshrss/freshrss:1.26.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="freshrss/freshrss:1.24.1,mirror.gcr.io/freshrss/freshrss:1.26.3"
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,freshrss/freshrss:1.24.3
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="freshrss/freshrss:1.24.3,freshrss/freshrss:1.26.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="freshrss/freshrss:1.24.3,mirror.gcr.io/freshrss/freshrss:1.26.3"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,freshrss/freshrss:1.26.1
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="freshrss/freshrss:1.26.1,freshrss/freshrss:1.26.1"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="freshrss/freshrss:1.26.1,mirror.gcr.io/freshrss/freshrss:1.26.3"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/freshrss/freshrss:1.26.3
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/freshrss/freshrss:1.26.3,mirror.gcr.io/freshrss/freshrss:1.26.3"
     ;;
     *)
       is_upgrade_error=true
@@ -51979,7 +52767,7 @@ function performUpdateFreshRSS()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -52177,7 +52965,7 @@ EOFBA
 function performUpdateKeila()
 {
   perform_stack_name=keila
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -52217,7 +53005,7 @@ function performUpdateKeila()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -52363,14 +53151,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $WALLABAG_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-wallabag-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-wallabag-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$WALLABAG_REDIS_PASSWORD
+      - v-wallabag-redis:/data
 
   wallabag-app:
     image: $(getScriptImageByContainerName wallabag-app)
@@ -52464,7 +53253,7 @@ EOFPT
 function performUpdateWallabag()
 {
   perform_stack_name=wallabag
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -52483,11 +53272,21 @@ function performUpdateWallabag()
       image_update_map[2]="wallabag/wallabag:2.6.9,wallabag/wallabag:2.6.10"
     ;;
     3)
-      newVer=v3
-      curImageList=postgres:15.0-bullseye,bitnami/redis:7.0.5,wallabag/wallabag:2.6.10
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
-      image_update_map[2]="wallabag/wallabag:2.6.10,wallabag/wallabag:2.6.10"
+      newVer=v4
+      curImageList=postgres:15.0-bullseye,bitnami/redis:7.4.2,wallabag/wallabag:2.6.10
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="wallabag/wallabag:2.6.10,mirror.gcr.io/wallabag/wallabag:2.6.13"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfWallabagFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/wallabag/wallabag:2.6.13
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/wallabag/wallabag:2.6.13,mirror.gcr.io/wallabag/wallabag:2.6.13"
     ;;
     *)
       is_upgrade_error=true
@@ -52495,8 +53294,14 @@ function performUpdateWallabag()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfWallabagFixRedisCompose()
+{
+  replaceRedisBlock wallabag wallabag-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/wallabag/redis/*
 }
 
 # Jupyter
@@ -52600,7 +53405,7 @@ EOFDZ
 function performUpdateJupyter()
 {
   perform_stack_name=jupyter
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -52630,7 +53435,7 @@ function performUpdateJupyter()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -52843,14 +53648,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $PAPERLESS_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-paperless-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-paperless-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$PAPERLESS_REDIS_PASSWORD
+      - v-paperless-redis:/data
 
 volumes:
   v-paperless-data:
@@ -52946,7 +53752,7 @@ EOFIM
 function performUpdatePaperless()
 {
   perform_stack_name=paperless
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -52976,18 +53782,30 @@ function performUpdatePaperless()
       image_update_map[2]="apache/tika:3.0.0.0,apache/tika:3.1.0.0"
       image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.13.2,ghcr.io/paperless-ngx/paperless-ngx:2.14.7"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing true mfPaperlessUpdatePythonCertPath
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessUpdatePythonCertPath
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=postgres:15.0-bullseye,gotenberg/gotenberg:8.19.1,apache/tika:3.1.0.0,ghcr.io/paperless-ngx/paperless-ngx:2.14.7,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="gotenberg/gotenberg:8.19.1,gotenberg/gotenberg:8.19.1"
-      image_update_map[2]="apache/tika:3.1.0.0,apache/tika:3.1.0.0"
-      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.14.7,ghcr.io/paperless-ngx/paperless-ngx:2.14.7"
-      image_update_map[4]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="gotenberg/gotenberg:8.19.1,mirror.gcr.io/gotenberg/gotenberg:8.21"
+      image_update_map[2]="apache/tika:3.1.0.0,mirror.gcr.io/apache/tika:3.2.2.0-full"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.14.7,ghcr.io/paperless-ngx/paperless-ngx:2.17.1"
+      image_update_map[4]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPaperlessFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/gotenberg/gotenberg:8.21,mirror.gcr.io/apache/tika:3.2.2.0-full,ghcr.io/paperless-ngx/paperless-ngx:2.17.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/gotenberg/gotenberg:8.21,mirror.gcr.io/gotenberg/gotenberg:8.21"
+      image_update_map[2]="mirror.gcr.io/apache/tika:3.2.2.0-full,mirror.gcr.io/apache/tika:3.2.2.0-full"
+      image_update_map[3]="ghcr.io/paperless-ngx/paperless-ngx:2.17.1,ghcr.io/paperless-ngx/paperless-ngx:2.17.1"
+      image_update_map[4]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -52995,7 +53813,7 @@ function performUpdatePaperless()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53015,6 +53833,12 @@ function mfPaperlessUpdatePythonCertPath()
   if [ $? -ne 0 ]; then
     echo "PYTHON_VER=python3.12" >> $HOME/paperless.env
   fi
+}
+
+function mfPaperlessFixRedisCompose()
+{
+  replaceRedisBlock paperless paperless-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/paperless/redis/*
 }
 
 # Speedtest Tracker Local
@@ -53230,7 +54054,7 @@ EOFDS
 function performUpdateSpeedtestTrackerLocal()
 {
   perform_stack_name=speedtest-tracker-local
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -53265,10 +54089,16 @@ function performUpdateSpeedtestTrackerLocal()
       image_update_map[1]="linuxserver/speedtest-tracker:0.20.8,linuxserver/speedtest-tracker:1.3.0"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:1.3.0
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,linuxserver/speedtest-tracker:1.3.0"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
     ;;
     *)
       is_upgrade_error=true
@@ -53276,7 +54106,7 @@ function performUpdateSpeedtestTrackerLocal()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53496,7 +54326,7 @@ EOFDS
 function performUpdateSpeedtestTrackerVPN()
 {
   perform_stack_name=speedtest-tracker-vpn
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -53531,10 +54361,16 @@ function performUpdateSpeedtestTrackerVPN()
       image_update_map[1]="linuxserver/speedtest-tracker:0.20.8,linuxserver/speedtest-tracker:1.3.0"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=postgres:15.0-bullseye,linuxserver/speedtest-tracker:1.3.0
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,linuxserver/speedtest-tracker:1.3.0"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="linuxserver/speedtest-tracker:1.3.0,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6,mirror.gcr.io/linuxserver/speedtest-tracker:1.6.6"
     ;;
     *)
       is_upgrade_error=true
@@ -53542,7 +54378,7 @@ function performUpdateSpeedtestTrackerVPN()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53730,7 +54566,7 @@ EOFCD
 function performUpdateChangeDetection()
 {
   perform_stack_name=changedetection
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -53776,7 +54612,7 @@ function performUpdateChangeDetection()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -53989,7 +54825,7 @@ EOFDZ
 function performUpdateHuginn()
 {
   perform_stack_name=huginn
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -54017,7 +54853,7 @@ function performUpdateHuginn()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54202,24 +55038,29 @@ function updateCoturnAllowedIPs()
 function performUpdateCoturn()
 {
   perform_stack_name=coturn
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v3
+      newVer=v4
       curImageList=coturn/coturn:4.6
-      image_update_map[0]="coturn/coturn:4.6,coturn/coturn:4.6.3"
+      image_update_map[0]="coturn/coturn:4.6,mirror.gcr.io/coturn/coturn:4.7.0"
     ;;
     2)
-      newVer=v3
+      newVer=v4
       curImageList=coturn/coturn:4.6.2
-      image_update_map[0]="coturn/coturn:4.6.2,coturn/coturn:4.6.3"
+      image_update_map[0]="coturn/coturn:4.6.2,mirror.gcr.io/coturn/coturn:4.7.0"
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=coturn/coturn:4.6.3
-      image_update_map[0]="coturn/coturn:4.6.3,coturn/coturn:4.6.3"
+      image_update_map[0]="coturn/coturn:4.6.3,mirror.gcr.io/coturn/coturn:4.7.0"
+    ;;
+    4)
+      newVer=v4
+      curImageList=coturn/coturn:4.6.3
+      image_update_map[0]="mirror.gcr.io/coturn/coturn:4.7.0,mirror.gcr.io/coturn/coturn:4.7.0"
     ;;
     *)
       is_upgrade_error=true
@@ -54227,7 +55068,7 @@ function performUpdateCoturn()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54336,7 +55177,7 @@ EOFDZ
 function performUpdateFileDrop()
 {
   perform_stack_name=filedrop
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -54351,7 +55192,7 @@ function performUpdateFileDrop()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54360,6 +55201,11 @@ function buildImageFileDropV1()
   set +e
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
   git clone https://github.com/mat-sz/filedrop.git $HSHQ_BUILD_DIR/filedrop
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    sudo rm -fr $HSHQ_BUILD_DIR/filedrop
+    return $retVal
+  fi
   docker build --build-arg VITE_APP_NAME=FileDrop -t filedrop/filedrop:1 $HSHQ_BUILD_DIR/filedrop
   retVal=$?
   sudo rm -fr $HSHQ_BUILD_DIR/filedrop
@@ -54794,7 +55640,7 @@ EOFPI
 function performUpdatePiped()
 {
   perform_stack_name=piped
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -54824,7 +55670,7 @@ function performUpdatePiped()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -54883,9 +55729,8 @@ function installGrampsWeb()
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(5,'DEFAULT_FROM_EMAIL','GrampsWeb $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(6,'BASE_URL','https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN');"
   sudo sqlite3 $HSHQ_STACKS_DIR/grampsweb/users/users.sqlite "insert into configuration values(7,'EMAIL_USE_TLS','0');"
-  portainerToken="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  startStopStack grampsweb stop "$portainerToken"
-  startStopStack grampsweb start "$portainerToken"
+  startStopStack grampsweb stop
+  startStopStack grampsweb start
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -54926,7 +55771,7 @@ services:
     depends_on:
       - grampsweb-redis
     networks:
-      - dock-grampsweb-net
+      - int-grampsweb-net
       - dock-proxy-net
       - dock-internalmail-net
     volumes:
@@ -54956,7 +55801,7 @@ services:
     depends_on:
       - grampsweb-redis
     networks:
-      - dock-grampsweb-net
+      - int-grampsweb-net
       - dock-internalmail-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
@@ -54981,12 +55826,15 @@ services:
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $GRAMPSWEB_REDIS_PASSWORD
+      --appendonly yes
     networks:
-      - dock-grampsweb-net
+      - int-grampsweb-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-grampsweb-redis:/bitnami/redis/data
+      - v-grampsweb-redis:/data
 
 volumes:
   v-grampsweb-redis:
@@ -55051,7 +55899,7 @@ networks:
   dock-internalmail-net:
     name: dock-internalmail
     external: true
-  dock-grampsweb-net:
+  int-grampsweb-net:
     driver: bridge
     internal: true
     ipam:
@@ -55076,7 +55924,7 @@ EOFPI
 function performUpdateGrampsWeb()
 {
   perform_stack_name=grampsweb
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -55093,10 +55941,19 @@ function performUpdateGrampsWeb()
       image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     3)
-      newVer=v3
-      curImageList=ghcr.io/gramps-project/grampsweb:v25.4.0,bitnami/redis:7.0.5
-      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v25.4.0,ghcr.io/gramps-project/grampsweb:v25.4.0"
-      image_update_map[1]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      newVer=v4
+      curImageList=ghcr.io/gramps-project/grampsweb:v25.4.0,bitnami/redis:7.4.2
+      image_update_map[0]="ghcr.io/gramps-project/grampsweb:v25.4.0,ghcr.io/gramps-project/grampsweb:25.7.3"
+      image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfGrampsWebFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    4)
+      newVer=v4
+      curImageList=ghcr.io/gramps-project/grampsweb:25.7.3,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="ghcr.io/gramps-project/grampsweb:25.7.3,ghcr.io/gramps-project/grampsweb:25.7.3"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -55104,8 +55961,35 @@ function performUpdateGrampsWeb()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfGrampsWebFixRedisCompose()
+{
+  lineStart="  grampsweb-redis:"
+  lineEnd="      - v-grampsweb-redis:/bitnami/redis/data"
+  replaceText=""
+  replaceText=$replaceText">>grampsweb-redis:\n"
+  replaceText=$replaceText">>>>image: mirror.gcr.io/redis:8.2.0-bookworm\n"
+  replaceText=$replaceText">>>>container_name: grampsweb-redis\n"
+  replaceText=$replaceText">>>>restart: unless-stopped\n"
+  replaceText=$replaceText">>>>env_file: stack.env\n"
+  replaceText=$replaceText">>>>security_opt:\n"
+  replaceText=$replaceText">>>>>>- no-new-privileges:true\n"
+  replaceText=$replaceText">>>>command: redis-server\n"
+  replaceText=$replaceText">>>>>>--requirepass $GRAMPSWEB_REDIS_PASSWORD\n"
+  replaceText=$replaceText">>>>networks:\n"
+  replaceText=$replaceText">>>>>>- int-grampsweb-net\n"
+  replaceText=$replaceText">>>>volumes:\n"
+  replaceText=$replaceText">>>>>>- /etc/localtime:/etc/localtime:ro\n"
+  replaceText=$replaceText">>>>>>- /etc/timezone:/etc/timezone:ro\n"
+  replaceText=$replaceText">>>>>>- v-grampsweb-redis:/data\n"
+  replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/grampsweb-compose.yml false ">"
+  cat -s $HOME/grampsweb-compose.yml > $HOME/grampsweb.tmp
+  mv $HOME/grampsweb.tmp $HOME/grampsweb-compose.yml
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/grampsweb/redis/*
+  sed -i "s/dock-grampsweb-net/int-grampsweb-net/g" $HOME/grampsweb-compose.yml
 }
 
 # Penpot
@@ -55307,14 +56191,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $PENPOT_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-penpot-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-penpot-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$PENPOT_REDIS_PASSWORD
+      - v-penpot-redis:/data
 
 volumes:
   v-penpot-db:
@@ -55399,7 +56284,7 @@ EOFPI
 function performUpdatePenpot()
 {
   perform_stack_name=penpot
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -55411,18 +56296,30 @@ function performUpdatePenpot()
       image_update_map[2]="penpotapp/frontend:2.2.1,penpotapp/frontend:2.5.4"
       image_update_map[3]="penpotapp/exporter:2.2.1,penpotapp/exporter:2.5.4"
       image_update_map[4]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" mfPenpotFixPort false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfPenpotFixPort false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=postgres:15.0-bullseye,penpotapp/backend:2.5.4,penpotapp/frontend:2.5.4,penpotapp/exporter:2.5.4,bitnami/redis:7.4.2
-      image_update_map[0]="postgres:15.0-bullseye,postgres:15.0-bullseye"
-      image_update_map[1]="penpotapp/backend:2.5.4,penpotapp/backend:2.5.4"
-      image_update_map[2]="penpotapp/frontend:2.5.4,penpotapp/frontend:2.5.4"
-      image_update_map[3]="penpotapp/exporter:2.5.4,penpotapp/exporter:2.5.4"
-      image_update_map[4]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="penpotapp/backend:2.5.4,mirror.gcr.io/penpotapp/backend:2.8.1"
+      image_update_map[2]="penpotapp/frontend:2.5.4,mirror.gcr.io/penpotapp/frontend:2.8.1"
+      image_update_map[3]="penpotapp/exporter:2.5.4,mirror.gcr.io/penpotapp/exporter:2.8.1"
+      image_update_map[4]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPenpotFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/penpotapp/backend:2.8.1,mirror.gcr.io/penpotapp/frontend:2.8.1,mirror.gcr.io/penpotapp/exporter:2.8.1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/penpotapp/backend:2.8.1mirror.gcr.io/penpotapp/backend:2.8.1"
+      image_update_map[2]="mirror.gcr.io/penpotapp/frontend:2.8.1,mirror.gcr.io/penpotapp/frontend:2.8.1"
+      image_update_map[3]="mirror.gcr.io/penpotapp/exporter:2.8.1,mirror.gcr.io/penpotapp/exporter:2.8.1"
+      image_update_map[4]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -55430,7 +56327,7 @@ function performUpdatePenpot()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -55452,6 +56349,12 @@ function mfPenpotFixPort()
   updateCaddyBlocks $SUB_PENPOT $MANAGETLS_PENPOT "$is_integrate_hshq" $NETDEFAULT_PENPOT "$inner_block"
   set +e
   restartAllCaddyContainers
+}
+
+function mfPenpotFixRedisCompose()
+{
+  replaceRedisBlock penpot penpot-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/penpot/redis/*
 }
 
 # EspoCRM
@@ -55723,7 +56626,7 @@ EOFPI
 function performUpdateEspoCRM()
 {
   perform_stack_name=espocrm
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -55734,10 +56637,16 @@ function performUpdateEspoCRM()
       image_update_map[1]="espocrm/espocrm:8.4.2-apache,espocrm/espocrm:9.0.6-apache"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=mariadb:10.7.3,espocrm/espocrm:9.0.6-apache
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="espocrm/espocrm:9.0.6-apache,espocrm/espocrm:9.0.6-apache"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="espocrm/espocrm:9.0.6-apache,mirror.gcr.io/espocrm/espocrm:9.1.8-apache"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/espocrm/espocrm:9.1.8-apache
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/espocrm/espocrm:9.1.8-apache,mirror.gcr.io/espocrm/espocrm:9.1.8-apache"
     ;;
     *)
       is_upgrade_error=true
@@ -55745,7 +56654,7 @@ function performUpdateEspoCRM()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -55792,7 +56701,6 @@ function installImmich()
   addUserMailu alias $IMMICH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   IMMICH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $IMMICH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
-  IMMICH_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $IMMICH_OIDC_CLIENT_SECRET | tr -d ':\n')
   outputConfigImmich
   oidcBlock=$(cat $HOME/immich.oidc)
   rm -f $HOME/immich.oidc
@@ -55931,14 +56839,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $IMMICH_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-immich-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-immich-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$IMMICH_REDIS_PASSWORD
+      - v-immich-redis:/data
 
 volumes:
   v-immich-cache:
@@ -56178,12 +57087,20 @@ EOFPI
   }
 }
 EOFIM
+  outputImmichAutheliaOIDC
+  curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
+insert into "user"(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
+EOFIM
+}
 
+function outputImmichAutheliaOIDC()
+{
   cat <<EOFIM > $HOME/immich.oidc
 # Authelia OIDC Client immich BEGIN
       - client_id: immich
         client_name: Immich
-        client_secret: '$IMMICH_OIDC_CLIENT_SECRET_HASH'
+        client_secret: '$(htpasswd -bnBC 10 "" $IMMICH_OIDC_CLIENT_SECRET | tr -d ':\n')'
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         redirect_uris:
@@ -56195,20 +57112,21 @@ EOFIM
           - profile
           - email
           - groups
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+        access_token_signed_response_alg: none
         userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
 # Authelia OIDC Client immich END
-EOFIM
-
-  curdt=$(date '+%Y-%m-%d %H:%M:%S.%3N')
-  cat <<EOFIM > $HSHQ_STACKS_DIR/immich/dbexport/addadmin.sql
-insert into users(id,email,password,"createdAt","profileImagePath","isAdmin","shouldChangePassword","deletedAt","oauthId","updatedAt","storageLabel",name,"quotaSizeInBytes","quotaUsageInBytes",status,"profileChangedAt") values(gen_random_uuid(),'$IMMICH_ADMIN_EMAIL_ADDRESS','$IMMICH_ADMIN_PASSWORD_HASH','$curdt','',true,true,NULL,'','$curdt','admin','$(getAdminEmailName) Immich',NULL,0,'active','$curdt');
 EOFIM
 }
 
 function performUpdateImmich()
 {
   perform_stack_name=immich
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -56221,12 +57139,37 @@ function performUpdateImmich()
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
     ;;
     2)
-      newVer=v2
-      curImageList=tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
-      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0"
-      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.131.3"
-      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3"
-      image_update_map[3]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      # Must go to v1.132.0 first, then to v1.137.3
+      newVer=v3
+      curImageList=tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
+      image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.132.0"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.132.0"
+      image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichFixRedisCompose
+      if [ $? -eq 0 ]; then
+        is_upgrade_error=true
+        perform_update_report="WARNING ($perform_stack_name): If the Immich service does not work after this upgrade, then try restarting the stack (in Portainer)."
+      else
+        perform_update_report="${perform_update_report}$stack_upgrade_report"
+      fi
+      return
+    ;;
+    3)
+      newVer=v4
+      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.132.0,ghcr.io/immich-app/immich-machine-learning:v1.132.0,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.132.0,ghcr.io/immich-app/immich-server:v1.137.3"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.132.0,ghcr.io/immich-app/immich-machine-learning:v1.137.3"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+      image_update_map[1]="ghcr.io/immich-app/immich-server:v1.137.3,ghcr.io/immich-app/immich-server:v1.137.3"
+      image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.137.3,ghcr.io/immich-app/immich-machine-learning:v1.137.3"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -56234,8 +57177,18 @@ function performUpdateImmich()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfImmichFixRedisCompose()
+{
+  replaceRedisBlock immich immich-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/immich/redis/*
+  outputImmichAutheliaOIDC
+  oidcBlock=$(cat $HOME/immich.oidc)
+  rm -f $HOME/immich.oidc
+  insertOIDCClientAuthelia immich "$oidcBlock"
 }
 
 # Homarr
@@ -56400,7 +57353,7 @@ EOFIM
 function performUpdateHomarr()
 {
   perform_stack_name=homarr
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -56418,9 +57371,14 @@ function performUpdateHomarr()
       return
     ;;
     3)
-      newVer=v3
+      newVer=v4
       curImageList=ghcr.io/homarr-labs/homarr:v1.18.1
-      image_update_map[0]="ghcr.io/homarr-labs/homarr:v1.18.1,ghcr.io/homarr-labs/homarr:v1.18.1"
+      image_update_map[0]="ghcr.io/homarr-labs/homarr:v1.18.1,ghcr.io/homarr-labs/homarr:v1.32.0"
+    ;;
+    4)
+      newVer=v4
+      curImageList=ghcr.io/homarr-labs/homarr:v1.32.0
+      image_update_map[0]="ghcr.io/homarr-labs/homarr:v1.32.0,ghcr.io/homarr-labs/homarr:v1.32.0"
     ;;
     *)
       is_upgrade_error=true
@@ -56428,7 +57386,7 @@ function performUpdateHomarr()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -56711,16 +57669,23 @@ EOFMT
 function performUpdateMatomo()
 {
   perform_stack_name=matomo
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mariadb:10.7.3,matomo:5.3.1-fpm-alpine,nginx:1.27.4-alpine
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="matomo:5.3.1-fpm-alpine,matomo:5.3.1-fpm-alpine"
-      image_update_map[2]="nginx:1.27.4-alpine,nginx:1.27.4-alpine"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="matomo:5.3.1-fpm-alpine,mirror.gcr.io/matomo:5.3.2-fpm-alpine"
+      image_update_map[2]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/matomo:5.3.2-fpm-alpine,mirror.gcr.io/nginx:1.28.0-alpine
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/matomo:5.3.2-fpm-alpine,mirror.gcr.io/matomo:5.3.2-fpm-alpine"
+      image_update_map[2]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
     ;;
     *)
       is_upgrade_error=true
@@ -56728,7 +57693,7 @@ function performUpdateMatomo()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -56910,15 +57875,21 @@ EOFMT
 function performUpdatePastefy()
 {
   perform_stack_name=pastefy
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
+      newVer=v2
       curImageList=mariadb:10.7.3,interaapps/pastefy:7.0.3
-      image_update_map[0]="mariadb:10.7.3,mariadb:10.7.3"
-      image_update_map[1]="interaapps/pastefy:7.0.3,interaapps/pastefy:7.0.3"
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="interaapps/pastefy:7.0.3,mirror.gcr.io/interaapps/pastefy:7.1.4"
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/interaapps/pastefy:7.1.4
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/interaapps/pastefy:7.1.4,mirror.gcr.io/interaapps/pastefy:7.1.4"
     ;;
     *)
       is_upgrade_error=true
@@ -56926,7 +57897,7 @@ function performUpdatePastefy()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -57020,7 +57991,7 @@ EOFMT
 function performUpdateSnippetBox()
 {
   perform_stack_name=snippetbox
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -57035,7 +58006,7 @@ function performUpdateSnippetBox()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -57074,6 +58045,10 @@ function installAIStack()
     return 1
   fi
   pullImage $(getScriptImageByContainerName aistack-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  buildMindsDBImageV1
   if [ $? -ne 0 ]; then
     return 1
   fi
@@ -57117,7 +58092,7 @@ function installAIStack()
   set +e
   while [ $i -le 300 ]
   do
-    findtext=$(docker logs aistack-mindsdb-app 2>&1 | grep "$search")
+    findtext=$(docker logs aistack-mindsdb-mod-app 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
       isFound=true
       break
@@ -57136,10 +58111,6 @@ function installAIStack()
     return 1
   fi
   sleep 5
-  echo "Installing polars-lts-cpu, please be patient, this might take a few minutes..."
-  docker exec aistack-mindsdb-app pip install polars-lts-cpu
-  docker image rm $(getScriptImageByContainerName aistack-mindsdb-mod-app) > /dev/null 2>&1
-  docker commit aistack-mindsdb-app $(getScriptImageByContainerName aistack-mindsdb-mod-app)
   # See the code at the end of this function, as it informs the user regarding the import
   #importDBConnectionsAIStack
   docker exec aistack-mindsdb-db bash /dbimport/insertAdmin.sh
@@ -57265,7 +58236,7 @@ services:
       - ${HSHQ_STACKS_DIR}/aistack/mindsdb/dbexport/init-dbs.sh:/docker-entrypoint-initdb.d/init-dbs.sh
 
   aistack-mindsdb-app:
-    image: $(getScriptImageByContainerName aistack-mindsdb-app)
+    image: $(getScriptImageByContainerName aistack-mindsdb-mod-app)
     container_name: aistack-mindsdb-app
     hostname: aistack-mindsdb-app
     restart: unless-stopped
@@ -57384,14 +58355,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $AISTACK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-aistack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-aistack-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$AISTACK_REDIS_PASSWORD
+      - v-aistack-redis:/data
 
 volumes:
   v-aistack-mindsdb-app:
@@ -57596,14 +58568,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $AISTACK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-aistack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-aistack-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$AISTACK_REDIS_PASSWORD
+      - v-aistack-redis:/data
 
 volumes:
   v-aistack-mindsdb-app:
@@ -57901,17 +58874,114 @@ function importDBConnectionsAIStack()
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
 }
 
+function buildMindsDBImageV1()
+{
+  # Capture the return value deliberately, just so we don't forget down the road
+  buildMindsDBImage "mindsdb/mindsdb:v25.4.5.0" "hshq/mindsdb:v1"
+  rtval=$?
+  return $rtval
+}
+
+function buildMindsDBImageV2()
+{
+  # Capture the return value deliberately, just so we don't forget down the road
+  buildMindsDBImage "mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0" "hshq/mindsdb:v2"
+  rtval=$?
+  return $rtval
+}
+
+function buildMindsDBImage()
+{
+  baseBuildImage="$1"
+  newBuildImage="$2"
+  set +e
+  pullImage $baseBuildImage
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  is_build_error=0
+  if [ $is_build_error -eq 0 ]; then
+    docker run --name mindsdb_build -e MINDSDB_APIS=http -d $baseBuildImage
+    rtval=$?
+    is_build_error=$(($is_build_error+$rtval))
+  fi
+  if [ $is_build_error -eq 0 ]; then
+    # Wait for string
+    search="mindsdb: http API: started on 47334"
+    isFound=false
+    i=0
+    while [ $i -le 300 ]
+    do
+      findtext=$(docker logs mindsdb_build 2>&1 | grep "$search")
+      if ! [ -z "$findtext" ]; then
+        isFound=true
+        break
+      fi
+      echo "MindsDB build container not ready, sleeping 5 seconds, total wait=$i seconds..."
+      sleep 5
+      i=$((i+5))
+    done
+    if ! [ "$isFound" = "true" ]; then
+      echo "MindsDB build container did not start up correctly..."
+      is_build_error=1
+    fi
+  fi
+  if [ $is_build_error -eq 0 ]; then
+    echo "Installing polars-lts-cpu, please be patient, this might take a few minutes..."
+    docker exec mindsdb_build pip install polars-lts-cpu
+    rtval=$?
+    is_build_error=$(($is_build_error+$rtval))
+    sleep 5
+  fi
+  if [ $is_build_error -eq 0 ]; then
+    docker image rm $newBuildImage > /dev/null 2>&1
+    docker commit mindsdb_build $newBuildImage
+    rtval=$?
+    is_build_error=$(($is_build_error+$rtval))
+  fi
+  docker container stop mindsdb_build > /dev/null 2>&1
+  docker container rm mindsdb_build > /dev/null 2>&1
+  return $is_build_error
+}
+
 function performUpdateAIStack()
 {
-  perform_stack_name=mindsdb
-  prepPerformUpdate "$1"
+  perform_stack_name=aistack
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=exampleimage
-      image_update_map[0]="exampleimage,exampleimage"
+      # There's a bug when upgrading MindsDB:
+      # ModuleNotFoundError: No module named 'langfuse'
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,hshq/mindsdb:v1,otel/opentelemetry-collector-contrib:0.116.1,langfuse/langfuse:2.87.0,ollama/ollama:0.6.8,ghcr.io/open-webui/open-webui:git-aa37482,bitnami/redis:7.4.2
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="hshq/mindsdb:v1,hshq/mindsdb:v2"
+      image_update_map[2]="otel/opentelemetry-collector-contrib:0.116.1,mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1"
+      image_update_map[3]="langfuse/langfuse:2.87.0,mirror.gcr.io/langfuse/langfuse:2.87.0"
+      image_update_map[4]="ollama/ollama:0.6.8,mirror.gcr.io/ollama/ollama:0.11.4"
+      image_update_map[5]="ghcr.io/open-webui/open-webui:git-aa37482,ghcr.io/open-webui/open-webui:0.6.22"
+      image_update_map[6]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      buildMindsDBImageV2
+      if [ $? -ne 0 ]; then
+        perform_update_report="ERROR ($perform_stack_name): Could not build new MindsDB image"
+        return
+      fi
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfAIStackFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,hshq/mindsdb:v2,mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1,mirror.gcr.io/langfuse/langfuse:2.87.0,mirror.gcr.io/ollama/ollama:0.11.4,ghcr.io/open-webui/open-webui:0.6.22,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="hshq/mindsdb:v2,hshq/mindsdb:v2"
+      image_update_map[2]="mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1,mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1"
+      image_update_map[3]="mirror.gcr.io/langfuse/langfuse:2.87.0,mirror.gcr.io/langfuse/langfuse:2.87.0"
+      image_update_map[4]="mirror.gcr.io/ollama/ollama:0.11.4,mirror.gcr.io/ollama/ollama:0.11.4"
+      image_update_map[5]="ghcr.io/open-webui/open-webui:0.6.22,ghcr.io/open-webui/open-webui:0.6.22"
+      image_update_map[6]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -57919,8 +58989,14 @@ function performUpdateAIStack()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfAIStackFixRedisCompose()
+{
+  replaceRedisBlock aistack aistack-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/aistack/redis/*
 }
 
 # Pixelfed
@@ -58106,14 +59182,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $PIXELFED_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-pixelfed-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-pixelfed-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$PIXELFED_REDIS_PASSWORD
+      - v-pixelfed-redis:/data
 
 volumes:
   v-pixelfed-appstorage:
@@ -58258,13 +59335,28 @@ EOFPF
 
 function buildImagePixelfedV1()
 {
-  echo "The Pixelfed image is being built. It can take up to 15 minutes for the process to complete, so please be patient."
+  set +e
+  echo -e "\n========================================================================"
+  echo -e "  The Pixelfed image is being built. It can take up to 15 minutes for"
+  echo -e "  the process to complete, so please be patient."
+  echo -e "========================================================================\n"
   img_ver=v0.12.5.tar.gz
   cd $HSHQ_BUILD_DIR
   sudo rm -fr $HSHQ_BUILD_DIR/pixelfed*
   wget -q4 -O $HSHQ_BUILD_DIR/pixelfed.tar.gz https://github.com/pixelfed/pixelfed/archive/refs/tags/$img_ver
+  rVal=$?
+  if [ $rVal -ne 0 ]; then
+    rm -f $HSHQ_BUILD_DIR/pixelfed.tar.gz
+    cd ~
+    return 6
+  fi
   tar xvzf ./pixelfed.tar.gz >/dev/null
-  rm -f ./pixelfed.tar.gz
+  rVal=$?
+  rm -f $HSHQ_BUILD_DIR/pixelfed.tar.gz
+  if [ $rVal -ne 0 ]; then
+    cd ~
+    return 7
+  fi
   cd pixelfed*
   rm -f app/Http/Controllers/Auth/LoginController.php
   cat <<EOFPF > app/Http/Controllers/Auth/LoginController.php
@@ -59359,14 +60451,26 @@ EOFPF
 function performUpdatePixelfed()
 {
   perform_stack_name=pixelfed
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=exampleimage
-      image_update_map[0]="exampleimage,exampleimage"
+      newVer=v2
+      curImageList=mariadb:10.7.3,hshq/pixelfed:v1,bitnami/redis:7.4.2
+      image_update_map[0]="mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="hshq/pixelfed:v1,hshq/pixelfed:v1"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfPixelfedFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/mariadb:10.7.3,hshq/pixelfed:v1,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="hshq/pixelfed:v1,hshq/pixelfed:v1"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -59374,8 +60478,14 @@ function performUpdatePixelfed()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfPixelfedFixRedisCompose()
+{
+  replaceRedisBlock pixelfed pixelfed-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/pixelfed/redis/*
 }
 
 # Yamtrack
@@ -59519,14 +60629,15 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+    command: redis-server
+      --requirepass $YAMTRACK_REDIS_PASSWORD
+      --appendonly yes
     networks:
       - int-yamtrack-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-yamtrack-redis:/bitnami/redis/data
-    environment:
-      - REDIS_PASSWORD=$YAMTRACK_REDIS_PASSWORD
+      - v-yamtrack-redis:/data
 
 volumes:
   v-yamtrack-db:
@@ -59610,14 +60721,26 @@ EOFIM
 function performUpdateYamtrack()
 {
   perform_stack_name=yamtrack
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v1
-      curImageList=exampleimage
-      image_update_map[0]="exampleimage,exampleimage"
+      newVer=v2
+      curImageList=postgres:15.0-bullseye,ghcr.io/fuzzygrim/yamtrack:0.22.7,bitnami/redis:7.4.2
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/fuzzygrim/yamtrack:0.22.7,ghcr.io/fuzzygrim/yamtrack:0.24.7"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfYamtrackFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    2)
+      newVer=v2
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,ghcr.io/fuzzygrim/yamtrack:0.24.7,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="ghcr.io/fuzzygrim/yamtrack:0.24.7,ghcr.io/fuzzygrim/yamtrack:0.24.7"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -59625,8 +60748,14 @@ function performUpdateYamtrack()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function mfYamtrackFixRedisCompose()
+{
+  replaceRedisBlock yamtrack yamtrack-redis mirror.gcr.io/redis:8.2.0-bookworm true
+  sudo rm -fr $HSHQ_NONBACKUP_DIR/yamtrack/redis/*
 }
 
 # Servarr
@@ -60319,7 +61448,7 @@ EOFMT
 function performUpdateServarr()
 {
   perform_stack_name=servarr
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -60340,7 +61469,7 @@ function performUpdateServarr()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -60560,7 +61689,7 @@ EOFMT
 function performUpdateSABnzbd()
 {
   perform_stack_name=sabnzbd
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -60575,7 +61704,7 @@ function performUpdateSABnzbd()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -60725,7 +61854,7 @@ EOFMT
 function performUpdateqBittorrent()
 {
   perform_stack_name=qbittorrent
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -60740,7 +61869,7 @@ function performUpdateqBittorrent()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -60934,7 +62063,7 @@ EOFOB
 function performUpdateOmbi()
 {
   perform_stack_name=ombi
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -60950,7 +62079,7 @@ function performUpdateOmbi()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61238,7 +62367,7 @@ EOFMT
 function performUpdateMeshCentral()
 {
   perform_stack_name=meshcentral
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -61253,7 +62382,7 @@ function performUpdateMeshCentral()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61363,7 +62492,7 @@ EOFMT
 function performUpdateNavidrome()
 {
   perform_stack_name=navidrome
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -61378,7 +62507,7 @@ function performUpdateNavidrome()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61555,7 +62684,7 @@ EOFMT
 function performUpdateExampleService()
 {
   perform_stack_name=exampleservice
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -61570,7 +62699,7 @@ function performUpdateExampleService()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -61643,34 +62772,39 @@ EOFRM
 function performUpdateOfelia()
 {
   perform_stack_name=ofelia
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:v0.3.7
-      image_update_map[0]="mcuadros/ofelia:v0.3.7,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:v0.3.7,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     2)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:v0.3.9
-      image_update_map[0]="mcuadros/ofelia:v0.3.9,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:v0.3.9,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     3)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:0.3.10
-      image_update_map[0]="mcuadros/ofelia:0.3.10,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:0.3.10,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     4)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:0.3.13
-      image_update_map[0]="mcuadros/ofelia:0.3.13,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:0.3.13,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     5)
-      newVer=v5
+      newVer=v6
       curImageList=mcuadros/ofelia:0.3.16
-      image_update_map[0]="mcuadros/ofelia:0.3.16,mcuadros/ofelia:0.3.16"
+      image_update_map[0]="mcuadros/ofelia:0.3.16,mirror.gcr.io/mcuadros/ofelia:0.3.18"
+    ;;
+    6)
+      newVer=v6
+      curImageList=mirror.gcr.io/mcuadros/ofelia:0.3.18
+      image_update_map[0]="mirror.gcr.io/mcuadros/ofelia:0.3.18,mirror.gcr.io/mcuadros/ofelia:0.3.18"
     ;;
     *)
       is_upgrade_error=true
@@ -61678,7 +62812,7 @@ function performUpdateOfelia()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -64945,10 +66079,10 @@ decryptConfigFileAndLoadEnvNoPrompts
 set +e
 echo "Testing Portainer"
 echo "Getting auth token..."
-portainerToken="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
+PORTAINER_TOKEN="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
 if [ \$? -eq 0 ]; then
   echo "Querying stacks..."
-  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$portainerToken" endpointId==\$PORTAINER_ENDPOINT_ID)
+  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID)
   if [ \$? -eq 0 ]; then
     echo "Succesfully executed query, connection is good!"
   else
@@ -69933,22 +71067,22 @@ SQLPAD_CONNECTIONS__shlink__username=$SHLINK_DATABASE_USER
 SQLPAD_CONNECTIONS__shlink__password=$SHLINK_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__shlink__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__shlink__idleTimeoutSeconds=900
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__name=$FMLNAME_SPEEDTEST_TRACKER_LOCAL
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__driver=postgres
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__host=speedtest-tracker-local-db
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__database=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__username=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__password=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__multiStatementTransactionEnabled='false'
-SQLPAD_CONNECTIONS__speedtesttrackerlocal__idleTimeoutSeconds=900
-SQLPAD_CONNECTIONS__speedtesttrackervpn__name=$FMLNAME_SPEEDTEST_TRACKER_VPN
-SQLPAD_CONNECTIONS__speedtesttrackervpn__driver=postgres
-SQLPAD_CONNECTIONS__speedtesttrackervpn__host=speedtest-tracker-vpn-db
-SQLPAD_CONNECTIONS__speedtesttrackervpn__database=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-SQLPAD_CONNECTIONS__speedtesttrackervpn__username=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
-SQLPAD_CONNECTIONS__speedtesttrackervpn__password=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
-SQLPAD_CONNECTIONS__speedtesttrackervpn__multiStatementTransactionEnabled='false'
-SQLPAD_CONNECTIONS__speedtesttrackervpn__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__speedtest-tracker-local__name=$FMLNAME_SPEEDTEST_TRACKER_LOCAL
+SQLPAD_CONNECTIONS__speedtest-tracker-local__driver=postgres
+SQLPAD_CONNECTIONS__speedtest-tracker-local__host=speedtest-tracker-local-db
+SQLPAD_CONNECTIONS__speedtest-tracker-local__database=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+SQLPAD_CONNECTIONS__speedtest-tracker-local__username=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+SQLPAD_CONNECTIONS__speedtest-tracker-local__password=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__speedtest-tracker-local__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__speedtest-tracker-local__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__name=$FMLNAME_SPEEDTEST_TRACKER_VPN
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__driver=postgres
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__host=speedtest-tracker-vpn-db
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__database=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__username=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__password=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__speedtest-tracker-vpn__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__vaultwarden__name=Vaultwarden
 SQLPAD_CONNECTIONS__vaultwarden__driver=postgres
 SQLPAD_CONNECTIONS__vaultwarden__host=vaultwarden-db
@@ -69996,7 +71130,7 @@ EOFSP
 function performUpdateSQLPad()
 {
   perform_stack_name=sqlpad
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -70026,14 +71160,19 @@ function performUpdateSQLPad()
       image_update_map[0]="sqlpad/sqlpad:7.4.4,sqlpad/sqlpad:7.5.3"
     ;;
     6)
-      newVer=v7
+      newVer=v8
       curImageList=sqlpad/sqlpad:7.5.1
-      image_update_map[0]="sqlpad/sqlpad:7.5.1,sqlpad/sqlpad:7.5.3"
+      image_update_map[0]="sqlpad/sqlpad:7.5.1,mirror.gcr.io/sqlpad/sqlpad:7.5.5"
     ;;
     7)
-      newVer=v7
+      newVer=v8
       curImageList=sqlpad/sqlpad:7.5.3
-      image_update_map[0]="sqlpad/sqlpad:7.5.3,sqlpad/sqlpad:7.5.3"
+      image_update_map[0]="sqlpad/sqlpad:7.5.3,mirror.gcr.io/sqlpad/sqlpad:7.5.5"
+    ;;
+    8)
+      newVer=v8
+      curImageList=sqlpad/sqlpad:7.5.3
+      image_update_map[0]="mirror.gcr.io/sqlpad/sqlpad:7.5.5,mirror.gcr.io/sqlpad/sqlpad:7.5.5"
     ;;
     *)
       is_upgrade_error=true
@@ -70041,7 +71180,7 @@ function performUpdateSQLPad()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -70538,7 +71677,7 @@ EOFHL
 function performUpdateHeimdall()
 {
   perform_stack_name=heimdall
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -70553,7 +71692,7 @@ function performUpdateHeimdall()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -71349,30 +72488,35 @@ EOFCE
 
 function performUpdateCaddy()
 {
-  perform_stack_name=$2
-  prepPerformUpdate "$1"
+  perform_stack_name=$1
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v4
+      newVer=v5
       curImageList=caddy:2.7.4
-      image_update_map[0]="caddy:2.7.4,caddy:2.9.1"
+      image_update_map[0]="caddy:2.7.4,mirror.gcr.io/caddy:2.10.0"
     ;;
     2)
-      newVer=v4
+      newVer=v5
       curImageList=caddy:2.7.6
-      image_update_map[0]="caddy:2.7.6,caddy:2.9.1"
+      image_update_map[0]="caddy:2.7.6,mirror.gcr.io/caddy:2.10.0"
     ;;
     3)
-      newVer=v4
+      newVer=v5
       curImageList=caddy:2.8.4
-      image_update_map[0]="caddy:2.8.4,caddy:2.9.1"
+      image_update_map[0]="caddy:2.8.4,mirror.gcr.io/caddy:2.10.0"
     ;;
     4)
-      newVer=v4
+      newVer=v5
       curImageList=caddy:2.9.1
-      image_update_map[0]="caddy:2.9.1,caddy:2.9.1"
+      image_update_map[0]="caddy:2.9.1,mirror.gcr.io/caddy:2.10.0"
+    ;;
+    5)
+      newVer=v5
+      curImageList=mirror.gcr.io/caddy:2.10.0
+      image_update_map[0]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
     ;;
     *)
       is_upgrade_error=true
@@ -71380,7 +72524,7 @@ function performUpdateCaddy()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -71670,22 +72814,28 @@ EOFCF
 
 function performUpdateClientDNS()
 {
-  perform_stack_name=$2
-  prepPerformUpdate "$1"
+  perform_stack_name=$1
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
+      newVer=v3
       curImageList=jpillora/dnsmasq:1.1,linuxserver/wireguard:1.0.20210914
-      image_update_map[0]="jpillora/dnsmasq:1.1,jpillora/dnsmasq:1.1"
-      image_update_map[1]="linuxserver/wireguard:1.0.20210914,linuxserver/wireguard:1.0.20210914-r4-ls72"
+      image_update_map[0]="jpillora/dnsmasq:1.1,mirror.gcr.io/jpillora/dnsmasq:1.1"
+      image_update_map[1]="linuxserver/wireguard:1.0.20210914,mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81"
     ;;
     2)
-      newVer=v2
+      newVer=v3
       curImageList=jpillora/dnsmasq:1.1,linuxserver/wireguard:1.0.20210914-r4-ls72
-      image_update_map[0]="jpillora/dnsmasq:1.1,jpillora/dnsmasq:1.1"
-      image_update_map[1]="linuxserver/wireguard:1.0.20210914-r4-ls72,linuxserver/wireguard:1.0.20210914-r4-ls72"
+      image_update_map[0]="jpillora/dnsmasq:1.1,mirror.gcr.io/jpillora/dnsmasq:1.1"
+      image_update_map[1]="linuxserver/wireguard:1.0.20210914-r4-ls72,mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81"
+    ;;
+    3)
+      newVer=v3
+      curImageList=mirror.gcr.io/jpillora/dnsmasq:1.1,mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81
+      image_update_map[0]="mirror.gcr.io/jpillora/dnsmasq:1.1,mirror.gcr.io/jpillora/dnsmasq:1.1"
+      image_update_map[1]="mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81,mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81"
     ;;
     *)
       is_upgrade_error=true
@@ -71693,7 +72843,7 @@ function performUpdateClientDNS()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
@@ -71806,7 +72956,7 @@ EOFUK
 function performUpdateUptimeKuma()
 {
   perform_stack_name=uptimekuma
-  prepPerformUpdate "$1"
+  prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
@@ -71841,7 +72991,7 @@ function performUpdateUptimeKuma()
       return
     ;;
   esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" "$portainerToken" doNothing false
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
