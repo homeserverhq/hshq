@@ -15042,7 +15042,11 @@ function getPortainerToken()
 function getStackID()
 {
   stackID="NA"
-  stackName=$1
+  stackName="$1"
+  if [ -z "$stackName" ]; then
+    echo "ERROR (getStackID): The stack name is empty..." 1>&2
+    return
+  fi
   stackName="${stackName//.}"
   if [ -z "$PORTAINER_TOKEN" ]; then
     PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -15640,6 +15644,7 @@ function startStopStackByID()
 {
   stackID=$1
   startStop=$2
+  set +e
   if [ -z "$PORTAINER_TOKEN" ]; then
     PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
@@ -15664,7 +15669,7 @@ function startStopStackByID()
   done
   if [ $sss_retVal -ne 0 ]; then
     echo "ERROR: Could not $startStop stack (ID=$stackID) in Portainer..." 1>&2
-    return
+    return $sss_retVal
   fi
 }
 
@@ -27803,11 +27808,16 @@ function prepPerformUpdate()
   # perform_update_report with the results of the update process.
   # It is up to the caller to do something with it.
   perform_update_report=""
+  if [ -z "$perform_stack_name" ]; then
+    is_upgrade_error=true
+    perform_update_report="ERROR($perform_stack_name): The stack name cannot be empty."
+    return 1
+  fi
   perform_stack_id=$(getStackID $perform_stack_name)
   if [ -z "$perform_stack_id" ]; then
     is_upgrade_error=true
     perform_update_report="ERROR($perform_stack_name): There was a problem with the Portainer API. If this error persists, try restarting Portainer."
-    return 1
+    return 2
   fi
   perform_compose=$HSHQ_STACKS_DIR/portainer/compose/$perform_stack_id/docker-compose.yml
   perform_stack_firstline=$(sudo sed -n 1p $perform_compose)
@@ -27815,6 +27825,30 @@ function prepPerformUpdate()
   unset image_update_map
   image_update_map=""
   oldVer=v"$perform_stack_ver"
+}
+
+function getComposeImageList()
+{
+  gclComposeFile="$1"
+  gclRet=""
+  set +e
+  OLDIFS=$IFS
+  IFS=$(echo -en "\n\b")
+  gclArr=($(sudo grep "image:" $gclComposeFile))
+  for curImageLine in "${gclArr[@]}"
+  do
+    curImage=$(echo $curImageLine | xargs | cut -d " " -f2)
+    echo "$gclRet" | grep -q "$curImage"
+    if [ $? -ne 0 ]; then
+      if [ -z "$gclRet" ]; then
+        gclRet="$curImage"
+      else
+        gclRet="${gclRet},$curImage"
+      fi
+    fi
+  done
+  IFS=$OLDIFS
+  echo $(sortCSVList "$gclRet")
 }
 
 function upgradeStack()
@@ -27839,7 +27873,7 @@ function upgradeStack()
   stack_upgrade_report=""
   if [ "$(checkImageList $cur_img_list $upgrade_compose_file)" = "false" ]; then
     is_upgrade_error=true
-    stack_upgrade_report="ERROR ($comp_stack_name): Container image mismatch, stack version: $old_ver, image list: $cur_img_list"
+    stack_upgrade_report="ERROR ($comp_stack_name): Container image mismatch, stack version: $old_ver\nExpected image list: $(sortCSVList $cur_img_list)\n  Actual image list: $(getComposeImageList $upgrade_compose_file)"
     return
   fi
   # Even though the image list (cur_img_list) matches the corresponding
@@ -27919,7 +27953,7 @@ function upgradeStack()
         return
       fi
     else
-      restartStackIfRunning $comp_stack_name 3
+      restartStackIfRunning "$comp_stack_name" 5
       if [ $? -ne 0 ]; then
         is_upgrade_error=true
         stack_upgrade_report="ERROR ($comp_stack_name): There was a problem restarting the stack."
@@ -28172,7 +28206,7 @@ function getScriptStackVersion()
     dozzle)
       echo "v7" ;;
     searxng)
-      echo "v7" ;;
+      echo "v8" ;;
     jellyfin)
       echo "v6" ;;
     filebrowser)
@@ -28202,11 +28236,11 @@ function getScriptStackVersion()
     codeserver)
       echo "v7" ;;
     shlink)
-      echo "v7" ;;
+      echo "v8" ;;
     firefly)
       echo "v9" ;;
     excalidraw)
-      echo "v2" ;;
+      echo "v3" ;;
     drawio)
       echo "v7" ;;
     invidious)
@@ -28232,7 +28266,7 @@ function getScriptStackVersion()
     stirlingpdf)
       echo "v7" ;;
     bar-assistant)
-      echo "v6" ;;
+      echo "v7" ;;
     freshrss)
       echo "v5" ;;
     keila)
@@ -43501,14 +43535,24 @@ function performUpdateSearxNG()
       newVer=v6
       curImageList=searxng/searxng:2024.10.31-fa108c140,caddy:2.8.4,bitnami/redis:7.0.5
       image_update_map[0]="searxng/searxng:2024.10.31-fa108c140,searxng/searxng:2025.4.1-e6308b816"
-      image_update_map[1]="caddy:2.8.4,caddy:2.9.1"
-      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      image_update_map[1]="caddy:2.8.4,caddy:2.8.4"
+      image_update_map[2]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfSearxngRemoveStartpage false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     6)
-      newVer=v7
+      newVer=v8
+      curImageList=searxng/searxng:2025.4.1-e6308b816,caddy:2.8.4,bitnami/redis:7.0.5
+      image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
+      image_update_map[1]="caddy:2.8.4,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[2]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfSearxngFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v8
       curImageList=searxng/searxng:2025.4.1-e6308b816,caddy:2.9.1,bitnami/redis:7.4.2
       image_update_map[0]="searxng/searxng:2025.4.1-e6308b816,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
       image_update_map[1]="caddy:2.9.1,mirror.gcr.io/caddy:2.10.0"
@@ -43517,8 +43561,8 @@ function performUpdateSearxNG()
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
-    7)
-      newVer=v7
+    8)
+      newVer=v8
       curImageList=mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d,mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d,mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d"
       image_update_map[1]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
@@ -44960,16 +45004,16 @@ function performUpdateAuthelia()
       return
     ;;
     2)
-      newVer=v5
+      newVer=v4
       curImageList=authelia/authelia:4.38.2,bitnami/redis:7.0.5
-      image_update_map[0]="authelia/authelia:4.38.2,authelia/authelia:4.39.1"
-      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      image_update_map[0]="authelia/authelia:4.38.2,authelia/authelia:4.38.17"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     3)
-      newVer=v5
+      newVer=v4
       curImageList=authelia/authelia:4.38.9,bitnami/redis:7.0.5
-      image_update_map[0]="authelia/authelia:4.38.9,authelia/authelia:4.39.1"
-      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.4.2"
+      image_update_map[0]="authelia/authelia:4.38.9,authelia/authelia:4.38.17"
+      image_update_map[1]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     4)
       newVer=v5
@@ -44985,7 +45029,7 @@ function performUpdateAuthelia()
       curImageList=authelia/authelia:4.39.1,bitnami/redis:7.4.2
       image_update_map[0]="authelia/authelia:4.39.1,mirror.gcr.io/authelia/authelia:4.39.6"
       image_update_map[1]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfAutheliaFixRedisCompose
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfAutheliaFixConfigV133 true mfAutheliaFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -48265,7 +48309,18 @@ function performUpdateShlink()
       image_update_map[3]="bitnami/redis:7.0.5,bitnami/redis:7.0.5"
     ;;
     6)
-      newVer=v7
+      newVer=v8
+      curImageList=postgres:15.0-bullseye,shlinkio/shlink:4.4.6,shlinkio/shlink-web-client:4.3.0,bitnami/redis:7.0.5
+      image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="shlinkio/shlink:4.4.6,mirror.gcr.io/shlinkio/shlink:4.5.0"
+      image_update_map[2]="shlinkio/shlink-web-client:4.3.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0"
+      image_update_map[3]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfShlinkFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v8
       curImageList=postgres:15.0-bullseye,shlinkio/shlink:4.4.6,shlinkio/shlink-web-client:4.3.0,bitnami/redis:7.4.2
       image_update_map[0]="postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="shlinkio/shlink:4.4.6,mirror.gcr.io/shlinkio/shlink:4.5.0"
@@ -48275,8 +48330,8 @@ function performUpdateShlink()
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
-    7)
-      newVer=v7
+    8)
+      newVer=v8
       curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/shlinkio/shlink:4.5.0,mirror.gcr.io/shlinkio/shlink-web-client:4.5.0,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
       image_update_map[1]="mirror.gcr.io/shlinkio/shlink:4.5.0,mirror.gcr.io/shlinkio/shlink:4.5.0"
@@ -48977,18 +49032,29 @@ function performUpdateExcalidraw()
   # The current version is included as a placeholder for when the next version arrives.
   case "$perform_stack_ver" in
     1)
-      newVer=v2
-      curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw,bitnami/redis:7.4.2
+      newVer=v3
+      curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw,bitnami/redis:7.0.5
       image_update_map[0]="excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
       image_update_map[1]="kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
       image_update_map[2]="kiliandeca/excalidraw,mirror.gcr.io/kiliandeca/excalidraw"
-      image_update_map[3]="bitnami/redis:7.4.2,bitnami/redis:7.4.2"
+      image_update_map[3]="bitnami/redis:7.0.5,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfExcalidrawFixRedisCompose
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
     2)
-      newVer=v2
+      newVer=v3
+      curImageList=excalidraw/excalidraw-room,kiliandeca/excalidraw-storage-backend,kiliandeca/excalidraw,bitnami/redis:7.4.2
+      image_update_map[0]="excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
+      image_update_map[1]="kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
+      image_update_map[2]="kiliandeca/excalidraw,mirror.gcr.io/kiliandeca/excalidraw"
+      image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfExcalidrawFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    3)
+      newVer=v3
       curImageList=mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/excalidraw/excalidraw-room,mirror.gcr.io/excalidraw/excalidraw-room"
       image_update_map[1]="mirror.gcr.io/kiliandeca/excalidraw-storage-backend,mirror.gcr.io/kiliandeca/excalidraw-storage-backend"
@@ -52335,7 +52401,7 @@ function performUpdateBarAssistant()
       return
     ;;
     5)
-      newVer=v6
+      newVer=v7
       curImageList=barassistant/server:5.2.0,getmeili/meilisearch:v1.6,bitnami/redis:7.4.2,barassistant/salt-rim:4.1.0,nginx:1.27.4-alpine
       image_update_map[0]="barassistant/server:5.2.0,mirror.gcr.io/barassistant/server:5.6.1"
       image_update_map[1]="getmeili/meilisearch:v1.6,mirror.gcr.io/getmeili/meilisearch:v1.16.0"
@@ -52347,7 +52413,19 @@ function performUpdateBarAssistant()
       return
     ;;
     6)
-      newVer=v6
+      newVer=v7
+      curImageList=barassistant/server:5.2.0,getmeili/meilisearch:v1.13.3,bitnami/redis:7.4.2,barassistant/salt-rim:4.1.0,nginx:1.27.4-alpine
+      image_update_map[0]="barassistant/server:5.2.0,mirror.gcr.io/barassistant/server:5.6.1"
+      image_update_map[1]="getmeili/meilisearch:v1.13.3,mirror.gcr.io/getmeili/meilisearch:v1.16.0"
+      image_update_map[2]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="barassistant/salt-rim:4.1.0,mirror.gcr.io/barassistant/salt-rim:4.6.0"
+      image_update_map[4]="nginx:1.27.4-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" mfClearMeiliData true mfBarAssistantFixRedisCompose
+      perform_update_report="${perform_update_report}$stack_upgrade_report"
+      return
+    ;;
+    7)
+      newVer=v7
       curImageList=mirror.gcr.io/barassistant/server:5.6.1,mirror.gcr.io/getmeili/meilisearch:v1.16.0,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/barassistant/salt-rim:4.6.0,mirror.gcr.io/nginx:1.28.0-alpine
       image_update_map[0]="mirror.gcr.io/barassistant/server:5.6.1,mirror.gcr.io/barassistant/server:5.6.1"
       image_update_map[1]="mirror.gcr.io/getmeili/meilisearch:v1.16.0,mirror.gcr.io/getmeili/meilisearch:v1.16.0"
@@ -56621,7 +56699,6 @@ function installImmich()
   addUserMailu alias $IMMICH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   IMMICH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $IMMICH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
-  IMMICH_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $IMMICH_OIDC_CLIENT_SECRET | tr -d ':\n')
   outputConfigImmich
   oidcBlock=$(cat $HOME/immich.oidc)
   rm -f $HOME/immich.oidc
@@ -57021,7 +57098,7 @@ function outputImmichAutheliaOIDC()
 # Authelia OIDC Client immich BEGIN
       - client_id: immich
         client_name: Immich
-        client_secret: '$IMMICH_OIDC_CLIENT_SECRET_HASH'
+        client_secret: '$(htpasswd -bnBC 10 "" $IMMICH_OIDC_CLIENT_SECRET | tr -d ':\n')'
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
         redirect_uris:
@@ -72404,7 +72481,7 @@ EOFCE
 
 function performUpdateCaddy()
 {
-  perform_stack_name=$2
+  perform_stack_name=$1
   prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
@@ -72730,7 +72807,7 @@ EOFCF
 
 function performUpdateClientDNS()
 {
-  perform_stack_name=$2
+  perform_stack_name=$1
   prepPerformUpdate
   if [ $? -ne 0 ]; then return 1; fi
   # The current version is included as a placeholder for when the next version arrives.
