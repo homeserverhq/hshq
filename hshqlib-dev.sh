@@ -57318,7 +57318,21 @@ function performUpdateImmich()
         is_upgrade_error=true
         perform_update_report="WARNING ($perform_stack_name): If the Immich service does not work after this upgrade, then try restarting the stack (in Portainer)."
       else
-        perform_update_report="${perform_update_report}$stack_upgrade_report"
+        # Handle special case for a different V2
+        curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
+        image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+        image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.132.0"
+        image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.132.0"
+        image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+        is_upgrade_error=false
+        stack_upgrade_report=""
+        upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichFixRedisCompose
+        if [ $? -eq 0 ] && [ "$is_upgrade_error" = "false" ]; then
+          is_upgrade_error=true
+          perform_update_report="WARNING ($perform_stack_name): If the Immich service does not work after this upgrade, then try restarting the stack (in Portainer)."
+        else
+          perform_update_report="${perform_update_report}$stack_upgrade_report"
+        fi
       fi
       return
     ;;
