@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=183
+HSHQ_LIB_SCRIPT_VERSION=184
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -28020,9 +28020,11 @@ function loadPinnedDockerImages()
   IMG_POSTGRES=mirror.gcr.io/postgres:15.0-bullseye
   IMG_REDIS=mirror.gcr.io/redis:8.2.0-bookworm
   IMG_ALPINE=mirror.gcr.io/alpine:3.22.1
+  IMG_MINIO=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
 
   # Stack specific images
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
+  IMG_ADMINER=mirror.gcr.io/adminer:5.3.0
   IMG_AISTACK_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0
   IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v2
   IMG_AISTACK_OPENTELEMETRY=mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1
@@ -28032,6 +28034,10 @@ function loadPinnedDockerImages()
   IMG_AUTHELIA=mirror.gcr.io/authelia/authelia:4.39.6
   IMG_BARASSISTANT_APP=mirror.gcr.io/barassistant/server:5.6.1
   IMG_BARASSISTANT_SALTRIM=mirror.gcr.io/barassistant/salt-rim:4.6.0
+  IMG_BUDIBASE_APP=mirror.gcr.io/budibase/apps:3.15.0
+  IMG_BUDIBASE_WORKER=mirror.gcr.io/budibase/worker:3.15.0
+  IMG_BUDIBASE_PROXY=mirror.gcr.io/budibase/proxy:3.15.0
+  IMG_BUDIBASE_COUCHDB=mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1
   IMG_CADDY=mirror.gcr.io/caddy:2.10.0
   IMG_CALIBRE_SERVER=mirror.gcr.io/linuxserver/calibre:8.8.0
   IMG_CALIBRE_WEB=mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342
@@ -28325,6 +28331,10 @@ function getScriptStackVersion()
       echo "v1" ;;
     meshcentral)
       echo "v1" ;;
+    adminer)
+      echo "v1" ;;
+    budibase)
+      echo "v1" ;;
     navidrome)
       echo "v1" ;;
     ofelia)
@@ -28486,6 +28496,12 @@ function pullDockerImages()
   pullImage $IMG_OMBI_APP
   pullImage $IMG_MESHCENTRAL
   pullImage $IMG_NAVIDROME
+  pullImage $IMG_ADMINER
+  pullImage $IMG_BUDIBASE_APP
+  pullImage $IMG_BUDIBASE_WORKER
+  pullImage $IMG_BUDIBASE_PROXY
+  pullImage $IMG_BUDIBASE_COUCHDB
+  pullImage $IMG_MINIO
 }
 
 function pullImagesUpdatePB()
@@ -28635,6 +28651,7 @@ function pullCommonImages()
   pullImage $IMG_REDIS
   pullImage $IMG_NGINX
   pullImage $IMG_ALPINE
+  pullImage $IMG_MINIO
 }
 
 function outputEncConfigFile()
@@ -29352,6 +29369,32 @@ NAVIDROME_ADMIN_USERNAME=
 NAVIDROME_ADMIN_PASSWORD=
 NAVIDROME_ADMIN_EMAIL_ADDRESS=
 # Navidrome (Service Details) END
+
+# Adminer (Service Details) BEGIN
+ADMINER_INIT_ENV=true
+ADMINER_DATABASE_NAME=
+ADMINER_DATABASE_ROOT_PASSWORD=
+ADMINER_DATABASE_USER=
+ADMINER_DATABASE_USER_PASSWORD=
+# Adminer (Service Details) END
+
+# Budibase (Service Details) BEGIN
+BUDIBASE_INIT_ENV=true
+BUDIBASE_API_ENCRYPTION_KEY=
+BUDIBASE_INTERNAL_API_KEY=
+BUDIBASE_JWT_SECRET=
+BUDIBASE_ADMIN_EMAIL_ADDRESS=
+BUDIBASE_ADMIN_PASSWORD=
+BUDIBASE_COUCHDB_USER=
+BUDIBASE_COUCHDB_PASSWORD=
+BUDIBASE_MINIO_ACCESS_KEY=
+BUDIBASE_MINIO_SECRET_KEY=
+BUDIBASE_REDIS_PASSWORD=
+BUDIBASE_DATABASE_NAME=
+BUDIBASE_DATABASE_ROOT_PASSWORD=
+BUDIBASE_DATABASE_USER=
+BUDIBASE_DATABASE_USER_PASSWORD=
+# Budibase (Service Details) END
 
 # Service Details END
 EOFCF
@@ -30739,7 +30782,78 @@ function initServicesCredentials()
     NAVIDROME_ADMIN_EMAIL_ADDRESS=$NAVIDROME_ADMIN_USERNAME@$HOMESERVER_DOMAIN
     updateConfigVar NAVIDROME_ADMIN_EMAIL_ADDRESS $NAVIDROME_ADMIN_EMAIL_ADDRESS
   fi
-
+  if [ -z "$ADMINER_DATABASE_NAME" ]; then
+    ADMINER_DATABASE_NAME=adminerdb
+    updateConfigVar ADMINER_DATABASE_NAME $ADMINER_DATABASE_NAME
+  fi
+  if [ -z "$ADMINER_DATABASE_ROOT_PASSWORD" ]; then
+    ADMINER_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ADMINER_DATABASE_ROOT_PASSWORD $ADMINER_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$ADMINER_DATABASE_USER" ]; then
+    ADMINER_DATABASE_USER=adminer-user
+    updateConfigVar ADMINER_DATABASE_USER $ADMINER_DATABASE_USER
+  fi
+  if [ -z "$ADMINER_DATABASE_USER_PASSWORD" ]; then
+    ADMINER_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ADMINER_DATABASE_USER_PASSWORD $ADMINER_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$BUDIBASE_API_ENCRYPTION_KEY" ]; then
+    BUDIBASE_API_ENCRYPTION_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_API_ENCRYPTION_KEY $BUDIBASE_API_ENCRYPTION_KEY
+  fi
+  if [ -z "$BUDIBASE_INTERNAL_API_KEY" ]; then
+    BUDIBASE_INTERNAL_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_INTERNAL_API_KEY $BUDIBASE_INTERNAL_API_KEY
+  fi
+  if [ -z "$BUDIBASE_JWT_SECRET" ]; then
+    BUDIBASE_JWT_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_JWT_SECRET $BUDIBASE_JWT_SECRET
+  fi
+  if [ -z "$BUDIBASE_ADMIN_EMAIL_ADDRESS" ]; then
+    BUDIBASE_ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME_BASE"_budibase"@$HOMESERVER_DOMAIN
+    updateConfigVar BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$BUDIBASE_ADMIN_PASSWORD" ]; then
+    BUDIBASE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_ADMIN_PASSWORD $BUDIBASE_ADMIN_PASSWORD
+  fi
+  if [ -z "$BUDIBASE_COUCHDB_USER" ]; then
+    BUDIBASE_COUCHDB_USER=budibase-user
+    updateConfigVar BUDIBASE_COUCHDB_USER $BUDIBASE_COUCHDB_USER
+  fi
+  if [ -z "$BUDIBASE_COUCHDB_PASSWORD" ]; then
+    BUDIBASE_COUCHDB_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_COUCHDB_PASSWORD $BUDIBASE_COUCHDB_PASSWORD
+  fi
+  if [ -z "$BUDIBASE_MINIO_ACCESS_KEY" ]; then
+    BUDIBASE_MINIO_ACCESS_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_MINIO_ACCESS_KEY $BUDIBASE_MINIO_ACCESS_KEY
+  fi
+  if [ -z "$BUDIBASE_MINIO_SECRET_KEY" ]; then
+    BUDIBASE_MINIO_SECRET_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_MINIO_SECRET_KEY $BUDIBASE_MINIO_SECRET_KEY
+  fi
+  if [ -z "$BUDIBASE_REDIS_PASSWORD" ]; then
+    BUDIBASE_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_REDIS_PASSWORD $BUDIBASE_REDIS_PASSWORD
+  fi
+  if [ -z "$BUDIBASE_DATABASE_NAME" ]; then
+    BUDIBASE_DATABASE_NAME=budibasedb
+    updateConfigVar BUDIBASE_DATABASE_NAME $BUDIBASE_DATABASE_NAME
+  fi
+  if [ -z "$BUDIBASE_DATABASE_ROOT_PASSWORD" ]; then
+    BUDIBASE_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_DATABASE_ROOT_PASSWORD $BUDIBASE_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$BUDIBASE_DATABASE_USER" ]; then
+    BUDIBASE_DATABASE_USER=budibase-user
+    updateConfigVar BUDIBASE_DATABASE_USER $BUDIBASE_DATABASE_USER
+  fi
+  if [ -z "$BUDIBASE_DATABASE_USER_PASSWORD" ]; then
+    BUDIBASE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar BUDIBASE_DATABASE_USER_PASSWORD $BUDIBASE_DATABASE_USER_PASSWORD
+  fi
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -30897,6 +31011,9 @@ function checkCreateNonbackupDirByStack()
     "yamtrack")
       mkdir -p $HSHQ_NONBACKUP_DIR/yamtrack/redis
       ;;
+    "budibase")
+      mkdir -p $HSHQ_NONBACKUP_DIR/budibase/redis
+      ;;
     *)
       ;;
   esac
@@ -30935,12 +31052,14 @@ function initServiceVars()
 {
   set +e
   checkAddSvc "SVCD_ADGUARD=adguard,adguard,primary,admin,AdguardHome,adguard,hshq"
+  checkAddSvc "SVCD_ADMINER=adminer,adminer,primary,admin,Adminer,adminer,hshq"
   checkAddSvc "SVCD_AISTACK_MINDSDB_APP=aistack,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
   checkAddSvc "SVCD_AISTACK_LANGFUSE=aistack,langfuse,primary,admin,Langfuse,langfuse,hshq"
   checkAddSvc "SVCD_AISTACK_OPENWEBUI=aistack,openwebui,primary,user,OpenWebUI,openwebui,hshq"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
   checkAddSvc "SVCD_BARASSISTANT=bar-assistant,bar-assistant,primary,user,Bar Assistant,bar-assistant,hshq"
   checkAddSvc "SVCD_BIND_IP=bind-ip,bind-ip,other,user,BindIP,bind-ip,hshq"
+  checkAddSvc "SVCD_BUDIBASE=budibase,budibase,other,user,Budibase,budibase,hshq"
   checkAddSvc "SVCD_CADDY=caddy,caddy,primary,admin,Caddy,caddy,hshq"
   checkAddSvc "SVCD_CADDYDNS=caddy,caddy-dns,primary,admin,CaddyDNS,caddy-dns,hshq"
   checkAddSvc "SVCD_CALIBRE_SERVER=calibre,calibre-server,primary,admin,Calibre-Server,calibre-server,hshq"
@@ -31210,6 +31329,10 @@ function installStackByName()
       installMeshCentral $is_integrate ;;
     navidrome)
       installNavidrome $is_integrate ;;
+    adminer)
+      installAdminer $is_integrate ;;
+    budibase)
+      installBudibase $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -31383,6 +31506,10 @@ function performUpdateStackByName()
       performUpdateMeshCentral ;;
     navidrome)
       performUpdateNavidrome ;;
+    adminer)
+      performUpdateAdminer ;;
+    budibase)
+      performUpdateBudibase ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -31411,6 +31538,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_BUDIBASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN\n"
@@ -31493,6 +31621,7 @@ function getAutheliaBlock()
   retval="${retval}    - domain:\n"
   retval="${retval}# Authelia ${LDAP_ADMIN_USER_GROUP_NAME} BEGIN\n"
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ADMINER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - ${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN\n"
@@ -31621,6 +31750,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31738,6 +31868,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OMBI_APP}-Admin" "\"https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/login,https://$SUB_OMBI_APP.$HOMESERVER_DOMAIN/Wizard\"" $HOMESERVER_ABBREV $OMBI_ADMIN_USERNAME $OMBI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31802,80 +31933,59 @@ function getHeimdallOrderFromSub()
   order_num=999
   order_uid=$(getHeimdallUserIDFromType $ord_usertype)
   case "$ord_subdom" in
+    "$SUB_SCRIPTSERVER")
+      order_num=2
+      ;;
+    "$SUB_PORTAINER")
+      order_num=3
+      ;;
     "$SUB_ADGUARD")
       order_num=4
-      ;;
-    "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
-      order_num=100
-      ;;
-    "$SUB_AISTACK_LANGFUSE")
-      order_num=35
-      ;;
-    "$SUB_AISTACK_MINDSDB_APP")
-      order_num=34
-      ;;
-    "$SUB_AISTACK_OPENWEBUI")
-      order_num=81
-      ;;
-    "$SUB_AUTHELIA")
-      order_num=1001
-      ;;
-    "$SUB_BARASSISTANT")
-      order_num=61
-      ;;
-    "$SUB_CADDYDNS.$INT_DOMAIN_PREFIX")
-      order_num=105
-      ;;
-    "$SUB_CALIBRE_SERVER")
-      order_num=28
-      ;;
-    "$SUB_CALIBRE_WEB")
-      order_num=63
-      ;;
-    "$SUB_CHANGEDETECTION")
-      order_num=70
       ;;
     "$SUB_CLIENTDNS")
       order_num=5
       ;;
-    "$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX")
-      order_num=101
+    "$SUB_OPENLDAP_PHP")
+      order_num=6
       ;;
-    "$SUB_CODESERVER")
-      order_num=16
+    "$SUB_WAZUH")
+      order_num=7
       ;;
-    "$SUB_COLLABORA")
-      order_num=24
+    "$SUB_GRAFANA")
+      order_num=8
       ;;
-    "$SUB_DISCOURSE")
-      order_num=55
+    "$SUB_PROMETHEUS")
+      order_num=9
+      ;;
+    "$SUB_INFLUXDB")
+      order_num=10
       ;;
     "$SUB_DOZZLE")
       order_num=11
       ;;
-    "$SUB_DRAWIO_WEB")
-      order_num=59
+    "$SUB_GUACAMOLE")
+      order_num=12
+      ;;
+    "$SUB_UPTIMEKUMA")
+      order_num=13
       ;;
     "$SUB_DUPLICATI")
       order_num=14
       ;;
-    "$SUB_ESPOCRM")
-      order_num=76
+    "$SUB_SYNCTHING")
+      order_num=15
       ;;
-    "$SUB_EXAMPLESERVICE")
-      order_num=999
+    "$SUB_CODESERVER")
+      order_num=16
       ;;
-    "$SUB_EXCALIDRAW_WEB")
-      order_num=58
+    "$SUB_SQLPAD")
+      order_num=17
       ;;
-    "$SUB_FILEBROWSER")
-      order_num=52
+    "$SUB_HOMEASSISTANT_APP")
+      order_num=18
       ;;
-    "$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX")
-      order_num=107
-      ;;
-    "$SUB_FILEDROP")
-      order_num=72
+    "$SUB_SHLINK_WEB")
+      order_num=19
       ;;
     "$SUB_FIREFLY_APP")
       order_num=20
@@ -31883,152 +31993,29 @@ function getHeimdallOrderFromSub()
     "$SUB_FIREFLY_IMPORTER")
       order_num=21
       ;;
-    "$SUB_FRESHRSS")
-      order_num=66
-      ;;
-    "$SUB_GHOST")
-      order_num=50
-      ;;
-    "$SUB_GITEA")
-      order_num=56
-      ;;
-    "$SUB_GITLAB")
-      order_num=53
-      ;;
-    "$SUB_GRAFANA")
-      order_num=8
-      ;;
-    "$SUB_GRAMPSWEB")
-      order_num=74
-      ;;
-    "$SUB_GUACAMOLE")
-      order_num=12
-      ;;
-    "$SUB_HOMARR")
-      order_num=78
-      ;;
-    "$SUB_HOMEASSISTANT_APP")
-      order_num=18
-      ;;
-    "$SUB_HSHQHOME")
-      order_num=85
-      ;;
-    "$SUB_HUGINN")
-      order_num=71
-      ;;
-    "$SUB_IMMICH")
-      order_num=77
-      ;;
-    "$SUB_INFLUXDB")
-      order_num=10
-      ;;
-    "$SUB_INVIDIOUS")
-      order_num=57
-      ;;
-    "$SUB_ITTOOLS")
-      order_num=26
-      ;;
-    "$SUB_JELLYFIN")
-      order_num=51
-      ;;
-    "$SUB_JITSI")
-      order_num=41
-      ;;
-    "$SUB_JUPYTER")
-      order_num=30
-      ;;
-    "$SUB_KASM")
-      order_num=62
-      ;;
     "$SUB_KASM_WIZARD")
       order_num=22
       ;;
-    "$SUB_KEILA")
-      order_num=67
-      ;;
-    "$SUB_LINKWARDEN")
-      order_num=64
-      ;;
-    "$SUB_MAILU")
-      order_num=39
-      ;;
-    "$SUB_MASTODON")
-      order_num=44
-      ;;
-    "$SUB_MATOMO")
-      order_num=33
-      ;;
-    "$SUB_MATRIX_ELEMENT_PRIVATE")
-      order_num=42
-      ;;
-    "$SUB_MATRIX_ELEMENT_PUBLIC")
-      order_num=43
-      ;;
-    "$SUB_MEALIE")
-      order_num=60
-      ;;
-    "$SUB_NETDATA")
-      order_num=29
-      ;;
-    "$SUB_NEXTCLOUD")
-      order_num=40
+    "$SUB_COLLABORA")
+      order_num=24
       ;;
     "$SUB_NTFY")
       order_num=25
       ;;
-    "$SUB_OPENLDAP_MANAGER")
-      order_num=38
-      ;;
-    "$SUB_OPENLDAP_PHP")
-      order_num=6
-      ;;
-    "$SUB_PAPERLESS")
-      order_num=69
-      ;;
-    "$SUB_PASTEFY")
-      order_num=79
-      ;;
-    "$SUB_PEERTUBE")
-      order_num=45
-      ;;
-    "$SUB_PENPOT")
-      order_num=75
-      ;;
-    "$SUB_PHOTOPRISM")
-      order_num=47
-      ;;
-    "$SUB_PIPED_FRONTEND")
-      order_num=73
-      ;;
-    "$SUB_PIXELFED")
-      order_num=82
-      ;;
-    "$SUB_PORTAINER")
-      order_num=3
-      ;;
-    "$SUB_PORTAINER.$INT_DOMAIN_PREFIX")
-      order_num=102
-      ;;
-    "$SUB_PROMETHEUS")
-      order_num=9
+    "$SUB_ITTOOLS")
+      order_num=26
       ;;
     "$SUB_REMOTELY")
       order_num=27
       ;;
-    "$SUB_RSPAMD.$INT_DOMAIN_PREFIX")
-      order_num=103
+    "$SUB_CALIBRE_SERVER")
+      order_num=28
       ;;
-    "$SUB_SCRIPTSERVER")
-      order_num=1
+    "$SUB_NETDATA")
+      order_num=29
       ;;
-    "$SUB_SEARXNG")
-      order_num=46
-      ;;
-    "$SUB_SHLINK_WEB")
-      order_num=19
-      ;;
-    "$SUB_SNIPPETBOX")
-      order_num=80
+    "$SUB_JUPYTER")
+      order_num=30
       ;;
     "$SUB_SPEEDTEST_TRACKER_LOCAL")
       order_num=31
@@ -32036,20 +32023,62 @@ function getHeimdallOrderFromSub()
     "$SUB_SPEEDTEST_TRACKER_VPN")
       order_num=32
       ;;
-    "$SUB_SQLPAD")
-      order_num=17
+    "$SUB_MATOMO")
+      order_num=33
       ;;
-    "$SUB_STIRLINGPDF")
-      order_num=65
+    "$SUB_AISTACK_MINDSDB_APP")
+      order_num=34
       ;;
-    "$SUB_SYNCTHING")
-      order_num=15
+    "$SUB_AISTACK_LANGFUSE")
+      order_num=35
       ;;
-    "$SUB_SYNCTHING.$INT_DOMAIN_PREFIX")
-      order_num=104
+    "$SUB_OPENLDAP_MANAGER")
+      order_num=38
       ;;
-    "$SUB_UPTIMEKUMA")
-      order_num=13
+    "$SUB_MAILU")
+      order_num=39
+      ;;
+    "$SUB_NEXTCLOUD")
+      order_num=40
+      ;;
+    "$SUB_JITSI")
+      order_num=41
+      ;;
+    "$SUB_MATRIX_ELEMENT_PRIVATE")
+      order_num=42
+      ;;
+    "$SUB_MATRIX_ELEMENT_PUBLIC")
+      order_num=43
+      ;;
+    "$SUB_MASTODON")
+      order_num=44
+      ;;
+    "$SUB_PEERTUBE")
+      order_num=45
+      ;;
+    "$SUB_SEARXNG")
+      order_num=46
+      ;;
+    "$SUB_PHOTOPRISM")
+      order_num=47
+      ;;
+    "$SUB_WIKIJS")
+      order_num=48
+      ;;
+    "$SUB_WORDPRESS")
+      order_num=49
+      ;;
+    "$SUB_GHOST")
+      order_num=50
+      ;;
+    "$SUB_JELLYFIN")
+      order_num=51
+      ;;
+    "$SUB_FILEBROWSER")
+      order_num=52
+      ;;
+    "$SUB_GITLAB")
+      order_num=53
       ;;
     "$SUB_VAULTWARDEN")
       if [ "$order_uid" = "1" ]; then
@@ -32058,20 +32087,89 @@ function getHeimdallOrderFromSub()
         order_num=54
       fi
       ;;
+    "$SUB_DISCOURSE")
+      order_num=55
+      ;;
+    "$SUB_GITEA")
+      order_num=56
+      ;;
+    "$SUB_INVIDIOUS")
+      order_num=57
+      ;;
+    "$SUB_EXCALIDRAW_WEB")
+      order_num=58
+      ;;
+    "$SUB_DRAWIO_WEB")
+      order_num=59
+      ;;
+    "$SUB_MEALIE")
+      order_num=60
+      ;;
+    "$SUB_BARASSISTANT")
+      order_num=61
+      ;;
+    "$SUB_KASM")
+      order_num=62
+      ;;
+    "$SUB_CALIBRE_WEB")
+      order_num=63
+      ;;
+    "$SUB_LINKWARDEN")
+      order_num=64
+      ;;
+    "$SUB_STIRLINGPDF")
+      order_num=65
+      ;;
+    "$SUB_FRESHRSS")
+      order_num=66
+      ;;
+    "$SUB_KEILA")
+      order_num=67
+      ;;
     "$SUB_WALLABAG")
       order_num=68
       ;;
-    "$SUB_WAZUH")
-      order_num=7
+    "$SUB_PAPERLESS")
+      order_num=69
       ;;
-    "$SUB_WGPORTAL.$INT_DOMAIN_PREFIX")
-      order_num=106
+    "$SUB_CHANGEDETECTION")
+      order_num=70
       ;;
-    "$SUB_WIKIJS")
-      order_num=48
+    "$SUB_HUGINN")
+      order_num=71
       ;;
-    "$SUB_WORDPRESS")
-      order_num=49
+    "$SUB_FILEDROP")
+      order_num=72
+      ;;
+    "$SUB_PIPED_FRONTEND")
+      order_num=73
+      ;;
+    "$SUB_GRAMPSWEB")
+      order_num=74
+      ;;
+    "$SUB_PENPOT")
+      order_num=75
+      ;;
+    "$SUB_ESPOCRM")
+      order_num=76
+      ;;
+    "$SUB_IMMICH")
+      order_num=77
+      ;;
+    "$SUB_HOMARR")
+      order_num=78
+      ;;
+    "$SUB_PASTEFY")
+      order_num=79
+      ;;
+    "$SUB_SNIPPETBOX")
+      order_num=80
+      ;;
+    "$SUB_AISTACK_OPENWEBUI")
+      order_num=81
+      ;;
+    "$SUB_PIXELFED")
+      order_num=82
       ;;
     "$SUB_YAMTRACK")
       order_num=83
@@ -32112,6 +32210,45 @@ function getHeimdallOrderFromSub()
     "$SUB_NAVIDROME")
       order_num=95
       ;;
+    "$SUB_ADMINER")
+      order_num=96
+      ;;
+    "$SUB_BUDIBASE")
+      order_num=97
+      ;;
+    "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
+      order_num=400
+      ;;
+    "$SUB_CLIENTDNS.$INT_DOMAIN_PREFIX")
+      order_num=401
+      ;;
+    "$SUB_PORTAINER.$INT_DOMAIN_PREFIX")
+      order_num=402
+      ;;
+    "$SUB_RSPAMD.$INT_DOMAIN_PREFIX")
+      order_num=403
+      ;;
+    "$SUB_SYNCTHING.$INT_DOMAIN_PREFIX")
+      order_num=404
+      ;;
+    "$SUB_CADDYDNS.$INT_DOMAIN_PREFIX")
+      order_num=405
+      ;;
+    "$SUB_WGPORTAL.$INT_DOMAIN_PREFIX")
+      order_num=406
+      ;;
+    "$SUB_FILEBROWSER.$EXT_DOMAIN_PREFIX")
+      order_num=407
+      ;;
+    "$SUB_EXAMPLESERVICE")
+      order_num=999
+      ;;
+    "$SUB_HSHQHOME")
+      order_num=1000
+      ;;
+    "$SUB_AUTHELIA")
+      order_num=1001
+      ;;
     *)
       ;;
   esac
@@ -32126,13 +32263,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
 }
 
 function getScriptImageByContainerName()
@@ -32780,6 +32917,33 @@ function getScriptImageByContainerName()
     "navidrome-app")
       container_image=$IMG_NAVIDROME
       ;;
+    "adminer-db")
+      container_image=mirror.gcr.io/mariadb:12.0.2-ubi10
+      ;;
+    "adminer-app")
+      container_image=$IMG_ADMINER
+      ;;
+    "budibase-db")
+      container_image=mirror.gcr.io/mariadb:12.0.2-ubi10
+      ;;
+    "budibase-couchdb")
+      container_image=$IMG_BUDIBASE_COUCHDB
+      ;;
+    "budibase-app")
+      container_image=$IMG_BUDIBASE_APP
+      ;;
+    "budibase-worker")
+      container_image=$IMG_BUDIBASE_WORKER
+      ;;
+    "budibase-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
+    "budibase-proxy")
+      container_image=$IMG_BUDIBASE_PROXY
+      ;;
+    "budibase-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
     *)
       ;;
   esac
@@ -32834,6 +32998,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Ombi" "OMBI_INIT_ENV=false,OMBI_ADMIN_USERNAME=,OMBI_ADMIN_PASSWORD=,OMBI_ADMIN_EMAIL_ADDRESS=,OMBI_DATABASE_NAME=,OMBI_DATABASE_ROOT_PASSWORD=,OMBI_DATABASE_USER=,OMBI_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "MeshCentral" "MESHCENTRAL_INIT_ENV=false,MESHCENTRAL_DATABASE_NAME=,MESHCENTRAL_DATABASE_ROOT_PASSWORD=,MESHCENTRAL_DATABASE_USER=,MESHCENTRAL_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Navidrome" "NAVIDROME_INIT_ENV=false,NAVIDROME_ADMIN_USERNAME=,NAVIDROME_ADMIN_PASSWORD=,NAVIDROME_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
+  checkAddServiceToConfig "Adminer" "ADMINER_INIT_ENV=false,ADMINER_DATABASE_NAME=,ADMINER_DATABASE_ROOT_PASSWORD=,ADMINER_DATABASE_USER=,ADMINER_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Budibase" "BUDIBASE_INIT_ENV=false,BUDIBASE_API_ENCRYPTION_KEY=,BUDIBASE_INTERNAL_API_KEY=,BUDIBASE_JWT_SECRET=,BUDIBASE_ADMIN_EMAIL_ADDRESS=,BUDIBASE_ADMIN_PASSWORD=,BUDIBASE_COUCHDB_USER=,BUDIBASE_COUCHDB_PASSWORD=,BUDIBASE_MINIO_ACCESS_KEY=,BUDIBASE_MINIO_SECRET_KEY=,BUDIBASE_REDIS_PASSWORD=,BUDIBASE_DATABASE_NAME=,BUDIBASE_DATABASE_ROOT_PASSWORD=,BUDIBASE_DATABASE_USER=,BUDIBASE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_ADMIN_USERNAME=" $CONFIG_FILE false
@@ -57147,11 +57314,25 @@ function performUpdateImmich()
       image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.132.0"
       image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichFixRedisCompose
-      if [ $? -eq 0 ]; then
+      if [ $? -eq 0 ] && [ "$is_upgrade_error" = "false" ]; then
         is_upgrade_error=true
         perform_update_report="WARNING ($perform_stack_name): If the Immich service does not work after this upgrade, then try restarting the stack (in Portainer)."
       else
-        perform_update_report="${perform_update_report}$stack_upgrade_report"
+        # Handle special case for a different V2
+        curImageList=tensorchord/pgvecto-rs:pg14-v0.3.0,ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.131.3,bitnami/redis:7.4.2
+        image_update_map[0]="tensorchord/pgvecto-rs:pg14-v0.3.0,mirror.gcr.io/tensorchord/pgvecto-rs:pg14-v0.3.0"
+        image_update_map[1]="ghcr.io/immich-app/immich-server:v1.131.3,ghcr.io/immich-app/immich-server:v1.132.0"
+        image_update_map[2]="ghcr.io/immich-app/immich-machine-learning:v1.131.3,ghcr.io/immich-app/immich-machine-learning:v1.132.0"
+        image_update_map[3]="bitnami/redis:7.4.2,mirror.gcr.io/redis:8.2.0-bookworm"
+        is_upgrade_error=false
+        stack_upgrade_report=""
+        upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing true mfImmichFixRedisCompose
+        if [ $? -eq 0 ] && [ "$is_upgrade_error" = "false" ]; then
+          is_upgrade_error=true
+          perform_update_report="WARNING ($perform_stack_name): If the Immich service does not work after this upgrade, then try restarting the stack (in Portainer)."
+        else
+          perform_update_report="${perform_update_report}$stack_upgrade_report"
+        fi
       fi
       return
     ;;
@@ -58740,6 +58921,7 @@ service:
       exporters: [debug]
 EOFOT
   cat <<EOFAS > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/$MINDSDB_IMPORT_FILENAME
+"Adminer" mysql adminer-db $ADMINER_DATABASE_NAME $ADMINER_DATABASE_USER $ADMINER_DATABASE_USER_PASSWORD
 "MindsDB" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Langfuse" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
@@ -62511,6 +62693,587 @@ function performUpdateNavidrome()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Adminer
+function installAdminer()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory adminer "Adminer"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName adminer-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName adminer-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  if [ -z "$SUB_ADMINER" ]; then
+    echo "ERROR: Adminer subdomain undefined"
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/adminer
+  mkdir $HSHQ_STACKS_DIR/adminer/db
+  mkdir $HSHQ_STACKS_DIR/adminer/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/adminer/dbexport
+  initServicesCredentials
+  set +e
+  outputConfigAdminer
+  installStack adminer adminer-app "" $HOME/adminer.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ADMINER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://adminer-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ADMINER $MANAGETLS_ADMINER "$is_integrate_hshq" $NETDEFAULT_ADMINER "$inner_block"
+  insertSubAuthelia $SUB_ADMINER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcHeimdall adminer "$FMLNAME_ADMINER" $USERTYPE_ADMINER "https://$SUB_ADMINER.$HOMESERVER_DOMAIN" "adminer.png" true "$(getHeimdallOrderFromSub $SUB_ADMINER $USERTYPE_ADMINER)"
+    restartAllCaddyContainers
+    checkAddDBConnection true adminer "$FMLNAME_ADMINER" mysql adminer-db $ADMINER_DATABASE_NAME $ADMINER_DATABASE_USER $ADMINER_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigAdminer()
+{
+  cat <<EOFMT > $HOME/adminer-compose.yml
+$STACK_VERSION_PREFIX adminer $(getScriptStackVersion adminer)
+
+services:
+  adminer-db:
+    image: $(getScriptImageByContainerName adminer-db)
+    container_name: adminer-db
+    hostname: adminer-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-adminer-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-adminer-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/adminer/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.adminer-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.adminer-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.adminer-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.adminer-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.adminer-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.adminer-hourly-db.email-from=Adminer Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.adminer-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.adminer-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.adminer-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.adminer-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.adminer-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.adminer-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.adminer-monthly-db.email-from=Adminer Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.adminer-monthly-db.mail-only-on-error=false"
+
+  adminer-app:
+    image: $(getScriptImageByContainerName adminer-app)
+    container_name: adminer-app
+    hostname: adminer-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - adminer-db
+    configs:
+      - source: adminer-index.php
+        target: /var/www/html/index.php
+        mode: 0755
+    networks:
+      - int-adminer-net
+      - dock-proxy-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+configs:
+  adminer-index.php:
+    content: |
+      <?php
+        if(!count(\$\$_GET)) {
+          \$\$_POST['auth'] = [
+            'server' => \$\$_ENV['ADMINER_DEFAULT_SERVER'],
+            'driver' => 'server',
+            'username' => \$\$_ENV['ADMINER_DEFAULT_USERNAME'],
+            'password' => \$\$_ENV['ADMINER_DEFAULT_PASSWORD'],
+            'db' => \$\$_ENV['ADMINER_DEFAULT_DB'],
+          ];
+        }
+        include './adminer.php';
+
+volumes:
+  v-adminer-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/adminer/db
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-adminer-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/adminer.env
+TZ=\${TZ}
+ADMINER_DESIGN=galkaev
+ADMINER_DEFAULT_SERVER=adminer-db
+ADMINER_DEFAULT_USERNAME=$ADMINER_DATABASE_USER
+ADMINER_DEFAULT_PASSWORD=$ADMINER_DATABASE_USER_PASSWORD
+ADMINER_DEFAULT_DB=$ADMINER_DATABASE_NAME
+MYSQL_DATABASE=$ADMINER_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$ADMINER_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$ADMINER_DATABASE_USER
+MYSQL_PASSWORD=$ADMINER_DATABASE_USER_PASSWORD
+EOFMT
+
+}
+
+function performUpdateAdminer()
+{
+  perform_stack_name=adminer
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/adminer:5.3.0
+      image_update_map[0]="mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/mariadb:12.0.2-ubi10"
+      image_update_map[1]="mirror.gcr.io/adminer:5.3.0,mirror.gcr.io/adminer:5.3.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Budibase
+function installBudibase()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory budibase "Budibase"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName budibase-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName budibase-couchdb)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName budibase-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName budibase-worker)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName budibase-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName budibase-proxy)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName budibase-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  if [ -z "$SUB_BUDIBASE" ]; then
+    echo "ERROR: Budibase subdomain undefined"
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/budibase
+  mkdir $HSHQ_STACKS_DIR/budibase/db
+  mkdir $HSHQ_STACKS_DIR/budibase/dbexport
+  mkdir $HSHQ_STACKS_DIR/budibase/plugins
+  mkdir $HSHQ_STACKS_DIR/budibase/couchdb
+  mkdir $HSHQ_STACKS_DIR/budibase/minio
+  mkdir -p $HSHQ_NONBACKUP_DIR/budibase/redis
+  chmod 777 $HSHQ_STACKS_DIR/budibase/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $BUDIBASE_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $ADMIN_USERNAME_BASE"_budibase" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigBudibase
+  installStack budibase budibase-app "" $HOME/budibase.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$BUDIBASE_INIT_ENV" = "true" ]; then
+    sendEmail -s "Budibase Admin Login Info" -b "Budibase Admin Username: $BUDIBASE_ADMIN_EMAIL_ADDRESS\nBudibase Admin Password: $BUDIBASE_ADMIN_PASSWORD\nMYSQL_DATABASE_HOST=budibase-db\nMYSQL_DATABASE_PORT=3306\nMYSQL_USER=$BUDIBASE_DATABASE_USER\nMYSQL_PASSWORD=$BUDIBASE_DATABASE_USER_PASSWORD\nMYSQL_DATABASE_NAME=$BUDIBASE_DATABASE_NAME\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    BUDIBASE_INIT_ENV=true
+    updateConfigVar BUDIBASE_INIT_ENV $BUDIBASE_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://budibase-proxy:10000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_BUDIBASE $MANAGETLS_BUDIBASE "$is_integrate_hshq" $NETDEFAULT_BUDIBASE "$inner_block"
+  insertSubAuthelia $SUB_BUDIBASE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll budibase "$FMLNAME_BUDIBASE" $USERTYPE_BUDIBASE "https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN" "budibase.png" "$(getHeimdallOrderFromSub $SUB_BUDIBASE $USERTYPE_BUDIBASE)"
+    restartAllCaddyContainers
+    checkAddDBConnection true budibase "$FMLNAME_BUDIBASE" mysql budibase-db $BUDIBASE_DATABASE_NAME $BUDIBASE_DATABASE_USER $BUDIBASE_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigBudibase()
+{
+  cat <<EOFMT > $HOME/budibase-compose.yml
+$STACK_VERSION_PREFIX budibase $(getScriptStackVersion budibase)
+
+services:
+  budibase-db:
+    image: $(getScriptImageByContainerName budibase-db)
+    container_name: budibase-db
+    hostname: budibase-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-budibase-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-budibase-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/budibase/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.budibase-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.budibase-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.budibase-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.budibase-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.budibase-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.budibase-hourly-db.email-from=Budibase Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.budibase-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.budibase-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.budibase-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.budibase-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.budibase-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.budibase-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.budibase-monthly-db.email-from=Budibase Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.budibase-monthly-db.mail-only-on-error=false"
+
+  budibase-couchdb:
+    image: $(getScriptImageByContainerName budibase-couchdb)
+    container_name: budibase-couchdb
+    hostname: budibase-couchdb
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-budibase-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-budibase-couchdb:/opt/couchdb/data
+
+  budibase-app:
+    image: $(getScriptImageByContainerName budibase-app)
+    container_name: budibase-app
+    hostname: budibase-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - budibase-worker
+      - budibase-redis
+    networks:
+      - int-budibase-net
+      - dock-internalmail-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/budibase/plugins:/plugins
+    environment:
+      - PORT=4002
+
+  budibase-worker:
+    image: $(getScriptImageByContainerName budibase-worker)
+    container_name: budibase-worker
+    hostname: budibase-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - budibase-minio
+      - budibase-redis
+    networks:
+      - int-budibase-net
+      - dock-internalmail-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    environment:
+      - PORT=4003
+
+  budibase-minio:
+    image: $(getScriptImageByContainerName budibase-minio)
+    container_name: budibase-minio
+    hostname: budibase-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data --console-address ":9001"
+    networks:
+      - int-budibase-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-budibase-minio:/data
+
+  budibase-proxy:
+    image: $(getScriptImageByContainerName budibase-proxy)
+    container_name: budibase-proxy
+    hostname: budibase-proxy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - budibase-minio
+      - budibase-worker
+      - budibase-app
+      - budibase-couchdb
+    networks:
+      - int-budibase-net
+      - dock-proxy-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  budibase-redis:
+    image: $(getScriptImageByContainerName budibase-redis)
+    container_name: budibase-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $BUDIBASE_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-budibase-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-budibase-redis:/data
+
+volumes:
+  v-budibase-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/budibase/db
+  v-budibase-couchdb:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/budibase/couchdb
+  v-budibase-minio:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/budibase/minio
+  v-budibase-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/budibase/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-budibase-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/budibase.env
+TZ=\${TZ}
+MYSQL_DATABASE=$BUDIBASE_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$BUDIBASE_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$BUDIBASE_DATABASE_USER
+MYSQL_PASSWORD=$BUDIBASE_DATABASE_USER_PASSWORD
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+APPS_UPSTREAM_URL=http://budibase-app:4002
+APPS_URL=http://budibase-app:4002
+BB_ADMIN_USER_EMAIL=$BUDIBASE_ADMIN_EMAIL_ADDRESS
+BB_ADMIN_USER_PASSWORD=$BUDIBASE_ADMIN_PASSWORD
+CLUSTER_PORT=10000
+COUCH_DB_URL=http://${BUDIBASE_COUCHDB_USER}:${BUDIBASE_COUCHDB_PASSWORD}@budibase-couchdb:5984
+COUCH_DB_USERNAME=$BUDIBASE_COUCHDB_USER
+COUCH_DB_PASSWORD=$BUDIBASE_COUCHDB_PASSWORD
+COUCHDB_UPSTREAM_URL=http://budibase-couchdb:5984
+COUCHDB_USER=$BUDIBASE_COUCHDB_USER
+COUCHDB_PASSWORD=$BUDIBASE_COUCHDB_PASSWORD
+ENABLE_ANALYTICS=false
+API_ENCRYPTION_KEY=$BUDIBASE_API_ENCRYPTION_KEY
+INTERNAL_API_KEY=$BUDIBASE_INTERNAL_API_KEY
+JWT_SECRET=$BUDIBASE_JWT_SECRET
+LOG_LEVEL=info
+MINIO_BROWSER=on
+MINIO_ACCESS_KEY=$BUDIBASE_MINIO_ACCESS_KEY
+MINIO_SECRET_KEY=$BUDIBASE_MINIO_SECRET_KEY
+MINIO_UPSTREAM_URL=http://budibase-minio:9000
+MINIO_URL=http://budibase-minio:9000
+PROXY_RATE_LIMIT_API_PER_SECOND=20
+PROXY_RATE_LIMIT_WEBHOOKS_PER_SECOND=10
+REDIS_PASSWORD=$BUDIBASE_REDIS_PASSWORD
+REDIS_URL=budibase-redis:6379
+RESOLVER=127.0.0.11
+SELF_HOSTED=1
+TARGETBUILD=docker-compose
+WORKER_UPSTREAM_URL=http://budibase-worker:4003
+WORKER_URL=http://budibase-worker:4003
+APP_PORT=4002
+WORKER_PORT=4003
+MINIO_PORT=4004
+COUCH_DB_PORT=4005
+COUCH_DB_SQS_PORT=4006
+REDIS_PORT=6379
+BUDIBASE_ENVIRONMENT=PRODUCTION
+SQL_MAX_ROWS=
+OFFLINE_MODE=
+PLUGINS_DIR=/plugins
+ROLLING_LOG_MAX_SIZE=
+EOFMT
+}
+
+function performUpdateBudibase()
+{
+  perform_stack_name=budibase
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/budibase/apps:3.15.0,mirror.gcr.io/budibase/worker:3.15.0,mirror.gcr.io/budibase/proxy:3.15.0,mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/mariadb:12.0.2-ubi10
+      image_update_map[0]="mirror.gcr.io/budibase/apps:3.15.0,mirror.gcr.io/budibase/apps:3.15.0"
+      image_update_map[1]="mirror.gcr.io/budibase/worker:3.15.0,mirror.gcr.io/budibase/worker:3.15.0"
+      image_update_map[2]="mirror.gcr.io/budibase/proxy:3.15.0,mirror.gcr.io/budibase/proxy:3.15.0"
+      image_update_map[3]="mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1,mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[5]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[6]="mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/mariadb:12.0.2-ubi10"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -62629,6 +63392,7 @@ services:
       - exampleservice-db
     networks:
       - int-exampleservice-net
+      - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
     volumes:
@@ -63132,6 +63896,7 @@ EOFSC
 
 function main()
 {
+  stty -echo
   read -r -s -p "$sudo_stdin_prompt" USER_SUDO_PW
   if [ -z "\$USER_SUDO_PW" ]; then
     read -r -t 5 -s -p "" USER_SUDO_PW
@@ -63139,6 +63904,7 @@ function main()
   if [ -z "\$USER_SUDO_PW" ]; then
     USER_SUDO_PW=""
     cat <<< "ERROR: Password is incorrect." 1>&2
+    stty echo
     exit 1
   fi
   echo "\$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
@@ -63146,10 +63912,12 @@ function main()
     echo "bad"
     USER_SUDO_PW=""
     cat <<< "ERROR: Password is incorrect." 1>&2
+    stty echo
     exit 1
   else
     echo "good"
   fi
+  stty echo
 }
 
 main
@@ -63163,6 +63931,7 @@ EOFSC
 function main()
 {
   source $HSHQ_LIB_SCRIPT lib
+  stty -echo
   read -r -s -p "$config_stdin_prompt" USER_CONFIG_PW
   if [ -z "\$USER_CONFIG_PW" ]; then
     read -r -t 5 -s -p "" USER_CONFIG_PW
@@ -63170,9 +63939,11 @@ function main()
   if [ -z "\$USER_CONFIG_PW" ]; then
     USER_CONFIG_PW=""
     cat <<< "ERROR: Incorrect password for encrypted configuration file." 1>&2
+    stty echo
     exit 3
   fi
   checkDecryptConfigFile
+  stty echo
   if [ \$? -ne 0 ]; then
     exit 4
   fi
@@ -63186,6 +63957,7 @@ EOFSC
 
 function main()
 {
+  stty -echo
   read -r -s -p "$relaysudo_stdin_prompt" relaysudopw
   if [ -z "\$relaysudopw" ]; then
     read -r -t 5 -s -p "" relaysudopw
@@ -63193,9 +63965,11 @@ function main()
   if [ -z "\$relaysudopw" ]; then
     relaysudopw=""
     cat <<< "ERROR: RelayServer password was not captured." 1>&2
+    stty echo
     exit 1
   fi
   USER_RELAY_SUDO_PW="\$relaysudopw"
+  stty echo
   echo "good"
 }
 
@@ -70819,6 +71593,14 @@ SQLPAD_EDITOR_WORD_WRAP=false
 SQLPAD_HTTPS_CERT_PATH=/certs/sqlpad.crt
 SQLPAD_HTTPS_KEY_PATH=/certs/sqlpad.key
 SQLPAD_PASSPHRASE=$SQLPAD_PASSPHRASE
+SQLPAD_CONNECTIONS__adminer__name=Adminer
+SQLPAD_CONNECTIONS__adminer__driver=mysql
+SQLPAD_CONNECTIONS__adminer__host=adminer-db
+SQLPAD_CONNECTIONS__adminer__database=$ADMINER_DATABASE_NAME
+SQLPAD_CONNECTIONS__adminer__username=$ADMINER_DATABASE_USER
+SQLPAD_CONNECTIONS__adminer__password=$ADMINER_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__adminer__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__adminer__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__aistack-mindsdb__name=MindsDB
 SQLPAD_CONNECTIONS__aistack-mindsdb__driver=postgres
 SQLPAD_CONNECTIONS__aistack-mindsdb__host=aistack-mindsdb-db
@@ -70835,6 +71617,14 @@ SQLPAD_CONNECTIONS__aistack-langfuse__username=$AISTACK_MINDSDB_DATABASE_USER
 SQLPAD_CONNECTIONS__aistack-langfuse__password=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__aistack-langfuse__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__aistack-langfuse__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__budibase__name=Budibase
+SQLPAD_CONNECTIONS__budibase__driver=mysql
+SQLPAD_CONNECTIONS__budibase__host=budibase-db
+SQLPAD_CONNECTIONS__budibase__database=$BUDIBASE_DATABASE_NAME
+SQLPAD_CONNECTIONS__budibase__username=$BUDIBASE_DATABASE_USER
+SQLPAD_CONNECTIONS__budibase__password=$BUDIBASE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__budibase__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__budibase__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__discourse__name=Discourse
 SQLPAD_CONNECTIONS__discourse__driver=postgres
 SQLPAD_CONNECTIONS__discourse__host=discourse-db
