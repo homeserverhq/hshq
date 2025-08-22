@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=184
+HSHQ_LIB_SCRIPT_VERSION=185
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -3268,6 +3268,31 @@ EOFSM
   sudo usermod -aG mailsenders $USERNAME
   sudo chown root:mailsenders /usr/bin/mail.mailutils
   sudo update-alternatives --set mailx /usr/bin/mail.mailutils
+}
+
+function installSQLite344()
+{
+  if [ -d $HSHQ_NONBACKUP_DIR/sqlite344 ]; then
+    return
+  fi
+  echo "Installing sqlite (v3.44) from source, this will take a few minutes..."
+  cd $HSHQ_NONBACKUP_DIR
+  wget https://www.sqlite.org/2023/sqlite-autoconf-3440000.tar.gz > /dev/null 2>&1
+  tar xvfz sqlite-autoconf-3440000.tar.gz > /dev/null 2>&1
+  rm -f sqlite-autoconf-3440000.tar.gz
+  sudo mv sqlite-autoconf-3440000 sqlite344
+  cd sqlite344
+  ./configure > /dev/null 2>&1
+  make -j $(nproc) > /dev/null 2>&1
+  sudo make install > /dev/null 2>&1
+  cd ~
+  $HSHQ_NONBACKUP_DIR/sqlite344/sqlite3 --version > /dev/null 2>&1
+  rtv=$?
+  if [ $rtv -ne 0 ]; then
+    return $rtv
+  else
+    echo "Sqlite (v3.44) installation complete!"
+  fi
 }
 
 function checkLoadConfig()
@@ -28031,6 +28056,7 @@ function loadPinnedDockerImages()
   IMG_AISTACK_LANGFUSE=mirror.gcr.io/langfuse/langfuse:2.87.0
   IMG_AISTACK_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.11.4
   IMG_AISTACK_OPENWEBUI=ghcr.io/open-webui/open-webui:0.6.22
+  IMG_AUDIOBOOKSHELF=ghcr.io/advplyr/audiobookshelf:2.28.0
   IMG_AUTHELIA=mirror.gcr.io/authelia/authelia:4.39.6
   IMG_BARASSISTANT_APP=mirror.gcr.io/barassistant/server:5.6.1
   IMG_BARASSISTANT_SALTRIM=mirror.gcr.io/barassistant/salt-rim:4.6.0
@@ -28116,6 +28142,7 @@ function loadPinnedDockerImages()
   IMG_MATOMO_APP=mirror.gcr.io/matomo:5.3.2-fpm-alpine
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v3.0.2
   IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.48
+  IMG_METABASE=metabase/metabase:v0.56.2.4
   IMG_NAVIDROME=deluan/navidrome:0.58.0
   IMG_NETDATA=mirror.gcr.io/netdata/netdata:v2.6.1
   IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:31.0.7-fpm-alpine
@@ -28162,6 +28189,9 @@ function loadPinnedDockerImages()
   IMG_SNIPPETBOX=pawelmalak/snippet-box:latest
   IMG_SPEEDTEST_TRACKER_APP=linuxserver/speedtest-tracker:1.3.0
   IMG_SQLPAD=mirror.gcr.io/sqlpad/sqlpad:7.5.5
+  IMG_STANDARDNOTES_SERVER=standardnotes/server:0d82819cba9694bc9fb5a3fa53e2dbeda05d1242
+  IMG_STANDARDNOTES_LOCALSTACK=localstack/localstack:4.7.0
+  IMG_STANDARDNOTES_WEB=standardnotes/web:b9d7f368846e9399b27e50697b6e59263befe431
   IMG_STIRLINGPDF=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
   IMG_SYNCTHING=mirror.gcr.io/syncthing/syncthing:2.0.0
   IMG_TOMCAT=tomcat:11
@@ -28337,6 +28367,12 @@ function getScriptStackVersion()
       echo "v1" ;;
     navidrome)
       echo "v1" ;;
+    audiobookshelf)
+      echo "v1" ;;
+    standardnotes)
+      echo "v1" ;;
+    metabase)
+      echo "v1" ;;
     ofelia)
       echo "v6" ;;
     sqlpad)
@@ -28502,6 +28538,11 @@ function pullDockerImages()
   pullImage $IMG_BUDIBASE_PROXY
   pullImage $IMG_BUDIBASE_COUCHDB
   pullImage $IMG_MINIO
+  pullImage $IMG_AUDIOBOOKSHELF
+  pullImage $IMG_STANDARDNOTES_SERVER
+  pullImage $IMG_STANDARDNOTES_LOCALSTACK
+  pullImage $IMG_STANDARDNOTES_WEB
+  pullImage $IMG_METABASE
 }
 
 function pullImagesUpdatePB()
@@ -29395,6 +29436,33 @@ BUDIBASE_DATABASE_ROOT_PASSWORD=
 BUDIBASE_DATABASE_USER=
 BUDIBASE_DATABASE_USER_PASSWORD=
 # Budibase (Service Details) END
+
+# AudioBookshelf (Service Details) BEGIN
+AUDIOBOOKSHELF_INIT_ENV=true
+AUDIOBOOKSHELF_ADMIN_USERNAME=
+AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS=
+AUDIOBOOKSHELF_ADMIN_PASSWORD=
+AUDIOBOOKSHELF_JWT_SECRET=
+AUDIOBOOKSHELF_OIDC_CLIENT_SECRET=
+# AudioBookshelf (Service Details) END
+
+# StandardNotes (Service Details) BEGIN
+STANDARDNOTES_REDIS_PASSWORD=
+STANDARDNOTES_DATABASE_NAME=
+STANDARDNOTES_DATABASE_ROOT_PASSWORD=
+STANDARDNOTES_DATABASE_USER=
+STANDARDNOTES_DATABASE_USER_PASSWORD=
+# StandardNotes (Service Details) END
+
+# Metabase (Service Details) BEGIN
+METABASE_INIT_ENV=true
+METABASE_ADMIN_USERNAME=
+METABASE_ADMIN_EMAIL_ADDRESS=
+METABASE_ADMIN_PASSWORD=
+METABASE_DATABASE_NAME=
+METABASE_DATABASE_USER=
+METABASE_DATABASE_USER_PASSWORD=
+# Metabase (Service Details) END
 
 # Service Details END
 EOFCF
@@ -30854,6 +30922,71 @@ function initServicesCredentials()
     BUDIBASE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar BUDIBASE_DATABASE_USER_PASSWORD $BUDIBASE_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$AUDIOBOOKSHELF_ADMIN_USERNAME" ]; then
+    AUDIOBOOKSHELF_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_audiobookshelf"
+    updateConfigVar AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_USERNAME
+  fi
+  if [ -z "$AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS" ]; then
+    AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS=$AUDIOBOOKSHELF_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS $AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$AUDIOBOOKSHELF_ADMIN_PASSWORD" ]; then
+    AUDIOBOOKSHELF_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar AUDIOBOOKSHELF_ADMIN_PASSWORD $AUDIOBOOKSHELF_ADMIN_PASSWORD
+  fi
+  if [ -z "$AUDIOBOOKSHELF_JWT_SECRET" ]; then
+    AUDIOBOOKSHELF_JWT_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar AUDIOBOOKSHELF_JWT_SECRET $AUDIOBOOKSHELF_JWT_SECRET
+  fi
+  if [ -z "$AUDIOBOOKSHELF_OIDC_CLIENT_SECRET" ]; then
+    AUDIOBOOKSHELF_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar AUDIOBOOKSHELF_OIDC_CLIENT_SECRET $AUDIOBOOKSHELF_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$STANDARDNOTES_REDIS_PASSWORD" ]; then
+    STANDARDNOTES_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar STANDARDNOTES_REDIS_PASSWORD $STANDARDNOTES_REDIS_PASSWORD
+  fi
+  if [ -z "$STANDARDNOTES_DATABASE_NAME" ]; then
+    STANDARDNOTES_DATABASE_NAME=standardnotesdb
+    updateConfigVar STANDARDNOTES_DATABASE_NAME $STANDARDNOTES_DATABASE_NAME
+  fi
+  if [ -z "$STANDARDNOTES_DATABASE_ROOT_PASSWORD" ]; then
+    STANDARDNOTES_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar STANDARDNOTES_DATABASE_ROOT_PASSWORD $STANDARDNOTES_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$STANDARDNOTES_DATABASE_USER" ]; then
+    STANDARDNOTES_DATABASE_USER=standardnotes-user
+    updateConfigVar STANDARDNOTES_DATABASE_USER $STANDARDNOTES_DATABASE_USER
+  fi
+  if [ -z "$STANDARDNOTES_DATABASE_USER_PASSWORD" ]; then
+    STANDARDNOTES_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar STANDARDNOTES_DATABASE_USER_PASSWORD $STANDARDNOTES_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$METABASE_ADMIN_USERNAME" ]; then
+    METABASE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_metabase"
+    updateConfigVar METABASE_ADMIN_USERNAME $METABASE_ADMIN_USERNAME
+  fi
+  if [ -z "$METABASE_ADMIN_EMAIL_ADDRESS" ]; then
+    METABASE_ADMIN_EMAIL_ADDRESS=$METABASE_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$METABASE_ADMIN_PASSWORD" ]; then
+    METABASE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar METABASE_ADMIN_PASSWORD $METABASE_ADMIN_PASSWORD
+  fi
+  if [ -z "$METABASE_DATABASE_NAME" ]; then
+    METABASE_DATABASE_NAME=metabasedb
+    updateConfigVar METABASE_DATABASE_NAME $METABASE_DATABASE_NAME
+  fi
+  if [ -z "$METABASE_DATABASE_USER" ]; then
+    METABASE_DATABASE_USER=metabase-user
+    updateConfigVar METABASE_DATABASE_USER $METABASE_DATABASE_USER
+  fi
+  if [ -z "$METABASE_DATABASE_USER_PASSWORD" ]; then
+    METABASE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar METABASE_DATABASE_USER_PASSWORD $METABASE_DATABASE_USER_PASSWORD
+  fi
+
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -31014,6 +31147,9 @@ function checkCreateNonbackupDirByStack()
     "budibase")
       mkdir -p $HSHQ_NONBACKUP_DIR/budibase/redis
       ;;
+    "standardnotes")
+      mkdir -p $HSHQ_NONBACKUP_DIR/standardnotes/redis
+      ;;
     *)
       ;;
   esac
@@ -31056,6 +31192,7 @@ function initServiceVars()
   checkAddSvc "SVCD_AISTACK_MINDSDB_APP=aistack,mindsdb,primary,admin,MindsDB,mindsdb,hshq"
   checkAddSvc "SVCD_AISTACK_LANGFUSE=aistack,langfuse,primary,admin,Langfuse,langfuse,hshq"
   checkAddSvc "SVCD_AISTACK_OPENWEBUI=aistack,openwebui,primary,user,OpenWebUI,openwebui,hshq"
+  checkAddSvc "SVCD_AUDIOBOOKSHELF=audiobookshelf,audiobookshelf,other,user,Audiobookshelf,audiobookshelf,le"
   checkAddSvc "SVCD_AUTHELIA=authelia,authelia,other,user,Authelia,authelia,hshq"
   checkAddSvc "SVCD_BARASSISTANT=bar-assistant,bar-assistant,primary,user,Bar Assistant,bar-assistant,hshq"
   checkAddSvc "SVCD_BIND_IP=bind-ip,bind-ip,other,user,BindIP,bind-ip,hshq"
@@ -31120,6 +31257,7 @@ function initServiceVars()
   checkAddSvc "SVCD_MATOMO=matomo,matomo,primary,admin,Matomo,matomo,hshq"
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
   checkAddSvc "SVCD_MESHCENTRAL=meshcentral,meshcentral,primary,admin,MeshCentral,meshcentral,hshq"
+  checkAddSvc "SVCD_METABASE=metabase,metabase,primary,user,Metabase,metabase,hshq"
   checkAddSvc "SVCD_NAVIDROME=navidrome,navidrome,other,user,Navidrome,navidrome,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
@@ -31159,6 +31297,9 @@ function initServiceVars()
   checkAddSvc "SVCD_SPEEDTEST_TRACKER_LOCAL=speedtest-tracker-local,speedtest-tracker-local,primary,admin,Speedtest Tracker Local,speedtest-tracker-local,hshq"
   checkAddSvc "SVCD_SPEEDTEST_TRACKER_VPN=speedtest-tracker-vpn,speedtest-tracker-vpn,primary,admin,Speedtest Tracker VPN,speedtest-tracker-vpn,hshq"
   checkAddSvc "SVCD_SQLPAD=sqlpad,sqlpad,primary,admin,SQLPad,sqlpad,hshq"
+  checkAddSvc "SVCD_STANDARDNOTES_SERVER=standardnotes,standardnotes,other,user,StandardNotes,standardnotes,le"
+  checkAddSvc "SVCD_STANDARDNOTES_FILES=standardnotes,standardnotes-files,other,user,StandardNotes-Files,standardnotes-files,le"
+  checkAddSvc "SVCD_STANDARDNOTES_WEB=standardnotes,standardnotes-web,other,user,StandardNotes-Web,standardnotes-web,hshq"
   checkAddSvc "SVCD_STIRLINGPDF=stirlingpdf,stirlingpdf,primary,user,Stirling PDF,stirlingpdf,hshq"
   checkAddSvc "SVCD_SYNCTHING=syncthing,syncthing,primary,admin,Syncthing,syncthing,hshq"
   checkAddSvc "SVCD_SYSUTILS=sysutils,sysutils,primary,admin,SysUtils,sysutils,hshq"
@@ -31333,6 +31474,12 @@ function installStackByName()
       installAdminer $is_integrate ;;
     budibase)
       installBudibase $is_integrate ;;
+    audiobookshelf)
+      installAudioBookshelf $is_integrate ;;
+    standardnotes)
+      installStandardNotes $is_integrate ;;
+    metabase)
+      installMetabase $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -31510,6 +31657,12 @@ function performUpdateStackByName()
       performUpdateAdminer ;;
     budibase)
       performUpdateBudibase ;;
+    audiobookshelf)
+      performUpdateAudioBookshelf ;;
+    standardnotes)
+      performUpdateStandardNotes ;;
+    metabase)
+      performUpdateMetabase ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -31536,6 +31689,7 @@ function getAutheliaBlock()
   retval="${retval}    - domain:\n"
   retval="${retval}# Authelia bypass BEGIN\n"
   retval="${retval}        - $SUB_AUTHELIA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BUDIBASE.$HOMESERVER_DOMAIN\n"
@@ -31585,6 +31739,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PIXELFED.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_STANDARDNOTES_FILES.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
@@ -31608,10 +31764,12 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SNIPPETBOX.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_STANDARDNOTES_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
@@ -31751,6 +31909,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31869,6 +32029,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -32216,6 +32378,21 @@ function getHeimdallOrderFromSub()
     "$SUB_BUDIBASE")
       order_num=97
       ;;
+    "$SUB_AUDIOBOOKSHELF")
+      order_num=98
+      ;;
+    "$SUB_STANDARDNOTES_SERVER")
+      order_num=99
+      ;;
+    "$SUB_STANDARDNOTES_FILES")
+      order_num=100
+      ;;
+    "$SUB_STANDARDNOTES_WEB")
+      order_num=101
+      ;;
+    "$SUB_METABASE")
+      order_num=102
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -32257,19 +32434,19 @@ function getHeimdallOrderFromSub()
 
 function getLetsEncryptCertsDefault()
 {
-  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN,$SUB_IMMICH.$HOMESERVER_DOMAIN,$SUB_OMBI_APP.$HOMESERVER_DOMAIN"
+  echo "$SUB_JITSI.$HOMESERVER_DOMAIN,$SUB_MASTODON.$HOMESERVER_DOMAIN,$SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN,$SUB_JELLYFIN.$HOMESERVER_DOMAIN,$SUB_GITEA.$HOMESERVER_DOMAIN,$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN,$SUB_FRESHRSS.$HOMESERVER_DOMAIN,$SUB_WALLABAG.$HOMESERVER_DOMAIN,$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN,$SUB_IMMICH.$HOMESERVER_DOMAIN,$SUB_OMBI_APP.$HOMESERVER_DOMAIN,$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN,$SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN,$SUB_STANDARDNOTES_FILES.$HOMESERVER_DOMAIN"
 }
 
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase
+  DS_MEM_12=gitlab,discouse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,photoprism,mealie,kasm,bar-assistant,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,wordpress,ghost,wikijs,guacamole,searxng,photoprism,kasm,calibre,stirlingpdf,keila,piped,penpot,espocrm,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
 }
 
 function getScriptImageByContainerName()
@@ -32944,6 +33121,30 @@ function getScriptImageByContainerName()
     "budibase-redis")
       container_image=mirror.gcr.io/redis:8.2.0-bookworm
       ;;
+    "audiobookshelf-app")
+      container_image=$IMG_AUDIOBOOKSHELF
+      ;;
+    "standardnotes-db")
+      container_image=mirror.gcr.io/mariadb:10.7.3
+      ;;
+    "standardnotes-server")
+      container_image=$IMG_STANDARDNOTES_SERVER
+      ;;
+    "standardnotes-localstack")
+      container_image=$IMG_STANDARDNOTES_LOCALSTACK
+      ;;
+    "standardnotes-web")
+      container_image=$IMG_STANDARDNOTES_WEB
+      ;;
+    "standardnotes-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "metabase-db")
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
+      ;;
+    "metabase-app")
+      container_image=$IMG_METABASE
+      ;;
     *)
       ;;
   esac
@@ -33000,6 +33201,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Navidrome" "NAVIDROME_INIT_ENV=false,NAVIDROME_ADMIN_USERNAME=,NAVIDROME_ADMIN_PASSWORD=,NAVIDROME_ADMIN_EMAIL_ADDRESS=" $CONFIG_FILE false
   checkAddServiceToConfig "Adminer" "ADMINER_INIT_ENV=false,ADMINER_DATABASE_NAME=,ADMINER_DATABASE_ROOT_PASSWORD=,ADMINER_DATABASE_USER=,ADMINER_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Budibase" "BUDIBASE_INIT_ENV=false,BUDIBASE_API_ENCRYPTION_KEY=,BUDIBASE_INTERNAL_API_KEY=,BUDIBASE_JWT_SECRET=,BUDIBASE_ADMIN_EMAIL_ADDRESS=,BUDIBASE_ADMIN_PASSWORD=,BUDIBASE_COUCHDB_USER=,BUDIBASE_COUCHDB_PASSWORD=,BUDIBASE_MINIO_ACCESS_KEY=,BUDIBASE_MINIO_SECRET_KEY=,BUDIBASE_REDIS_PASSWORD=,BUDIBASE_DATABASE_NAME=,BUDIBASE_DATABASE_ROOT_PASSWORD=,BUDIBASE_DATABASE_USER=,BUDIBASE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "AudioBookshelf" "AUDIOBOOKSHELF_INIT_ENV=false,AUDIOBOOKSHELF_ADMIN_USERNAME=,AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS=,AUDIOBOOKSHELF_ADMIN_PASSWORD=,AUDIOBOOKSHELF_JWT_SECRET=,AUDIOBOOKSHELF_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "StandardNotes" "STANDARDNOTES_REDIS_PASSWORD=,STANDARDNOTES_DATABASE_NAME=,STANDARDNOTES_DATABASE_ROOT_PASSWORD=,STANDARDNOTES_DATABASE_USER=,STANDARDNOTES_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Metabase" "METABASE_INIT_ENV=false,METABASE_ADMIN_USERNAME=,METABASE_ADMIN_EMAIL_ADDRESS=,METABASE_ADMIN_PASSWORD=,METABASE_DATABASE_NAME=,METABASE_DATABASE_USER=,METABASE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -58943,6 +59147,7 @@ EOFOT
 "Matrix" postgres matrix-db $MATRIX_DATABASE_NAME $MATRIX_DATABASE_USER $MATRIX_DATABASE_USER_PASSWORD
 "Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
 "MeshCentral" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
+"Metabase" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
 "Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
@@ -58953,6 +59158,7 @@ EOFOT
 "Piped" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
 "Pixelfed" mysql pixelfed-db $PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_USER $PIXELFED_DATABASE_USER_PASSWORD
 "Shlink" postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_USER $SHLINK_DATABASE_USER_PASSWORD
+"StandardNotes" mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME $STANDARDNOTES_DATABASE_USER $STANDARDNOTES_DATABASE_USER_PASSWORD
 "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
 "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
 "Vaultwarden" postgres vaultwarden-db $VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_USER $VAULTWARDEN_DATABASE_USER_PASSWORD
@@ -63263,6 +63469,891 @@ function performUpdateBudibase()
       image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
       image_update_map[5]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[6]="mirror.gcr.io/mariadb:12.0.2-ubi10,mirror.gcr.io/mariadb:12.0.2-ubi10"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# AudioBookshelf
+function installAudioBookshelf()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory audiobookshelf "AudioBookshelf"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName audiobookshelf-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  installSQLite344
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/audiobookshelf
+  mkdir $HSHQ_STACKS_DIR/audiobookshelf/{config,metadata,audiobooks,podcasts}
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $AUDIOBOOKSHELF_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  AUDIOBOOKSHELF_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 8 "" $AUDIOBOOKSHELF_ADMIN_PASSWORD | tr -d ':\n'  | sed 's/$2y/$2a/')
+  AUDIOBOOKSHELF_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $AUDIOBOOKSHELF_OIDC_CLIENT_SECRET | tr -d ':\n')
+  outputConfigAudioBookshelf
+  oidcBlock=$(cat $HOME/audiobookshelf.oidc)
+  rm -f $HOME/audiobookshelf.oidc
+  insertOIDCClientAuthelia audiobookshelf "$oidcBlock"
+  installStack audiobookshelf audiobookshelf-app "Listening on port" $HOME/audiobookshelf.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$AUDIOBOOKSHELF_INIT_ENV" = "true" ]; then
+    sendEmail -s "AudioBookshelf Admin Login Info" -b "AudioBookshelf Admin Username: $AUDIOBOOKSHELF_ADMIN_USERNAME\nAudioBookshelf Admin Password: $AUDIOBOOKSHELF_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    AUDIOBOOKSHELF_INIT_ENV=true
+    updateConfigVar AUDIOBOOKSHELF_INIT_ENV $AUDIOBOOKSHELF_INIT_ENV
+  fi
+  sleep 3
+  admin_uuid=$(uuidgen)
+  header_jwt=$(echo -n '{"alg":"HS256","typ":"JWT"}' | base64 -w 0 | sed s/\+/-/ | sed -E s/=+$//)
+  #echo "Header JWT: $header_jwt"
+  admin_jwt=$(echo -n "{\"userId\":\"$admin_uuid\",\"username\":\"$AUDIOBOOKSHELF_ADMIN_USERNAME\",\"iat\":$(date +%s)}" | base64 -w 0 | sed s/\+/-/ | sed -E s/=+$// | sed s/\\n//)
+  #echo "Admin JWT: $admin_jwt"
+  hmac_jwt=$(echo -n "${header_jwt}.${admin_jwt}" | openssl dgst -sha256 -hmac $AUDIOBOOKSHELF_JWT_SECRET -binary | openssl base64 -e -A | sed s/\+/-/ | sed -E s/=+$//)
+  #echo "Signed JWT ($AUDIOBOOKSHELF_JWT_SECRET): $hmac_jwt"
+  full_jwt="${header_jwt}.${admin_jwt}.${hmac_jwt}"
+  #echo "Full JWT: $full_jwt"
+  adm_perms="{\"download\":true,\"update\":true,\"delete\":true,\"upload\":true,\"createEreader\":true,\"accessAllLibraries\":true,\"accessAllTags\":true,\"accessExplicitContent\":true,\"selectedTagsNotAccessible\":false,\"librariesAccessible\":[],\"itemTagsSelected\":[]}"
+  adm_extra="{\"seriesHideFromContinueListening\":[]}"
+  dtNow=$(date '+%Y-%m-%d %H:%M:%S.%3N %z')
+  sudo $HSHQ_NONBACKUP_DIR/sqlite344/sqlite3 $HSHQ_STACKS_DIR/audiobookshelf/config/absdatabase.sqlite "insert into users(id,username,email,pash,type,token,isActive,isLocked,lastSeen,permissions,bookmarks,extraData,createdAt,updatedAt) values('$admin_uuid','$AUDIOBOOKSHELF_ADMIN_USERNAME','$AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS','$AUDIOBOOKSHELF_ADMIN_PASSWORD_HASH','root','$full_jwt',1,0,'$dtNow','$adm_perms','[]','$adm_extra','$dtNow','$dtNow');"
+  abs_set="{\"id\":\"server-settings\",\"tokenSecret\":null,\"scannerFindCovers\":false,\"scannerCoverProvider\":\"google\",\"scannerParseSubtitle\":false,\"scannerPreferMatchedMetadata\":false,\"scannerDisableWatcher\":false,\"storeCoverWithItem\":false,\"storeMetadataWithItem\":false,\"metadataFileFormat\":\"json\",\"rateLimitLoginRequests\":10,\"rateLimitLoginWindow\":600000,\"allowIframe\":false,\"backupPath\":\"/metadata/backups\",\"backupSchedule\":false,\"backupsToKeep\":2,\"maxBackupSize\":1,\"loggerDailyLogsToKeep\":7,\"loggerScannerLogsToKeep\":2,\"homeBookshelfView\":1,\"bookshelfView\":1,\"podcastEpisodeSchedule\":\"0 * * * *\",\"sortingIgnorePrefix\":false,\"sortingPrefixes\":[\"the\",\"a\"],\"chromecastEnabled\":false,\"dateFormat\":\"MM/dd/yyyy\",\"timeFormat\":\"HH:mm\",\"language\":\"en-us\",\"allowedOrigins\":[],\"logLevel\":2,\"version\":\"2.28.0\",\"buildNumber\":1,\"authLoginCustomMessage\":null,\"authActiveAuthMethods\":[\"local\",\"openid\"],\"authOpenIDIssuerURL\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN\",\"authOpenIDAuthorizationURL\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/api/oidc/authorization\",\"authOpenIDTokenURL\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/api/oidc/token\",\"authOpenIDUserInfoURL\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/api/oidc/userinfo\",\"authOpenIDJwksURL\":\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/jwks.json\",\"authOpenIDLogoutURL\":null,\"authOpenIDClientID\":\"audiobookshelf\",\"authOpenIDClientSecret\":\"$AUDIOBOOKSHELF_OIDC_CLIENT_SECRET\",\"authOpenIDTokenSigningAlgorithm\":\"RS256\",\"authOpenIDButtonText\":\"Login with $FMLNAME_AUTHELIA\",\"authOpenIDAutoLaunch\":false,\"authOpenIDAutoRegister\":true,\"authOpenIDMatchExistingBy\":\"username\",\"authOpenIDMobileRedirectURIs\":[\"audiobookshelf://oauth\"],\"authOpenIDGroupClaim\":\"\",\"authOpenIDAdvancedPermsClaim\":\"\",\"authOpenIDSubfolderForRedirectURLs\":\"\"}"
+  sudo $HSHQ_NONBACKUP_DIR/sqlite344/sqlite3 $HSHQ_STACKS_DIR/audiobookshelf/config/absdatabase.sqlite "delete from settings where key='server-settings';"
+  sudo $HSHQ_NONBACKUP_DIR/sqlite344/sqlite3 $HSHQ_STACKS_DIR/audiobookshelf/config/absdatabase.sqlite "insert into settings(key,value,createdAt,updatedAt) values ('server-settings','$abs_set','$dtNow','$dtNow');"
+  mail_set="{\"id\":\"email-settings\",\"host\":\"$SMTP_HOSTNAME\",\"port\":$SMTP_HOSTPORT,\"secure\":true,\"rejectUnauthorized\":true,\"user\":null,\"pass\":null,\"testAddress\":\"$AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS\",\"fromAddress\":\"Audiobookshelf $(getAdminEmailName) <$AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS>\",\"ereaderDevices\":[]}"
+  sudo $HSHQ_NONBACKUP_DIR/sqlite344/sqlite3 $HSHQ_STACKS_DIR/audiobookshelf/config/absdatabase.sqlite "delete from settings where key='email-settings';"
+  sudo $HSHQ_NONBACKUP_DIR/sqlite344/sqlite3 $HSHQ_STACKS_DIR/audiobookshelf/config/absdatabase.sqlite "insert into settings(key,value,createdAt,updatedAt) values ('email-settings','$mail_set','$dtNow','$dtNow');"
+  docker container restart audiobookshelf-app > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://audiobookshelf-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_AUDIOBOOKSHELF $MANAGETLS_AUDIOBOOKSHELF "$is_integrate_hshq" $NETDEFAULT_AUDIOBOOKSHELF "$inner_block"
+  insertSubAuthelia $SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll audiobookshelf "$FMLNAME_AUDIOBOOKSHELF" $USERTYPE_AUDIOBOOKSHELF "https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN" "audiobookshelf.png" "$(getHeimdallOrderFromSub $SUB_AUDIOBOOKSHELF $USERTYPE_AUDIOBOOKSHELF)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigAudioBookshelf()
+{
+  cat <<EOFMT > $HOME/audiobookshelf-compose.yml
+$STACK_VERSION_PREFIX audiobookshelf $(getScriptStackVersion audiobookshelf)
+
+services:
+  audiobookshelf-app:
+    image: $(getScriptImageByContainerName audiobookshelf-app)
+    container_name: audiobookshelf-app
+    hostname: audiobookshelf-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/audiobookshelf/audiobooks:/audiobooks
+      - \${HSHQ_STACKS_DIR}/audiobookshelf/podcasts:/podcasts
+      - \${HSHQ_STACKS_DIR}/audiobookshelf/config:/config
+      - \${HSHQ_STACKS_DIR}/audiobookshelf/metadata:/metadata
+      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+
+EOFMT
+  cat <<EOFMT > $HOME/audiobookshelf.env
+TZ=\${TZ}
+JWT_SECRET_KEY=$AUDIOBOOKSHELF_JWT_SECRET
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+EOFMT
+  rm -f $HOME/audiobookshelf.oidc
+  cat <<EOFIM > $HOME/audiobookshelf.oidc
+# Authelia OIDC Client audiobookshelf BEGIN
+      - client_id: audiobookshelf
+        client_name: audiobookshelf
+        client_secret: $AUDIOBOOKSHELF_OIDC_CLIENT_SECRET_HASH
+        public: false
+        authorization_policy: primaryusers_auth
+        require_pkce: true
+        pkce_challenge_method: S256
+        redirect_uris:
+          - https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/auth/openid/callback
+          - https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/auth/openid/mobile-redirect
+          - audiobookshelf://oauth
+        scopes:
+          - openid
+          - profile
+          - groups
+          - email
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+        access_token_signed_response_alg: none
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_basic
+# Authelia OIDC Client audiobookshelf END
+EOFIM
+
+}
+
+function performUpdateAudioBookshelf()
+{
+  perform_stack_name=audiobookshelf
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=ghcr.io/advplyr/audiobookshelf:2.28.0
+      image_update_map[0]="ghcr.io/advplyr/audiobookshelf:2.28.0,ghcr.io/advplyr/audiobookshelf:2.28.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# StandardNotes
+function installStandardNotes()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory standardnotes "StandardNotes"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName standardnotes-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName standardnotes-server)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName standardnotes-localstack)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName standardnotes-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName standardnotes-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/standardnotes
+  mkdir $HSHQ_STACKS_DIR/standardnotes/{db,dbexport,config,localstack,logs,uploads}
+  mkdir $HSHQ_NONBACKUP_DIR/standardnotes
+  mkdir $HSHQ_NONBACKUP_DIR/standardnotes/redis
+  chmod 777 $HSHQ_STACKS_DIR/standardnotes/dbexport
+  initServicesCredentials
+  set +e
+  outputConfigStandardNotes
+  installStack standardnotes standardnotes-server "" $HOME/standardnotes.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://standardnotes-server:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_STANDARDNOTES_SERVER $MANAGETLS_STANDARDNOTES_SERVER "$is_integrate_hshq" $NETDEFAULT_STANDARDNOTES_SERVER "$inner_block"
+  insertSubAuthelia $SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN bypass
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_STANDARDNOTES_FILES.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://standardnotes-server:3104 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_STANDARDNOTES_FILES $MANAGETLS_STANDARDNOTES_FILES "$is_integrate_hshq" $NETDEFAULT_STANDARDNOTES_FILES "$inner_block"
+  insertSubAuthelia $SUB_STANDARDNOTES_FILES.$HOMESERVER_DOMAIN bypass
+
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_STANDARDNOTES_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://standardnotes-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_STANDARDNOTES_WEB $MANAGETLS_STANDARDNOTES_WEB "$is_integrate_hshq" $NETDEFAULT_STANDARDNOTES_WEB "$inner_block"
+  insertSubAuthelia $SUB_STANDARDNOTES_WEB.$HOMESERVER_DOMAIN bypass
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll standardnotes "$FMLNAME_STANDARDNOTES_WEB" $USERTYPE_STANDARDNOTES_WEB "https://$SUB_STANDARDNOTES_WEB.$HOMESERVER_DOMAIN" "standardnotes.png" "$(getHeimdallOrderFromSub $SUB_STANDARDNOTES_WEB $USERTYPE_STANDARDNOTES_WEB)"
+    insertEnableSvcUptimeKuma standardnotes "$FMLNAME_STANDARDNOTES_SERVER" $USERTYPE_STANDARDNOTES_SERVER "https://$SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN" true
+    restartAllCaddyContainers
+    checkAddDBConnection true standardnotes "$FMLNAME_STANDARDNOTES_SERVER" mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME $STANDARDNOTES_DATABASE_USER $STANDARDNOTES_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigStandardNotes()
+{
+  cat <<EOFMT > $HOME/standardnotes-compose.yml
+$STACK_VERSION_PREFIX standardnotes $(getScriptStackVersion standardnotes)
+
+services:
+  standardnotes-db:
+    image: $(getScriptImageByContainerName standardnotes-db)
+    container_name: standardnotes-db
+    hostname: standardnotes-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-standardnotes-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-standardnotes-db:/var/lib/mysql
+      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/standardnotes/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.standardnotes-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.standardnotes-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.standardnotes-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.standardnotes-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.standardnotes-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.standardnotes-hourly-db.email-from=StandardNotes Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.standardnotes-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.standardnotes-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.standardnotes-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.standardnotes-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.standardnotes-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.standardnotes-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.standardnotes-monthly-db.email-from=StandardNotes Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.standardnotes-monthly-db.mail-only-on-error=false"
+
+  standardnotes-server:
+    image: $(getScriptImageByContainerName standardnotes-server)
+    container_name: standardnotes-server
+    hostname: standardnotes-server
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - standardnotes-db
+    networks:
+      - int-standardnotes-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/standardnotes/logs:/var/lib/server/logs
+      - \${HSHQ_STACKS_DIR}/standardnotes/uploads:/opt/server/packages/files/dist/uploads
+
+  localstack:
+    image: $(getScriptImageByContainerName standardnotes-localstack)
+    container_name: standardnotes-localstack
+    hostname: localstack
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - standardnotes-db
+    networks:
+      - int-standardnotes-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${HSHQ_STACKS_DIR}/standardnotes/localstack/localstack_bootstrap.sh:/etc/localstack/init/ready.d/localstack_bootstrap.sh
+
+  standardnotes-web:
+    image: $(getScriptImageByContainerName standardnotes-web)
+    container_name: standardnotes-web
+    hostname: standardnotes-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-standardnotes-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  standardnotes-redis:
+    image: $(getScriptImageByContainerName standardnotes-redis)
+    container_name: standardnotes-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $STANDARDNOTES_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-standardnotes-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-standardnotes-redis:/data
+
+volumes:
+  v-standardnotes-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_STACKS_DIR}/standardnotes/db
+  v-standardnotes-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${HSHQ_NONBACKUP_DIR}/standardnotes/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-standardnotes-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/standardnotes.env
+TZ=\${TZ}
+DB_HOST=standardnotes-db
+DB_PORT=3306
+DB_USERNAME=$STANDARDNOTES_DATABASE_USER
+DB_PASSWORD=$STANDARDNOTES_DATABASE_USER_PASSWORD
+DB_DATABASE=$STANDARDNOTES_DATABASE_NAME
+DB_TYPE=mysql
+MYSQL_DATABASE=$STANDARDNOTES_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$STANDARDNOTES_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$STANDARDNOTES_DATABASE_USER
+MYSQL_PASSWORD=$STANDARDNOTES_DATABASE_USER_PASSWORD
+REDIS_PORT=6379
+REDIS_HOST=standardnotes-redis
+CACHE_TYPE=redis
+REDIS_URL=redis://:$STANDARDNOTES_REDIS_PASSWORD@standardnotes-redis:6379/0
+AUTH_JWT_SECRET=$(openssl rand -hex 32)
+AUTH_SERVER_ENCRYPTION_SERVER_KEY=$(openssl rand -hex 32)
+VALET_TOKEN_SECRET=$(openssl rand -hex 32)
+PUBLIC_FILES_SERVER_URL=https://$SUB_STANDARDNOTES_FILES.$HOMESERVER_DOMAIN
+COOKIE_DOMAIN=$HOMESERVER_DOMAIN
+DEFAULT_SYNC_SERVER=https://$SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN
+SF_DEFAULT_SERVER=https://$SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN
+SERVICES=sns,sqs
+HOSTNAME_EXTERNAL=localstack
+LS_LOG=warn
+EOFMT
+
+  cat <<EOFLB > $HSHQ_STACKS_DIR/standardnotes/localstack/localstack_bootstrap.sh
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+echo "configuring sns/sqs"
+echo "==================="
+LOCALSTACK_HOST=localhost
+AWS_REGION=us-east-1
+LOCALSTACK_DUMMY_ID=000000000000
+
+get_all_queues() {
+  awslocal --endpoint-url=http://\${LOCALSTACK_HOST}:4566 sqs list-queues
+}
+
+create_queue() {
+  local QUEUE_NAME_TO_CREATE=\$1
+  awslocal --endpoint-url=http://\${LOCALSTACK_HOST}:4566 sqs create-queue --queue-name \${QUEUE_NAME_TO_CREATE}
+}
+
+get_all_topics() {
+  awslocal --endpoint-url=http://\${LOCALSTACK_HOST}:4566 sns list-topics
+}
+
+create_topic() {
+  local TOPIC_NAME_TO_CREATE=\$1
+  awslocal --endpoint-url=http://\${LOCALSTACK_HOST}:4566 sns create-topic --name \${TOPIC_NAME_TO_CREATE}
+}
+
+link_queue_and_topic() {
+  local TOPIC_ARN_TO_LINK=\$1
+  local QUEUE_ARN_TO_LINK=\$2
+  awslocal --endpoint-url=http://\${LOCALSTACK_HOST}:4566 sns subscribe --topic-arn \${TOPIC_ARN_TO_LINK} --protocol sqs --notification-endpoint \${QUEUE_ARN_TO_LINK}
+}
+
+get_queue_arn_from_name() {
+  local QUEUE_NAME=\$1
+  echo "arn:aws:sns:\${AWS_REGION}:\${LOCALSTACK_DUMMY_ID}:\$QUEUE_NAME"
+}
+
+get_topic_arn_from_name() {
+  local TOPIC_NAME=\$1
+  echo "arn:aws:sns:\${AWS_REGION}:\${LOCALSTACK_DUMMY_ID}:\$TOPIC_NAME"
+}
+
+PAYMENTS_TOPIC_NAME="payments-local-topic"
+
+echo "creating topic \$PAYMENTS_TOPIC_NAME"
+TOPIC_CREATED_RESULT=\$(create_topic \${PAYMENTS_TOPIC_NAME})
+echo "created topic: \$TOPIC_CREATED_RESULT"
+PAYMENTS_TOPIC_ARN=\$(get_topic_arn_from_name \$PAYMENTS_TOPIC_NAME)
+
+SYNCING_SERVER_TOPIC_NAME="syncing-server-local-topic"
+
+echo "creating topic \$SYNCING_SERVER_TOPIC_NAME"
+TOPIC_CREATED_RESULT=\$(create_topic \${SYNCING_SERVER_TOPIC_NAME})
+echo "created topic: \$TOPIC_CREATED_RESULT"
+SYNCING_SERVER_TOPIC_ARN=\$(get_topic_arn_from_name \$SYNCING_SERVER_TOPIC_NAME)
+
+AUTH_TOPIC_NAME="auth-local-topic"
+
+echo "creating topic \$AUTH_TOPIC_NAME"
+TOPIC_CREATED_RESULT=\$(create_topic \${AUTH_TOPIC_NAME})
+echo "created topic: \$TOPIC_CREATED_RESULT"
+AUTH_TOPIC_ARN=\$(get_topic_arn_from_name \$AUTH_TOPIC_NAME)
+
+FILES_TOPIC_NAME="files-local-topic"
+
+echo "creating topic \$FILES_TOPIC_NAME"
+TOPIC_CREATED_RESULT=\$(create_topic \${FILES_TOPIC_NAME})
+echo "created topic: \$TOPIC_CREATED_RESULT"
+FILES_TOPIC_ARN=\$(get_topic_arn_from_name \$FILES_TOPIC_NAME)
+
+ANALYTICS_TOPIC_NAME="analytics-local-topic"
+
+echo "creating topic \$ANALYTICS_TOPIC_NAME"
+TOPIC_CREATED_RESULT=\$(create_topic \${ANALYTICS_TOPIC_NAME})
+echo "created topic: \$TOPIC_CREATED_RESULT"
+ANALYTICS_TOPIC_ARN=\$(get_topic_arn_from_name \$ANALYTICS_TOPIC_NAME)
+
+REVISIONS_TOPIC_NAME="revisions-server-local-topic"
+
+echo "creating topic \$REVISIONS_TOPIC_NAME"
+TOPIC_CREATED_RESULT=\$(create_topic \${REVISIONS_TOPIC_NAME})
+echo "created topic: \$TOPIC_CREATED_RESULT"
+REVISIONS_TOPIC_ARN=\$(get_topic_arn_from_name \$REVISIONS_TOPIC_NAME)
+
+SCHEDULER_TOPIC_NAME="scheduler-local-topic"
+
+echo "creating topic \$SCHEDULER_TOPIC_NAME"
+TOPIC_CREATED_RESULT=\$(create_topic \${SCHEDULER_TOPIC_NAME})
+echo "created topic: \$TOPIC_CREATED_RESULT"
+SCHEDULER_TOPIC_ARN=\$(get_topic_arn_from_name \$SCHEDULER_TOPIC_NAME)
+
+QUEUE_NAME="analytics-local-queue"
+
+echo "creating queue \$QUEUE_NAME"
+QUEUE_URL=\$(create_queue \${QUEUE_NAME})
+echo "created queue: \$QUEUE_URL"
+ANALYTICS_QUEUE_ARN=\$(get_queue_arn_from_name \$QUEUE_NAME)
+
+echo "linking topic \$PAYMENTS_TOPIC_ARN to queue \$ANALYTICS_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$PAYMENTS_TOPIC_ARN \$ANALYTICS_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+QUEUE_NAME="auth-local-queue"
+
+echo "creating queue \$QUEUE_NAME"
+QUEUE_URL=\$(create_queue \${QUEUE_NAME})
+echo "created queue: \$QUEUE_URL"
+AUTH_QUEUE_ARN=\$(get_queue_arn_from_name \$QUEUE_NAME)
+
+echo "linking topic \$PAYMENTS_TOPIC_ARN to queue \$AUTH_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$PAYMENTS_TOPIC_ARN \$AUTH_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+echo "linking topic \$AUTH_TOPIC_ARN to queue \$AUTH_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$AUTH_TOPIC_ARN \$AUTH_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+echo "linking topic \$FILES_TOPIC_ARN to queue \$AUTH_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$FILES_TOPIC_ARN \$AUTH_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+echo "linking topic \$REVISIONS_TOPIC_ARN to queue \$AUTH_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$REVISIONS_TOPIC_ARN \$AUTH_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+QUEUE_NAME="files-local-queue"
+
+echo "creating queue \$QUEUE_NAME"
+QUEUE_URL=\$(create_queue \${QUEUE_NAME})
+echo "created queue: \$QUEUE_URL"
+FILES_QUEUE_ARN=\$(get_queue_arn_from_name \$QUEUE_NAME)
+
+echo "linking topic \$AUTH_TOPIC_ARN to queue \$FILES_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$AUTH_TOPIC_ARN \$FILES_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+echo "linking topic \$SYNCING_SERVER_TOPIC_ARN to queue \$FILES_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$SYNCING_SERVER_TOPIC_ARN \$FILES_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+QUEUE_NAME="syncing-server-local-queue"
+
+echo "creating queue \$QUEUE_NAME"
+QUEUE_URL=\$(create_queue \${QUEUE_NAME})
+echo "created queue: \$QUEUE_URL"
+SYNCING_SERVER_QUEUE_ARN=\$(get_queue_arn_from_name \$QUEUE_NAME)
+
+echo "linking topic \$SYNCING_SERVER_TOPIC_ARN to queue \$SYNCING_SERVER_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$SYNCING_SERVER_TOPIC_ARN \$SYNCING_SERVER_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+echo "linking topic \$FILES_TOPIC_ARN to queue \$SYNCING_SERVER_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$FILES_TOPIC_ARN \$SYNCING_SERVER_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+echo "linking topic \$SYNCING_SERVER_TOPIC_ARN to queue \$AUTH_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$SYNCING_SERVER_TOPIC_ARN \$AUTH_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+echo "linking topic \$AUTH_TOPIC_ARN to queue \$SYNCING_SERVER_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$AUTH_TOPIC_ARN \$SYNCING_SERVER_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+QUEUE_NAME="revisions-server-local-queue"
+
+echo "creating queue \$QUEUE_NAME"
+QUEUE_URL=\$(create_queue \${QUEUE_NAME})
+echo "created queue: \$QUEUE_URL"
+REVISIONS_QUEUE_ARN=\$(get_queue_arn_from_name \$QUEUE_NAME)
+
+echo "linking topic \$SYNCING_SERVER_TOPIC_ARN to queue \$REVISIONS_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$SYNCING_SERVER_TOPIC_ARN \$REVISIONS_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+echo "linking topic \$REVISIONS_TOPIC_ARN to queue \$REVISIONS_QUEUE_ARN"
+LINKING_RESULT=\$(link_queue_and_topic \$REVISIONS_TOPIC_ARN \$REVISIONS_QUEUE_ARN)
+echo "linking done:"
+echo "\$LINKING_RESULT"
+
+QUEUE_NAME="scheduler-local-queue"
+
+echo "creating queue \$QUEUE_NAME"
+QUEUE_URL=\$(create_queue \${QUEUE_NAME})
+echo "created queue: \$QUEUE_URL"
+SCHEDULER_QUEUE_ARN=\$(get_queue_arn_from_name \$QUEUE_NAME)
+
+echo "all topics are:"
+echo "\$(get_all_topics)"
+
+echo "all queues are:"
+echo "\$(get_all_queues)"
+EOFLB
+  chmod 700 $HSHQ_STACKS_DIR/standardnotes/localstack/localstack_bootstrap.sh
+}
+
+function performUpdateStandardNotes()
+{
+  perform_stack_name=standardnotes
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mariadb:10.7.3,standardnotes/server:0d82819cba9694bc9fb5a3fa53e2dbeda05d1242,localstack/localstack:4.7.0,standardnotes/web:b9d7f368846e9399b27e50697b6e59263befe431,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="standardnotes/server:0d82819cba9694bc9fb5a3fa53e2dbeda05d1242,standardnotes/server:0d82819cba9694bc9fb5a3fa53e2dbeda05d1242"
+      image_update_map[2]="localstack/localstack:4.7.0,localstack/localstack:4.7.0"
+      image_update_map[3]="standardnotes/web:b9d7f368846e9399b27e50697b6e59263befe431,standardnotes/web:b9d7f368846e9399b27e50697b6e59263befe431"
+      image_update_map[4]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Metabase
+function installMetabase()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory metabase "Metabase"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName metabase-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName metabase-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/metabase
+  mkdir $HSHQ_STACKS_DIR/metabase/db
+  mkdir $HSHQ_STACKS_DIR/metabase/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/metabase/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $METABASE_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $METABASE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigMetabase
+  installStack metabase metabase-app "" $HOME/metabase.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$METABASE_INIT_ENV" = "true" ]; then
+    sendEmail -s "Metabase Admin Login Info" -b "Metabase Admin Username: $METABASE_ADMIN_EMAIL_ADDRESS\nMetabase Admin Password: $METABASE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    METABASE_INIT_ENV=true
+    updateConfigVar METABASE_INIT_ENV $METABASE_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_METABASE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://metabase-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_METABASE $MANAGETLS_METABASE "$is_integrate_hshq" $NETDEFAULT_METABASE "$inner_block"
+  insertSubAuthelia $SUB_METABASE.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll metabase "$FMLNAME_METABASE" $USERTYPE_METABASE "https://$SUB_METABASE.$HOMESERVER_DOMAIN" "metabase.png" "$(getHeimdallOrderFromSub $SUB_METABASE $USERTYPE_METABASE)"
+    restartAllCaddyContainers
+    checkAddDBConnection true metabase "$FMLNAME_METABASE" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigMetabase()
+{
+  cat <<EOFMT > $HOME/metabase-compose.yml
+$STACK_VERSION_PREFIX metabase $(getScriptStackVersion metabase)
+
+services:
+  metabase-db:
+    image: $(getScriptImageByContainerName metabase-db)
+    container_name: metabase-db
+    hostname: metabase-db
+    user: "\${UID}:\${GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-metabase-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${HSHQ_STACKS_DIR}/metabase/db:/var/lib/postgresql/data
+      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${HSHQ_STACKS_DIR}/metabase/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.metabase-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.metabase-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.metabase-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.metabase-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.metabase-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.metabase-hourly-db.email-from=Metabase Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.metabase-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.metabase-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.metabase-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.metabase-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.metabase-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.metabase-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.metabase-monthly-db.email-from=Metabase Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.metabase-monthly-db.mail-only-on-error=false"
+
+  metabase-app:
+    image: $(getScriptImageByContainerName metabase-app)
+    container_name: metabase-app
+    hostname: metabase-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - metabase-db
+    networks:
+      - int-metabase-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - /dev/urandom:/dev/random:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-metabase-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/metabase.env
+TZ=\${TZ}
+MB_DB_TYPE=postgres
+MB_DB_HOST=metabase-db
+MB_DB_PORT=5432
+MB_DB_DBNAME=$METABASE_DATABASE_NAME
+MB_DB_USER=$METABASE_DATABASE_USER
+MB_DB_PASS=$METABASE_DATABASE_USER_PASSWORD
+POSTGRES_DB=$METABASE_DATABASE_NAME
+POSTGRES_USER=$METABASE_DATABASE_USER
+POSTGRES_PASSWORD=$METABASE_DATABASE_USER_PASSWORD
+EOFMT
+
+}
+
+function performUpdateMetabase()
+{
+  perform_stack_name=metabase
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,metabase/metabase:v0.56.2.4
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="metabase/metabase:v0.56.2.4,metabase/metabase:v0.56.2.4"
     ;;
     *)
       is_upgrade_error=true
@@ -71777,6 +72868,14 @@ SQLPAD_CONNECTIONS__meshcentral__username=$MESHCENTRAL_DATABASE_USER
 SQLPAD_CONNECTIONS__meshcentral__password=$MESHCENTRAL_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__meshcentral__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__meshcentral__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__metabase__name=Metabase
+SQLPAD_CONNECTIONS__metabase__driver=postgres
+SQLPAD_CONNECTIONS__metabase__host=metabase-db
+SQLPAD_CONNECTIONS__metabase__database=$METABASE_DATABASE_NAME
+SQLPAD_CONNECTIONS__metabase__username=$METABASE_DATABASE_USER
+SQLPAD_CONNECTIONS__metabase__password=$METABASE_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__metabase__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__metabase__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
@@ -71873,6 +72972,14 @@ SQLPAD_CONNECTIONS__speedtest-tracker-vpn__username=$SPEEDTEST_TRACKER_VPN_DATAB
 SQLPAD_CONNECTIONS__speedtest-tracker-vpn__password=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__speedtest-tracker-vpn__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__speedtest-tracker-vpn__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__standardnotes__name=StandardNotes
+SQLPAD_CONNECTIONS__standardnotes__driver=mysql
+SQLPAD_CONNECTIONS__standardnotes__host=standardnotes-db
+SQLPAD_CONNECTIONS__standardnotes__database=$STANDARDNOTES_DATABASE_NAME
+SQLPAD_CONNECTIONS__standardnotes__username=$STANDARDNOTES_DATABASE_USER
+SQLPAD_CONNECTIONS__standardnotes__password=$STANDARDNOTES_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__standardnotes__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__standardnotes__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__vaultwarden__name=Vaultwarden
 SQLPAD_CONNECTIONS__vaultwarden__driver=postgres
 SQLPAD_CONNECTIONS__vaultwarden__host=vaultwarden-db
