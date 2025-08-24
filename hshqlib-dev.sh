@@ -32103,6 +32103,7 @@ userPassword: {CRYPT}$pwHash
 EOFAU
   docker exec ldapserver bash -c "ldapadd -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addUser.ldif" > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
+  echo "Added LDAP user ($addPUUID)..."
   cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
 dn: cn=lastUID,$LDAP_BASE_DN
 changetype: modify
@@ -32127,6 +32128,7 @@ uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
 EOFAU
   docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+  echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
   emailUserVaultwardenCredentials "$addPUUID" "${addPUUID}@$HOMESERVER_DOMAIN"
 }
 
