@@ -26100,7 +26100,7 @@ function updateEndpointIPs()
         timeout $ping_timeout ping -c 1 $rs_ip > /dev/null 2>&1
         if [ $? -ne 0 ]; then
           logHSHQEvent error "updateEndpointIPs - Connection Error, restarting(HSVPN) $cname ($iname)..."
-          timeout 10 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
+          timeout 30 sudo systemctl restart wg-quick@$iname > /dev/null 2>&1
           if [ $? -eq 0 ]; then
             # If applicable, restart the associated caddy Stack
             checkCaddyInterface=$(sqlite3 $HSHQ_DB "select InterfaceName from connections where ConnectionType in ('homeserver_vpn') and NetworkType in ('other','primary') and ID=$cur_id;")
@@ -31909,8 +31909,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -31938,7 +31938,7 @@ function emailUserVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
   strInstructions="Vaultwarden User Import Instructions:\n\n"
-  strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager. An additional entry, Penpot has been added. It uses LDAP as well, but requires the email address to be entered rather than the ldap username, so it requires a separate entry."
+  strInstructions=$strInstructions"For convenience, import the text BELOW the following solid line into Vaultwarden. Then simply change the password (abcdefg) to your correct password. It will be reflected for all LDAP-based services. If you change your password in the future, then you only need to update this one entry within the Vaultwarden password manager. There is a separate entry for Penpot, since it requires the email address to be entered rather than the ldap username. There is also an entry for the email(Mailu) login as well."
   sendEmail -s "Vaultwarden User Login Import" -b "$strInstructions\n\n$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $vw_email
 }
 
@@ -32029,8 +32029,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MESHCENTRAL}-Admin" https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_NAVIDROME}-Admin" https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN/app/#/login $HOMESERVER_ABBREV $NAVIDROME_ADMIN_USERNAME $NAVIDROME_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -32043,6 +32043,91 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}"\n\n"
   sendEmail -s "All Services Login Info" -b "$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
+}
+
+function addPrimaryUser()
+{
+  addPUUID="$1"
+  addPUPassword="$2"
+  addPUFirstName="$3"
+  addPULastName="$4"
+  #echo "addPUUID: $addPUUID"
+  #echo "addPUPassword: $addPUPassword"
+  #echo "addPUFirstName: $addPUFirstName"
+  #echo "addPULastName: $addPULastName"
+  #if true; then return; fi
+  set +e
+  # Check if user exists
+  docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"uid=$addPUUID,ou=people,$LDAP_BASE_DN\"" > /dev/null 2>&1
+  rtVal=$?
+  if [ $rtVal -eq 0 ]; then
+    echo "ERROR: Username ($addPUUID) already exists..."
+    return
+  fi
+  if [ $rtVal -ne 32 ]; then
+    echo "ERROR: Unknown error ($rtVal), returning..."
+    return
+  fi
+  # Check if email exists
+  docker exec mailu-admin flask mailu config-export user | grep -q "${addPUUID}@$HOMESERVER_DOMAIN" > /dev/null 2>&1
+  if [ $rtVal -eq 0 ]; then
+    echo "ERROR: Email address (${addPUUID}@$HOMESERVER_DOMAIN) already exists..."
+    return
+  fi
+  pwHash=$(openssl passwd -6 $addPUPassword)
+  # Add user email
+  addUserMailu user-import "$addPUUID" "$HOMESERVER_DOMAIN" "$pwHash"
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was a problem adding this email address (${addPUUID}@$HOMESERVER_DOMAIN)..."
+    return
+  fi
+  #set +e
+  # Get lastUID
+  lastUID=$(docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"cn=lastUID,$LDAP_BASE_DN\" -LLL serialNumber | grep serialNumber | cut -d\" \" -f2 | xargs")
+  ((lastUID++))
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
+dn: uid=$addPUUID,ou=people,${LDAP_BASE_DN}
+givenName:: $(echo -n "$addPUFirstName " | base64)
+sn:: $(echo -n "$addPULastName" | base64)
+uid: $addPUUID
+mail: ${addPUUID}@$HOMESERVER_DOMAIN
+objectClass: person
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uidNumber: $lastUID
+gidNumber: 2001
+loginShell: /sbin/nologin
+homeDirectory: /home/$addPUUID
+cn:: $(echo -n "$addPUFirstName $addPULastName" | base64)
+userPassword: {CRYPT}$pwHash
+EOFAU
+  docker exec ldapserver bash -c "ldapadd -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addUser.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
+dn: cn=lastUID,$LDAP_BASE_DN
+changetype: modify
+replace: serialNumber
+serialNumber: $lastUID
+EOFAU
+  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/incID.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+dn: cn=everybody,ou=groups,$LDAP_BASE_DN
+changetype: modify
+add: uniqueMember
+uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
+EOFAU
+  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+dn: cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN
+changetype: modify
+add: uniqueMember
+uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
+EOFAU
+  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+  emailUserVaultwardenCredentials "$addPUUID" "${addPUUID}@$HOMESERVER_DOMAIN"
 }
 
 function insertServicesHeimdall()
@@ -32372,22 +32457,22 @@ function getHeimdallOrderFromSub()
     "$SUB_NAVIDROME")
       order_num=95
       ;;
-    "$SUB_ADMINER")
+    "$SUB_AUDIOBOOKSHELF")
       order_num=96
       ;;
-    "$SUB_BUDIBASE")
+    "$SUB_STANDARDNOTES_SERVER")
       order_num=97
       ;;
-    "$SUB_AUDIOBOOKSHELF")
+    "$SUB_STANDARDNOTES_FILES")
       order_num=98
       ;;
-    "$SUB_STANDARDNOTES_SERVER")
+    "$SUB_STANDARDNOTES_WEB")
       order_num=99
       ;;
-    "$SUB_STANDARDNOTES_FILES")
+    "$SUB_ADMINER")
       order_num=100
       ;;
-    "$SUB_STANDARDNOTES_WEB")
+    "$SUB_BUDIBASE")
       order_num=101
       ;;
     "$SUB_METABASE")
@@ -37409,7 +37494,7 @@ homeDirectory: /home/${LDAP_ADMIN_USER_USERNAME}
 cn: ${HOMESERVER_ABBREV^^} Admin
 userPassword: {CRYPT}${ADMIN_PASSWORD_CRYPT}
 
-# Basic User
+# Primary User
 dn: uid=${LDAP_PRIMARY_USER_USERNAME},ou=people,${LDAP_BASE_DN}
 givenName:: $(echo -n "$firstname " | base64)
 sn:: $(echo -n "$surname" | base64)
@@ -38447,8 +38532,8 @@ function addUserMailu()
       break
     fi
     sleep 1
-    ((num_tries++))
     echo "[Mailu] Error Adding $username, retry $num_tries of $total_tries"
+    ((num_tries++))
   done
   if [ "$is_added" = "false" ]; then
     echo "[Mailu] Error adding $username, exiting..."
@@ -64920,6 +65005,8 @@ function outputAllScriptServerScripts()
   rs_cur_password_prompt="Getting current RS password..."
   rs_new_password_prompt="Getting new RS password..."
   password_regex="^[a-zA-Z0-9(~!@#%^&*_+=<>?.,)-]+$"
+  password_regex_w_min8="^[a-zA-Z0-9(~!@#%^&*_+=<>?.,)-]{8,}$"
+  password_regex_w_min16="^[a-zA-Z0-9(~!@#%^&*_+=<>?.,)-]{16,}$"
   password_max_len=64
   password_special_chars="(~!@#%^&*_+=<>?.,)-"
   password_text_description="Must be letters, numbers, and/or (~!@#%^&*_+=<>?.,)-"
@@ -65920,6 +66007,149 @@ EOFSC
       "secure": true,
       "pass_as": "stdin",
       "stdin_expected_text": "$config_stdin_prompt"
+    }
+  ]
+}
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/scripts/addPrimaryUser.sh
+#!/bin/bash
+
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/argumentUtils.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkPass.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkDecrypt.sh
+source $HSHQ_STACKS_DIR/script-server/conf/scripts/checkHSHQOpenStatus.sh
+decryptConfigFileAndLoadEnvNoPrompts
+
+username=\$(getArgumentValue username "\$@")
+password=\$(getArgumentValue password "\$@")
+firstname=\$(getArgumentValue firstname "\$@")
+lastname=\$(getArgumentValue lastname "\$@")
+
+set +e
+echo "Adding new primary user..."
+addPrimaryUser "\$username" "\$password" "\$firstname" "\$lastname"
+set -e
+performExitFunctions false
+
+EOFSC
+
+  cat <<EOFSC > $HSHQ_STACKS_DIR/script-server/conf/runners/addPrimaryUser.json
+{
+  "name": "12 Add Primary User",
+  "script_path": "conf/scripts/addPrimaryUser.sh",
+  "description": "Creates primary user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function creates an LDAP user and corresponding email account on the base HomeServer domain, i.e. username@$HOMESERVER_DOMAIN. It will also add this user to the primary users group, so that they can automatically create accounts on Nextcloud, Matrix, Mastodon, Mealie, among many other services. Finally, it will send a Vaultwarden password import template to the same email address as a convenience.<br/><br/>While the email and LDAP accounts are two separate entitites, they will both be provisioned with the same initial password by default.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "group": "$group_id_misc",
+  "parameters": [
+    {
+      "name": "Enter sudo password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$sudo_stdin_prompt"
+    },
+    {
+      "name": "Enter config decrypt password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex",
+        "description": "$password_text_description"
+      },
+      "required": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "stdin",
+      "stdin_expected_text": "$config_stdin_prompt"
+    },
+    {
+      "name": "Enter username",
+      "required": true,
+      "param": "-username=",
+      "same_arg_param": true,
+      "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-z0-9]{4,}\$",
+        "description": "Only lowercase letters or numbers (>4 chars)"
+      },
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter password",
+      "max_length": "$password_max_len",
+      "regex": {
+        "pattern": "$password_regex_w_min8",
+        "description": "$password_text_description (>8 chars)"
+      },
+      "required": true,
+      "param": "-password=",
+      "same_arg_param": true,
+      "type": "text",
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": true,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter first name",
+      "required": true,
+      "param": "-firstname=",
+      "same_arg_param": true,
+      "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-zA-Z0-9.][a-zA-Z0-9.-]*\$",
+        "description": "Only upper/lowercase letters, numbers, periods, and/or hyphens"
+      },
+      "ui": {
+        "width_weight": 2,
+        "separator_before": {
+          "type": "new_line"
+        }
+      },
+      "secure": false,
+      "pass_as": "argument"
+    },
+    {
+      "name": "Enter last name",
+      "required": true,
+      "param": "-lastname=",
+      "same_arg_param": true,
+      "type": "text",
+      "max_length": "64",
+      "regex": {
+        "pattern": "^[a-zA-Z0-9.][a-zA-Z0-9.-]*\$",
+        "description": "Only upper/lowercase letters, numbers, periods, and/or hyphens"
+      },
+      "ui": {
+        "width_weight": 2
+      },
+      "secure": false,
+      "pass_as": "argument"
     }
   ]
 }
