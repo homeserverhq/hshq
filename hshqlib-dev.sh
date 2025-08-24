@@ -28034,6 +28034,93 @@ function replaceRedisBlock()
   mv $HOME/${stackName}.tmp $HOME/${stackName}-compose.yml
 }
 
+function addPrimaryUser()
+{
+  addPUUID="$1"
+  addPUPassword="$2"
+  addPUFirstName="$3"
+  addPULastName="$4"
+  #echo "addPUUID: $addPUUID"
+  #echo "addPUPassword: $addPUPassword"
+  #echo "addPUFirstName: $addPUFirstName"
+  #echo "addPULastName: $addPULastName"
+  #if true; then return; fi
+  set +e
+  # Check if user exists
+  docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"uid=$addPUUID,ou=people,$LDAP_BASE_DN\"" > /dev/null 2>&1
+  rtVal=$?
+  if [ $rtVal -eq 0 ]; then
+    echo "ERROR: Username ($addPUUID) already exists..."
+    return
+  fi
+  if [ $rtVal -ne 32 ]; then
+    echo "ERROR: Unknown error ($rtVal), returning..."
+    return
+  fi
+  # Check if email exists
+  docker exec mailu-admin flask mailu config-export user | grep -q "${addPUUID}@$HOMESERVER_DOMAIN" > /dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    echo "ERROR: Email address (${addPUUID}@$HOMESERVER_DOMAIN) already exists..."
+    return
+  fi
+  pwHash=$(openssl passwd -6 $addPUPassword)
+  # Add user email
+  addUserMailu user-import "$addPUUID" "$HOMESERVER_DOMAIN" "$pwHash"
+  if [ $? -ne 0 ]; then
+    echo "ERROR: There was a problem adding this email address (${addPUUID}@$HOMESERVER_DOMAIN)..."
+    return
+  fi
+  #set +e
+  # Get lastUID
+  lastUID=$(docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"cn=lastUID,$LDAP_BASE_DN\" -LLL serialNumber | grep serialNumber | cut -d\" \" -f2 | xargs")
+  ((lastUID++))
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
+dn: uid=$addPUUID,ou=people,${LDAP_BASE_DN}
+givenName:: $(echo -n "$addPUFirstName " | base64)
+sn:: $(echo -n "$addPULastName" | base64)
+uid: $addPUUID
+mail: ${addPUUID}@$HOMESERVER_DOMAIN
+objectClass: person
+objectClass: inetOrgPerson
+objectClass: posixAccount
+uidNumber: $lastUID
+gidNumber: 2001
+loginShell: /sbin/nologin
+homeDirectory: /home/$addPUUID
+cn:: $(echo -n "$addPUFirstName $addPULastName" | base64)
+userPassword: {CRYPT}$pwHash
+EOFAU
+  docker exec ldapserver bash -c "ldapadd -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addUser.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
+  echo "Added LDAP user ($addPUUID)..."
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
+dn: cn=lastUID,$LDAP_BASE_DN
+changetype: modify
+replace: serialNumber
+serialNumber: $lastUID
+EOFAU
+  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/incID.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+dn: cn=everybody,ou=groups,$LDAP_BASE_DN
+changetype: modify
+add: uniqueMember
+uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
+EOFAU
+  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+dn: cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN
+changetype: modify
+add: uniqueMember
+uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
+EOFAU
+  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
+  echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
+  emailUserVaultwardenCredentials "$addPUUID" "${addPUUID}@$HOMESERVER_DOMAIN"
+}
+
 # Services Functions
 function loadPinnedDockerImages()
 {
@@ -32043,93 +32130,6 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WGPORTAL}-RelayServer" https://$SUB_WGPORTAL.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $RELAYSERVER_WGPORTAL_ADMIN_EMAIL $RELAYSERVER_WGPORTAL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}"\n\n"
   sendEmail -s "All Services Login Info" -b "$strOutput" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -t $EMAIL_ADMIN_EMAIL_ADDRESS
-}
-
-function addPrimaryUser()
-{
-  addPUUID="$1"
-  addPUPassword="$2"
-  addPUFirstName="$3"
-  addPULastName="$4"
-  #echo "addPUUID: $addPUUID"
-  #echo "addPUPassword: $addPUPassword"
-  #echo "addPUFirstName: $addPUFirstName"
-  #echo "addPULastName: $addPULastName"
-  #if true; then return; fi
-  set +e
-  # Check if user exists
-  docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"uid=$addPUUID,ou=people,$LDAP_BASE_DN\"" > /dev/null 2>&1
-  rtVal=$?
-  if [ $rtVal -eq 0 ]; then
-    echo "ERROR: Username ($addPUUID) already exists..."
-    return
-  fi
-  if [ $rtVal -ne 32 ]; then
-    echo "ERROR: Unknown error ($rtVal), returning..."
-    return
-  fi
-  # Check if email exists
-  docker exec mailu-admin flask mailu config-export user | grep -q "${addPUUID}@$HOMESERVER_DOMAIN" > /dev/null 2>&1
-  if [ $? -eq 0 ]; then
-    echo "ERROR: Email address (${addPUUID}@$HOMESERVER_DOMAIN) already exists..."
-    return
-  fi
-  pwHash=$(openssl passwd -6 $addPUPassword)
-  # Add user email
-  addUserMailu user-import "$addPUUID" "$HOMESERVER_DOMAIN" "$pwHash"
-  if [ $? -ne 0 ]; then
-    echo "ERROR: There was a problem adding this email address (${addPUUID}@$HOMESERVER_DOMAIN)..."
-    return
-  fi
-  #set +e
-  # Get lastUID
-  lastUID=$(docker exec ldapserver bash -c "ldapsearch -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -b \"cn=lastUID,$LDAP_BASE_DN\" -LLL serialNumber | grep serialNumber | cut -d\" \" -f2 | xargs")
-  ((lastUID++))
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
-dn: uid=$addPUUID,ou=people,${LDAP_BASE_DN}
-givenName:: $(echo -n "$addPUFirstName " | base64)
-sn:: $(echo -n "$addPULastName" | base64)
-uid: $addPUUID
-mail: ${addPUUID}@$HOMESERVER_DOMAIN
-objectClass: person
-objectClass: inetOrgPerson
-objectClass: posixAccount
-uidNumber: $lastUID
-gidNumber: 2001
-loginShell: /sbin/nologin
-homeDirectory: /home/$addPUUID
-cn:: $(echo -n "$addPUFirstName $addPULastName" | base64)
-userPassword: {CRYPT}$pwHash
-EOFAU
-  docker exec ldapserver bash -c "ldapadd -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addUser.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addUser.ldif
-  echo "Added LDAP user ($addPUUID)..."
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
-dn: cn=lastUID,$LDAP_BASE_DN
-changetype: modify
-replace: serialNumber
-serialNumber: $lastUID
-EOFAU
-  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/incID.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/incID.ldif
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
-dn: cn=everybody,ou=groups,$LDAP_BASE_DN
-changetype: modify
-add: uniqueMember
-uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
-EOFAU
-  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
-  cat <<EOFAU > $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
-dn: cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN
-changetype: modify
-add: uniqueMember
-uniqueMember: uid=$addPUUID,ou=people,$LDAP_BASE_DN
-EOFAU
-  docker exec ldapserver bash -c "ldapmodify -x -D \"$LDAP_ADMIN_BIND_DN\" -w $LDAP_ADMIN_BIND_PASSWORD -H ldaps://localhost -f /tmp/initconfig/addG.ldif" > /dev/null 2>&1
-  rm -f $HSHQ_STACKS_DIR/openldap/ldapserver/initconfig/addG.ldif
-  echo "Sending Vaultwarden template to ${addPUUID}@${HOMESERVER_DOMAIN}..."
-  emailUserVaultwardenCredentials "$addPUUID" "${addPUUID}@$HOMESERVER_DOMAIN"
 }
 
 function insertServicesHeimdall()
