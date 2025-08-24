@@ -26543,7 +26543,7 @@ function addHSInterface()
       return 1
     fi
   done
-  interfaceListArr=($(sqlite3 $HSHQ_DB "select InterfaceName from connections where InterfaceName <> \"\";"))
+  interfaceListArr=($(sqlite3 $HSHQ_DB "select InterfaceName from connections where InterfaceName <> '';"))
   for curInterface in "${interfaceListArr[@]}"
   do
     if [ "$iface_name" = "$curInterface" ]; then
