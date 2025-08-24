@@ -66039,7 +66039,7 @@ EOFSC
 {
   "name": "12 Add Primary User",
   "script_path": "conf/scripts/addPrimaryUser.sh",
-  "description": "Adds a primary user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function creates an LDAP user and corresponding email account on the base HomeServer domain, i.e. username@$HOMESERVER_DOMAIN. It will also add this user to the primary users group, so that they can automatically create accounts on Nextcloud, Matrix, Mastodon, Mealie, among many other services. Finally, it will send a Vaultwarden password import template to the same email address, as a convenience.<br/><br/>While the email and LDAP accounts are two separate entitites, they will both be provisioned with the same initial password (provided below) by default.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
+  "description": "Adds a primary user. [Need Help?](https://forum.homeserverhq.com/)<br/><br/>This function creates an LDAP user and corresponding email account on the base HomeServer domain, i.e. username@$HOMESERVER_DOMAIN. It will also add this user to the primaryusers group, so that they can automatically create accounts on Nextcloud, Matrix, Mastodon, Mealie, among many other services. Finally, it will send a Vaultwarden password import template to the same email address, as a convenience.<br/><br/>While the email and LDAP accounts are two separate entitites, they will both be provisioned with the same initial password (provided below) by default.<br/><br/><hr width=\"100%\" size=\"3\" color=\"white\">",
   "group": "$group_id_misc",
   "parameters": [
     {
