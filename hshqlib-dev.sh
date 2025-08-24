@@ -32070,7 +32070,7 @@ function addPrimaryUser()
   fi
   # Check if email exists
   docker exec mailu-admin flask mailu config-export user | grep -q "${addPUUID}@$HOMESERVER_DOMAIN" > /dev/null 2>&1
-  if [ $rtVal -eq 0 ]; then
+  if [ $? -eq 0 ]; then
     echo "ERROR: Email address (${addPUUID}@$HOMESERVER_DOMAIN) already exists..."
     return
   fi
