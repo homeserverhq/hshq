@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=185
+HSHQ_LIB_SCRIPT_VERSION=186
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -28138,7 +28138,7 @@ function loadPinnedDockerImages()
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
   IMG_ADMINER=mirror.gcr.io/adminer:5.3.0
   IMG_AISTACK_MINDSDB_APP=mirror.gcr.io/mindsdb/mindsdb:v25.7.4.0
-  IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v2
+  IMG_AISTACK_MINDSDB_MOD_APP=hshq/mindsdb:v1
   IMG_AISTACK_OPENTELEMETRY=mirror.gcr.io/otel/opentelemetry-collector-contrib:0.131.1
   IMG_AISTACK_LANGFUSE=mirror.gcr.io/langfuse/langfuse:2.87.0
   IMG_AISTACK_OLLAMA_SERVER=mirror.gcr.io/ollama/ollama:0.11.4
@@ -58564,14 +58564,14 @@ function installAIStack()
   set +e
   while [ $i -le 300 ]
   do
-    findtext=$(docker logs aistack-mindsdb-mod-app 2>&1 | grep "$search")
+    findtext=$(docker logs aistack-mindsdb-app 2>&1 | grep "$search")
     if ! [ -z "$findtext" ]; then
       isFound=true
       break
     fi
-    echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
-    sleep 5
-    i=$((i+5))
+    echo "Container not ready, sleeping 10 seconds, total wait=$i seconds..."
+    sleep 10
+    i=$((i+10))
   done
   if ! [ "$isFound" = "true" ]; then
     echo "MindsDB did not start up correctly..."
@@ -58592,7 +58592,7 @@ function installAIStack()
   docker compose -f $HOME/aistack-compose-tmp.yml down -v
   rm -f $HOME/aistack-compose-tmp.yml
   rm -f $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport/init-dbs.sh
-  installStack aistack aistack-mindsdb-app "mindsdb: http API: started on 47334" $HOME/aistack.env 3
+  installStack aistack aistack-mindsdb-app "mindsdb: http API: started on 47334" $HOME/aistack.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
