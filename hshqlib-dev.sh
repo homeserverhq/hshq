@@ -15269,6 +15269,16 @@ EOFR
     echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
     startStopStackByID ${rstackIDs[$curID]} start
     sleep 3
+    if [ "${rstackNames[$curID]}" = "adguard" ]; then
+      sleep 5
+      docker logs adguard 2>&1 | grep -q "entering listener loop proto=tls"
+      if [ $? -eq 0 ]; then
+        sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+        sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+      fi
+    fi
   done
   startStopStack uptimekuma start
   if [ "$isGetNetworksLock" = "true" ]; then
@@ -23566,10 +23576,20 @@ EOFR
     done
     updateStackByID ${rstackNames[$curID]} ${rstackIDs[$curID]} $HOME/${rstackNames[$curID]}-compose.yml $HOME/${rstackNames[$curID]}.env
     sleep 3
+    if [ "${rstackNames[$curID]}" = "adguard" ]; then
+      sleep 5
+      docker logs adguard 2>&1 | grep -q "entering listener loop proto=tls"
+      if [ $? -eq 0 ]; then
+        sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+        sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+      fi
+    fi
   done
   uptimekumaStackID=$(getStackID uptimekuma)
   extractStackToHome uptimekuma $uptimekumaStackID
-  updateStackByID uptimekuma uptimekumaStackID $HOME/uptimekuma-compose.yml $HOME/uptimekuma.env
+  updateStackByID uptimekuma $uptimekumaStackID $HOME/uptimekuma-compose.yml $HOME/uptimekuma.env
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
   sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
