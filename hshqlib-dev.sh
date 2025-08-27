@@ -47511,10 +47511,6 @@ notify:
       - "$EMAIL_ADMIN_EMAIL_ADDRESS"
     sender_name: "HomeAssistant $(getAdminEmailName)"
 
-automation: !include automations.yaml
-script: !include scripts.yaml
-scene: !include scenes.yaml
-
 http:
   use_x_forwarded_for: true
   trusted_proxies:
