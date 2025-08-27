@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=188
+HSHQ_LIB_SCRIPT_VERSION=189
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -32,7 +32,7 @@ function init()
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   PRIOR_HSHQ_VERSION=0
-  LAST_RELAYSERVER_VERSION_UPDATE=188
+  LAST_RELAYSERVER_VERSION_UPDATE=189
   IS_DESKTOP_ENV=false
   if [ -d $HOME/Desktop ]; then
     IS_DESKTOP_ENV=true
@@ -20803,6 +20803,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=188
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 189 ]; then
+    echo "Updating to Version 189..."
+    version189Update
+    HSHQ_VERSION=189
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23299,6 +23305,16 @@ function version188Update()
   sleep 5
   fixPortainerAndUpgradeDockerV188
   outputMaintenanceScripts
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+}
+
+function version189Update()
+{
+  echo "========================================================================"
+  echo "  Performing updates on RelayServer."
+  echo "  This may take a few minutes, so please be patient."
+  echo "========================================================================"
+  sleep 5
   cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
 
@@ -23422,7 +23438,10 @@ EOFRC
 main
 EOFUR
   updateRelayServerWithScript true
-  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  if [ $? -ne 0 ]; then
+    echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
+    exit
+  fi
 }
 
 function fixPortainerAndUpgradeDockerV188()
