@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=186
+HSHQ_LIB_SCRIPT_VERSION=187
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -33651,6 +33651,7 @@ function stopPortainer()
 {
   cd ~
   docker compose -f $HSHQ_STACKS_DIR/portainer/docker-compose.yml down > /dev/null 2>&1
+  PORTAINER_TOKEN=""
 }
 
 function startPortainer()
@@ -33674,6 +33675,7 @@ function startPortainer()
     sleep 1
     i=$((i+1))
   done
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   if ! [ -z "$stpo_curE" ]; then
     set -e
   fi
