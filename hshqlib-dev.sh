@@ -5650,7 +5650,7 @@ function webSetupHostedVPN()
   echo "Uploading validation script..."
   outputRelayServerValidationScript
   outputRelayServerInstallSetupScript
-  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~" -f
   is_err=$?
   rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
   if [ $is_err -ne 0 ]; then
@@ -10677,7 +10677,7 @@ EOF
     # 2. Upload check script
     outputRelayServerValidationScript
     echo "Uploading validation script..."
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~" -f
     is_err=$?
     rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
     if [ $is_err -ne 0 ]; then
@@ -14014,6 +14014,7 @@ function perfRemoteAction()
     loadSSHKey
   fi
   set +e
+  ra_result=0
   while true;
   do
     curRATries=0
@@ -14057,6 +14058,7 @@ function perfRemoteAction()
   done
   unloadSSHKey
   set +e
+  return $ra_result
 }
 
 function getPrivateIPRangesCaddy()
@@ -18535,8 +18537,8 @@ rm -f \$RELAYSERVER_PF_REMOVE_DIR/pfRem-\${ID}.sh
 rm -f \$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\${ID}.sh
 EOFCD
     chmod 500 $HOME/removePortForward.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/addPortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/removePortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/addPortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/removePortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo mkdir -p $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding; sudo chown root:root ~/addPortForward.sh; sudo chown root:root ~/removePortForward.sh; sudo mv ~/addPortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh; sudo mv ~/removePortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/addPortForward.sh
     rm -f $HOME/removePortForward.sh
@@ -22067,9 +22069,9 @@ EOFSC
 
 EOFSC
     chmod 744 $HOME/clearDockerUserIPTables.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/88-hshq.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/10-setupDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/clearDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/88-hshq.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/10-setupDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/clearDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/10-setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/10-setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; sudo rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli; sudo reboot" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/88-hshq.conf
     rm -f $HOME/10-setupDockerUserIPTables.sh
@@ -22127,7 +22129,7 @@ chmod 744 $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
 run-parts --regex '.*sh\$' $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 EOFBS
     chmod 744 $HOME/onBootRoot.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/onBootRoot.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/onBootRoot.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi; sleep 5; sudo reboot" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/onBootRoot.sh
     sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
@@ -22217,7 +22219,7 @@ group "policies" {
 
 EOFHC
     chmod 644 $HOME/groups.conf
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/groups.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/groups.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/groups.conf; sudo mv ~/groups.conf $RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf/groups.conf; docker container restart mail-relay-rspamd > /dev/null 2>&1" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/groups.conf
   fi
@@ -22309,7 +22311,7 @@ docker container start caddy
 
 EOFCD
     chmod 500 $HOME/resetCaddyContainer.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/resetCaddyContainer.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/resetCaddyContainer.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/resetCaddyContainer.sh; sudo mv ~/resetCaddyContainer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/resetCaddyContainer.sh
   fi
@@ -22532,7 +22534,7 @@ EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
     chmod 640 $HOME/authd.pass
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/authd.pass -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/authd.pass -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
     cat <<EOFLO > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
@@ -23315,6 +23317,7 @@ function version189Update()
   echo "  This may take a few minutes, so please be patient."
   echo "========================================================================"
   sleep 5
+  rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
   cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
 
@@ -23323,7 +23326,11 @@ function main()
   read -r -s -p "" rspw
   echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
   relayServerFixPortainerAndUpgradeDockerV188
+  if [ \$? -ne 0 ]; then
+    return 1
+  fi
   sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  rm -f ~/$RS_UPDATE_SCRIPT_NAME
   rm -f ~/$RS_UPDATE_UTILS_SCRIPT_NAME
 }
 
@@ -23336,7 +23343,7 @@ function relayServerFixPortainerAndUpgradeDockerV188()
   rstackIDsQry=""
   source ~/$RS_UPDATE_UTILS_SCRIPT_NAME
   pullImage mirror.gcr.io/caddy:2.10.0
-  pullImage mirror.gcr.io/portainer/portainer-ce:2.33.0-alpine
+  pullImage mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
   setPortainerToken
   while [ \$rsi_numTries -le \$rsi_totalTries ]
   do
@@ -23396,7 +23403,7 @@ PORTAINER_GID=\$GROUPID
 EOFPC
 
   sed -i "s/\/run\/secrets\/portainer/\/run\/portainer\/portainer/g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
-  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.0-alpine/" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.1-alpine/" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
   sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} portainer v4/" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
   docker compose -f $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
   sleep 10
@@ -23424,7 +23431,7 @@ EOFPC
       fi
     done
     if [ "\${rstackNames[\$curID]}" = "caddy" ]; then
-      sed -i "s/image:.*/image: mirror.gcr.io\/caddy:2.10.0/" ~/\${rstackNames[\$curID]}-compose.yml
+      sed -i "s/image:.*caddy.*/image: mirror.gcr.io\/caddy:2.10.0/" ~/\${rstackNames[\$curID]}-compose.yml
       sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} caddy-rs v5/" ~/\${rstackNames[\$curID]}-compose.yml
     fi
     updateStackByID \${rstackNames[\$curID]} \${rstackIDs[\$curID]} ~/\${rstackNames[\$curID]}-compose.yml ~/\${rstackNames[\$curID]}.env
@@ -23508,7 +23515,7 @@ EOFR
   createDockerNetworks
   outputEnvPortainer
   sed -i "s/\/run\/secrets\/portainer/\/run\/portainer\/portainer/g" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
-  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.0-alpine/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.1-alpine/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
   sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} portainer v4/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
   startPortainer
   if [ $? -ne 0 ]; then
@@ -23560,7 +23567,9 @@ EOFR
     updateStackByID ${rstackNames[$curID]} ${rstackIDs[$curID]} $HOME/${rstackNames[$curID]}-compose.yml $HOME/${rstackNames[$curID]}.env
     sleep 3
   done
-  startStopStack uptimekuma start
+  uptimekumaStackID=$(getStackID uptimekuma)
+  extractStackToHome uptimekuma $uptimekumaStackID
+  updateStackByID uptimekuma uptimekumaStackID $HOME/uptimekuma-compose.yml $HOME/uptimekuma.env
   sudo rm -f /etc/resolv.conf > /dev/null 2>&1
   sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
@@ -23577,9 +23586,16 @@ function updateRelayServerWithScript()
     chmod 500 $HOME/$RS_UPDATE_SCRIPT_NAME
     set +e
     promptTestRelayServerPassword
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "rm -f ~/$RS_UPDATE_UTILS_SCRIPT_NAME;rm -f ~/$RS_UPDATE_SCRIPT_NAME" -f -i "$USER_RELAY_SUDO_PW" -r 1 -b 1
+    rsRet=$?
+    if [ $rsRet -ne 0 ]; then
+      rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+      rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+      return $rsRet
+    fi
     if [ "$isUploadUtils" = "true" ]; then
       outputRSUtilsScript
-      perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+      perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
       rsRet=$?
       if [ $rsRet -ne 0 ]; then
         rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
@@ -23587,14 +23603,14 @@ function updateRelayServerWithScript()
         return $rsRet
       fi
     fi
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/$RS_UPDATE_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/$RS_UPDATE_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     rsRet=$?
     if [ $rsRet -ne 0 ]; then
       rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
       rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
       return $rsRet
     fi
-    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "bash ~/$RS_UPDATE_SCRIPT_NAME;rm -f ~/$RS_UPDATE_SCRIPT_NAME" -f -i "$USER_RELAY_SUDO_PW" -r 1 -b 1
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "bash ~/$RS_UPDATE_SCRIPT_NAME" -f -i "$USER_RELAY_SUDO_PW" -r 1 -b 1
     rsRet=$?
     if [ $rsRet -ne 0 ]; then
       rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
@@ -23609,6 +23625,7 @@ function updateRelayServerWithScript()
 
 function outputRSUtilsScript()
 {
+  rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
   cat <<EOFRS > $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
 #!/bin/bash
 
@@ -28930,7 +28947,7 @@ function loadPinnedDockerImages()
   IMG_PIPED_CRON=barrypiccinni/psql-curl
   IMG_PIXELFED_APP=ghcr.io/jippi/docker-pixelfed:v0.12.5-docker1-apache-8.4-bookworm
   IMG_PIXELFED_MOD_APP=hshq/pixelfed:v1
-  IMG_PORTAINER=mirror.gcr.io/portainer/portainer-ce:2.33.0-alpine
+  IMG_PORTAINER=mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
   IMG_PROMETHEUS=mirror.gcr.io/prom/prometheus:v3.5.0
   IMG_QBITTORRENT=linuxserver/qbittorrent:5.1.2
   IMG_REMOTELY=immybot/remotely:1037
@@ -34301,8 +34318,8 @@ function performUpdatePortainer()
     ;;
     4)
       newVer=v4
-      curImageList=mirror.gcr.io/portainer/portainer-ce:2.33.0-alpine
-      image_update_map[0]="mirror.gcr.io/portainer/portainer-ce:2.33.0-alpine,mirror.gcr.io/portainer/portainer-ce:2.33.0-alpine"
+      curImageList=mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
+      image_update_map[0]="mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine,mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine"
     ;;
     *)
       is_upgrade_error=true
