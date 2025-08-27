@@ -23327,13 +23327,14 @@ function version188Update()
 
 function version189Update()
 {
-  echo "========================================================================"
-  echo "  Performing updates on RelayServer."
-  echo "  This may take a few minutes, so please be patient."
-  echo "========================================================================"
-  sleep 5
-  rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
-  cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "========================================================================"
+    echo "  Performing updates on RelayServer."
+    echo "  This may take a few minutes, so please be patient."
+    echo "========================================================================"
+    sleep 5
+    rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+    cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
 
 function main()
@@ -23459,10 +23460,11 @@ EOFRC
 }
 main
 EOFUR
-  updateRelayServerWithScript true
-  if [ $? -ne 0 ]; then
-    echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
-    exit
+    updateRelayServerWithScript true
+    if [ $? -ne 0 ]; then
+      echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
+      exit
+    fi
   fi
 }
 
