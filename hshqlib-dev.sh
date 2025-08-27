@@ -65844,8 +65844,9 @@ function main()
     exit 3
   fi
   checkDecryptConfigFile
+  cdrVal=\$?
   stty echo
-  if [ \$? -ne 0 ]; then
+  if [ \$cdrVal -ne 0 ]; then
     exit 4
   fi
 }
