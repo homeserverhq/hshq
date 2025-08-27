@@ -16738,6 +16738,10 @@ function loadConfigVars()
   fixConfigV130
   set -e
   source $CONFIG_FILE
+  if [ -z "$IS_CONFIG_INIT" ]; then
+    echo "FATAL: Decrypted config file did not load properly"
+    exit 9
+  fi
   loadSvcVars
   if ! [ "$is_chk_update" = "false" ]; then
     checkUpdateVersion
