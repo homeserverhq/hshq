@@ -23422,6 +23422,7 @@ EOFRC
 main
 EOFUR
   updateRelayServerWithScript true
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
 }
 
 function fixPortainerAndUpgradeDockerV188()
