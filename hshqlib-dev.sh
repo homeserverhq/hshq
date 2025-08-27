@@ -15270,13 +15270,14 @@ EOFR
     startStopStackByID ${rstackIDs[$curID]} start
     sleep 3
     if [ "${rstackNames[$curID]}" = "adguard" ]; then
-      sleep 5
-      docker logs adguard 2>&1 | grep -q "entering listener loop proto=tls"
+      waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
       if [ $? -eq 0 ]; then
         sudo rm -f /etc/resolv.conf > /dev/null 2>&1
         sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
 EOFR
+      else
+        echo "WARNING: Adguard container not ready, you may experience some integration issues for a short period..."
       fi
     fi
   done
@@ -23577,13 +23578,14 @@ EOFR
     updateStackByID ${rstackNames[$curID]} ${rstackIDs[$curID]} $HOME/${rstackNames[$curID]}-compose.yml $HOME/${rstackNames[$curID]}.env
     sleep 3
     if [ "${rstackNames[$curID]}" = "adguard" ]; then
-      sleep 5
-      docker logs adguard 2>&1 | grep -q "entering listener loop proto=tls"
+      waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
       if [ $? -eq 0 ]; then
         sudo rm -f /etc/resolv.conf > /dev/null 2>&1
         sudo tee /etc/resolv.conf >/dev/null <<EOFR
 nameserver 127.0.0.1
 EOFR
+      else
+        echo "WARNING: Adguard container not ready, you may experience some integration issues for a short period..."
       fi
     fi
   done
