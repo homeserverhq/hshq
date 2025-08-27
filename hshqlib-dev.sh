@@ -34509,7 +34509,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/adguard/conf:/opt/adguardhome/conf
-      - \${PORTAINER_HSHQ_BACKUP_DIR}/adguard/work:/opt/adguardhome/work
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/adguard/work:/opt/adguardhome/work
       - \${PORTAINER_HSHQ_SSL_DIR}/adguard.crt:/opt/adguardhome/conf/cert.pem
       - \${PORTAINER_HSHQ_SSL_DIR}/adguard.key:/opt/adguardhome/conf/key.pem
 
@@ -35309,7 +35309,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/sysutils/prometheus
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
 
 networks:
   dock-proxy-net:
@@ -37843,7 +37843,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/sysutils/prometheus
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
 
 networks:
   dock-proxy-net:
@@ -39611,13 +39611,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/wazuh/volumes/logs
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wazuh/volumes/logs
   v-wazuh-queue:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/wazuh/volumes/queue
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wazuh/volumes/queue
   v-wazuh-var-multigroups:
     driver: local
     driver_opts:
@@ -39665,7 +39665,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/wazuh/volumes/indexer-data
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wazuh/volumes/indexer-data
 
 networks:
   dock-internalmail-net:
@@ -43190,7 +43190,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/duplicati/config:/config
-      - \${PORTAINER_HSHQ_BACKUP_DIR}/duplicati/restore:/restore
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/duplicati/restore:/restore
       - \${PORTAINER_HSHQ_BACKUP_DIR}:/backups
       - \${PORTAINER_HSHQ_DATA_DIR}:/source
 
@@ -43838,13 +43838,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/mastodon/static
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/static
   v-mastodon-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/mastodon/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/redis
 
 networks:
   dock-proxy-net:
@@ -44521,7 +44521,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/searxng/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/searxng/redis
 
 networks:
   dock-proxy-net:
@@ -46953,13 +46953,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/peertube/assets
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/assets
   v-peertube-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/peertube/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/redis
 
 networks:
   dock-proxy-net:
@@ -47906,7 +47906,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/gitlab/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/gitlab/redis
 
 networks:
   dock-proxy-net:
@@ -48606,7 +48606,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/discourse/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/discourse/redis
   v-discourse-data:
     driver: local
     driver_opts:
@@ -49379,7 +49379,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/shlink/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/shlink/redis
 
 networks:
   dock-proxy-net:
@@ -49820,7 +49820,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/firefly/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/firefly/redis
 
 networks:
   dock-proxy-net:
@@ -51595,7 +51595,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_BACKUP_DIR}/kasm/data:/opt
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/kasm/data:/opt
       - \${PORTAINER_HSHQ_STACKS_DIR}/kasm/profiles:/profiles
 
 networks:
@@ -52767,7 +52767,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/netdata/cache
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/netdata/cache
 
 networks:
   dock-proxy-net:
@@ -53160,8 +53160,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/stirlingpdf/configs:/configs
-      - \${PORTAINER_HSHQ_BACKUP_DIR}/stirlingpdf/logs:/logs
-      - \${PORTAINER_HSHQ_BACKUP_DIR}/stirlingpdf/traindata:/usr/share/tesseract-ocr/5/tessdata
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/stirlingpdf/logs:/logs
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/stirlingpdf/traindata:/usr/share/tesseract-ocr/5/tessdata
 
 networks:
   dock-proxy-net:
@@ -53449,7 +53449,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/bar-assistant/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -54370,7 +54370,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/wallabag/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wallabag/redis
 
 networks:
   dock-proxy-net:
@@ -54855,7 +54855,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/paperless/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
 
 networks:
   dock-proxy-net:
@@ -56652,7 +56652,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/piped/proxy
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/piped/proxy
 
 networks:
   dock-proxy-net:
@@ -57398,7 +57398,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/penpot/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/penpot/redis
 
 networks:
   dock-proxy-net:
@@ -58034,13 +58034,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/immich/cache
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/cache
   v-immich-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/immich/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/redis
 
 networks:
   dock-proxy-net:
@@ -59783,7 +59783,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/aistack/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aistack/redis
 
 networks:
   dock-proxy-net:
@@ -60412,7 +60412,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/pixelfed/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/pixelfed/redis
 
 networks:
   dock-proxy-net:
@@ -61847,7 +61847,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/yamtrack/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/yamtrack/redis
 
 networks:
   dock-proxy-net:
@@ -64186,7 +64186,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/budibase/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/budibase/redis
 
 networks:
   dock-proxy-net:
@@ -64708,7 +64708,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${PORTAINER_HSHQ_BACKUP_DIR}/standardnotes/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/standardnotes/redis
 
 networks:
   dock-proxy-net:
