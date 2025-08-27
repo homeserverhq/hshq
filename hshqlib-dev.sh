@@ -8634,7 +8634,7 @@ function envToJson()
   done
   jsonstring="\${jsonstring%?}]"
   IFS=\$OLDIFS
-  echo \$jsonstring
+  echo "\$jsonstring"
 }
 
 function getStackID()
@@ -15123,7 +15123,7 @@ function updateStackByID()
   if [ -z "$PORTAINER_TOKEN" ]; then
     PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
+  echo "$(createStackJson $update_stack_name $update_compose_file "$update_env_file")" > $HOME/${update_stack_name}-json.tmp
   usid_numTries=1
   usid_totalTries=5
   usid_retVal=1
@@ -15341,7 +15341,7 @@ function envToJson()
   done
   jsonstring="${jsonstring%?}]"
   IFS=$OLDIFS
-  echo $jsonstring
+  echo "$jsonstring"
 }
 
 function extractStackToHome()
@@ -23695,21 +23695,22 @@ function envToJson()
 {
   if [ -z "\$1" ]; then
     echo "[]"
-	return
+    return
   fi
   OLDIFS=\$IFS
   IFS=\$(echo -en "\n\b")
-  lines=\$(cat \$1)
+  lines="\$(cat \$1)"
   jsonstring="["
   for line in \$lines
   do
     key="\$(sed 's/=.*//' <<< "\$line")"
     value="\$(sed 's/^[^=]*=//' <<< "\$line")"
+    value="\$(echo \$value | sed 's/\"/\\\\\"/g')"
     jsonstring="\$jsonstring{\"name\":\"\$key\",\"value\":\"\$value\"},"
   done
   jsonstring="\${jsonstring%?}]"
   IFS=\$OLDIFS
-  echo \$jsonstring
+  echo "\$jsonstring"
 }
 
 function getStackID()
@@ -23770,13 +23771,18 @@ function startStopStackByID()
   fi
 }
 
+function createStackJson()
+{
+  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":"\$(envToJson \$3)"}"
+}
+
 function updateStackByID()
 {
   update_stack_name=\$1
   update_stack_id=\$2
   update_compose_file=\$3
   update_env_file=\$4
-  echo "{\$( jq -Rscjr '{StackFileContent: . }' \$update_compose_file | tail -c +2 | head -c -1 ),\"Env\":\$(envToJson \$update_env_file)}" > \$HOME/\${update_stack_name}-json.tmp
+  echo "\$(createStackJson \$update_stack_name \$update_compose_file "\$update_env_file")" > \$HOME/\${update_stack_name}-json.tmp
   usid_numTries=1
   usid_totalTries=5
   usid_retVal=1
