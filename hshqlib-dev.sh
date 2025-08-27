@@ -52460,7 +52460,7 @@ function installCalibre()
 
   outputConfigCalibre
   generateCert calibre-web calibre-web
-  installStack calibre calibre-web "done." $HOME/calibre.env
+  installStack calibre calibre-web "done." $HOME/calibre.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
