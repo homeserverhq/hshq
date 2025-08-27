@@ -74979,8 +74979,8 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "\${$ipVarName}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
-      - "\${$ipVarName}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
+      - "\${PORTAINER_$ipVarName}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
+      - "\${PORTAINER_$ipVarName}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
