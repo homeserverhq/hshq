@@ -43214,6 +43214,7 @@ EOFDP
   fi
   echo "Duplicati installed, sleeping 5 seconds..."
   sleep 5
+  startStopStack duplicati stop
   db_name=$HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--accept-any-ssl-certificate','true');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-from','Duplicati $(getAdminEmailName)<$EMAIL_ADMIN_EMAIL_ADDRESS>');"
