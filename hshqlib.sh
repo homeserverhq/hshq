@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=187
+HSHQ_LIB_SCRIPT_VERSION=189
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -32,7 +32,7 @@ function init()
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   PRIOR_HSHQ_VERSION=0
-  LAST_RELAYSERVER_VERSION_UPDATE=171
+  LAST_RELAYSERVER_VERSION_UPDATE=189
   IS_DESKTOP_ENV=false
   if [ -d $HOME/Desktop ]; then
     IS_DESKTOP_ENV=true
@@ -55,6 +55,8 @@ function init()
   RS_INSTALL_TRANSFER_SCRIPT_NAME=transferRS.sh
   RS_INSTALL_VALIDATION_SCRIPT_NAME=validateRS.sh
   RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME=validateLib.sh
+  RS_UPDATE_UTILS_SCRIPT_NAME=rsUtilsScript.sh
+  RS_UPDATE_SCRIPT_NAME=rsUpdateScript.sh
   NUKE_SCRIPT_NAME=nuke.sh
   RELAYSERVER_HSHQ_FULL_LOG_NAME=hshqRSInstall.log
   RELAYSERVER_HSHQ_TIMESTAMP_LOG_NAME=hshqRSInstallTS.log
@@ -71,9 +73,9 @@ function init()
   SCRIPTSERVER_REDIS_STACKLIST_FILENAME=redisStackList.txt
   MINDSDB_IMPORT_FILENAME=DBCImport.txt
   DNS_ZONE_FILENAME_BASE=DNSZoneInfo
-  DOCKER_VERSION_UBUNTU_2204=5:25.0.5-1~ubuntu.22.04~jammy
-  DOCKER_VERSION_UBUNTU_2404=5:27.4.0-1~ubuntu.24.04~noble
-  DOCKER_VERSION_DEBIAN_12=5:27.4.0-1~debian.12~bookworm
+  DOCKER_VERSION_UBUNTU_2204=5:28.3.3-1~ubuntu.22.04~jammy
+  DOCKER_VERSION_UBUNTU_2404=5:28.3.3-1~ubuntu.24.04~noble
+  DOCKER_VERSION_DEBIAN_12=5:28.3.3-1~debian.12~bookworm
   NET_EXTERNAL_BRIDGE_NAME=brdockext
   NET_EXTERNAL_SUBNET=172.16.1.0/24
   NET_EXTERNAL_SUBNET_PREFIX=172.16.1
@@ -2254,7 +2256,7 @@ EOF
   docker volume create --driver local -o device=$HSHQ_STACKS_DIR/caddy-common/primary-certs -o o=bind -o type=none caddy-primary-certs
   createClientDNSNetworksOnRestore
   prepAdguardInstallation
-  restartAllStacks "duplicati,syncthing" true
+  restartAllStacks "duplicati,syncthing" true doNothing true
   sudo docker container prune -f
   addDomainAndWildcardAdguardHS $HOMESERVER_DOMAIN $HOMESERVER_HOST_PRIMARY_INTERFACE_IP
   # Add RelayServer fingerprint
@@ -2577,7 +2579,7 @@ function createClientDNSNetworksOnRestore()
   rstackIDsQry=""
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN")
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -5648,7 +5650,7 @@ function webSetupHostedVPN()
   echo "Uploading validation script..."
   outputRelayServerValidationScript
   outputRelayServerInstallSetupScript
-  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~" -f
   is_err=$?
   rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
   if [ $is_err -ne 0 ]; then
@@ -7382,7 +7384,7 @@ function getStackID()
 {
   stackID="NA"
   stackName=\$1
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" endpointId==1)
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":1} "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN")
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -7403,7 +7405,7 @@ function startStopStack()
   stackName=\$1
   startStop=\$2
   stackID=\$(getStackID \$stackName)
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" endpointId==1 > /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==1 "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" > /dev/null
 }
 
 function restorePortainer()
@@ -8611,7 +8613,7 @@ function getPortainerToken()
 
 function createStackJson()
 {
-  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":"\$(envToJson \$3)"}"
+  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":\$(envToJson \$3)}"
 }
 
 function envToJson()
@@ -8632,14 +8634,14 @@ function envToJson()
   done
   jsonstring="\${jsonstring%?}]"
   IFS=\$OLDIFS
-  echo \$jsonstring
+  echo "\$jsonstring"
 }
 
 function getStackID()
 {
   stackID="NA"
   stackName=\$1
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" endpointId==1)
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":1} "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN")
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -8660,7 +8662,7 @@ function startStopStack()
   stackName=\$1
   startStop=\$2
   stackID=\$(getStackID \$stackName)
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" endpointId==1 > /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==1 "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" > /dev/null
 }
 
 function installStack()
@@ -8674,7 +8676,7 @@ function installStack()
   echo
   echo "Creating stack: \$stack_name"
   echo "\$(createStackJson \$stack_name \$HOME/\$stack_name-compose.yml "\$envfile")" > \$HOME/\$stack_name-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" endpointId==1 @\$HOME/\$stack_name-json.tmp > /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string endpointId==1 "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" @\$HOME/\$stack_name-json.tmp > /dev/null
   search=\$stack_search_string
   isFound=false
   i=0
@@ -8784,7 +8786,6 @@ function installPortainer()
   echo "{\"Name\": \"GCR\",\"Type\": 3,\"URL\": \"mirror.gcr.io\"}" > portainer-json.tmp
   http --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/registries "Authorization: Bearer \$RELAYSERVER_PORTAINER_TOKEN" @portainer-json.tmp > /dev/null
   rm portainer-json.tmp
-
 }
 
 function outputConfigPortainer()
@@ -8831,15 +8832,15 @@ networks:
 EOFPC
 
   cat <<EOFPC > \$RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
-RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_DATA_DIR
-RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
-RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_SCRIPTS_DIR
-RELAYSERVER_HSHQ_SECRETS_DIR=\$RELAYSERVER_HSHQ_SECRETS_DIR
-RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
-RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
-TZ=\$TZ
-UID=\$USERID
-GID=\$GROUPID
+PORTAINER_RELAYSERVER_HSHQ_DATA_DIR=\$RELAYSERVER_HSHQ_DATA_DIR
+PORTAINER_RELAYSERVER_HSHQ_NONBACKUP_DIR=\$RELAYSERVER_HSHQ_NONBACKUP_DIR
+PORTAINER_RELAYSERVER_HSHQ_SCRIPTS_DIR=\$RELAYSERVER_HSHQ_SCRIPTS_DIR
+PORTAINER_RELAYSERVER_HSHQ_SECRETS_DIR=\$RELAYSERVER_HSHQ_SECRETS_DIR
+PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR=\$RELAYSERVER_HSHQ_STACKS_DIR
+PORTAINER_RELAYSERVER_HSHQ_SSL_DIR=\$RELAYSERVER_HSHQ_SSL_DIR
+PORTAINER_TZ=\$TZ
+PORTAINER_UID=\$USERID
+PORTAINER_GID=\$GROUPID
 EOFPC
 }
 
@@ -8887,7 +8888,7 @@ services:
     hostname: adguard
     restart: unless-stopped
     env_file: stack.env
-    user: "\\\${UID}:\\\${GID}"
+    user: "\\\${PORTAINER_UID}:\\\${PORTAINER_GID}"
     security_opt:
       - no-new-privileges:true
     networks:
@@ -8903,10 +8904,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/adguard/conf:/opt/adguardhome/conf
-      - \\\${RELAYSERVER_HSHQ_NONBACKUP_DIR}/adguard/work:/opt/adguardhome/work
-      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/adguard.crt:/opt/adguardhome/conf/cert.pem
-      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/adguard.key:/opt/adguardhome/conf/key.pem
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/adguard/conf:/opt/adguardhome/conf
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_NONBACKUP_DIR}/adguard/work:/opt/adguardhome/work
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_SSL_DIR}/adguard.crt:/opt/adguardhome/conf/cert.pem
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_SSL_DIR}/adguard.key:/opt/adguardhome/conf/key.pem
 
 networks:
   dock-proxy-net:
@@ -9225,11 +9226,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/postfix/tls/${CERTS_ROOT_CA_NAME}.crt:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/config:/etc/postfix/config
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/sasl:/etc/postfix/sasl
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/scripts:/etc/postfix/scripts
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/tls:/etc/postfix/tls
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/postfix/tls/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/config:/etc/postfix/config
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/sasl:/etc/postfix/sasl
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/scripts:/etc/postfix/scripts
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/postfix/tls:/etc/postfix/tls
       - caddy-certs:/caddycerts:ro
     labels:
       - "ofelia.enabled=true"
@@ -9287,8 +9288,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/unbound/mailhosts.conf:/opt/unbound/etc/unbound/a-records.conf:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/unbound/forward-records.conf:/opt/unbound/etc/unbound/forward-records.conf:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/unbound/mailhosts.conf:/opt/unbound/etc/unbound/a-records.conf:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/unbound/forward-records.conf:/opt/unbound/etc/unbound/forward-records.conf:ro
 
 #  mail-relay-clamav:
 #    image: $IMG_MAIL_RELAY_CLAMAV
@@ -9330,25 +9331,25 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/rspamd/var
+      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/rspamd/var
   v-mail-relay-rspamd-conf:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/rspamd/conf
+      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/rspamd/conf
 #  v-mail-relay-clamav:
 #    driver: local
 #    driver_opts:
 #      type: none
 #      o: bind
-#      device: \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/clamav
+#      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/clamav
   v-mail-relay-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \\\${RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/redis
+      device: \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/mail-relay/redis
 
 networks:
   dock-ext-net:
@@ -9364,7 +9365,7 @@ networks:
 EOFPF
 
   cat <<EOFPF > \$HOME/mail-relay.env
-TZ=\\\${TZ}
+TZ=\\\${PORTAINER_TZ}
 MAIL_FQDN=$RELAYSERVER_EXT_EMAIL_HOSTNAME
 POSTMASTER_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
 INTERNAL_CA_CERT_FILENAME=${CERTS_ROOT_CA_NAME}.crt
@@ -9803,7 +9804,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/wireguard:/etc/wireguard
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/wgportal:/app/data
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/wgportal:/app/data
 EOFWP
 
   cat <<EOFWP > \$HOME/wgportal.env
@@ -9859,7 +9860,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/clientdns/dnsmasq.conf:/etc/dnsmasq.conf
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/clientdns/dnsmasq.conf:/etc/dnsmasq.conf
     environment:
       - HTTP_USER=$RELAYSERVER_CLIENTDNS_ADMIN_USERNAME
       - HTTP_PASS=$RELAYSERVER_CLIENTDNS_ADMIN_PASSWORD
@@ -9880,8 +9881,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/clientdns/Corefile:/config/coredns/Corefile:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/clientdns/rsClientDNS.conf:/config/wg0.conf
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/clientdns/Corefile:/config/coredns/Corefile:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/wireguard/clientdns/rsClientDNS.conf:/config/wg0.conf
 
 networks:
   dock-proxy-net:
@@ -9896,7 +9897,7 @@ networks:
 EOFCD
 
   cat <<EOFCD > \$HOME/clientdns.env
-TZ=\\\${TZ}
+TZ=\\\${PORTAINER_TZ}
 CLIENTDNS_SUBNET_PREFIX=\$clientdns_subnet_prefix
 USE_COREDNS=true
 EOFCD
@@ -9966,7 +9967,7 @@ services:
     hostname: filebrowser
     restart: unless-stopped
     env_file: stack.env
-    user: "\\\${UID}:\\\${GID}"
+    user: "\\\${PORTAINER_UID}:\\\${PORTAINER_GID}"
     security_opt:
       - no-new-privileges:true
     networks:
@@ -9974,10 +9975,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/srv:/srv
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/db:/database
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/config:/config
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/srv:/srv
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/db:/database
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/filebrowser/config:/config
 
 networks:
   dock-proxy-net:
@@ -10045,9 +10046,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/caddy/Caddyfile:/etc/caddy/Caddyfile
-      - \\\${RELAYSERVER_HSHQ_NONBACKUP_DIR}/caddy/data:/data
-      - \\\${RELAYSERVER_HSHQ_NONBACKUP_DIR}/caddy/config:/config
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_NONBACKUP_DIR}/caddy/data:/data
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_NONBACKUP_DIR}/caddy/config:/config
       - caddy-certs:/data/caddy/certificates
 
   caddy-dns:
@@ -10067,7 +10068,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/caddy/dns/dnsmasq.conf:/etc/dnsmasq.conf
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/caddy/dns/dnsmasq.conf:/etc/dnsmasq.conf
 
 volumes:
   caddy-certs:
@@ -10299,7 +10300,7 @@ EOFCA
 function installOfelia()
 {
   outputConfigOfelia
-  installStack ofelia ofelia " "
+  installStack ofelia ofelia " " \$HOME/ofelia.env
 }
 
 function outputConfigOfelia()
@@ -10334,6 +10335,9 @@ networks:
     name: dock-ext
     external: true
 EOFOF
+  cat <<EOFFB > \$HOME/ofelia.env
+TZ=\\\${PORTAINER_TZ}
+EOFFB
 }
 
 function installSyncthing()
@@ -10471,13 +10475,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/cert.pem:ro
-      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/key.pem:ro
-      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/https-cert.pem:ro
-      - \\\${RELAYSERVER_HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/https-key.pem:ro
-      - \\\${RELAYSERVER_HSHQ_STACKS_DIR}/syncthing/config:/var/syncthing/config
-      - \\\${RELAYSERVER_HSHQ_NONBACKUP_DIR}/syncthing/data:/var/syncthing/data
-      - \\\${RELAYSERVER_HSHQ_DATA_DIR}:/relayserver
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/cert.pem:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/key.pem:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/https-cert.pem:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/https-key.pem:ro
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR}/syncthing/config:/var/syncthing/config
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_NONBACKUP_DIR}/syncthing/data:/var/syncthing/data
+      - \\\${PORTAINER_RELAYSERVER_HSHQ_DATA_DIR}:/relayserver
 
 networks:
   dock-proxy-net:
@@ -10673,7 +10677,7 @@ EOF
     # 2. Upload check script
     outputRelayServerValidationScript
     echo "Uploading validation script..."
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~" -f
     is_err=$?
     rm -f $HOME/$RS_INSTALL_VALIDATION_SCRIPT_NAME
     if [ $is_err -ne 0 ]; then
@@ -14010,6 +14014,7 @@ function perfRemoteAction()
     loadSSHKey
   fi
   set +e
+  ra_result=0
   while true;
   do
     curRATries=0
@@ -14053,6 +14058,7 @@ function perfRemoteAction()
   done
   unloadSSHKey
   set +e
+  return $ra_result
 }
 
 function getPrivateIPRangesCaddy()
@@ -15046,7 +15052,7 @@ function getPortainerToken()
     if [ $ptok_retVal -eq 0 ] && ! [ -z "$ptok_full" ]; then
       # Do a sample query
       ptok=$(echo $ptok_full | jq -r .jwt)
-      qry=$(http --check-status --ignore-stdin --verify=no --timeout=$cur_timeout --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $ptok" endpointId==$PORTAINER_ENDPOINT_ID)
+      qry=$(http --check-status --ignore-stdin --verify=no --timeout=$cur_timeout --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $ptok")
       if [ $? -eq 0 ]; then
         break
       fi
@@ -15082,7 +15088,7 @@ function getStackID()
   qry=""
   while [ $gsid_numTries -le $gsid_totalTries ]
   do
-    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
+    qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN")
     gsid_retVal=$?
     if [ $gsid_retVal -eq 0 ]; then
       break
@@ -15117,13 +15123,13 @@ function updateStackByID()
   if [ -z "$PORTAINER_TOKEN" ]; then
     PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   fi
-  echo "{$( jq -Rscjr '{StackFileContent: . }' $update_compose_file | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $update_env_file)}" > $HOME/${update_stack_name}-json.tmp
+  echo "$(createStackJson $update_stack_name $update_compose_file "$update_env_file")" > $HOME/${update_stack_name}-json.tmp
   usid_numTries=1
   usid_totalTries=5
   usid_retVal=1
   while [ $usid_numTries -le $usid_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$update_stack_id endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/${update_stack_name}-json.tmp > /dev/null 2>&1
     usid_retVal=$?
     if [ $usid_retVal -eq 0 ]; then
       break
@@ -15146,7 +15152,7 @@ function restartAllStacksDialog()
   fi
   sudo -k
   refreshSudo
-  restartAllStacks
+  restartAllStacks "" false doNothing true
 }
 
 function restartAllStacks()
@@ -15155,17 +15161,21 @@ function restartAllStacks()
   set +e
   skipRestart="$1"
   isOnlyHSHQManaged="$2"
+  rasModFunction="$3"
+  isGetNetworksLock="$4"
   startStopStack uptimekuma stop
   rsi_numTries=1
   rsi_totalTries=5
   rsi_retVal=1
   rstackIDsQry=""
-  tgLock="$(tryGetLock networkchecks restartAllStacks)"
-  if ! [ "$tgLock" = "true" ]; then
-    checkRes="$(getLockOpenMsg networkchecks)"
-    strErr="restartAllStacks - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
-    logHSHQEvent warning "$strErr"
-    return
+  if [ "$isGetNetworksLock" = "true" ]; then
+    tgLock="$(tryGetLock networkchecks restartAllStacks)"
+    if ! [ "$tgLock" = "true" ]; then
+      checkRes="$(getLockOpenMsg networkchecks)"
+      strErr="restartAllStacks - Cannot obtain networkchecks lock: $checkRes. Please try again shortly, returning..."
+      logHSHQEvent warning "$strErr"
+      return 1
+    fi
   fi
   if [ -z "$PORTAINER_TOKEN" ]; then
     PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
@@ -15173,11 +15183,11 @@ function restartAllStacks()
   if [ $? -ne 0 ]; then
     echo "ERROR: Could not get Portainer auth token..." 1>&2
     releaseLock networkchecks restartAllStacks false
-    return
+    return 2
   fi
   while [ $rsi_numTries -le $rsi_totalTries ]
   do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN")
     rsi_retVal=$?
     if [ $rsi_retVal -eq 0 ]; then
       break
@@ -15187,8 +15197,13 @@ function restartAllStacks()
   if [ $rsi_retVal -ne 0 ]; then
     echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
     releaseLock networkchecks restartAllStacks false
-    return
+    return 3
   fi
+  # Need to use a temp resolver since Adguard goes down for a bit...
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 9.9.9.9
+EOFR
   rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
   rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]} - 1))
@@ -15202,10 +15217,19 @@ function restartAllStacks()
   sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
   docker container prune -f
   removeDockerNetworks
+  $rasModFunction
   echo "Restarting Docker..."
   sudo systemctl restart docker
   createDockerNetworks
   startPortainer
+  if [ $? -ne 0 ]; then
+    echo "There was an error restarting portainer. You will need to determine the problem and restart all of the stacks manually."
+    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+    sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+    exit 1
+  fi
   total_tries=10
   num_tries=1
   sleep 5
@@ -15222,6 +15246,10 @@ function restartAllStacks()
   if [ $retVal -ne 0 ]; then
     echo "Error getting portainer token, exiting..."
     releaseLock networkchecks restartAllStacks false
+    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+    sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
     exit 1
   fi
   for curID in $(seq 0 $numItems);
@@ -15241,9 +15269,26 @@ function restartAllStacks()
     echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
     startStopStackByID ${rstackIDs[$curID]} start
     sleep 3
+    if [ "${rstackNames[$curID]}" = "adguard" ]; then
+      waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
+      if [ $? -eq 0 ]; then
+        sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+        sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+      else
+        echo "WARNING: Adguard container not ready, you may experience some integration issues for a short period..."
+      fi
+    fi
   done
   startStopStack uptimekuma start
-  releaseLock networkchecks restartAllStacks false
+  if [ "$isGetNetworksLock" = "true" ]; then
+    releaseLock networkchecks restartAllStacks false
+  fi
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
   if ! [ -z "$ras_curE" ]; then
     set -e
   fi
@@ -15273,7 +15318,7 @@ function updateGlobalVarsEnvFile()
   sed -i '/^HSHQ_SSL_DIR=/d' $curEnv
   sed -i '/^HSHQ_STACKS_DIR=/d' $curEnv
   sed -i '/^HSHQ_WIREGUARD_DIR=/d' $curEnv
-  sed -i "s|^TZ=.*|TZ=\${TZ}|g" $curEnv
+  sed -i "s|^TZ=.*|TZ=\${PORTAINER_TZ}|g" $curEnv
 }
 
 function envToJson()
@@ -15296,7 +15341,7 @@ function envToJson()
   done
   jsonstring="${jsonstring%?}]"
   IFS=$OLDIFS
-  echo $jsonstring
+  echo "$jsonstring"
 }
 
 function extractStackToHome()
@@ -15578,7 +15623,7 @@ function checkFileShellExpansion()
 
 function createStackJson()
 {
-  echo "{\"Name\":\"$1\",""$( jq -Rscjr '{StackFileContent: . }' $2 | tail -c +2 | head -c -1 )"",\"Env\":"$(envToJson $3)"}"
+  echo "{\"Name\":\"$1\",""$( jq -Rscjr '{StackFileContent: . }' $2 | tail -c +2 | head -c -1 )"",\"Env\":$(envToJson $3)}"
 }
 
 function installStack()
@@ -15613,9 +15658,9 @@ function installStack()
   while [ $ins_numTries -le $ins_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $ins_numTries -eq $ins_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/$stack_name-json.tmp
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/$stack_name-json.tmp
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/$stack_name-json.tmp >/dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/$stack_name-json.tmp >/dev/null
     fi
     ins_retVal=$?
     if [ $ins_retVal -eq 0 ]; then
@@ -15679,9 +15724,9 @@ function startStopStackByID()
   while [ $sss_numTries -le $sss_totalTries ]
   do
     if [ "$IS_STACK_DEBUG" = "true" ] || [ $sss_numTries -eq $sss_totalTries ]; then
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN"
     else
-      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID/$startStop endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" > /dev/null
     fi
     sss_retVal=$?
     if [ $sss_retVal -eq 0 ]; then
@@ -15754,7 +15799,7 @@ function getStackStatusByID()
   stackStatus=""
   while [ $gss_numTries -le $gss_totalTries ]
   do
-    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
+    stackStatus=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN")
     gss_retVal=$?
     if [ $gss_retVal -eq 0 ]; then
       break
@@ -15794,7 +15839,7 @@ function deleteStack()
   ds_retVal=1
   while [ $ds_numTries -le $ds_totalTries ]
   do
-    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID > /dev/null
+    http --check-status --ignore-stdin --verify=no --timeout=300 DELETE https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$stackID endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" > /dev/null
     ds_retVal=$?
     if [ $ds_retVal -eq 0 ]; then
       break
@@ -16693,6 +16738,10 @@ function loadConfigVars()
   fixConfigV130
   set -e
   source $CONFIG_FILE
+  if [ -z "$IS_CONFIG_INIT" ]; then
+    echo "FATAL: Decrypted config file did not load properly"
+    exit 9
+  fi
   loadSvcVars
   if ! [ "$is_chk_update" = "false" ]; then
     checkUpdateVersion
@@ -18503,8 +18552,8 @@ rm -f \$RELAYSERVER_PF_REMOVE_DIR/pfRem-\${ID}.sh
 rm -f \$RELAYSERVER_PF_ADD_DIR/15-pfAdd-\${ID}.sh
 EOFCD
     chmod 500 $HOME/removePortForward.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/addPortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/removePortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/addPortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/removePortForward.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo mkdir -p $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/portforwarding; sudo chown root:root ~/addPortForward.sh; sudo chown root:root ~/removePortForward.sh; sudo mv ~/addPortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/addPortForward.sh; sudo mv ~/removePortForward.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/removePortForward.sh" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/addPortForward.sh
     rm -f $HOME/removePortForward.sh
@@ -20765,6 +20814,18 @@ function checkUpdateVersion()
     HSHQ_VERSION=183
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 188 ]; then
+    echo "Updating to Version 188..."
+    version188Update
+    HSHQ_VERSION=188
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
+  if [ $HSHQ_VERSION -lt 189 ]; then
+    echo "Updating to Version 189..."
+    version189Update
+    HSHQ_VERSION=189
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20818,7 +20879,7 @@ function promptTestRelayServerPassword()
 
 function testRelayServerPassword()
 {
-  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo -S -v" -f -i "$USER_RELAY_SUDO_PW" > /dev/null 2>&1
+  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo -S -v" -i "$USER_RELAY_SUDO_PW" -r 3 -b 3 > /dev/null 2>&1
   retVal=$?
   return $retVal
 }
@@ -20872,8 +20933,8 @@ function version22Update()
   mailuStackID=$(getStackID mailu)
   cdnsStackID=$(getStackID clientdns-${cdns_stack_name})
 
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID | jq -r '.[] | select(.Status == 1) | .Name'))
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN" | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]}-1))
 
   for curID in $(seq 0 $numItems);
@@ -20970,10 +21031,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
 
   resolver:
     image: $IMG_MAILU_UNBOUND
@@ -21022,8 +21083,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/data:/data
-      - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/dkim:/dkim
 
   imap:
     image: $IMG_MAILU_IMAP
@@ -21043,8 +21104,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mail:/mail
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/mail:/mail
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
 
   smtp:
     image: $IMG_MAILU_SMTP
@@ -21064,11 +21125,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
 
   oletools:
     image: $IMG_MAILU_OLETOOLS
@@ -21106,8 +21167,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd:/etc/rspamd/override.d
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/rspamd:/etc/rspamd/override.d
 
 $is_antivirus_commented_out  antivirus:
 $is_antivirus_commented_out    image: $IMG_MAILU_ANTIVIRUS
@@ -21122,7 +21183,7 @@ $is_antivirus_commented_out      - dock-proxy-net
 $is_antivirus_commented_out    volumes:
 $is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
 $is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
-$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
+$is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/filter:/data
 
   webdav:
     image: $IMG_MAILU_WEBDAV
@@ -21136,7 +21197,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/dav:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/dav:/data
 
   fetchmail:
     image: $IMG_MAILU_FETCHMAIL
@@ -21150,7 +21211,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
 
   webmail:
     image: $IMG_MAILU_WEBMAIL
@@ -21166,8 +21227,8 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/filter:/data
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/webmail:/data
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
 
 volumes:
   v-mailu-redis:
@@ -21175,7 +21236,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/mailu/redis
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -21197,7 +21258,7 @@ EOFMC
   sed -i "s|^SUBNET=.*|SUBNET=${NET_MAILU_EXT_SUBNET}|g" $HOME/mailu.env
   sed -i "s|^SUBNET_PREFIX=.*|SUBNET_PREFIX=${NET_MAILU_EXT_SUBNET_PREFIX}|g" $HOME/mailu.env
   echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/mailu-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/mailu.env)}" > $HOME/mailu-json.tmp
-  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/mailu-json.tmp > /dev/null 2>&1
+  http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$mailuStackID endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/mailu-json.tmp > /dev/null 2>&1
   rm $HOME/mailu-compose.yml $HOME/mailu.env $HOME/mailu-json.tmp
 
   if ! [ -z "$cdnsStackID" ]; then
@@ -21220,7 +21281,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/dnsmasq.conf:/etc/dnsmasq.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/dnsmasq.conf:/etc/dnsmasq.conf
     environment:
       - HTTP_USER=$CLIENTDNS_USER1_ADMIN_USERNAME
       - HTTP_PASS=$CLIENTDNS_USER1_ADMIN_PASSWORD
@@ -21241,8 +21302,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/Corefile:/config/coredns/Corefile:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf:/config/wg0.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/Corefile:/config/coredns/Corefile:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf:/config/wg0.conf
 
 networks:
   dock-proxy-net:
@@ -21271,7 +21332,7 @@ EOFCF
     updateGlobalVarsEnvFile $HOME/clientdns-${cdns_stack_name}.env
     sed -i "s|^CLIENTDNS_SUBNET_PREFIX=.*|CLIENTDNS_SUBNET_PREFIX=${clientdns_subnet_prefix}|g" $HOME/clientdns-${cdns_stack_name}.env
     echo "{$( jq -Rscjr '{StackFileContent: . }' $HOME/clientdns-${cdns_stack_name}-compose.yml | tail -c +2 | head -c -1 ),\"Env\":$(envToJson $HOME/clientdns-${cdns_stack_name}.env)}" > $HOME/clientdns-${cdns_stack_name}-json.tmp
-    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/$cdnsStackID endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/clientdns-${cdns_stack_name}-json.tmp > /dev/null 2>&1
     rm $HOME/clientdns-${cdns_stack_name}-compose.yml $HOME/clientdns-${cdns_stack_name}.env $HOME/clientdns-${cdns_stack_name}-json.tmp
   fi
 
@@ -21318,7 +21379,7 @@ EOFCF
     num_tries=1
     while [ $num_tries -lt $total_tries ]
     do
-      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
+      http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/${rstackIDs[$curID]} endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" @$HOME/${rstackIDs[$curID]}-json.tmp > /dev/null
       if [ $? -eq 0 ]; then
         break
       else
@@ -22023,9 +22084,9 @@ EOFSC
 
 EOFSC
     chmod 744 $HOME/clearDockerUserIPTables.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/88-hshq.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/10-setupDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/clearDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/88-hshq.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/10-setupDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/clearDockerUserIPTables.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/88-hshq.conf; sudo chown root:root ~/10-setupDockerUserIPTables.sh; sudo chown root:root ~/clearDockerUserIPTables.sh; sudo mv ~/88-hshq.conf /etc/sysctl.d/88-hshq.conf; sudo mv ~/10-setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; sudo rm -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh; sudo mv ~/clearDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/root/clearDockerUserIPTables.sh; sudo apt-mark hold docker-ce; sudo apt-mark hold docker-ce-cli; sudo reboot" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/88-hshq.conf
     rm -f $HOME/10-setupDockerUserIPTables.sh
@@ -22083,7 +22144,7 @@ chmod 744 $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/*.sh
 run-parts --regex '.*sh\$' $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts
 EOFBS
     chmod 744 $HOME/onBootRoot.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/onBootRoot.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/onBootRoot.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/onBootRoot.sh; sudo mv ~/onBootRoot.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/onBootRoot.sh; if [ -f $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh ]; then sudo mv $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/setupDockerUserIPTables.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/boot/bootscripts/10-setupDockerUserIPTables.sh; fi; sleep 5; sudo reboot" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/onBootRoot.sh
     sed -i "s/setupDockerUserIPTables.sh/10-setupDockerUserIPTables.sh/g" $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME
@@ -22173,7 +22234,7 @@ group "policies" {
 
 EOFHC
     chmod 644 $HOME/groups.conf
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/groups.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/groups.conf -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/groups.conf; sudo mv ~/groups.conf $RELAYSERVER_HSHQ_STACKS_DIR/mail-relay/rspamd/conf/groups.conf; docker container restart mail-relay-rspamd > /dev/null 2>&1" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/groups.conf
   fi
@@ -22265,7 +22326,7 @@ docker container start caddy
 
 EOFCD
     chmod 500 $HOME/resetCaddyContainer.sh
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/resetCaddyContainer.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/resetCaddyContainer.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo chown root:root ~/resetCaddyContainer.sh; sudo mv ~/resetCaddyContainer.sh $RELAYSERVER_HSHQ_SCRIPTS_DIR/userasroot/resetCaddyContainer.sh" -f -i "$USER_RELAY_SUDO_PW"
     rm -f $HOME/resetCaddyContainer.sh
   fi
@@ -22488,9 +22549,9 @@ EOFWZ
 $WAZUH_MANAGER_AUTH_PASSWORD
 EOFWZ
     chmod 640 $HOME/authd.pass
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/authd.pass -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
-    rm -f $HOME/rsUpdateScript.sh
-    cat <<EOFLO > $HOME/rsUpdateScript.sh
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/authd.pass -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+    rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+    cat <<EOFLO > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
 
 function main()
@@ -22504,7 +22565,7 @@ function main()
 }
 main "\$@"
 EOFLO
-    updateRelayServerWithScript
+    updateRelayServerWithScript false
     rm -f $HOME/authd.pass
   fi
   set -e
@@ -22640,8 +22701,8 @@ function version120Update()
   echo "Defaults logfile=/var/log/sudo.log" | sudo tee -a /etc/sudoers >/dev/null
   echo "@includedir /etc/sudoers.d" | sudo tee -a /etc/sudoers >/dev/null
   fixNetplanBackport
-  rm -f $HOME/rsUpdateScript.sh
-  cat <<EOFLO > $HOME/rsUpdateScript.sh
+  rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+  cat <<EOFLO > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
 
 set +e
@@ -22675,15 +22736,15 @@ EOFLR
 }
 main "\$@"
 EOFLO
-  updateRelayServerWithScript
+  updateRelayServerWithScript false
 }
 
 function version121Update()
 {
   set +e
   createHSHQLog
-  rm -f $HOME/rsUpdateScript.sh
-  cat <<EOFRS > $HOME/rsUpdateScript.sh
+  rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+  cat <<EOFRS > $HOME/$RS_UPDATE_SCRIPT_NAME
 function main()
 {
   read -r -s -p "" rspw
@@ -22932,7 +22993,7 @@ function isIPInSubnet()
 
 main "\$@"
 EOFRS
-  updateRelayServerWithScript
+  updateRelayServerWithScript false
   echo "Installing yq..."
   performAptInstall yq
   echo "Installing wireless-tools..."
@@ -23180,8 +23241,8 @@ function version171Update()
 {
   # Fixes the annoying excess space at the bottom of Firefox browser windows in Heimdall
   sed -i '/\.sidenav ul {/{:a;N;/}/!ba;s/\.sidenav ul {.*}/\.sidenav ul {\n  list-style: none;\n  margin: 0;\n  padding: 20px;\n  overflow-y: auto;\n}/g}' $HSHQ_STACKS_DIR/heimdall/html/public/css/app.css
-  rm -f $HOME/rsUpdateScript.sh
-  cat <<EOFRS > $HOME/rsUpdateScript.sh
+  rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+  cat <<EOFRS > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
 
 RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
@@ -23223,7 +23284,7 @@ EOFCS
 
 main "\$@"
 EOFRS
-  updateRelayServerWithScript
+  updateRelayServerWithScript false
 }
 
 function version177Update()
@@ -23252,28 +23313,691 @@ function version183Update()
   outputMaintenanceScripts
 }
 
+function version188Update()
+{
+  echo "========================================================================"
+  echo "  Halting all stacks and upgrading Docker and Portainer."
+  echo "  This may take a few minutes, so please be patient."
+  echo "========================================================================"
+  sleep 5
+  fixPortainerAndUpgradeDockerV188
+  outputMaintenanceScripts
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+}
+
+function version189Update()
+{
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "========================================================================"
+    echo "  Performing updates on RelayServer."
+    echo "  This may take a few minutes, so please be patient."
+    echo "========================================================================"
+    sleep 5
+    rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+    cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
+#!/bin/bash
+
+function main()
+{
+  read -r -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  relayServerFixPortainerAndUpgradeDockerV188
+  if [ \$? -ne 0 ]; then
+    return 1
+  fi
+  sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
+  rm -f ~/$RS_UPDATE_SCRIPT_NAME
+  rm -f ~/$RS_UPDATE_UTILS_SCRIPT_NAME
+}
+
+function relayServerFixPortainerAndUpgradeDockerV188()
+{
+  set +e
+  rsi_numTries=1
+  rsi_totalTries=5
+  rsi_retVal=1
+  rstackIDsQry=""
+  source ~/$RS_UPDATE_UTILS_SCRIPT_NAME
+  pullImage mirror.gcr.io/caddy:2.10.0
+  pullImage mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
+  pullImage mirror.gcr.io/adguard/adguardhome:v0.107.64
+  setPortainerToken
+  while [ \$rsi_numTries -le \$rsi_totalTries ]
+  do
+    rstackIDsQry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":1} "Authorization: Bearer \$PORTAINER_TOKEN")
+    rsi_retVal=\$?
+    if [ \$rsi_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsi_numTries++))
+  done
+  if [ \$rsi_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    return 3
+  fi
+  # Need to use a temp resolver since Adguard goes down for a bit...
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFRC
+nameserver 9.9.9.9
+EOFRC
+  rstackIDs=(\$(echo \$rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=(\$(echo \$rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=\$((\${#rstackIDs[@]} - 1))
+  for curID in \$(seq 0 \$numItems);
+  do
+    echo "Stopping \${rstackNames[\$curID]} (\${rstackIDs[\$curID]})..."
+    startStopStackByID \${rstackIDs[\$curID]} stop
+    if [ "\${rstackNames[\$curID]}" = "adguard" ]; then
+      adguardStackID=\${rstackIDs[\$curID]}
+    fi
+    sleep 1
+  done
+  docker compose -f $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml down
+  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
+  docker container prune -f
+  echo "Replacing portainer env vars..."
+  # Retain all env vars
+  fixvars=(\$(cat $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env | cut -d"=" -f1))
+  for curVar in "\${fixvars[@]}"
+  do
+    if ! [ "\${curVar:0:10}" = "PORTAINER_" ]; then
+      sudo find $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\\\$\$curVar/\\\$PORTAINER_\$curVar/g" {} \;
+      sudo find $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\\\${\$curVar}/\\\${PORTAINER_\$curVar}/g" {} \;
+    fi
+  done
+  set +e
+  upgradeDocker
+  echo "Restarting Docker..."
+  sudo systemctl restart docker
+  cat <<EOFPC > $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
+PORTAINER_RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_DATA_DIR
+PORTAINER_RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_NONBACKUP_DIR
+PORTAINER_RELAYSERVER_HSHQ_SCRIPTS_DIR=$RELAYSERVER_HSHQ_SCRIPTS_DIR
+PORTAINER_RELAYSERVER_HSHQ_SECRETS_DIR=$RELAYSERVER_HSHQ_SECRETS_DIR
+PORTAINER_RELAYSERVER_HSHQ_STACKS_DIR=$RELAYSERVER_HSHQ_STACKS_DIR
+PORTAINER_RELAYSERVER_HSHQ_SSL_DIR=$RELAYSERVER_HSHQ_SSL_DIR
+PORTAINER_TZ=$TZ
+PORTAINER_UID=\$USERID
+PORTAINER_GID=\$GROUPID
+EOFPC
+  sed -i "s/\/run\/secrets\/portainer/\/run\/portainer\/portainer/g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.1-alpine/" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} portainer v4/" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  docker compose -f $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml up -d
+  sleep 10
+  total_tries=10
+  num_tries=1
+  sleep 5
+  setPortainerToken
+  if ! [ -z "\$adguardStackID" ]; then
+    echo "Starting adguard (\$adguardStackID)..."
+    sudo cp $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\$adguardStackID/docker-compose.yml ~/adguard-compose.yml
+    sudo cp $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\$adguardStackID/stack.env ~/adguard.env
+    sudo chown $RELAYSERVER_REMOTE_USERNAME:$RELAYSERVER_REMOTE_USERNAME ~/adguard-compose.yml
+    sudo chown $RELAYSERVER_REMOTE_USERNAME:$RELAYSERVER_REMOTE_USERNAME ~/adguard.env
+    sed -i "s/image:.*adguard.*/image: mirror.gcr.io\/adguard\/adguardhome:v0.107.64/" ~/adguard-compose.yml
+    sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} adguard v7/" ~/adguard-compose.yml
+    for curVar in "\${fixvars[@]}"
+    do
+      if ! [ "\${curVar:0:10}" = "PORTAINER_" ]; then
+        sed -i "s/\\\$\$curVar/\\\$PORTAINER_\$curVar/g" ~/adguard-compose.yml
+        sed -i "s/\\\${\$curVar}/\\\${PORTAINER_\$curVar}/g" ~/adguard-compose.yml
+        sed -i "s/\\\$\$curVar/\\\$PORTAINER_\$curVar/g" ~/adguard.env
+        sed -i "s/\\\${\$curVar}/\\\${PORTAINER_\$curVar}/g" ~/adguard.env
+      fi
+    done
+    updateStackByID adguard \$adguardStackID ~/adguard-compose.yml ~/adguard.env
+    sleep 3
+    waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
+    if [ \$? -eq 0 ]; then
+      sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+      sudo tee /etc/resolv.conf >/dev/null <<EOFRC
+nameserver 127.0.0.1
+EOFRC
+    else
+      echo "ERROR: The adguard container did not start correctly..."
+    fi
+  fi
+  for curID in \$(seq 0 \$numItems);
+  do
+    if [ "\${rstackNames[\$curID]}" = "adguard" ]; then
+      continue
+    fi
+    echo "Starting \${rstackNames[\$curID]} (\${rstackIDs[\$curID]})..."
+    if ! sudo test -f $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\${rstackIDs[\$curID]}/stack.env; then
+      echo "TZ=\\\${TZ}" | sudo tee $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\${rstackIDs[\$curID]}/stack.env > /dev/null 2>&1
+    fi
+    sudo cp $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\${rstackIDs[\$curID]}/docker-compose.yml ~/\${rstackNames[\$curID]}-compose.yml
+    sudo cp $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\${rstackIDs[\$curID]}/stack.env ~/\${rstackNames[\$curID]}.env
+    sudo chown $RELAYSERVER_REMOTE_USERNAME:$RELAYSERVER_REMOTE_USERNAME ~/\${rstackNames[\$curID]}-compose.yml
+    sudo chown $RELAYSERVER_REMOTE_USERNAME:$RELAYSERVER_REMOTE_USERNAME ~/\${rstackNames[\$curID]}.env
+    for curVar in "\${fixvars[@]}"
+    do
+      if ! [ "\${curVar:0:10}" = "PORTAINER_" ]; then
+        sed -i "s/\\\$\$curVar/\\\$PORTAINER_\$curVar/g" ~/\${rstackNames[\$curID]}-compose.yml
+        sed -i "s/\\\${\$curVar}/\\\${PORTAINER_\$curVar}/g" ~/\${rstackNames[\$curID]}-compose.yml
+        sed -i "s/\\\$\$curVar/\\\$PORTAINER_\$curVar/g" ~/\${rstackNames[\$curID]}.env
+        sed -i "s/\\\${\$curVar}/\\\${PORTAINER_\$curVar}/g" ~/\${rstackNames[\$curID]}.env
+      fi
+    done
+    if [ "\${rstackNames[\$curID]}" = "caddy" ]; then
+      sed -i "s/image:.*caddy.*/image: mirror.gcr.io\/caddy:2.10.0/" ~/\${rstackNames[\$curID]}-compose.yml
+      sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} caddy-rs v5/" ~/\${rstackNames[\$curID]}-compose.yml
+    fi
+    updateStackByID \${rstackNames[\$curID]} \${rstackIDs[\$curID]} ~/\${rstackNames[\$curID]}-compose.yml ~/\${rstackNames[\$curID]}.env
+    sleep 3
+  done
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFRC
+nameserver 127.0.0.1
+EOFRC
+}
+main
+EOFUR
+    updateRelayServerWithScript true
+    if [ $? -ne 0 ]; then
+      echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
+      exit
+    fi
+  fi
+}
+
+function fixPortainerAndUpgradeDockerV188()
+{
+  set +e
+  startStopStack uptimekuma stop
+  rsi_numTries=1
+  rsi_totalTries=5
+  rsi_retVal=1
+  rstackIDsQry=""
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not get Portainer auth token..." 1>&2
+    releaseLock networkchecks restartAllStacks false
+    return 2
+  fi
+  while [ $rsi_numTries -le $rsi_totalTries ]
+  do
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN")
+    rsi_retVal=$?
+    if [ $rsi_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsi_numTries++))
+  done
+  if [ $rsi_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    releaseLock networkchecks restartAllStacks false
+    return 3
+  fi
+  # Need to use a temp resolver since Adguard goes down for a bit...
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 9.9.9.9
+EOFR
+  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]} - 1))
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} stop
+    sleep 1
+  done
+  stopPortainer
+  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
+  docker container prune -f
+  removeDockerNetworks
+  echo "Replacing portainer env vars..."
+  # Retain all env vars
+  fixvars=($(cat $HSHQ_STACKS_DIR/portainer/portainer.env | cut -d"=" -f1))
+  for curVar in "${fixvars[@]}"
+  do
+    if ! [ "${curVar:0:10}" = "PORTAINER_" ]; then
+      sudo find $HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" {} \;
+      sudo find $HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" {} \;
+    fi
+  done
+  upgradeDocker
+  echo "Restarting Docker..."
+  sudo systemctl restart docker
+  createDockerNetworks
+  outputEnvPortainer
+  sed -i "s/\/run\/secrets\/portainer/\/run\/portainer\/portainer/g" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.1-alpine/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} portainer v4/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  startPortainer
+  if [ $? -ne 0 ]; then
+    echo "There was an error restarting portainer. You will need to determine the problem and restart all of the stacks manually."
+    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+    sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+    exit 1
+  fi
+  total_tries=10
+  num_tries=1
+  sleep 5
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  retVal=$?
+  while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
+  do
+    echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
+    sleep 5
+    ((num_tries++))
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    retVal=$?
+  done
+  if [ $retVal -ne 0 ]; then
+    echo "Error getting portainer token, exiting..."
+    releaseLock networkchecks restartAllStacks false
+    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+    sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+    exit 1
+  fi
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/docker-compose.yml $HOME/${rstackNames[$curID]}-compose.yml
+    sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env $HOME/${rstackNames[$curID]}.env
+    sudo chown $USERNAME:$USERNAME $HOME/${rstackNames[$curID]}-compose.yml
+    sudo chown $USERNAME:$USERNAME $HOME/${rstackNames[$curID]}.env
+    for curVar in "${fixvars[@]}"
+    do
+      if ! [ "${curVar:0:10}" = "PORTAINER_" ]; then
+        sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" $HOME/${rstackNames[$curID]}-compose.yml
+        sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" $HOME/${rstackNames[$curID]}-compose.yml
+        sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" $HOME/${rstackNames[$curID]}.env
+        sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" $HOME/${rstackNames[$curID]}.env
+      fi
+    done
+    updateStackByID ${rstackNames[$curID]} ${rstackIDs[$curID]} $HOME/${rstackNames[$curID]}-compose.yml $HOME/${rstackNames[$curID]}.env
+    sleep 3
+    if [ "${rstackNames[$curID]}" = "adguard" ]; then
+      waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
+      if [ $? -eq 0 ]; then
+        sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+        sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+      else
+        echo "WARNING: Adguard container not ready, you may experience some integration issues for a short period..."
+      fi
+    fi
+  done
+  uptimekumaStackID=$(getStackID uptimekuma)
+  extractStackToHome uptimekuma $uptimekumaStackID
+  updateStackByID uptimekuma $uptimekumaStackID $HOME/uptimekuma-compose.yml $HOME/uptimekuma.env
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+}
+
 function updateRelayServerWithScript()
 {
+  isUploadUtils="$1"
   # This function assumes that a script file
-  # called $HOME/rsUpdateScript.sh has already
+  # called $HOME/$RS_UPDATE_SCRIPT_NAME has already
   # been created before executing this function.
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    chmod 500 $HOME/rsUpdateScript.sh
+    chmod 500 $HOME/$RS_UPDATE_SCRIPT_NAME
     set +e
     promptTestRelayServerPassword
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/rsUpdateScript.sh -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~/" -f
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "rm -f ~/$RS_UPDATE_UTILS_SCRIPT_NAME;rm -f ~/$RS_UPDATE_SCRIPT_NAME" -f -i "$USER_RELAY_SUDO_PW" -r 1 -b 1
     rsRet=$?
     if [ $rsRet -ne 0 ]; then
+      rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+      rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
       return $rsRet
     fi
-    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "bash ~/rsUpdateScript.sh;rm -f ~/rsUpdateScript.sh" -f -i "$USER_RELAY_SUDO_PW"
+    if [ "$isUploadUtils" = "true" ]; then
+      outputRSUtilsScript
+      perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
+      rsRet=$?
+      if [ $rsRet -ne 0 ]; then
+        rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+        rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+        return $rsRet
+      fi
+    fi
+    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HOME/$RS_UPDATE_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":~" -f
     rsRet=$?
     if [ $rsRet -ne 0 ]; then
+      rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+      rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+      return $rsRet
+    fi
+    perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "bash ~/$RS_UPDATE_SCRIPT_NAME" -f -i "$USER_RELAY_SUDO_PW" -r 1 -b 1
+    rsRet=$?
+    if [ $rsRet -ne 0 ]; then
+      rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+      rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
       return $rsRet
     fi
   fi
   set +e
-  rm -f $HOME/rsUpdateScript.sh
+  rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+  rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+}
+
+function outputRSUtilsScript()
+{
+  rm -f $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+  cat <<EOFRS > $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+#!/bin/bash
+
+function init()
+{
+  USERID=\$(id -u)
+  GROUPID=\$(id -g)
+  loadVersionVars
+}
+
+function setPortainerToken()
+{
+  cur_timeout=5
+  ptok_retVal=1
+  ptok_numTries=1
+  while [ \$ptok_numTries -le 5 ]
+  do
+    ptok_full=\$(http --check-status --ignore-stdin --timeout=\$cur_timeout --verify=no https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/auth username=$RELAYSERVER_PORTAINER_ADMIN_USERNAME password=$RELAYSERVER_PORTAINER_ADMIN_PASSWORD)
+    ptok_retVal=\$?
+    if [ \$ptok_retVal -eq 0 ] && ! [ -z "\$ptok_full" ]; then
+      # Do a sample query
+      PORTAINER_TOKEN=\$(echo \$ptok_full | jq -r .jwt)
+      qry=\$(http --check-status --ignore-stdin --verify=no --timeout=\$cur_timeout --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":1} "Authorization: Bearer \$PORTAINER_TOKEN")
+      if [ \$? -eq 0 ]; then
+        break
+      fi
+      ptok_retVal=1
+    fi
+    echo "Could not obtain Portainer token (\$ptok_numTries of 5), retrying in 5 seconds..." 1>&2
+    sleep 5
+    ((ptok_numTries++))
+  done
+}
+
+function createStackJson()
+{
+  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":\$(envToJson \$3)}"
+}
+
+function envToJson()
+{
+  if [ -z "\$1" ]; then
+    echo "[]"
+    return
+  fi
+  OLDIFS=\$IFS
+  IFS=\$(echo -en "\n\b")
+  lines="\$(cat \$1)"
+  jsonstring="["
+  for line in \$lines
+  do
+    key="\$(sed 's/=.*//' <<< "\$line")"
+    value="\$(sed 's/^[^=]*=//' <<< "\$line")"
+    value="\$(echo \$value | sed 's/\"/\\\\\"/g')"
+    jsonstring="\$jsonstring{\"name\":\"\$key\",\"value\":\"\$value\"},"
+  done
+  jsonstring="\${jsonstring%?}]"
+  IFS=\$OLDIFS
+  echo "\$jsonstring"
+}
+
+function getStackID()
+{
+  stackID="NA"
+  stackName=\$1
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":1} "Authorization: Bearer \$PORTAINER_TOKEN")
+  for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
+    _jq()
+    {
+      echo \${row} | base64 --decode | jq -r \${1}
+    }
+    if [ "\$(_jq '.Name')" = "\$stackName" ]; then
+      stackID=\$(_jq '.Id')
+      break
+    fi
+  done
+  if ! [ "\$stackID" = "NA" ]; then
+    echo \$stackID
+  fi
+}
+
+function startStopStack()
+{
+  stackName=\$1
+  startStop=\$2
+  stackID=\$(getStackID \$stackName)
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==1 "Authorization: Bearer \$PORTAINER_TOKEN" > /dev/null
+}
+
+function startStopStackByID()
+{
+  stackID=\$1
+  startStop=\$2
+  set +e
+  sss_numTries=1
+  sss_totalTries=5
+  sss_retVal=1
+  while [ \$sss_numTries -le \$sss_totalTries ]
+  do
+    if [ \$sss_numTries -eq \$sss_totalTries ]; then
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==1 "Authorization: Bearer \$PORTAINER_TOKEN"
+    else
+      http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==1 "Authorization: Bearer \$PORTAINER_TOKEN" > /dev/null
+    fi
+    sss_retVal=\$?
+    if [ \$sss_retVal -eq 0 ]; then
+      break
+    fi
+    sleep 1
+    sudo docker container prune -f
+    sleep 1
+    ((sss_numTries++))
+  done
+  if [ \$sss_retVal -ne 0 ]; then
+    echo "ERROR: Could not $startStop stack (ID=$stackID) in Portainer..." 1>&2
+    return \$sss_retVal
+  fi
+}
+
+function createStackJson()
+{
+  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":\$(envToJson \$3)}"
+}
+
+function updateStackByID()
+{
+  update_stack_name=\$1
+  update_stack_id=\$2
+  update_compose_file=\$3
+  update_env_file=\$4
+  echo "\$(createStackJson \$update_stack_name \$update_compose_file "\$update_env_file")" > \$HOME/\${update_stack_name}-json.tmp
+  usid_numTries=1
+  usid_totalTries=5
+  usid_retVal=1
+  while [ \$usid_numTries -le \$usid_totalTries ]
+  do
+    http --check-status --ignore-stdin --verify=no --timeout=300 PUT https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$update_stack_id endpointId==1 "Authorization: Bearer \$PORTAINER_TOKEN" @\$HOME/\${update_stack_name}-json.tmp > /dev/null 2>&1
+    usid_retVal=\$?
+    if [ \$usid_retVal -eq 0 ]; then
+      break
+    fi
+    ((usid_numTries++))
+  done
+  if [ \$usid_retVal -ne 0 ]; then
+    echo "ERROR: Could not update stack in Portainer..." 1>&2
+    return
+  fi
+  rm -f \$update_compose_file \$update_env_file \$HOME/\${update_stack_name}-json.tmp
+}
+
+function installStack()
+{
+  stack_name=\$1
+  container_name=\$2
+  stack_search_string=\$3
+  envfile=\$4
+  installLogNotify "Installing Stack (\$stack_name)"
+  sudo -v
+  echo
+  echo "Creating stack: \$stack_name"
+  echo "\$(createStackJson \$stack_name \$HOME/\$stack_name-compose.yml "\$envfile")" > \$HOME/\$stack_name-json.tmp
+  http --check-status --ignore-stdin --verify=no --timeout=300 https://127.0.0.1:$RELAYSERVER_PORTAINER_LOCAL_HTTPS_PORT/api/stacks/create/standalone/string endpointId==1 "Authorization: Bearer \$PORTAINER_TOKEN" @\$HOME/\$stack_name-json.tmp > /dev/null
+  search=\$stack_search_string
+  isFound=false
+  i=0
+  set +e
+  while [ \$i -le 300 ]
+  do
+    findtext=\$(docker logs \$container_name 2>&1 | grep "\$search")
+    if ! [ -z "\$findtext" ]; then
+      isFound=true
+      break
+    fi
+    echo "Container not ready, sleeping 1 second, total wait=\$i seconds..."
+    sleep 1
+    i=\$((i+1))
+  done
+  if ! [ "\$isFound" = "true" ]; then
+    echo "\$stack_name did not start up correctly..."
+  fi
+  sleep 5
+  echo
+  rm -f \$HOME/\$stack_name-json.tmp
+  rm -f \$HOME/\$stack_name-compose.yml
+  rm -f \$envfile
+}
+
+function waitForContainerLogString()
+{
+  container_name="\$1"
+  sleep_interval="\$2"
+  max_checks="\$3"
+  search_string="\$4"
+  isFound=false
+  curCheckIter=0
+  totalWait=0
+  set +e
+  echo "Checking container log (\$container_name)..."
+  while [ \$curCheckIter -le \$max_checks ]
+  do
+    findtext=\$(docker logs \$container_name 2>&1 | grep "\$search_string")
+    if ! [ -z "\$findtext" ]; then
+      isFound=true
+      break
+    fi
+    echo "Container not ready, sleeping \$sleep_interval seconds, total wait=\$totalWait seconds..."
+    sleep \$sleep_interval
+    totalWait=\$((\$totalWait+\$sleep_interval))
+  done
+  if ! [ "\$isFound" = "true" ]; then
+    echo "String not found within alotted time for container \$container_name: \$search_string"
+    return 1
+  fi
+}
+
+function pullImage()
+{
+  img_and_version=\$1
+  echo "Pulling Image: \$img_and_version"
+  is_success=1
+  num_tries=1
+  set +e
+  while [ \$is_success -ne 0 ] && [ \$num_tries -lt $MAX_DOCKER_PULL_TRIES ]
+  do
+    # Refresh the sudo timestamp
+    sudo -v
+    docker pull \$img_and_version
+    docker image inspect \$img_and_version > /dev/null 2>&1
+    is_success=\$?
+    ((num_tries++))
+  done
+  if [ \$is_success -ne 0 ]; then
+    echo "Error pulling docker image: \$img_and_version"
+    return 5
+  fi
+}
+
+function performAptInstall()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' \$1
+}
+
+function loadVersionVars()
+{
+  DISTRO_ID=\$(cat /etc/*-release | grep "^ID=" | cut -d"=" -f2 | xargs | tr '[:upper:]' '[:lower:]')
+  DISTRO_NAME=\$(cat /etc/*-release | grep "^NAME=" | cut -d"=" -f2 | xargs)
+  DISTRO_VERSION=\$(cat /etc/*-release | grep "^VERSION=" | cut -d"=" -f2 | xargs)
+}
+
+function upgradeDocker()
+{
+  echo "Upgrading docker, please wait..."
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null
+  sudo apt-mark unhold docker-ce
+  sudo apt-mark unhold docker-ce-cli
+  case "\$DISTRO_ID" in
+  "ubuntu")
+    if [[ "\$DISTRO_VERSION" =~ ^22\.04. ]]; then
+      upgradeDockerUbuntu2204
+    elif [[ "\$DISTRO_VERSION" =~ ^24\.04. ]]; then
+      upgradeDockerUbuntu2404
+    else
+      echo "Linux version not found when upgrading Docker, exiting..."
+    fi
+    ;;
+  "debian")
+    if [[ "\$DISTRO_VERSION" =~ ^12. ]]; then
+      upgradeDockerDebian12
+    else
+      echo "Linux version not found when upgrading Docker, exiting..."
+    fi
+    ;;
+  "linuxmint")
+    if [[ "\$DISTRO_VERSION" =~ ^22. ]]; then
+      upgradeDockerUbuntu2404
+    elif [[ "\$DISTRO_VERSION" =~ ^6. ]]; then
+      upgradeDockerDebian12
+    else
+      echo "Linux version not found when upgrading Docker, exiting..."
+    fi
+    ;;
+  *)
+    ;;
+  esac
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+  echo "Docker succesfully upgraded!"
+}
+
+function upgradeDockerUbuntu2204()
+{
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+}
+
+function upgradeDockerUbuntu2404()
+{
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+}
+
+function upgradeDockerDebian12()
+{
+  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+}
+
+init
+EOFRS
+  chmod 500 $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
 }
 
 function addBindIPCaddy()
@@ -23553,7 +24277,7 @@ function fixMailuNetworkNames()
 
 function mfFixCACertPath()
 {
-  sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
+  sed -i "s/\/usr\/local\/share\/ca-certificates\/${CERTS_ROOT_CA_NAME}.crt/\${PORTAINER_HSHQ_SSL_DIR}\/${CERTS_ROOT_CA_NAME}.crt/g" $HOME/${updateStackName}-compose.yml
 }
 
 function sendRSExposeScripts()
@@ -24316,7 +25040,7 @@ function setVersionOnStacks()
     strSetVersionReport="${strSetVersionReport}\n $curStack stack version not found. All images from this stack:\n$(sudo grep image: $curCompose)"
   done
   # Special case for Caddy
-  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer $PORTAINER_TOKEN" endpointId==$PORTAINER_ENDPOINT_ID)
+  qry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN")
   caddy_stack_ids=($(echo $qry | jq '.[] | select (.Name | startswith("caddy-")) | .Id'))
   caddy_stack_names=($(echo $qry | jq -r '.[] | select (.Name | startswith("caddy-")) | .Name'))
   i=-1
@@ -25414,7 +26138,7 @@ function startStopStack()
     PORTAINER_TOKEN="\$(getPortainerToken)"
   fi
   stackID=\$(getStackID \$stackname)
-  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID > /dev/null
+  http --check-status --ignore-stdin --verify=no --timeout=300 POST https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks/\$stackID/\$startStop endpointId==\$PORTAINER_ENDPOINT_ID "Authorization: Bearer \$PORTAINER_TOKEN" > /dev/null
 }
 
 function getPortainerToken()
@@ -25430,7 +26154,7 @@ function getStackID()
   if [ -z "\$PORTAINER_TOKEN" ]; then
     PORTAINER_TOKEN="\$(getPortainerToken)"
   fi
-  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID)
+  qry=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":\$PORTAINER_ENDPOINT_ID} "Authorization: Bearer \$PORTAINER_TOKEN")
   for row in \$(echo "\${qry}" | jq -r '.[] | @base64'); do
     _jq()
     {
@@ -27216,6 +27940,49 @@ function installDocker()
   sudo systemctl restart docker
 }
 
+function upgradeDocker()
+{
+  echo "Upgrading docker, please wait..."
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null
+  sudo apt-mark unhold docker-ce
+  sudo apt-mark unhold docker-ce-cli
+  case "$DISTRO_ID" in
+  "ubuntu")
+    if [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
+      upgradeDockerUbuntu2204
+    elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+      upgradeDockerUbuntu2404
+    else
+      echo "Linux version not found when upgrading Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "debian")
+    if [[ "$DISTRO_VERSION" =~ ^12. ]]; then
+      upgradeDockerDebian12
+    else
+      echo "Linux version not found when upgrading Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  "linuxmint")
+    if [[ "$DISTRO_VERSION" =~ ^22. ]]; then
+      upgradeDockerUbuntu2404
+    elif [[ "$DISTRO_VERSION" =~ ^6. ]]; then
+      upgradeDockerDebian12
+    else
+      echo "Linux version not found when upgrading Docker, exiting..."
+      exit 5
+    fi
+    ;;
+  *)
+    ;;
+  esac
+  sudo apt-mark hold docker-ce
+  sudo apt-mark hold docker-ce-cli
+  echo "Docker succesfully upgraded!"
+}
+
 function removeDocker()
 {
   sudo systemctl stop docker
@@ -27301,6 +28068,12 @@ function installDockerUbuntu2204()
   performAptInstall docker-compose-plugin > /dev/null 2>&1
 }
 
+function upgradeDockerUbuntu2204()
+{
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2204 > /dev/null 2>&1
+}
+
 function installDockerUbuntu2404()
 {
   # Install Docker (https://docs.docker.com/engine/install/ubuntu/)
@@ -27317,6 +28090,12 @@ function installDockerUbuntu2404()
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
 }
 
+function upgradeDockerUbuntu2404()
+{
+  performAptInstall docker-ce=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_UBUNTU_2404 > /dev/null 2>&1
+}
+
 function installDockerDebian12()
 {
   # Install Docker (https://docs.docker.com/engine/install/debian/)
@@ -27331,6 +28110,12 @@ function installDockerDebian12()
   performAptInstall containerd.io > /dev/null 2>&1
   performAptInstall docker-compose > /dev/null 2>&1
   performAptInstall docker-compose-plugin > /dev/null 2>&1  
+}
+
+function upgradeDockerDebian12()
+{
+  performAptInstall docker-ce=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
+  performAptInstall docker-ce-cli=$DOCKER_VERSION_DEBIAN_12 > /dev/null 2>&1
 }
 
 function initCertificateAuthority()
@@ -28258,7 +29043,7 @@ function loadPinnedDockerImages()
   IMG_PIPED_CRON=barrypiccinni/psql-curl
   IMG_PIXELFED_APP=ghcr.io/jippi/docker-pixelfed:v0.12.5-docker1-apache-8.4-bookworm
   IMG_PIXELFED_MOD_APP=hshq/pixelfed:v1
-  IMG_PORTAINER=portainer/portainer-ce:2.21.4-alpine
+  IMG_PORTAINER=mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
   IMG_PROMETHEUS=mirror.gcr.io/prom/prometheus:v3.5.0
   IMG_QBITTORRENT=linuxserver/qbittorrent:5.1.2
   IMG_REMOTELY=immybot/remotely:1037
@@ -28301,7 +29086,7 @@ function getScriptStackVersion()
   stack_name=$1
   case "$stack_name" in
     portainer)
-      echo "v3" ;;
+      echo "v4" ;;
     adguard)
       echo "v7" ;;
     sysutils)
@@ -33511,7 +34296,7 @@ services:
       - ${HSHQ_STACKS_DIR}/portainer:/data
       - ${HSHQ_SSL_DIR}/portainer.crt:/data/certs/portainer.crt:ro
       - ${HSHQ_SSL_DIR}/portainer.key:/data/certs/portainer.key:ro
-      - ${HSHQ_SECRETS_DIR}/portainer_key.txt:/run/secrets/portainer
+      - ${HSHQ_SECRETS_DIR}/portainer_key.txt:/run/portainer/portainer
 
 networks:
   dock-proxy-net:
@@ -33529,26 +34314,26 @@ function outputEnvPortainer()
 {
   rm -f $HSHQ_STACKS_DIR/portainer/portainer.env
   tee $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null <<EOFPC
-HSHQ_BASE_DIR=$HSHQ_BASE_DIR
-HSHQ_DATA_DIR=$HSHQ_DATA_DIR
-HSHQ_BACKUP_DIR=$HSHQ_BACKUP_DIR
-HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
-HSHQ_ASSETS_DIR=$HSHQ_ASSETS_DIR
-HSHQ_BUILD_DIR=$HSHQ_BUILD_DIR
-HSHQ_CONFIG_DIR=$HSHQ_CONFIG_DIR
-HSHQ_LIB_DIR=$HSHQ_LIB_DIR
-HSHQ_RELAYSERVER_DIR=$HSHQ_RELAYSERVER_DIR
-HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
-HSHQ_SECRETS_DIR=$HSHQ_SECRETS_DIR
-HSHQ_SSL_DIR=$HSHQ_SSL_DIR
-HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
-HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
-TZ=$TZ
-UID=$USERID
-GID=$GROUPID
+PORTAINER_HSHQ_BASE_DIR=$HSHQ_BASE_DIR
+PORTAINER_HSHQ_DATA_DIR=$HSHQ_DATA_DIR
+PORTAINER_HSHQ_BACKUP_DIR=$HSHQ_BACKUP_DIR
+PORTAINER_HSHQ_NONBACKUP_DIR=$HSHQ_NONBACKUP_DIR
+PORTAINER_HSHQ_ASSETS_DIR=$HSHQ_ASSETS_DIR
+PORTAINER_HSHQ_BUILD_DIR=$HSHQ_BUILD_DIR
+PORTAINER_HSHQ_CONFIG_DIR=$HSHQ_CONFIG_DIR
+PORTAINER_HSHQ_LIB_DIR=$HSHQ_LIB_DIR
+PORTAINER_HSHQ_RELAYSERVER_DIR=$HSHQ_RELAYSERVER_DIR
+PORTAINER_HSHQ_SCRIPTS_DIR=$HSHQ_SCRIPTS_DIR
+PORTAINER_HSHQ_SECRETS_DIR=$HSHQ_SECRETS_DIR
+PORTAINER_HSHQ_SSL_DIR=$HSHQ_SSL_DIR
+PORTAINER_HSHQ_STACKS_DIR=$HSHQ_STACKS_DIR
+PORTAINER_HSHQ_WIREGUARD_DIR=$HSHQ_WIREGUARD_DIR
+PORTAINER_TZ=$TZ
+PORTAINER_UID=$USERID
+PORTAINER_GID=$GROUPID
 EOFPC
   chmod 600 $HSHQ_STACKS_DIR/portainer/portainer.env
-  echo "HOMESERVER_HOST_PRIMARY_INTERFACE_IP=${HOMESERVER_HOST_PRIMARY_INTERFACE_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+  echo "PORTAINER_HOMESERVER_HOST_PRIMARY_INTERFACE_IP=${HOMESERVER_HOST_PRIMARY_INTERFACE_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
   ALL_INTERFACE_IPS="$(getAllInterfaceIPs)"
   ifListDBID=($(sqlite3 $HSHQ_DB "select ID from connections where NetworkType = 'home_network';"))
   for curID in "${ifListDBID[@]}"
@@ -33559,11 +34344,11 @@ EOFPC
     curIF_IPVar=$(getHSHostIPVarName $curIF_Interface)
     curIF_SubnetVar=$(getHSHostSubnetVarName $curIF_Interface)
     if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
-      echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-      echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+      echo "PORTAINER_${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+      echo "PORTAINER_${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
     fi
   done
-  echo "ALL_INTERFACE_IPS=${ALL_INTERFACE_IPS}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+  echo "PORTAINER_ALL_INTERFACE_IPS=${ALL_INTERFACE_IPS}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
   chown $USERID:$GROUPID $HSHQ_STACKS_DIR/portainer/portainer.env
 }
 
@@ -33627,6 +34412,11 @@ function performUpdatePortainer()
       curImageList=portainer/portainer-ce:2.21.4-alpine
       image_update_map[0]="portainer/portainer-ce:2.21.4-alpine,portainer/portainer-ce:2.21.4-alpine"
     ;;
+    4)
+      newVer=v4
+      curImageList=mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
+      image_update_map[0]="mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine,mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine"
+    ;;
     *)
       is_upgrade_error=true
       perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
@@ -33675,6 +34465,9 @@ function startPortainer()
     sleep 1
     i=$((i+1))
   done
+  if [ "$isFound" = "F" ]; then
+    return 1
+  fi
   PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
   if ! [ -z "$stpo_curE" ]; then
     set -e
@@ -33772,7 +34565,7 @@ services:
     hostname: adguard
     restart: unless-stopped
     env_file: stack.env
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     security_opt:
       - no-new-privileges:true
     networks:
@@ -33789,10 +34582,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/adguard/conf:/opt/adguardhome/conf
-      - \${HSHQ_NONBACKUP_DIR}/adguard/work:/opt/adguardhome/work
-      - \${HSHQ_SSL_DIR}/adguard.crt:/opt/adguardhome/conf/cert.pem
-      - \${HSHQ_SSL_DIR}/adguard.key:/opt/adguardhome/conf/key.pem
+      - \${PORTAINER_HSHQ_STACKS_DIR}/adguard/conf:/opt/adguardhome/conf
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/adguard/work:/opt/adguardhome/work
+      - \${PORTAINER_HSHQ_SSL_DIR}/adguard.crt:/opt/adguardhome/conf/cert.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/adguard.key:/opt/adguardhome/conf/key.pem
 
 networks:
   dock-proxy-net:
@@ -34492,7 +35285,7 @@ services:
     image: $(getScriptImageByContainerName grafana)
     container_name: grafana
     hostname: grafana
-    user: "\${UID}"
+    user: "\${PORTAINER_UID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -34528,7 +35321,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
       - v-sysutils-prometheus:/prometheus
       
   node-exporter:
@@ -34558,7 +35351,7 @@ services:
     image: $(getScriptImageByContainerName influxdb)
     container_name: influxdb
     hostname: influxdb
-    user: "\${UID}"
+    user: "\${PORTAINER_UID}"
     restart: unless-stopped
     env_file: stack.env
     command:
@@ -34573,10 +35366,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/influxdb.crt:/certs/influxdb.crt
-      - \${HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
-      - \${HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
-      - \${HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.crt:/certs/influxdb.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
 
 volumes:
   v-sysutils-grafana:
@@ -34584,13 +35377,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/sysutils/grafana
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/grafana
   v-sysutils-prometheus:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
 
 networks:
   dock-proxy-net:
@@ -34610,7 +35403,7 @@ networks:
 EOFGF
 
   cat <<EOFGF > $HOME/sysutils.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 INFLUXD_TLS_CERT=/certs/influxdb.crt
@@ -37026,7 +37819,7 @@ services:
     image: $(getScriptImageByContainerName grafana)
     container_name: grafana
     hostname: grafana
-    user: "\${UID}"
+    user: "\${PORTAINER_UID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -37062,7 +37855,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/prometheus:/etc/prometheus
       - v-sysutils-prometheus:/prometheus
       
   node-exporter:
@@ -37092,7 +37885,7 @@ services:
     image: $(getScriptImageByContainerName influxdb)
     container_name: influxdb
     hostname: influxdb
-    user: "\${UID}"
+    user: "\${PORTAINER_UID}"
     restart: unless-stopped
     env_file: stack.env
     command:
@@ -37107,10 +37900,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/influxdb.crt:/certs/influxdb.crt
-      - \${HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
-      - \${HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
-      - \${HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.crt:/certs/influxdb.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/influxdb.key:/certs/influxdb.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/etc:/etc/influxdb2
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/influxdb/var:/var/lib/influxdb2
 
 volumes:
   v-sysutils-grafana:
@@ -37118,13 +37911,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/sysutils/grafana
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/sysutils/grafana
   v-sysutils-prometheus:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/sysutils/prometheus
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/sysutils/prometheus
 
 networks:
   dock-proxy-net:
@@ -37298,13 +38091,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/ldapserver.crt:/container/service/slapd/assets/certs/ldapserver.crt
-      - \${HSHQ_SSL_DIR}/ldapserver.key:/container/service/slapd/assets/certs/ldapserver.key
-      - \${HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/container/service/slapd/assets/certs/${CERTS_ROOT_CA_NAME}.crt
-      - \${HSHQ_STACKS_DIR}/openldap/certs/dhparam.pem:/container/service/slapd/assets/certs/dhparam.pem
-      - \${HSHQ_STACKS_DIR}/openldap/ldapserver/initconfig:/tmp/initconfig
-      - \${HSHQ_STACKS_DIR}/openldap/ldapserver/db:/var/lib/ldap
-      - \${HSHQ_STACKS_DIR}/openldap/ldapserver/slapd:/etc/ldap/slapd.d
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapserver.crt:/container/service/slapd/assets/certs/ldapserver.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapserver.key:/container/service/slapd/assets/certs/ldapserver.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/container/service/slapd/assets/certs/${CERTS_ROOT_CA_NAME}.crt
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/certs/dhparam.pem:/container/service/slapd/assets/certs/dhparam.pem
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/ldapserver/initconfig:/tmp/initconfig
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/ldapserver/db:/var/lib/ldap
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/ldapserver/slapd:/etc/ldap/slapd.d
     secrets:
       - ldap_admin_bind_password
       - ldap_config_password
@@ -37329,13 +38122,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/openldap/ldapphp/www:/var/www/phpldapadmin
-      - \${HSHQ_SSL_DIR}/ldapphp.crt:/container/service/phpldapadmin/assets/apache2/certs/ldapphp.crt
-      - \${HSHQ_SSL_DIR}/ldapphp.key:/container/service/phpldapadmin/assets/apache2/certs/ldapphp.key
-      - \${HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/container/service/phpldapadmin/assets/apache2/certs/${CERTS_ROOT_CA_NAME}.crt
-      - \${HSHQ_SSL_DIR}/ldapphp.crt:/container/service/ldap-client/assets/certs/ldapphp.crt
-      - \${HSHQ_SSL_DIR}/ldapphp.key:/container/service/ldap-client/assets/certs/ldapphp.key
-      - \${HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/container/service/ldap-client/assets/certs/${CERTS_ROOT_CA_NAME}.crt
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/ldapphp/www:/var/www/phpldapadmin
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapphp.crt:/container/service/phpldapadmin/assets/apache2/certs/ldapphp.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapphp.key:/container/service/phpldapadmin/assets/apache2/certs/ldapphp.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/container/service/phpldapadmin/assets/apache2/certs/${CERTS_ROOT_CA_NAME}.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapphp.crt:/container/service/ldap-client/assets/certs/ldapphp.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapphp.key:/container/service/ldap-client/assets/certs/ldapphp.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/container/service/ldap-client/assets/certs/${CERTS_ROOT_CA_NAME}.crt
     environment:
       - "PHPLDAPADMIN_LDAP_HOSTS=#PYTHON2BASH:[{'ldapserver': [{'server': [{'tls': True}]}]}]"
 
@@ -37359,10 +38152,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/ldapmanager.crt:/opt/ssl/ldapmanager.crt:ro
-      - \${HSHQ_SSL_DIR}/ldapmanager.key:/opt/ssl/ldapmanager.key:ro
-      - \${HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/opt/ssl/${CERTS_ROOT_CA_NAME}.crt:ro
-      - \${HSHQ_STACKS_DIR}/openldap/ldapmanager/ldap.conf:/etc/ldap/ldap.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapmanager.crt:/opt/ssl/ldapmanager.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/ldapmanager.key:/opt/ssl/ldapmanager.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/certs/${CERTS_ROOT_CA_NAME}.crt:/opt/ssl/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openldap/ldapmanager/ldap.conf:/etc/ldap/ldap.conf
     secrets:
       - ldap_admin_bind_dn
       - ldap_admin_bind_password
@@ -37371,13 +38164,13 @@ services:
 
 secrets:
   ldap_admin_bind_dn:
-    file: \${HSHQ_SECRETS_DIR}/ldap_admin_bind_dn.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/ldap_admin_bind_dn.txt
   ldap_admin_bind_password:
-    file: \${HSHQ_SECRETS_DIR}/ldap_admin_bind_password.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/ldap_admin_bind_password.txt
   ldap_config_password:
-    file: \${HSHQ_SECRETS_DIR}/ldap_config_password.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/ldap_config_password.txt
   ldap_readonly_user_password:
-    file: \${HSHQ_SECRETS_DIR}/ldap_readonly_user_password.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/ldap_readonly_user_password.txt
 
 networks:
   dock-ldap-net:
@@ -37393,7 +38186,7 @@ networks:
 EOFLC
 
   cat <<EOFLD > $HOME/openldap.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 LDAP_OPENLDAP_UID=$USERID
@@ -37697,7 +38490,7 @@ function outputConfigMailu()
   set -e
   outputMailuCompose
   cat <<EOFMC > $HOME/mailu.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 SECRET_KEY=$(pwgen -c -n 16 1)
 SUBNET=$NET_MAILU_EXT_SUBNET
 SUBNET_PREFIX=$NET_MAILU_EXT_SUBNET_PREFIX
@@ -37863,10 +38656,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
 
   resolver:
     image: $(getScriptImageByContainerName mailu-unbound)
@@ -37913,9 +38706,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/initconfig:/initconfig
-      - \${HSHQ_STACKS_DIR}/mailu/data:/data
-      - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/initconfig:/initconfig
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/dkim:/dkim
 
   imap:
     image: $(getScriptImageByContainerName mailu-imap)
@@ -37932,8 +38725,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mail:/mail
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/mail:/mail
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
 
   smtp:
     image: $(getScriptImageByContainerName mailu-smtp)
@@ -37949,11 +38742,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
 
   oletools:
     image: $(getScriptImageByContainerName mailu-oletools)
@@ -38001,9 +38794,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd/local:/overrides
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd/override:/etc/rspamd/override.d
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/rspamd/local:/overrides
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/rspamd/override:/etc/rspamd/override.d
 
 $is_antivirus_commented_out  antivirus:
 $is_antivirus_commented_out    image: $(getScriptImageByContainerName mailu-antivirus)
@@ -38018,7 +38811,7 @@ $is_antivirus_commented_out      - dock-proxy-net
 $is_antivirus_commented_out    volumes:
 $is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
 $is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
-$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/clamav
+$is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/clamav
 
   webdav:
     image: $(getScriptImageByContainerName mailu-webdav)
@@ -38032,7 +38825,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/cla
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/dav:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/dav:/data
 
   fetchmail:
     image: $(getScriptImageByContainerName mailu-fetchmail)
@@ -38046,7 +38839,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/cla
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
 
   webmail:
     image: $(getScriptImageByContainerName mailu-webmail)
@@ -38062,8 +38855,8 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/cla
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/webmail:/data
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
 
 volumes:
   v-mailu-redis:
@@ -38071,7 +38864,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/mailu/redis
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -38123,10 +38916,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/nginx:/overrides:ro
 
   resolver:
     image: $(getScriptImageByContainerName mailu-unbound)
@@ -38171,9 +38964,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/initconfig:/initconfig
-      - \${HSHQ_STACKS_DIR}/mailu/data:/data
-      - \${HSHQ_STACKS_DIR}/mailu/dkim:/dkim
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/initconfig:/initconfig
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/dkim:/dkim
 
   imap:
     image: $(getScriptImageByContainerName mailu-imap)
@@ -38190,8 +38983,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mail:/mail
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/mail:/mail
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/dovecot:/overrides:ro
 
   smtp:
     image: $(getScriptImageByContainerName mailu-smtp)
@@ -38207,11 +39000,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
-      - \${HSHQ_STACKS_DIR}/mailu/certs:/certs
-      - \${HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
-      - \${HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/mailqueue:/queue
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/certs:/certs
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.crt:/certs/mail.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/mail.key:/certs/mail.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/postfix:/overrides:ro
 
   oletools:
     image: $(getScriptImageByContainerName mailu-oletools)
@@ -38259,9 +39052,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd/local:/overrides
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/rspamd/override:/etc/rspamd/override.d
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/filter:/var/lib/rspamd
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/rspamd/local:/overrides
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/rspamd/override:/etc/rspamd/override.d
 
 $is_antivirus_commented_out  antivirus:
 $is_antivirus_commented_out    image: $(getScriptImageByContainerName mailu-antivirus)
@@ -38276,7 +39069,7 @@ $is_antivirus_commented_out      - dock-proxy-net
 $is_antivirus_commented_out    volumes:
 $is_antivirus_commented_out      - /etc/localtime:/etc/localtime:ro
 $is_antivirus_commented_out      - /etc/timezone:/etc/timezone:ro
-$is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/clamav
+$is_antivirus_commented_out      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/clamav
 
   webdav:
     image: $(getScriptImageByContainerName mailu-webdav)
@@ -38290,7 +39083,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/cla
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/dav:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/dav:/data
 
   fetchmail:
     image: $(getScriptImageByContainerName mailu-fetchmail)
@@ -38304,7 +39097,7 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/cla
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/data/fetchmail:/data
 
   webmail:
     image: $(getScriptImageByContainerName mailu-webmail)
@@ -38320,8 +39113,8 @@ $is_antivirus_commented_out      - \${HSHQ_STACKS_DIR}/mailu/clamav:/var/lib/cla
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mailu/webmail:/data
-      - \${HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/webmail:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mailu/overrides/roundcube:/overrides:ro
 
 volumes:
   v-mailu-redis:
@@ -38329,7 +39122,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/mailu/redis
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/mailu/redis
 
 networks:
   dock-internalmail-net:
@@ -38804,10 +39597,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/ssl/root-ca.pem:ro
-      - \${HSHQ_SSL_DIR}/wazuh.manager.crt:/etc/ssl/filebeat.pem
-      - \${HSHQ_SSL_DIR}/wazuh.manager.key:/etc/ssl/filebeat.key
-      - \${HSHQ_STACKS_DIR}/wazuh/wazuh-cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/etc/ssl/root-ca.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.manager.crt:/etc/ssl/filebeat.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.manager.key:/etc/ssl/filebeat.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-cluster/wazuh_manager.conf:/wazuh-config-mount/etc/ossec.conf
       - v-wazuh-api-configuration:/var/ossec/api/configuration
       - v-wazuh-etc:/var/ossec/etc
       - v-wazuh-logs:/var/ossec/logs
@@ -38843,13 +39636,13 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
-      - \${HSHQ_SSL_DIR}/wazuh.indexer.crt:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
-      - \${HSHQ_SSL_DIR}/wazuh.indexer.key:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
-      - \${HSHQ_SSL_DIR}/wazuh.admin.crt:/usr/share/wazuh-indexer/certs/admin.pem
-      - \${HSHQ_SSL_DIR}/wazuh.admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem
-      - \${HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/wazuh_indexer.yml:/usr/share/wazuh-indexer/opensearch.yml
-      - \${HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.indexer.crt:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.indexer.key:/usr/share/wazuh-indexer/certs/wazuh.indexer.key
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.admin.crt:/usr/share/wazuh-indexer/certs/admin.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.admin.key:/usr/share/wazuh-indexer/certs/admin-key.pem
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/wazuh_indexer.yml:/usr/share/wazuh-indexer/opensearch.yml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-indexer/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml
       - v-wazuh-indexer-data:/var/lib/wazuh-indexer
 
   wazuh.dashboard:
@@ -38868,11 +39661,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
-      - \${HSHQ_SSL_DIR}/wazuh.dashboard.crt:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
-      - \${HSHQ_SSL_DIR}/wazuh.dashboard.key:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
-      - \${HSHQ_STACKS_DIR}/wazuh/wazuh-dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
-      - \${HSHQ_STACKS_DIR}/wazuh/wazuh-dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.dashboard.crt:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/wazuh.dashboard.key:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-dashboard/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/wazuh-dashboard/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
 
 volumes:
   v-wazuh-api-configuration:
@@ -38880,73 +39673,73 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/api-configuration
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/api-configuration
   v-wazuh-etc:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/etc
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/etc
   v-wazuh-logs:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/wazuh/volumes/logs
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wazuh/volumes/logs
   v-wazuh-queue:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/wazuh/volumes/queue
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wazuh/volumes/queue
   v-wazuh-var-multigroups:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/var-multigroups
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/var-multigroups
   v-wazuh-integrations:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/integrations
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/integrations
   v-wazuh-active-response:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/active-response
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/active-response
   v-wazuh-agentless:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/agentless
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/agentless
   v-wazuh-wodles:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/wodles
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/wodles
   v-wazuh-filebeat-etc:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/filebeat-etc
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/filebeat-etc
   v-wazuh-filebeat-var:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wazuh/volumes/filebeat-var
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wazuh/volumes/filebeat-var
   v-wazuh-indexer-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/wazuh/volumes/indexer-data
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wazuh/volumes/indexer-data
 
 networks:
   dock-internalmail-net:
@@ -38966,7 +39759,7 @@ networks:
 EOFWZ
 
   cat <<EOFWZ > $HOME/wazuh.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 INDEXER_URL=https://wazuh.indexer:9200
@@ -39550,8 +40343,8 @@ function updateWazuhAgents()
   sudo DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' wazuh-agent=$agent_ver
   sudo apt-mark hold wazuh-agent
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
-    rm -f $HOME/rsUpdateScript.sh
-    cat <<EOFLO > $HOME/rsUpdateScript.sh
+    rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+    cat <<EOFLO > $HOME/$RS_UPDATE_SCRIPT_NAME
 #!/bin/bash
 
 set +e
@@ -39566,7 +40359,7 @@ function main()
 }
 main "\$@"
 EOFLO
-    updateRelayServerWithScript
+    updateRelayServerWithScript false
   fi
 }
 
@@ -40523,7 +41316,7 @@ EOFNC
   outputComposeNextcloud
 
   cat <<EOFNC > $HOME/nextcloud.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 REDIS_DISABLE_COMMANDS=FLUSHDB,FLUSHALL
@@ -40543,7 +41336,7 @@ services:
     image: $(getScriptImageByContainerName nextcloud-db)
     container_name: nextcloud-db
     hostname: nextcloud-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -40556,9 +41349,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/nextcloud/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/nextcloud/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/dbexport:/dbexport
     environment:
       - TZ=$TZ
       - POSTGRES_DB=$NEXTCLOUD_DATABASE_NAME
@@ -40618,10 +41411,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/nextcloud/www.conf:/usr/local/etc/php-fpm.d/www.conf
-      - \${HSHQ_SSL_DIR}/nextcloud-app.crt:/opt/ssl/nextcloud-app.crt
-      - \${HSHQ_SSL_DIR}/nextcloud-app.key:/opt/ssl/nextcloud-app.key
-      - \${HSHQ_STACKS_DIR}/nextcloud/ldap-app.conf:/etc/openldap/ldap.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/www.conf:/usr/local/etc/php-fpm.d/www.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-app.crt:/opt/ssl/nextcloud-app.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-app.key:/opt/ssl/nextcloud-app.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/ldap-app.conf:/etc/openldap/ldap.conf
       - v-nextcloud:/var/www/html
     depends_on:
       - nextcloud-db
@@ -40655,9 +41448,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/nextcloud-cron.crt:/opt/ssl/nextcloud-cron.crt
-      - \${HSHQ_SSL_DIR}/nextcloud-cron.key:/opt/ssl/nextcloud-cron.key
-      - \${HSHQ_STACKS_DIR}/nextcloud/ldap-cron.conf:/etc/openldap/ldap.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-cron.crt:/opt/ssl/nextcloud-cron.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-cron.key:/opt/ssl/nextcloud-cron.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/ldap-cron.conf:/etc/openldap/ldap.conf
       - v-nextcloud:/var/www/html
 
   nextcloud-push:
@@ -40684,9 +41477,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/nextcloud-push.crt:/opt/ssl/nextcloud-push.crt
-      - \${HSHQ_SSL_DIR}/nextcloud-push.key:/opt/ssl/nextcloud-push.key
-      - \${HSHQ_STACKS_DIR}/nextcloud/ldap-push.conf:/etc/openldap/ldap.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-push.crt:/opt/ssl/nextcloud-push.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-push.key:/opt/ssl/nextcloud-push.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/ldap-push.conf:/etc/openldap/ldap.conf
       - v-nextcloud:/var/www/html
     environment:
       - PORT=$NEXTCLOUD_PUSH_PORT
@@ -40751,7 +41544,7 @@ services:
       - nextcloud-app
     environment:
       - NC_DOMAIN=$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN
-      - TZ=\${TZ}
+      - TZ=\${PORTAINER_TZ}
       - RECORDING_SECRET=$NEXTCLOUD_TALKHPB_RECORDING_SECRET
       - INTERNAL_SECRET=$NEXTCLOUD_TALKHPB_INTERNAL_SECRET
       - SKIP_VERIFY=true
@@ -40791,9 +41584,9 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - v-nextcloud:/var/www/html:ro
-      - \${HSHQ_STACKS_DIR}/nextcloud/web/nginx.conf:/etc/nginx/nginx.conf
-      - \${HSHQ_SSL_DIR}/nextcloud-web.crt:/etc/nginx/certs/cert.crt
-      - \${HSHQ_SSL_DIR}/nextcloud-web.key:/etc/nginx/certs/cert.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/web/nginx.conf:/etc/nginx/nginx.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-web.crt:/etc/nginx/certs/cert.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/nextcloud-web.key:/etc/nginx/certs/cert.key
 
 volumes:
   v-nextcloud:
@@ -40801,13 +41594,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/nextcloud/app
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/app
   v-nextcloud-record:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/nextcloud/record
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/nextcloud/record
 
 networks:
   dock-proxy-net:
@@ -41349,11 +42142,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/jitsi/web:/config:Z
-      - \${HSHQ_STACKS_DIR}/jitsi/web/crontabs:/var/spool/cron/crontabs:Z
-      - \${HSHQ_STACKS_DIR}/jitsi/transcripts:/usr/share/jitsi-meet/transcripts:Z
-      - \${HSHQ_SSL_DIR}/jitsi-web.crt:/config/keys/cert.crt
-      - \${HSHQ_SSL_DIR}/jitsi-web.key:/config/keys/cert.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jitsi/web:/config:Z
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jitsi/web/crontabs:/var/spool/cron/crontabs:Z
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jitsi/transcripts:/usr/share/jitsi-meet/transcripts:Z
+      - \${PORTAINER_HSHQ_SSL_DIR}/jitsi-web.crt:/config/keys/cert.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/jitsi-web.key:/config/keys/cert.key
 
   jitsi-prosody:
     image: $(getScriptImageByContainerName jitsi-prosody)
@@ -41370,8 +42163,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/jitsi/prosody/config:/config:Z
-      - \${HSHQ_STACKS_DIR}/jitsi/prosody/prosody-plugins-custom:/prosody-plugins-custom:Z
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jitsi/prosody/config:/config:Z
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jitsi/prosody/prosody-plugins-custom:/prosody-plugins-custom:Z
 
   jitsi-jicofo:
     image: $(getScriptImageByContainerName jitsi-jicofo)
@@ -41388,7 +42181,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/jitsi/jicofo:/config:Z
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jitsi/jicofo:/config:Z
 
   jitsi-jvb:
     image: $(getScriptImageByContainerName jitsi-jvb)
@@ -41408,7 +42201,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/jitsi/jvb:/config:Z
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jitsi/jvb:/config:Z
 
 networks:
   int-jitsi-net:
@@ -41431,8 +42224,8 @@ function outputEnvJitsi()
   cat <<EOFJT > $HOME/jitsi.env
 JVB_COLIBRI_PORT=$JITSI_COLIBRI_PORT
 PUBLIC_URL=https://$SUB_JITSI.$HOMESERVER_DOMAIN
-JVB_ADVERTISE_IPS=\${ALL_INTERFACE_IPS}
-DOCKER_HOST_ADDRESS=\${HOMESERVER_HOST_PRIMARY_INTERFACE_IP}
+JVB_ADVERTISE_IPS=\${PORTAINER_ALL_INTERFACE_IPS}
+DOCKER_HOST_ADDRESS=\${PORTAINER_HOMESERVER_HOST_PRIMARY_INTERFACE_IP}
 ENABLE_LETSENCRYPT=0
 ENABLE_AUTH=0
 JICOFO_AUTH_PASSWORD=$(openssl rand -hex 16)
@@ -41657,7 +42450,7 @@ services:
     image: $(getScriptImageByContainerName matrix-db)
     container_name: matrix-db
     hostname: matrix-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -41669,9 +42462,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/matrix/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/matrix/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/matrix/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/matrix/dbexport:/dbexport
     environment:
       - POSTGRES_DB=$MATRIX_DATABASE_NAME
       - POSTGRES_USER=$MATRIX_DATABASE_USER
@@ -41713,9 +42506,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/matrix-synapse.crt:/data/matrix-synapse.crt:ro
-      - \${HSHQ_SSL_DIR}/matrix-synapse.key:/data/matrix-synapse.key:ro
-      - \${HSHQ_STACKS_DIR}/matrix/synapse:/data
+      - \${PORTAINER_HSHQ_SSL_DIR}/matrix-synapse.crt:/data/matrix-synapse.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/matrix-synapse.key:/data/matrix-synapse.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/matrix/synapse:/data
 
   matrix-redis:
     image: $(getScriptImageByContainerName matrix-redis)
@@ -41748,7 +42541,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/matrix/element/element-private-config.json:/app/config.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/matrix/element/element-private-config.json:/app/config.json
 
   matrix-element-public:
     image: $(getScriptImageByContainerName matrix-element-public)
@@ -41764,7 +42557,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/matrix/element/element-public-config.json:/app/config.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/matrix/element/element-public-config.json:/app/config.json
 
 networks:
   dock-proxy-net:
@@ -41790,7 +42583,7 @@ networks:
 EOFJT
 
   cat <<EOFJT > $HOME/matrix.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
@@ -42219,7 +43012,7 @@ services:
     image: $(getScriptImageByContainerName wikijs-db)
     container_name: wikijs-db
     hostname: wikijs-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -42231,9 +43024,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/wikijs/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/wikijs/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wikijs/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wikijs/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.wikijs-hourly-db.schedule=@every 1h"
@@ -42266,8 +43059,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_SSL_DIR}/wikijs-web.crt:/certs/wikijs-web.crt
-      - \${HSHQ_SSL_DIR}/wikijs-web.key:/certs/wikijs-web.key
+      - \${PORTAINER_HSHQ_SSL_DIR}/wikijs-web.crt:/certs/wikijs-web.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/wikijs-web.key:/certs/wikijs-web.key
       - v-wikijs-web:/wiki/data/content
 
 volumes:
@@ -42276,7 +43069,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wikijs/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wikijs/web
 
 networks:
   dock-proxy-net:
@@ -42421,6 +43214,7 @@ EOFDP
   fi
   echo "Duplicati installed, sleeping 5 seconds..."
   sleep 5
+  startStopStack duplicati stop
   db_name=$HSHQ_STACKS_DIR/duplicati/config/Duplicati-server.sqlite
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--accept-any-ssl-certificate','true');"
   sudo sqlite3 $db_name "INSERT INTO Option(BackupID,Filter,Name,Value) VALUES(-1,'','--send-mail-from','Duplicati $(getAdminEmailName)<$EMAIL_ADMIN_EMAIL_ADDRESS>');"
@@ -42470,10 +43264,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/duplicati/config:/config
-      - \${HSHQ_NONBACKUP_DIR}/duplicati/restore:/restore
-      - \${HSHQ_BACKUP_DIR}:/backups
-      - \${HSHQ_DATA_DIR}:/source
+      - \${PORTAINER_HSHQ_STACKS_DIR}/duplicati/config:/config
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/duplicati/restore:/restore
+      - \${PORTAINER_HSHQ_BACKUP_DIR}:/backups
+      - \${PORTAINER_HSHQ_DATA_DIR}:/source
 
 networks:
   dock-proxy-net:
@@ -42904,7 +43698,7 @@ services:
     image: $(getScriptImageByContainerName mastodon-db)
     container_name: mastodon-db
     hostname: mastodon-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -42916,9 +43710,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mastodon/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mastodon/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.mastodon-hourly-db.schedule=@every 1h"
@@ -42993,7 +43787,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
       - v-mastodon-static:/mastodon/public
 
   mastodon-streaming:
@@ -43044,7 +43838,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mastodon/system:/mastodon/public/system
 
   mastodon-web:
     image: $(getScriptImageByContainerName mastodon-web)
@@ -43065,9 +43859,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/mastodon-web.crt:/etc/nginx/certs/cert.crt
-      - \${HSHQ_SSL_DIR}/mastodon-web.key:/etc/nginx/certs/cert.key
-      - \${HSHQ_STACKS_DIR}/mastodon/web/nginx.conf:/etc/nginx/nginx.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/mastodon-web.crt:/etc/nginx/certs/cert.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/mastodon-web.key:/etc/nginx/certs/cert.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mastodon/web/nginx.conf:/etc/nginx/nginx.conf
       - v-mastodon-static:/var/www/html:ro
 
 #  mastodon-elasticsearch:
@@ -43088,9 +43882,9 @@ services:
 #      - /etc/ssl/certs:/etc/ssl/certs:ro
 #      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
 #      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-#      - \${HSHQ_SSL_DIR}/mastodon-elasticsearch.crt:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.crt
-#      - \${HSHQ_SSL_DIR}/mastodon-elasticsearch.key:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.key
-#      - \${HSHQ_STACKS_DIR}/mastodon/elasticsearch:/usr/share/elasticsearch/data
+#      - \${PORTAINER_HSHQ_SSL_DIR}/mastodon-elasticsearch.crt:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.crt
+#      - \${PORTAINER_HSHQ_SSL_DIR}/mastodon-elasticsearch.key:/usr/share/elasticsearch/config/certs/mastodon-elasticsearch.key
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/mastodon/elasticsearch:/usr/share/elasticsearch/data
 #    ulimits:
 #      memlock:
 #        soft: -1
@@ -43119,13 +43913,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/mastodon/static
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/static
   v-mastodon-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/mastodon/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/mastodon/redis
 
 networks:
   dock-proxy-net:
@@ -43587,7 +44381,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - \${HSHQ_STACKS_DIR}/dozzle/users.yml:/data/users.yml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dozzle/users.yml:/data/users.yml
 
 networks:
   dock-proxy-net:
@@ -43749,11 +44543,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/searxng-caddy.crt:/certs/searxng-caddy.crt
-      - \${HSHQ_SSL_DIR}/searxng-caddy.key:/certs/searxng-caddy.key
-      - \${HSHQ_STACKS_DIR}/searxng/caddy/Caddyfile:/etc/caddy/Caddyfile
-      - \${HSHQ_STACKS_DIR}/searxng/caddy/data:/data
-      - \${HSHQ_STACKS_DIR}/searxng/caddy/config:/config
+      - \${PORTAINER_HSHQ_SSL_DIR}/searxng-caddy.crt:/certs/searxng-caddy.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/searxng-caddy.key:/certs/searxng-caddy.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/searxng/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/searxng/caddy/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/searxng/caddy/config:/config
 
   searxng-app:
     image: $(getScriptImageByContainerName searxng-app)
@@ -43772,7 +44566,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/searxng/web:/etc/searxng:rw
+      - \${PORTAINER_HSHQ_STACKS_DIR}/searxng/web:/etc/searxng:rw
     logging:
       driver: "json-file"
       options:
@@ -43802,7 +44596,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/searxng/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/searxng/redis
 
 networks:
   dock-proxy-net:
@@ -44118,7 +44912,7 @@ services:
     hostname: jellyfin
     restart: unless-stopped
     env_file: stack.env
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     networks:
       - dock-proxy-net
       - dock-ext-net
@@ -44133,12 +44927,12 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/jellyfin/config:/config
-      - \${HSHQ_STACKS_DIR}/jellyfin/cache:/cache
-      - \${HSHQ_STACKS_DIR}/jellyfin/media:/media
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/movies:/sharedmovies:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/tv:/sharedtv:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jellyfin/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jellyfin/cache:/cache
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jellyfin/media:/media
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata/media/movies:/sharedmovies:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata/media/tv:/sharedtv:ro
 #    devices:
 #      - /dev/dri/renderD128:/dev/dri/renderD128
 #      - /dev/dri/card0:/dev/dri/card0
@@ -44340,7 +45134,7 @@ services:
     hostname: filebrowser
     restart: unless-stopped
     env_file: stack.env
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     security_opt:
       - no-new-privileges:true
     networks:
@@ -44348,10 +45142,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
-      - \${HSHQ_STACKS_DIR}/filebrowser/srv:/srv
-      - \${HSHQ_STACKS_DIR}/filebrowser/db:/database
-      - \${HSHQ_STACKS_DIR}/filebrowser/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/filebrowser/filebrowser.json:/.filebrowser.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/filebrowser/srv:/srv
+      - \${PORTAINER_HSHQ_STACKS_DIR}/filebrowser/db:/database
+      - \${PORTAINER_HSHQ_STACKS_DIR}/filebrowser/config:/config
 
 networks:
   dock-proxy-net:
@@ -44638,8 +45432,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-photoprism-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/photoprism/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/photoprism/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.photoprism-hourly-db.schedule=@every 1h"
@@ -44663,7 +45457,7 @@ services:
     hostname: photoprism-app
     restart: unless-stopped
     env_file: stack.env
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     security_opt:
       - seccomp:unconfined
       - apparmor:unconfined
@@ -44679,9 +45473,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/photoprism/app/originals:/photoprism/originals
-      - \${HSHQ_STACKS_DIR}/photoprism/app/import:/photoprism/import
-      - \${HSHQ_STACKS_DIR}/photoprism/app/storage:/photoprism/storage
+      - \${PORTAINER_HSHQ_STACKS_DIR}/photoprism/app/originals:/photoprism/originals
+      - \${PORTAINER_HSHQ_STACKS_DIR}/photoprism/app/import:/photoprism/import
+      - \${PORTAINER_HSHQ_STACKS_DIR}/photoprism/app/storage:/photoprism/storage
 
 volumes:
   v-photoprism-db:
@@ -44689,7 +45483,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/photoprism/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/photoprism/db
 
 networks:
   dock-proxy-net:
@@ -44936,7 +45730,7 @@ services:
     image: $(getScriptImageByContainerName guacamole-db)
     container_name: guacamole-db
     hostname: guacamole-db
-    user: \${UID}
+    user: \${PORTAINER_UID}
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -44947,9 +45741,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/guacamole/db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/guacamole/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/guacamole/db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/guacamole/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.guacamole-hourly-db.schedule=@every 1h"
@@ -45166,7 +45960,7 @@ services:
     hostname: authelia
     restart: unless-stopped
     env_file: stack.env
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     security_opt:
       - no-new-privileges:true
     networks:
@@ -45183,11 +45977,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/config/cacerts/${CERTS_ROOT_CA_NAME}.crt:ro
-      - \${HSHQ_STACKS_DIR}/authelia/config:/config
-      - \${HSHQ_STACKS_DIR}/authelia/keys:/keys
-      - \${HSHQ_SSL_DIR}/authelia.crt:/config/certs/authelia.crt
-      - \${HSHQ_SSL_DIR}/authelia.key:/config/certs/authelia.key
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/config/cacerts/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/authelia/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/authelia/keys:/keys
+      - \${PORTAINER_HSHQ_SSL_DIR}/authelia.crt:/config/certs/authelia.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/authelia.key:/config/certs/authelia.key
     secrets:
       - authelia_jwt_secret
       - authelia_session_secret
@@ -45220,22 +46014,22 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro
-      - \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro
-      - \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
-      - \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro
 
 secrets:
   authelia_jwt_secret:
-    file: \${HSHQ_SECRETS_DIR}/authelia_jwt_secret.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/authelia_jwt_secret.txt
   authelia_session_secret:
-    file: \${HSHQ_SECRETS_DIR}/authelia_session_secret.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/authelia_session_secret.txt
   authelia_storage_encryption_key:
-    file: \${HSHQ_SECRETS_DIR}/authelia_storage_encryption_key.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/authelia_storage_encryption_key.txt
   ldap_admin_user_password:
-    file: \${HSHQ_SECRETS_DIR}/ldap_admin_bind_password.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/ldap_admin_bind_password.txt
   authelia_redis_password:
-    file: \${HSHQ_SECRETS_DIR}/authelia_redis_password.txt
+    file: \${PORTAINER_HSHQ_SECRETS_DIR}/authelia_redis_password.txt
 
 networks:
   dock-proxy-net:
@@ -45259,7 +46053,7 @@ networks:
 EOFAC
 
   cat <<EOFAE > $HOME/authelia.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
@@ -45519,7 +46313,7 @@ function mfUpdateAutheliaConfig()
   replaceTextBlockInFile "#AC_BEGIN" "#AC_END" "$acblock" $configfile true
   rm -f $HOME/authelia.env
   cat <<EOFAE > $HOME/authelia.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 AUTHELIA_IDENTITY_VALIDATION_RESET_PASSWORD_JWT_SECRET_FILE=/run/secrets/authelia_jwt_secret
@@ -45596,10 +46390,10 @@ function mfAutheliaFixRedisCompose()
   replaceText=$replaceText">>>>>>- /etc/ssl/certs:/etc/ssl/certs:ro\n"
   replaceText=$replaceText">>>>>>- /usr/share/ca-certificates:/usr/share/ca-certificates:ro\n"
   replaceText=$replaceText">>>>>>- /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro\n"
-  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro\n"
-  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro\n"
-  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro\n"
-  replaceText=$replaceText">>>>>>- \${HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro\n"
+  replaceText=$replaceText">>>>>>- \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/tls/${CERTS_ROOT_CA_NAME}.crt:ro\n"
+  replaceText=$replaceText">>>>>>- \${PORTAINER_HSHQ_SSL_DIR}/authelia-redis.crt:/tls/authelia-redis.crt:ro\n"
+  replaceText=$replaceText">>>>>>- \${PORTAINER_HSHQ_SSL_DIR}/authelia-redis.key:/tls/authelia-redis.key:ro\n"
+  replaceText=$replaceText">>>>>>- \${PORTAINER_HSHQ_SSL_DIR}/dhparam.pem:/tls/dhparam.pem:ro\n"
   replaceTextBlockInFile "$lineStart" "$lineEnd" "$replaceText" $HOME/authelia-compose.yml false ">"
   cat -s $HOME/authelia-compose.yml > $HOME/ac.tmp
   mv $HOME/ac.tmp $HOME/authelia-compose.yml
@@ -45697,8 +46491,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-wordpress-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/wordpress/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wordpress/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.wordpress-hourly-db.schedule=@every 1h"
@@ -45742,13 +46536,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wordpress/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wordpress/db
   v-wordpress-web:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/wordpress/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wordpress/web
 
 networks:
   dock-proxy-net:
@@ -45899,8 +46693,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-ghost-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/ghost/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ghost/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.ghost-hourly-db.schedule=@every 1h"
@@ -45946,13 +46740,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/ghost/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ghost/db
   v-ghost-web:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/ghost/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ghost/web
 
 networks:
   dock-proxy-net:
@@ -46150,7 +46944,7 @@ services:
     image: $(getScriptImageByContainerName peertube-db)
     container_name: peertube-db
     hostname: peertube-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -46164,9 +46958,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/peertube/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/peertube/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/peertube/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/peertube/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.peertube-hourly-db.schedule=@every 1h"
@@ -46206,8 +47000,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/peertube/data:/data
-      - \${HSHQ_STACKS_DIR}/peertube/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/peertube/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/peertube/config:/config
       - v-peertube-assets:/app/client/dist
     environment:
       - PEERTUBE_TRUST_PROXY=["127.0.0.1", "loopback", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
@@ -46234,13 +47028,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/peertube/assets
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/assets
   v-peertube-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/peertube/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/peertube/redis
 
 networks:
   dock-proxy-net:
@@ -46609,7 +47403,7 @@ services:
     image: $(getScriptImageByContainerName homeassistant-db)
     container_name: homeassistant-db
     hostname: homeassistant-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -46623,9 +47417,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/dbexport:/dbexport
     environment:
       - POSTGRES_DB=$HOMEASSISTANT_DATABASE_NAME
       - POSTGRES_USER=$HOMEASSISTANT_DATABASE_USER
@@ -46664,10 +47458,10 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
-      - \${HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
-      - \${HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
-      - \${HSHQ_STACKS_DIR}/homeassistant/config:/config
-      - \${HSHQ_STACKS_DIR}/homeassistant/media:/media
+      - \${PORTAINER_HSHQ_SSL_DIR}/homeassistant-app.crt:/certs/homeassistant-app.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/homeassistant-app.key:/certs/homeassistant-app.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/media:/media
 
   homeassistant-nodered:
     image: $(getScriptImageByContainerName homeassistant-nodered)
@@ -46688,9 +47482,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/nodered:/data
-      - \${HSHQ_SSL_DIR}/homeassistant-nodered.crt:/data/homeassistant-nodered.crt
-      - \${HSHQ_SSL_DIR}/homeassistant-nodered.key:/data/homeassistant-nodered.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/nodered:/data
+      - \${PORTAINER_HSHQ_SSL_DIR}/homeassistant-nodered.crt:/data/homeassistant-nodered.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/homeassistant-nodered.key:/data/homeassistant-nodered.key
 
   homeassistant-configurator:
     image: $(getScriptImageByContainerName homeassistant-configurator)
@@ -46712,10 +47506,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/homeassistant-configurator.crt:/certs/homeassistant-configurator.crt
-      - \${HSHQ_SSL_DIR}/homeassistant-configurator.key:/certs/homeassistant-configurator.key
-      - \${HSHQ_STACKS_DIR}/homeassistant/configurator:/config
-      - \${HSHQ_STACKS_DIR}/homeassistant/config:/hass-config
+      - \${PORTAINER_HSHQ_SSL_DIR}/homeassistant-configurator.crt:/certs/homeassistant-configurator.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/homeassistant-configurator.key:/certs/homeassistant-configurator.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/configurator:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/config:/hass-config
 
   homeassistant-tasmoadmin:
     image: $(getScriptImageByContainerName homeassistant-tasmoadmin)
@@ -46733,7 +47527,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/homeassistant/tasmoadmin:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homeassistant/tasmoadmin:/data
 
 networks:
   dock-proxy-net:
@@ -46787,10 +47581,6 @@ notify:
     recipient:
       - "$EMAIL_ADMIN_EMAIL_ADDRESS"
     sender_name: "HomeAssistant $(getAdminEmailName)"
-
-automation: !include automations.yaml
-script: !include scripts.yaml
-scene: !include scenes.yaml
 
 http:
   use_x_forwarded_for: true
@@ -47102,7 +47892,7 @@ services:
     image: $(getScriptImageByContainerName gitlab-db)
     container_name: gitlab-db
     hostname: gitlab-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -47116,9 +47906,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/gitlab/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/gitlab/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitlab/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitlab/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.gitlab-hourly-db.schedule=@every 1h"
@@ -47155,11 +47945,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/gitlab-app.crt:/certs/gitlab-app.crt
-      - \${HSHQ_SSL_DIR}/gitlab-app.key:/certs/gitlab-app.key
-      - \${HSHQ_STACKS_DIR}/gitlab/app/config:/etc/gitlab
-      - \${HSHQ_STACKS_DIR}/gitlab/app/logs:/var/log/gitlab
-      - \${HSHQ_STACKS_DIR}/gitlab/app/data:/var/opt/gitlab
+      - \${PORTAINER_HSHQ_SSL_DIR}/gitlab-app.crt:/certs/gitlab-app.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/gitlab-app.key:/certs/gitlab-app.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitlab/app/config:/etc/gitlab
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitlab/app/logs:/var/log/gitlab
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitlab/app/data:/var/opt/gitlab
     environment:
       - GITLAB_ROOT_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
       - GITLAB_POST_RECONFIGURE_SCRIPT=/etc/gitlab/gitlab-postconfigure.sh
@@ -47187,7 +47977,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/gitlab/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/gitlab/redis
 
 networks:
   dock-proxy-net:
@@ -47474,7 +48264,7 @@ services:
     image: $(getScriptImageByContainerName vaultwarden-db)
     container_name: vaultwarden-db
     hostname: vaultwarden-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -47486,9 +48276,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/vaultwarden/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/vaultwarden/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/vaultwarden/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/vaultwarden/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.vaultwarden-hourly-db.schedule=@every 1h"
@@ -47526,9 +48316,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/vaultwarden-app.crt:/certs/vaultwarden-app.crt
-      - \${HSHQ_SSL_DIR}/vaultwarden-app.key:/certs/vaultwarden-app.key
-      - \${HSHQ_STACKS_DIR}/vaultwarden/app:/data
+      - \${PORTAINER_HSHQ_SSL_DIR}/vaultwarden-app.crt:/certs/vaultwarden-app.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/vaultwarden-app.key:/certs/vaultwarden-app.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/vaultwarden/app:/data
 
   vaultwarden-ldap:
     image: $(getScriptImageByContainerName vaultwarden-ldap)
@@ -47549,7 +48339,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.der:/cacert/rootca.der:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.der:/cacert/rootca.der:ro
     environment:
       - APP_VAULTWARDEN_ADMIN_TOKEN=$VAULTWARDEN_ADMIN_TOKEN
       - APP_LDAP_BIND_PASSWORD=$LDAP_READONLY_USER_PASSWORD
@@ -47787,7 +48577,7 @@ services:
     image: $(getScriptImageByContainerName discourse-db)
     container_name: discourse-db
     hostname: discourse-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -47799,9 +48589,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/discourse/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/discourse/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/discourse/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/discourse/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.discourse-hourly-db.schedule=@every 1h"
@@ -47887,13 +48677,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/discourse/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/discourse/redis
   v-discourse-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/discourse/app
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/discourse/app
 
 networks:
   dock-proxy-net:
@@ -48125,14 +48915,14 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/cert.pem:ro
-      - \${HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/key.pem:ro
-      - \${HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/https-cert.pem:ro
-      - \${HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/https-key.pem:ro
-      - \${HSHQ_STACKS_DIR}/syncthing/config:/var/syncthing/config
-      - \${HSHQ_STACKS_DIR}/syncthing/data:/var/syncthing/data
-      - \${HSHQ_BACKUP_DIR}:/backup
-      - \${HSHQ_RELAYSERVER_DIR}/backup:/relayserver
+      - \${PORTAINER_HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/cert.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/key.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/syncthing.crt:/var/syncthing/config/https-cert.pem:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/syncthing.key:/var/syncthing/config/https-key.pem:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/syncthing/config:/var/syncthing/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/syncthing/data:/var/syncthing/data
+      - \${PORTAINER_HSHQ_BACKUP_DIR}:/backup
+      - \${PORTAINER_HSHQ_RELAYSERVER_DIR}/backup:/relayserver
 
 networks:
   dock-proxy-net:
@@ -48342,7 +49132,7 @@ services:
     hostname: codeserver
     restart: unless-stopped
     env_file: stack.env
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     command:
       --cert /certs/codeserver.crt
       --cert-key /certs/codeserver.key
@@ -48356,12 +49146,12 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/codeserver:/home/coder
-      - \${HSHQ_STACKS_DIR}/authelia/config/configuration.yml:/home/coder/HSHQ/authelia/configuration.yml
-      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles:/home/coder/HSHQ/caddy/caddyfiles
-      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/home/coder/HSHQ/caddy/snippets
-      - \${HSHQ_SSL_DIR}/codeserver.crt:/certs/codeserver.crt
-      - \${HSHQ_SSL_DIR}/codeserver.key:/certs/codeserver.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/codeserver:/home/coder
+      - \${PORTAINER_HSHQ_STACKS_DIR}/authelia/config/configuration.yml:/home/coder/HSHQ/authelia/configuration.yml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles:/home/coder/HSHQ/caddy/caddyfiles
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/home/coder/HSHQ/caddy/snippets
+      - \${PORTAINER_HSHQ_SSL_DIR}/codeserver.crt:/certs/codeserver.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/codeserver.key:/certs/codeserver.key
 
 networks:
   dock-proxy-net:
@@ -48466,7 +49256,7 @@ function mfAddConfigsMountCodeServer()
   sudo grep "authelia/config/configuration.yml" $upgrade_compose_file > /dev/null 2>&1
   if [ $? -ne 0 ]; then
     # Mount some config files into the code server container for easy access to edit
-    sudo sed -i "s|/codeserver:/home/coder|/codeserver:/home/coder\n      - \${HSHQ_STACKS_DIR}/authelia/config/configuration.yml:/home/coder/HSHQ/authelia/configuration.yml\n      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles:/home/coder/HSHQ/caddy/caddyfiles\n      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/home/coder/HSHQ/caddy/snippets|" $upgrade_compose_file
+    sudo sed -i "s|/codeserver:/home/coder|/codeserver:/home/coder\n      - \${PORTAINER_HSHQ_STACKS_DIR}/authelia/config/configuration.yml:/home/coder/HSHQ/authelia/configuration.yml\n      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles:/home/coder/HSHQ/caddy/caddyfiles\n      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/home/coder/HSHQ/caddy/snippets|" $upgrade_compose_file
   fi
 }
 
@@ -48567,7 +49357,7 @@ services:
     image: $(getScriptImageByContainerName shlink-db)
     container_name: shlink-db
     hostname: shlink-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -48579,9 +49369,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/shlink/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/shlink/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shlink/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shlink/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.shlink-hourly-db.schedule=@every 1h"
@@ -48635,7 +49425,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/shlink/web/servers.json:/usr/share/nginx/html/servers.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shlink/web/servers.json:/usr/share/nginx/html/servers.json
 
   shlink-redis:
     image: $(getScriptImageByContainerName shlink-redis)
@@ -48660,7 +49450,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/shlink/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/shlink/redis
 
 networks:
   dock-proxy-net:
@@ -48833,7 +49623,7 @@ function mfShlinkFixRedisUrl()
 {
   rm -f $HOME/shlink.env
   cat <<EOFST > $HOME/shlink.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$SHLINK_DATABASE_NAME
@@ -48965,7 +49755,7 @@ services:
     image: $(getScriptImageByContainerName firefly-db)
     container_name: firefly-db
     hostname: firefly-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -48979,9 +49769,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/firefly/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/firefly/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/firefly/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/firefly/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.firefly-hourly-db.schedule=@every 1h"
@@ -49089,19 +49879,19 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/firefly/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/firefly/db
   v-firefly-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/firefly/data
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/firefly/data
   v-firefly-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/firefly/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/firefly/redis
 
 networks:
   dock-proxy-net:
@@ -49121,7 +49911,7 @@ networks:
 EOFFF
 
   cat <<EOFFF > $HOME/firefly.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 SITE_OWNER=$EMAIL_ADMIN_EMAIL_ADDRESS
@@ -49457,7 +50247,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/excalidraw/redis
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/excalidraw/redis
 
 networks:
   dock-proxy-net:
@@ -49690,7 +50480,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/drawio/fonts
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/drawio/fonts
 
 networks:
   dock-proxy-net:
@@ -50082,7 +50872,7 @@ services:
     image: $(getScriptImageByContainerName invidious-db)
     container_name: invidious-db
     hostname: invidious-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -50094,10 +50884,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/invidious/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/invidious/dbexport:/dbexport
-      - \${HSHQ_STACKS_DIR}/invidious/init:/docker-entrypoint-initdb.d
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invidious/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invidious/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invidious/init:/docker-entrypoint-initdb.d
     environment:
       - POSTGRES_DB=$INVIDIOUS_DATABASE_NAME
       - POSTGRES_USER=$INVIDIOUS_DATABASE_USER
@@ -50176,7 +50966,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/invidious/companion
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invidious/companion
 
 networks:
   dock-proxy-net:
@@ -50196,7 +50986,7 @@ networks:
 
 EOFIV
   cat <<EOFIV > $HOME/invidious.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_INITDB_ARGS=--encoding='UTF8' --lc-collate='C' --lc-ctype='C'
@@ -50316,7 +51106,7 @@ services:
     image: $(getScriptImageByContainerName gitea-db)
     container_name: gitea-db
     hostname: gitea-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -50328,9 +51118,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/gitea/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/gitea/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitea/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitea/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.gitea-hourly-db.schedule=@every 1h"
@@ -50372,7 +51162,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/gitea/app:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/gitea/app:/data
 
 networks:
   dock-proxy-net:
@@ -50580,7 +51370,7 @@ services:
     image: $(getScriptImageByContainerName mealie-db)
     container_name: mealie-db
     hostname: mealie-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -50592,9 +51382,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/mealie/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/mealie/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mealie/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/mealie/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.mealie-hourly-db.schedule=@every 1h"
@@ -50642,7 +51432,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/mealie/app
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/mealie/app
 
 networks:
   dock-proxy-net:
@@ -50669,7 +51459,7 @@ networks:
 EOFGL
 
   cat <<EOFGL > $HOME/mealie.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 DEFAULT_GROUP=Home
@@ -50876,8 +51666,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_NONBACKUP_DIR}/kasm/data:/opt
-      - \${HSHQ_STACKS_DIR}/kasm/profiles:/profiles
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/kasm/data:/opt
+      - \${PORTAINER_HSHQ_STACKS_DIR}/kasm/profiles:/profiles
 
 networks:
   dock-proxy-net:
@@ -51005,7 +51795,7 @@ services:
     hostname: ntfy
     restart: unless-stopped
     env_file: stack.env
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     security_opt:
       - no-new-privileges:true
     command:
@@ -51016,9 +51806,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/ntfy/cache:/var/cache/ntfy
-      - \${HSHQ_STACKS_DIR}/ntfy/etc:/etc/ntfy
-      - \${HSHQ_STACKS_DIR}/ntfy/etc/server.yml:/etc/ntfy/server.yml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ntfy/cache:/var/cache/ntfy
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ntfy/etc:/etc/ntfy
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ntfy/etc/server.yml:/etc/ntfy/server.yml
 
 networks:
   dock-proxy-net:
@@ -51031,7 +51821,7 @@ networks:
 EOFNT
 
   cat <<EOFNT > $HOME/ntfy.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 EOFNT
@@ -51631,7 +52421,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/remotely:/app/AppData
+      - \${PORTAINER_HSHQ_STACKS_DIR}/remotely:/app/AppData
 
 networks:
   dock-proxy-net:
@@ -51646,7 +52436,7 @@ networks:
 EOFRM
 
   cat <<EOFRM > $HOME/remotely.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 ASPNETCORE_ENVIRONMENT=Production
 ASPNETCORE_HTTP_PORTS=5000
 Remotely_ApplicationOptions__DbProvider=SQLite
@@ -51735,7 +52525,7 @@ function installCalibre()
 
   outputConfigCalibre
   generateCert calibre-web calibre-web
-  installStack calibre calibre-web "done." $HOME/calibre.env
+  installStack calibre calibre-web "done." $HOME/calibre.env 5
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -51817,8 +52607,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/calibre/server:/config
-      - \${HSHQ_STACKS_DIR}/calibre/library:/library
+      - \${PORTAINER_HSHQ_STACKS_DIR}/calibre/server:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/calibre/library:/library
 
   calibre-web:
     image: $(getScriptImageByContainerName calibre-web)
@@ -51839,10 +52629,10 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/calibre-web.crt:/certs/calibre-web.crt:ro
-      - \${HSHQ_SSL_DIR}/calibre-web.key:/certs/calibre-web.key:ro
-      - \${HSHQ_STACKS_DIR}/calibre/web:/config
-      - \${HSHQ_STACKS_DIR}/calibre/library:/library
+      - \${PORTAINER_HSHQ_SSL_DIR}/calibre-web.crt:/certs/calibre-web.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/calibre-web.key:/certs/calibre-web.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/calibre/web:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/calibre/library:/library
 
 networks:
   dock-proxy-net:
@@ -51861,7 +52651,7 @@ networks:
 EOFNT
 
   cat <<EOFNT > $HOME/calibre.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 CALIBRE_LDAP_AUTO_CREATE=true
@@ -52036,19 +52826,19 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/netdata/config
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/netdata/config
   v-netdata-lib:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/netdata/lib
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/netdata/lib
   v-netdata-cache:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/netdata/cache
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/netdata/cache
 
 networks:
   dock-proxy-net:
@@ -52061,7 +52851,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/netdata.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 EOFDZ
@@ -52193,7 +52983,7 @@ services:
     image: $(getScriptImageByContainerName linkwarden-db)
     container_name: linkwarden-db
     hostname: linkwarden-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -52205,9 +52995,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/linkwarden/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/linkwarden/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.linkwarden-hourly-db.schedule=@every 1h"
@@ -52251,7 +53041,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/linkwarden/app
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/linkwarden/app
 
 networks:
   dock-proxy-net:
@@ -52272,7 +53062,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/linkwarden.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$LINKWARDEN_DATABASE_NAME
@@ -52440,9 +53230,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/stirlingpdf/configs:/configs
-      - \${HSHQ_NONBACKUP_DIR}/stirlingpdf/logs:/logs
-      - \${HSHQ_NONBACKUP_DIR}/stirlingpdf/traindata:/usr/share/tesseract-ocr/5/tessdata
+      - \${PORTAINER_HSHQ_STACKS_DIR}/stirlingpdf/configs:/configs
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/stirlingpdf/logs:/logs
+      - \${PORTAINER_HSHQ_NONBACKUP_DIR}/stirlingpdf/traindata:/usr/share/tesseract-ocr/5/tessdata
 
 networks:
   dock-proxy-net:
@@ -52452,7 +53242,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/stirlingpdf.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 EOFDZ
@@ -52710,7 +53500,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/bar-assistant/web/nginx.conf:/etc/nginx/conf.d/default.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/web/nginx.conf:/etc/nginx/conf.d/default.conf
 
 volumes:
   v-bar-assistant-app:
@@ -52718,19 +53508,19 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/bar-assistant/app
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/app
   v-bar-assistant-meilisearch:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/bar-assistant/meilisearch
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/bar-assistant/meilisearch
   v-bar-assistant-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/bar-assistant/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/bar-assistant/redis
 
 networks:
   dock-proxy-net:
@@ -52751,7 +53541,7 @@ networks:
 EOFBA
 
   cat <<EOFBA > $HOME/bar-assistant.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 BASE_URL=https://$SUB_BARASSISTANT.$HOMESERVER_DOMAIN
@@ -53025,7 +53815,7 @@ services:
     image: $(getScriptImageByContainerName freshrss-db)
     container_name: freshrss-db
     hostname: freshrss-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -53037,9 +53827,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/freshrss/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/freshrss/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/freshrss/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/freshrss/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.freshrss-hourly-db.schedule=@every 1h"
@@ -53108,13 +53898,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/freshrss/data
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/freshrss/data
   v-freshrss-extensions:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/freshrss/extensions
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/freshrss/extensions
 
 networks:
   dock-proxy-net:
@@ -53135,7 +53925,7 @@ networks:
 EOFBA
 
   cat <<EOFBA > $HOME/freshrss.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 BASE_URL=https://$SUB_FRESHRSS.$HOMESERVER_DOMAIN
@@ -53312,7 +54102,7 @@ services:
     image: $(getScriptImageByContainerName keila-db)
     container_name: keila-db
     hostname: keila-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -53324,9 +54114,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/keila/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/keila/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/keila/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/keila/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.keila-hourly-db.schedule=@every 1h"
@@ -53370,13 +54160,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/keila/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/keila/db
   v-keila-uploads:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/keila/uploads
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/keila/uploads
 
 networks:
   dock-proxy-net:
@@ -53398,7 +54188,7 @@ networks:
 EOFBA
 
   cat <<EOFBA > $HOME/keila.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$KEILA_DATABASE_NAME
@@ -53573,7 +54363,7 @@ services:
     image: $(getScriptImageByContainerName wallabag-db)
     container_name: wallabag-db
     hostname: wallabag-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -53585,9 +54375,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/wallabag/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/wallabag/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wallabag/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wallabag/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.wallabag-hourly-db.schedule=@every 1h"
@@ -53643,7 +54433,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/wallabag/images:/var/www/wallabag/web/assets/images
+      - \${PORTAINER_HSHQ_STACKS_DIR}/wallabag/images:/var/www/wallabag/web/assets/images
 
 volumes:
   v-wallabag-redis:
@@ -53651,7 +54441,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/wallabag/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/wallabag/redis
 
 networks:
   dock-proxy-net:
@@ -53675,7 +54465,7 @@ networks:
 EOFBA
 
   cat <<EOFBA > $HOME/wallabag.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$WALLABAG_DATABASE_NAME
@@ -53844,7 +54634,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/jupyter/notebooks:/opt/notebooks
+      - \${PORTAINER_HSHQ_STACKS_DIR}/jupyter/notebooks:/opt/notebooks
 
 networks:
   dock-proxy-net:
@@ -53857,7 +54647,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/jupyter.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 EOFDZ
 
 }
@@ -54008,7 +54798,7 @@ services:
     image: $(getScriptImageByContainerName paperless-db)
     container_name: paperless-db
     hostname: paperless-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -54020,9 +54810,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/paperless/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/paperless/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.paperless-hourly-db.schedule=@every 1h"
@@ -54099,8 +54889,8 @@ services:
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
       - v-paperless-data:/usr/src/paperless/data
       - v-paperless-media:/usr/src/paperless/media
-      - \${HSHQ_STACKS_DIR}/paperless/export:/usr/src/paperless/export
-      - \${HSHQ_STACKS_DIR}/paperless/consume:/usr/src/paperless/consume
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/export:/usr/src/paperless/export
+      - \${PORTAINER_HSHQ_STACKS_DIR}/paperless/consume:/usr/src/paperless/consume
 
   paperless-redis:
     image: $(getScriptImageByContainerName paperless-redis)
@@ -54124,19 +54914,19 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/paperless/data
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/data
   v-paperless-media:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/paperless/media
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/paperless/media
   v-paperless-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/paperless/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/paperless/redis
 
 networks:
   dock-proxy-net:
@@ -54391,7 +55181,7 @@ services:
     image: $(getScriptImageByContainerName speedtest-tracker-local-db)
     container_name: speedtest-tracker-local-db
     hostname: speedtest-tracker-local-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -54403,9 +55193,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/speedtest-tracker-local/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/speedtest-tracker-local/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speedtest-tracker-local/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speedtest-tracker-local/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.speedtest-tracker-local-hourly-db.schedule=@every 1h"
@@ -54469,7 +55259,7 @@ EOFBA
 
   set -f
   cat <<EOFBA > $HOME/speedtest-tracker-local.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 APP_NAME=Speedtest Tracker Local
@@ -54663,7 +55453,7 @@ services:
     image: $(getScriptImageByContainerName speedtest-tracker-vpn-db)
     container_name: speedtest-tracker-vpn-db
     hostname: speedtest-tracker-vpn-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -54675,9 +55465,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/speedtest-tracker-vpn/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/speedtest-tracker-vpn/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speedtest-tracker-vpn/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/speedtest-tracker-vpn/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.speedtest-tracker-vpn-hourly-db.schedule=@every 1h"
@@ -54741,7 +55531,7 @@ EOFBA
 
   set -f
   cat <<EOFBA > $HOME/speedtest-tracker-vpn.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 APP_NAME=Speedtest Tracker VPN
@@ -54975,7 +55765,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/changedetection/data
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/changedetection/data
 
 networks:
   dock-proxy-net:
@@ -55158,7 +55948,7 @@ services:
     image: $(getScriptImageByContainerName huginn-db)
     container_name: huginn-db
     hostname: huginn-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -55170,9 +55960,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/huginn/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/huginn/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/huginn/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/huginn/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.huginn-hourly-db.schedule=@every 1h"
@@ -55381,9 +56171,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/coturn/turnserver.conf:/etc/coturn/turnserver.conf
-      - \${HSHQ_SSL_DIR}/coturn.crt:/usr/local/etc/cert.pem
-      - \${HSHQ_SSL_DIR}/coturn.key:/usr/local/etc/key.pem
+      - \${PORTAINER_HSHQ_STACKS_DIR}/coturn/turnserver.conf:/etc/coturn/turnserver.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/coturn.crt:/usr/local/etc/cert.pem
+      - \${PORTAINER_HSHQ_SSL_DIR}/coturn.key:/usr/local/etc/key.pem
 
 networks:
   dock-proxy-net:
@@ -55395,7 +56185,7 @@ networks:
 
 EOFOF
   cat <<EOFRM > $HOME/coturn.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 EOFRM
   outputCoturnConf
   checkAddIPsCoturn
@@ -55620,7 +56410,7 @@ networks:
 EOFDZ
 
   cat <<EOFDZ > $HOME/filedrop.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 WS_HOST=0.0.0.0
 WS_APP_NAME=$HOMESERVER_NAME FileDrop
 WS_ABUSE_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
@@ -55792,7 +56582,7 @@ services:
     image: $(getScriptImageByContainerName piped-db)
     container_name: piped-db
     hostname: piped-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -55804,9 +56594,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/piped/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/piped/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.piped-hourly-db.schedule=@every 1h"
@@ -55877,7 +56667,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/piped/config/config.properties:/app/config.properties:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/config/config.properties:/app/config.properties:ro
 
   piped-cron:
     image: $(getScriptImageByContainerName piped-cron)
@@ -55896,7 +56686,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/piped/cron/updateSubs.sh:/updateSubs.sh
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/cron/updateSubs.sh:/updateSubs.sh
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.piped-subs.schedule=@every 15m"
@@ -55920,11 +56710,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/piped/web/nginx.conf:/etc/nginx/nginx.conf:ro
-      - \${HSHQ_STACKS_DIR}/piped/web/pipedapi.conf:/etc/nginx/conf.d/pipedapi.conf:ro
-      - \${HSHQ_STACKS_DIR}/piped/web/pipedproxy.conf:/etc/nginx/conf.d/pipedproxy.conf:ro
-      - \${HSHQ_STACKS_DIR}/piped/web/pipedfrontend.conf:/etc/nginx/conf.d/pipedfrontend.conf:ro
-      - \${HSHQ_STACKS_DIR}/piped/web/ytproxy.conf:/etc/nginx/snippets/ytproxy.conf:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/web/nginx.conf:/etc/nginx/nginx.conf:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/web/pipedapi.conf:/etc/nginx/conf.d/pipedapi.conf:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/web/pipedproxy.conf:/etc/nginx/conf.d/pipedproxy.conf:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/web/pipedfrontend.conf:/etc/nginx/conf.d/pipedfrontend.conf:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/piped/web/ytproxy.conf:/etc/nginx/snippets/ytproxy.conf:ro
       - v-piped-proxy:/var/run/ytproxy
 
 volumes:
@@ -55933,7 +56723,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/piped/proxy
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/piped/proxy
 
 networks:
   dock-proxy-net:
@@ -55954,7 +56744,7 @@ networks:
 EOFPI
 
   cat <<EOFPI > $HOME/piped.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 POSTGRES_DB=$PIPED_DATABASE_NAME
@@ -56302,55 +57092,55 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/redis
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/redis
   v-grampsweb-users:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/users
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/users
   v-grampsweb-index:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/index
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/index
   v-grampsweb-thumbcache:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/thumbcache
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/thumbcache
   v-grampsweb-cache:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/cache
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/cache
   v-grampsweb-secret:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/secret
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/secret
   v-grampsweb-db:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/db
   v-grampsweb-media:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/media
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/media
   v-grampsweb-tmp:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/grampsweb/tmp
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/grampsweb/tmp
 
 networks:
   dock-proxy-net:
@@ -56368,7 +57158,7 @@ networks:
 EOFPI
 
   cat <<EOFPI > $HOME/grampsweb.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=$USERID
 GID=$GROUPID
 GRAMPSWEB_SECRET_KEY=$GRAMPSWEB_SECRET_KEY
@@ -56550,7 +57340,7 @@ services:
     image: $(getScriptImageByContainerName penpot-db)
     container_name: penpot-db
     hostname: penpot-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -56562,9 +57352,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/penpot/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/penpot/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/penpot/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/penpot/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.penpot-hourly-db.schedule=@every 1h"
@@ -56622,7 +57412,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/penpot/ssl/cacerts:/opt/jdk/lib/security/cacerts:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/penpot/ssl/cacerts:/opt/jdk/lib/security/cacerts:ro
       - v-penpot-assets:/opt/data/assets
 
   penpot-exporter:
@@ -56667,19 +57457,19 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/penpot/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/penpot/db
   v-penpot-assets:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/penpot/assets
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/penpot/assets
   v-penpot-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/penpot/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/penpot/redis
 
 networks:
   dock-proxy-net:
@@ -56705,7 +57495,7 @@ networks:
 EOFPI
 
   cat <<EOFPI > $HOME/penpot.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PENPOT_FLAGS=enable-webhooks enable-smtp enable-prepl-server enable-login-with-ldap enable-backend-api-doc disable-login-with-password disable-onboarding
 PENPOT_PUBLIC_URI=https://$SUB_PENPOT.$HOMESERVER_DOMAIN
 PENPOT_TELEMETRY_ENABLED=false
@@ -56913,8 +57703,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-espocrm-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/espocrm/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/espocrm/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.espocrm-hourly-db.schedule=@every 1h"
@@ -57008,13 +57798,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/espocrm/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/espocrm/db
   v-espocrm-app:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/espocrm/app
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/espocrm/app
 
 networks:
   dock-proxy-net:
@@ -57041,7 +57831,7 @@ networks:
 EOFPI
 
   cat <<EOFPI > $HOME/espocrm.env
-ESPOCRM_TIME_ZONE=\${TZ}
+ESPOCRM_TIME_ZONE=\${PORTAINER_TZ}
 ESPOCRM_DATE_FORMAT=YYYY-MM-DD
 ESPOCRM_DATABASE_HOST=espocrm-db
 ESPOCRM_DATABASE_PORT=3306
@@ -57213,7 +58003,7 @@ services:
     image: $(getScriptImageByContainerName immich-db)
     container_name: immich-db
     hostname: immich-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -57225,9 +58015,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/immich/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/immich/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/immich/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/immich/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.immich-hourly-db.schedule=@every 1h"
@@ -57267,8 +58057,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/immich/app:/usr/src/app/upload
-      - \${HSHQ_STACKS_DIR}/immich/config/immich.json:/config/immich.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/immich/app:/usr/src/app/upload
+      - \${PORTAINER_HSHQ_STACKS_DIR}/immich/config/immich.json:/config/immich.json
 
   immich-ml:
     image: $(getScriptImageByContainerName immich-ml)
@@ -57315,13 +58105,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/immich/cache
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/cache
   v-immich-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/immich/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/immich/redis
 
 networks:
   dock-proxy-net:
@@ -57345,7 +58135,7 @@ networks:
 EOFPI
 
   cat <<EOFPI > $HOME/immich.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 NO_COLOR=true
 IMMICH_CONFIG_FILE=/config/immich.json
 IMMICH_PROCESS_INVALID_IMAGES=true
@@ -57767,7 +58557,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/homarr/data:/appdata
+      - \${PORTAINER_HSHQ_STACKS_DIR}/homarr/data:/appdata
 
 networks:
   dock-proxy-net:
@@ -57780,7 +58570,7 @@ networks:
 EOFPI
 
   cat <<EOFPI > $HOME/homarr.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 AUTH_TRUST_HOST=true
 NEXTAUTH_SECRET=$HOMARR_NEXTAUTH_SECRET
 SECRET_ENCRYPTION_KEY=$HOMARR_SECRET_ENCRYPTION_KEY
@@ -57959,8 +58749,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-matomo-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/matomo/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/matomo/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.matomo-hourly-db.schedule=@every 1h"
@@ -58018,7 +58808,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/matomo/config/nginx.conf:/etc/nginx/conf.d/default.conf:z,ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/matomo/config/nginx.conf:/etc/nginx/conf.d/default.conf:z,ro
       - v-matomo-web:/var/www/html:z,ro
 
 volumes:
@@ -58027,13 +58817,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/matomo/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/matomo/db
   v-matomo-web:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/matomo/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/matomo/web
 
 networks:
   dock-proxy-net:
@@ -58054,7 +58844,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/matomo.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 MYSQL_DATABASE=$MATOMO_DATABASE_NAME
 MYSQL_ROOT_PASSWORD=$MATOMO_DATABASE_ROOT_PASSWORD
 MYSQL_USER=$MATOMO_DATABASE_USER
@@ -58259,8 +59049,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-pastefy-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/pastefy/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/pastefy/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.pastefy-hourly-db.schedule=@every 1h"
@@ -58304,7 +59094,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/pastefy/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/pastefy/db
 
 networks:
   dock-proxy-net:
@@ -58322,7 +59112,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/pastefy.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 MYSQL_DATABASE=$PASTEFY_DATABASE_NAME
 MYSQL_ROOT_PASSWORD=$PASTEFY_DATABASE_ROOT_PASSWORD
 MYSQL_USER=$PASTEFY_DATABASE_USER
@@ -58446,7 +59236,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/snippetbox/data:/app/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/snippetbox/data:/app/data
 
 networks:
   dock-proxy-net:
@@ -58456,7 +59246,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/snippetbox.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 
 EOFMT
 
@@ -58891,7 +59681,7 @@ services:
     image: $(getScriptImageByContainerName aistack-mindsdb-db)
     container_name: aistack-mindsdb-db
     hostname: aistack-mindsdb-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -58903,10 +59693,10 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/aistack/mindsdb/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/aistack/mindsdb/dbexport:/dbexport
-      - \${HSHQ_STACKS_DIR}/aistack/mindsdb/dbimport:/dbimport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/mindsdb/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/mindsdb/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/mindsdb/dbimport:/dbimport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.aistack-mindsdb-hourly-db.schedule=@every 1h"
@@ -58967,7 +59757,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/aistack/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
 
   aistack-langfuse:
     image: $(getScriptImageByContainerName aistack-langfuse)
@@ -59010,8 +59800,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/aistack/ollama/code:/code
-      - \${HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
+      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/ollama/code:/code
+      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/ollama/root:/root/.ollama
 
   aistack-openwebui:
     image: $(getScriptImageByContainerName aistack-openwebui)
@@ -59034,7 +59824,7 @@ services:
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - /etc/ssl/certs/ca-certificates.crt:/usr/local/lib/\${PYTHON_VER}/site-packages/certifi/cacert.pem:ro
-      - \${HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/aistack/openwebui:/app/backend/data
 
   aistack-redis:
     image: $(getScriptImageByContainerName aistack-redis)
@@ -59058,13 +59848,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/aistack/mindsdb/app
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/aistack/mindsdb/app
   v-aistack-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/aistack/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/aistack/redis
 
 networks:
   dock-proxy-net:
@@ -59572,8 +60362,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-pixelfed-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/pixelfed/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.pixelfed-hourly-db.schedule=@every 1h"
@@ -59614,12 +60404,12 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/pixelfed/ldap.conf:/etc/ldap/ldap.conf
-      - \${HSHQ_SSL_DIR}/pixelfed-app.crt:/ldapcerts/pixelfed-app.crt
-      - \${HSHQ_SSL_DIR}/pixelfed-app.key:/ldapcerts/pixelfed-app.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/ldap.conf:/etc/ldap/ldap.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/pixelfed-app.crt:/ldapcerts/pixelfed-app.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/pixelfed-app.key:/ldapcerts/pixelfed-app.key
       - v-pixelfed-appstorage:/var/www/storage
       - v-pixelfed-appbootstrapcache:/var/www/bootstrap/cache
-      - \${HSHQ_STACKS_DIR}/pixelfed/docker.env:/var/www/.env
+      - \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/docker.env:/var/www/.env
 
   pixelfed-worker:
     image: $(getScriptImageByContainerName pixelfed-worker)
@@ -59646,12 +60436,12 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/pixelfed/ldap.conf:/etc/ldap/ldap.conf
-      - \${HSHQ_SSL_DIR}/pixelfed-app.crt:/ldapcerts/pixelfed-app.crt
-      - \${HSHQ_SSL_DIR}/pixelfed-app.key:/ldapcerts/pixelfed-app.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/ldap.conf:/etc/ldap/ldap.conf
+      - \${PORTAINER_HSHQ_SSL_DIR}/pixelfed-app.crt:/ldapcerts/pixelfed-app.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/pixelfed-app.key:/ldapcerts/pixelfed-app.key
       - v-pixelfed-appstorage:/var/www/storage
       - v-pixelfed-appbootstrapcache:/var/www/bootstrap/cache
-      - \${HSHQ_STACKS_DIR}/pixelfed/docker.env:/var/www/.env
+      - \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/docker.env:/var/www/.env
 
   pixelfed-redis:
     image: $(getScriptImageByContainerName pixelfed-redis)
@@ -59675,25 +60465,25 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/pixelfed/appstorage
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/appstorage
   v-pixelfed-db:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/pixelfed/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/db
   v-pixelfed-appbootstrapcache:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/pixelfed/appbootstrapcache
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/pixelfed/appbootstrapcache
   v-pixelfed-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/pixelfed/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/pixelfed/redis
 
 networks:
   dock-proxy-net:
@@ -59718,7 +60508,7 @@ networks:
       driver: default
 EOFMT
   cat <<EOFMT > $HOME/pixelfed.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 UID=${USERID}
 GID=${GROUPID}
 MYSQL_DATABASE=$PIXELFED_DATABASE_NAME
@@ -61047,7 +61837,7 @@ services:
     image: $(getScriptImageByContainerName yamtrack-db)
     container_name: yamtrack-db
     hostname: yamtrack-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -61059,9 +61849,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/yamtrack/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/yamtrack/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/yamtrack/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/yamtrack/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.yamtrack-hourly-db.schedule=@every 1h"
@@ -61122,13 +61912,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/yamtrack/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/yamtrack/db
   v-yamtrack-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/yamtrack/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/yamtrack/redis
 
 networks:
   dock-proxy-net:
@@ -61147,9 +61937,9 @@ networks:
       driver: default
 EOFMT
   cat <<EOFMT > $HOME/yamtrack.env
-TZ=\${TZ}
-PUID=\${UID}
-PGID=\${GID}
+TZ=\${PORTAINER_TZ}
+PUID=\${PORTAINER_UID}
+PGID=\${PORTAINER_GID}
 SOCIAL_PROVIDERS=allauth.socialaccount.providers.openid_connect
 SOCIALACCOUNT_PROVIDERS={"openid_connect":{"OAUTH_PKCE_ENABLED":true,"APPS":[{"provider_id":"authelia","name":"Authelia","client_id":"$YAMTRACK_OIDC_CLIENT_ID","secret":"$YAMTRACK_OIDC_CLIENT_SECRET","settings":{"server_url":"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/.well-known/openid-configuration"}}]}}
 ACCOUNT_DEFAULT_HTTP_PROTOCOL=https
@@ -61773,8 +62563,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
-      - \${HSHQ_STACKS_DIR}/servarr/sonarr/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/servarr/sonarr/config:/config
 
   servarr-radarr:
     image: $(getScriptImageByContainerName servarr-radarr)
@@ -61794,8 +62584,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
-      - \${HSHQ_STACKS_DIR}/servarr/radarr/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/servarr/radarr/config:/config
 
   servarr-lidarr:
     image: $(getScriptImageByContainerName servarr-lidarr)
@@ -61815,8 +62605,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
-      - \${HSHQ_STACKS_DIR}/servarr/lidarr/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/servarr/lidarr/config:/config
 
   servarr-readarr:
     image: $(getScriptImageByContainerName servarr-readarr)
@@ -61836,8 +62626,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
-      - \${HSHQ_STACKS_DIR}/servarr/readarr/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/servarr/readarr/config:/config
 
   servarr-bazarr:
     image: $(getScriptImageByContainerName servarr-bazarr)
@@ -61857,8 +62647,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
-      - \${HSHQ_STACKS_DIR}/servarr/bazarr/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/servarr/bazarr/config:/config
 
   servarr-mylar3:
     image: $(getScriptImageByContainerName servarr-mylar3)
@@ -61878,8 +62668,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/shared/rdata:/data
-      - \${HSHQ_STACKS_DIR}/servarr/mylar3/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/servarr/mylar3/config:/config
 
   servarr-prowlarr:
     image: $(getScriptImageByContainerName servarr-prowlarr)
@@ -61899,7 +62689,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/servarr/prowlarr/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/servarr/prowlarr/config:/config
 
 networks:
   dock-proxy-net:
@@ -61915,7 +62705,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/servarr.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 EOFMT
@@ -62140,8 +62930,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/sabnzbd/config:/config
-      - \${HSHQ_STACKS_DIR}/shared/rdata/usenet:/data/usenet
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sabnzbd/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata/usenet:/data/usenet
 
 networks:
   dock-proxy-net:
@@ -62156,7 +62946,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/sabnzbd.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 EOFMT
@@ -62306,8 +63096,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/qbittorrent/config:/config
-      - \${HSHQ_STACKS_DIR}/shared/rdata/torrents:/data/torrents
+      - \${PORTAINER_HSHQ_STACKS_DIR}/qbittorrent/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata/torrents:/data/torrents
 
 networks:
   dock-proxy-net:
@@ -62322,7 +63112,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/qbittorrent.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 EOFMT
@@ -62438,8 +63228,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-ombi-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/ombi/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ombi/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.ombi-hourly-db.schedule=@every 1h"
@@ -62478,7 +63268,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/ombi/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/ombi/config:/config
 
 volumes:
   v-ombi-db:
@@ -62486,7 +63276,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/ombi/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/ombi/db
 
 networks:
   dock-proxy-net:
@@ -62510,7 +63300,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/ombi.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 MYSQL_DATABASE=$OMBI_DATABASE_NAME
@@ -62651,8 +63441,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-meshcentral-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/meshcentral/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/meshcentral/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.meshcentral-hourly-db.schedule=@every 1h"
@@ -62697,8 +63487,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/opt/meshcentral/meshcentral-data/root-cert-public.crt:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/opt/meshcentral/meshcentral-data/root-cert-private.key:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/opt/meshcentral/meshcentral-data/root-cert-public.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/opt/meshcentral/meshcentral-data/root-cert-private.key:ro
       - v-meshcentral-data:/opt/meshcentral/meshcentral-data
       - v-meshcentral-files:/opt/meshcentral/meshcentral-files
       - v-meshcentral-web:/opt/meshcentral/meshcentral-web
@@ -62710,31 +63500,31 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/meshcentral/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/meshcentral/db
   v-meshcentral-data:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/meshcentral/data
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/meshcentral/data
   v-meshcentral-files:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/meshcentral/files
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/meshcentral/files
   v-meshcentral-web:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/meshcentral/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/meshcentral/web
   v-meshcentral-backups:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/meshcentral/backups
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/meshcentral/backups
 
 networks:
   dock-proxy-net:
@@ -62761,7 +63551,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/meshcentral.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 NODE_ENV=production
 DYNAMIC_CONFIG=false
 HOSTNAME=$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN
@@ -62931,7 +63721,7 @@ services:
     image: $(getScriptImageByContainerName navidrome-app)
     container_name: navidrome-app
     hostname: navidrome-app
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -62945,8 +63735,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/navidrome/data:/data
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/navidrome/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
 
 networks:
   dock-proxy-net:
@@ -62959,7 +63749,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/navidrome.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 ND_ENABLEINSIGHTSCOLLECTOR=false
 ND_BASEURL=https://$SUB_NAVIDROME.$HOMESERVER_DOMAIN
 EOFMT
@@ -63068,8 +63858,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-adminer-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/adminer/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/adminer/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.adminer-hourly-db.schedule=@every 1h"
@@ -63133,7 +63923,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/adminer/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/adminer/db
 
 networks:
   dock-proxy-net:
@@ -63151,7 +63941,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/adminer.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 ADMINER_DESIGN=galkaev
 ADMINER_DEFAULT_SERVER=adminer-db
 ADMINER_DEFAULT_USERNAME=$ADMINER_DATABASE_USER
@@ -63300,8 +64090,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-budibase-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/budibase/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/budibase/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.budibase-hourly-db.schedule=@every 1h"
@@ -63356,7 +64146,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/budibase/plugins:/plugins
+      - \${PORTAINER_HSHQ_STACKS_DIR}/budibase/plugins:/plugins
     environment:
       - PORT=4002
 
@@ -63449,25 +64239,25 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/budibase/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/budibase/db
   v-budibase-couchdb:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/budibase/couchdb
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/budibase/couchdb
   v-budibase-minio:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/budibase/minio
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/budibase/minio
   v-budibase-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/budibase/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/budibase/redis
 
 networks:
   dock-proxy-net:
@@ -63491,7 +64281,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/budibase.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 MYSQL_DATABASE=$BUDIBASE_DATABASE_NAME
 MYSQL_ROOT_PASSWORD=$BUDIBASE_DATABASE_ROOT_PASSWORD
 MYSQL_USER=$BUDIBASE_DATABASE_USER
@@ -63678,11 +64468,11 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/audiobookshelf/audiobooks:/audiobooks
-      - \${HSHQ_STACKS_DIR}/audiobookshelf/podcasts:/podcasts
-      - \${HSHQ_STACKS_DIR}/audiobookshelf/config:/config
-      - \${HSHQ_STACKS_DIR}/audiobookshelf/metadata:/metadata
-      - \${HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/audiobookshelf/audiobooks:/audiobooks
+      - \${PORTAINER_HSHQ_STACKS_DIR}/audiobookshelf/podcasts:/podcasts
+      - \${PORTAINER_HSHQ_STACKS_DIR}/audiobookshelf/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/audiobookshelf/metadata:/metadata
+      - \${PORTAINER_HSHQ_STACKS_DIR}/shared/rdata/media/audio:/sharedaudio:ro
 
 networks:
   dock-proxy-net:
@@ -63697,7 +64487,7 @@ networks:
 
 EOFMT
   cat <<EOFMT > $HOME/audiobookshelf.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 JWT_SECRET_KEY=$AUDIOBOOKSHELF_JWT_SECRET
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 EOFMT
@@ -63878,8 +64668,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-standardnotes-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/standardnotes/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/standardnotes/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.standardnotes-hourly-db.schedule=@every 1h"
@@ -63917,8 +64707,8 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/standardnotes/logs:/var/lib/server/logs
-      - \${HSHQ_STACKS_DIR}/standardnotes/uploads:/opt/server/packages/files/dist/uploads
+      - \${PORTAINER_HSHQ_STACKS_DIR}/standardnotes/logs:/var/lib/server/logs
+      - \${PORTAINER_HSHQ_STACKS_DIR}/standardnotes/uploads:/opt/server/packages/files/dist/uploads
 
   localstack:
     image: $(getScriptImageByContainerName standardnotes-localstack)
@@ -63940,7 +64730,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/standardnotes/localstack/localstack_bootstrap.sh:/etc/localstack/init/ready.d/localstack_bootstrap.sh
+      - \${PORTAINER_HSHQ_STACKS_DIR}/standardnotes/localstack/localstack_bootstrap.sh:/etc/localstack/init/ready.d/localstack_bootstrap.sh
 
   standardnotes-web:
     image: $(getScriptImageByContainerName standardnotes-web)
@@ -63983,13 +64773,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/standardnotes/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/standardnotes/db
   v-standardnotes-redis:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_NONBACKUP_DIR}/standardnotes/redis
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/standardnotes/redis
 
 networks:
   dock-proxy-net:
@@ -64010,7 +64800,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/standardnotes.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 DB_HOST=standardnotes-db
 DB_PORT=3306
 DB_USERNAME=$STANDARDNOTES_DATABASE_USER
@@ -64343,7 +65133,7 @@ services:
     image: $(getScriptImageByContainerName metabase-db)
     container_name: metabase-db
     hostname: metabase-db
-    user: "\${UID}:\${GID}"
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
@@ -64355,9 +65145,9 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/metabase/db:/var/lib/postgresql/data
-      - \${HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/metabase/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_STACKS_DIR}/metabase/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/metabase/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.metabase-hourly-db.schedule=@every 1h"
@@ -64417,7 +65207,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/metabase.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 MB_DB_TYPE=postgres
 MB_DB_HOST=metabase-db
 MB_DB_PORT=5432
@@ -64541,8 +65331,8 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - v-exampleservice-db:/var/lib/mysql
-      - \${HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
-      - \${HSHQ_STACKS_DIR}/exampleservice/dbexport:/dbexport
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.exampleservice-hourly-db.schedule=@every 1h"
@@ -64589,13 +65379,13 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/exampleservice/db
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/db
   v-exampleservice-web:
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/exampleservice/web
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/web
 
 networks:
   dock-proxy-net:
@@ -64619,7 +65409,7 @@ networks:
 EOFMT
 
   cat <<EOFMT > $HOME/exampleservice.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 
 EOFMT
 
@@ -64708,7 +65498,7 @@ networks:
 EOFOF
 
   cat <<EOFRM > $HOME/ofelia.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 EOFRM
 
 }
@@ -65125,8 +65915,9 @@ function main()
     exit 3
   fi
   checkDecryptConfigFile
+  cdrVal=\$?
   stty echo
-  if [ \$? -ne 0 ]; then
+  if [ \$cdrVal -ne 0 ]; then
     exit 4
   fi
 }
@@ -65668,7 +66459,7 @@ decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Restarting all stacks..."
-restartAllStacks
+restartAllStacks "" false doNothing true
 set -e
 performExitFunctions false
 
@@ -68181,7 +68972,7 @@ echo "Getting auth token..."
 PORTAINER_TOKEN="\$(getPortainerToken -u \$PORTAINER_ADMIN_USERNAME -p \$PORTAINER_ADMIN_PASSWORD)"
 if [ \$? -eq 0 ]; then
   echo "Querying stacks..."
-  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks "Authorization: Bearer \$PORTAINER_TOKEN" endpointId==\$PORTAINER_ENDPOINT_ID)
+  tVal=\$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:\$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":\$PORTAINER_ENDPOINT_ID} "Authorization: Bearer \$PORTAINER_TOKEN")
   if [ \$? -eq 0 ]; then
     echo "Succesfully executed query, connection is good!"
   else
@@ -72895,9 +73686,9 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/sqlpad.crt:/certs/sqlpad.crt
-      - \${HSHQ_SSL_DIR}/sqlpad.key:/certs/sqlpad.key
-      - \${HSHQ_STACKS_DIR}/sqlpad:/var/lib/sqlpad
+      - \${PORTAINER_HSHQ_SSL_DIR}/sqlpad.crt:/certs/sqlpad.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/sqlpad.key:/certs/sqlpad.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/sqlpad:/var/lib/sqlpad
 
 networks:
   dock-proxy-net:
@@ -73849,13 +74640,13 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/heimdall/config:/config
-      - \${HSHQ_SSL_DIR}/heimdall.crt:/config/keys/cert.crt
-      - \${HSHQ_SSL_DIR}/heimdall.key:/config/keys/cert.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/heimdall/config:/config
+      - \${PORTAINER_HSHQ_SSL_DIR}/heimdall.crt:/config/keys/cert.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/heimdall.key:/config/keys/cert.key
       - v-heimdall:/var/www/localhost/heimdall
-      - \${HSHQ_STACKS_DIR}/heimdall/app.php:/var/www/localhost/heimdall/config/app.php
-      - \${HSHQ_STACKS_DIR}/heimdall/list.json:/var/www/localhost/heimdall/public/list.json
-      - \${HSHQ_STACKS_DIR}/heimdall/cleanupHeimdallSessions.sh:/cleanupHeimdallSessions.sh
+      - \${PORTAINER_HSHQ_STACKS_DIR}/heimdall/app.php:/var/www/localhost/heimdall/config/app.php
+      - \${PORTAINER_HSHQ_STACKS_DIR}/heimdall/list.json:/var/www/localhost/heimdall/public/list.json
+      - \${PORTAINER_HSHQ_STACKS_DIR}/heimdall/cleanupHeimdallSessions.sh:/cleanupHeimdallSessions.sh
     labels:
       - "ofelia.enabled=true"
       - "ofelia.job-exec.heimdall-sessions-cleanup.schedule=@every 4h"
@@ -73866,7 +74657,7 @@ volumes:
     driver_opts:
       type: none
       o: bind
-      device: \${HSHQ_STACKS_DIR}/heimdall/html
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/heimdall/html
 
 networks:
   dock-proxy-net:
@@ -74259,25 +75050,25 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "\${$ipVarName}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
-      - "\${$ipVarName}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
+      - "\${PORTAINER_$ipVarName}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
+      - "\${PORTAINER_$ipVarName}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
-      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Home:/config/CaddyfileBody
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
-      - \${HSHQ_ASSETS_DIR}/images:/images:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Home:/config/CaddyfileBody
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
+      - \${PORTAINER_HSHQ_ASSETS_DIR}/images:/images:ro
 
 networks:
   dock-proxy-net:
@@ -74368,17 +75159,17 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
-      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
-      - \${HSHQ_ASSETS_DIR}/images:/images:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
+      - \${PORTAINER_HSHQ_ASSETS_DIR}/images:/images:ro
       - caddy-primary-certs:/data/caddy/certificates
 
 volumes:
@@ -74463,17 +75254,17 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
-      - \${HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
-      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
-      - \${HSHQ_ASSETS_DIR}/images:/images:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.crt:/data/caddy/pki/authorities/$ca_name/root.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/${CERTS_ROOT_CA_NAME}.key:/data/caddy/pki/authorities/$ca_name/root.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-Primary:/config/CaddyfileBody
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/scripts:/scripts:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
+      - \${PORTAINER_HSHQ_ASSETS_DIR}/images:/images:ro
       - caddy-primary-certs:/data/caddy/certificates
 
 volumes:
@@ -74555,14 +75346,14 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
-      - \${HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-$caddy_net_name:/config/CaddyfileBody
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
-      - \${HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
-      - \${HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
-      - \${HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
-      - \${HSHQ_ASSETS_DIR}/images:/images:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/Caddyfile:/etc/caddy/Caddyfile
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/caddyfiles/CaddyfileBody-$caddy_net_name:/config/CaddyfileBody
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/$caddy_net_name/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/snippets:/snippets:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/files:/files:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/caddy-common/lecerts:/lecerts:ro
+      - \${PORTAINER_HSHQ_ASSETS_DIR}/images:/images:ro
 
 networks:
   dock-proxy-net:
@@ -74873,7 +75664,7 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/dnsmasq.conf:/etc/dnsmasq.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/dnsmasq.conf:/etc/dnsmasq.conf
     environment:
       - HTTP_USER=$CUR_CLIENTDNS_ADMIN_USERNAME
       - HTTP_PASS=$CUR_CLIENTDNS_ADMIN_PASSWORD
@@ -74894,8 +75685,8 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/Corefile:/config/coredns/Corefile:ro
-      - \${HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf:/config/wg0.conf
+      - \${PORTAINER_HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/Corefile:/config/coredns/Corefile:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/clientdns-${cdns_stack_name}/clientdns-${cdns_stack_name}.conf:/config/wg0.conf
 
 networks:
   dock-proxy-net:
@@ -74911,7 +75702,7 @@ networks:
 EOFGL
 
   cat <<EOFGL > $HOME/clientdns-${cdns_stack_name}.env
-TZ=\${TZ}
+TZ=\${PORTAINER_TZ}
 PUID=$USERID
 PGID=$GROUPID
 CLIENTDNS_SUBNET_PREFIX=$clientdns_subnet_prefix
@@ -75063,7 +75854,7 @@ services:
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${HSHQ_STACKS_DIR}/uptimekuma/app:/app/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/uptimekuma/app:/app/data
 
 networks:
   dock-ext-net:
