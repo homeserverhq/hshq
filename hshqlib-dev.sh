@@ -8613,7 +8613,7 @@ function getPortainerToken()
 
 function createStackJson()
 {
-  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":"\$(envToJson \$3)"}"
+  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":\$(envToJson \$3)}"
 }
 
 function envToJson()
@@ -15623,7 +15623,7 @@ function checkFileShellExpansion()
 
 function createStackJson()
 {
-  echo "{\"Name\":\"$1\",""$( jq -Rscjr '{StackFileContent: . }' $2 | tail -c +2 | head -c -1 )"",\"Env\":"$(envToJson $3)"}"
+  echo "{\"Name\":\"$1\",""$( jq -Rscjr '{StackFileContent: . }' $2 | tail -c +2 | head -c -1 )"",\"Env\":$(envToJson $3)}"
 }
 
 function installStack()
@@ -23724,7 +23724,7 @@ function setPortainerToken()
 
 function createStackJson()
 {
-  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":"\$(envToJson \$3)"}"
+  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":\$(envToJson \$3)}"
 }
 
 function envToJson()
@@ -23809,7 +23809,7 @@ function startStopStackByID()
 
 function createStackJson()
 {
-  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":"\$(envToJson \$3)"}"
+  echo "{\"Name\":\"\$1\",""\$( jq -Rscjr '{StackFileContent: . }' \$2 | tail -c +2 | head -c -1 )"",\"Env\":\$(envToJson \$3)}"
 }
 
 function updateStackByID()
