@@ -23360,6 +23360,7 @@ function relayServerFixPortainerAndUpgradeDockerV188()
   source ~/$RS_UPDATE_UTILS_SCRIPT_NAME
   pullImage mirror.gcr.io/caddy:2.10.0
   pullImage mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
+  pullImage mirror.gcr.io/adguard/adguardhome:v0.107.64
   setPortainerToken
   while [ \$rsi_numTries -le \$rsi_totalTries ]
   do
@@ -23386,6 +23387,9 @@ EOFRC
   do
     echo "Stopping \${rstackNames[\$curID]} (\${rstackIDs[\$curID]})..."
     startStopStackByID \${rstackIDs[\$curID]} stop
+    if [ "\${rstackNames[\$curID]}" = "adguard" ]; then
+      adguardStackID=\${rstackIDs[\$curID]}
+    fi
     sleep 1
   done
   docker compose -f $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml down
@@ -23405,7 +23409,6 @@ EOFRC
   upgradeDocker
   echo "Restarting Docker..."
   sudo systemctl restart docker
-
   cat <<EOFPC > $RELAYSERVER_HSHQ_STACKS_DIR/portainer/portainer.env
 PORTAINER_RELAYSERVER_HSHQ_DATA_DIR=$RELAYSERVER_HSHQ_DATA_DIR
 PORTAINER_RELAYSERVER_HSHQ_NONBACKUP_DIR=$RELAYSERVER_HSHQ_NONBACKUP_DIR
@@ -23417,7 +23420,6 @@ PORTAINER_TZ=$TZ
 PORTAINER_UID=\$USERID
 PORTAINER_GID=\$GROUPID
 EOFPC
-
   sed -i "s/\/run\/secrets\/portainer/\/run\/portainer\/portainer/g" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
   sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.1-alpine/" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
   sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} portainer v4/" $RELAYSERVER_HSHQ_STACKS_DIR/portainer/docker-compose.yml
@@ -23427,8 +23429,40 @@ EOFPC
   num_tries=1
   sleep 5
   setPortainerToken
+  if ! [ -z "\$adguardStackID" ]; then
+    echo "Starting adguard (\$adguardStackID)..."
+    sudo cp $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\$adguardStackID/docker-compose.yml ~/adguard-compose.yml
+    sudo cp $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\$adguardStackID/stack.env ~/adguard.env
+    sudo chown $RELAYSERVER_REMOTE_USERNAME:$RELAYSERVER_REMOTE_USERNAME ~/adguard-compose.yml
+    sudo chown $RELAYSERVER_REMOTE_USERNAME:$RELAYSERVER_REMOTE_USERNAME ~/adguard.env
+    sed -i "s/image:.*adguard.*/image: mirror.gcr.io\/adguard\/adguardhome:v0.107.64/" ~/adguard-compose.yml
+    sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} adguard v7/" ~/adguard-compose.yml
+    for curVar in "\${fixvars[@]}"
+    do
+      if ! [ "\${curVar:0:10}" = "PORTAINER_" ]; then
+        sed -i "s/\\\$\$curVar/\\\$PORTAINER_\$curVar/g" ~/adguard-compose.yml
+        sed -i "s/\\\${\$curVar}/\\\${PORTAINER_\$curVar}/g" ~/adguard-compose.yml
+        sed -i "s/\\\$\$curVar/\\\$PORTAINER_\$curVar/g" ~/adguard.env
+        sed -i "s/\\\${\$curVar}/\\\${PORTAINER_\$curVar}/g" ~/adguard.env
+      fi
+    done
+    updateStackByID adguard \$adguardStackID ~/adguard-compose.yml ~/adguard.env
+    sleep 3
+    waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
+    if [ \$? -eq 0 ]; then
+      sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+      sudo tee /etc/resolv.conf >/dev/null <<EOFRC
+nameserver 127.0.0.1
+EOFRC
+    else
+      echo "ERROR: The adguard container did not start correctly..."
+    fi
+  fi
   for curID in \$(seq 0 \$numItems);
   do
+    if [ "\${rstackNames[\$curID]}" = "adguard" ]; then
+      continue
+    fi
     echo "Starting \${rstackNames[\$curID]} (\${rstackIDs[\$curID]})..."
     if ! sudo test -f $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\${rstackIDs[\$curID]}/stack.env; then
       echo "TZ=\\\${TZ}" | sudo tee $RELAYSERVER_HSHQ_STACKS_DIR/portainer/compose/\${rstackIDs[\$curID]}/stack.env > /dev/null 2>&1
@@ -23839,6 +23873,34 @@ function installStack()
   rm -f \$HOME/\$stack_name-json.tmp
   rm -f \$HOME/\$stack_name-compose.yml
   rm -f \$envfile
+}
+
+function waitForContainerLogString()
+{
+  container_name="\$1"
+  sleep_interval="\$2"
+  max_checks="\$3"
+  search_string="\$4"
+  isFound=false
+  curCheckIter=0
+  totalWait=0
+  set +e
+  echo "Checking container log (\$container_name)..."
+  while [ \$curCheckIter -le \$max_checks ]
+  do
+    findtext=\$(docker logs \$container_name 2>&1 | grep "\$search_string")
+    if ! [ -z "\$findtext" ]; then
+      isFound=true
+      break
+    fi
+    echo "Container not ready, sleeping \$sleep_interval seconds, total wait=\$totalWait seconds..."
+    sleep \$sleep_interval
+    totalWait=\$((\$totalWait+\$sleep_interval))
+  done
+  if ! [ "\$isFound" = "true" ]; then
+    echo "String not found within alotted time for container \$container_name: \$search_string"
+    return 1
+  fi
 }
 
 function pullImage()
