@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=189
+HSHQ_LIB_SCRIPT_VERSION=190
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -9596,6 +9596,7 @@ function installWireGuard()
   installStack wgportal wgportal "starting web service on" \$HOME/wgportal.env
   startStopStack wgportal stop
   sudo sqlite3 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db "update devices set display_name='WireGuard Server', mtu=$RELAYSERVER_SERVER_DEFAULT_MTU, dns_str='$RELAYSERVER_WG_SV_IP', post_up='\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh up;', post_down='\$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/server/wgupdown.sh down;', default_endpoint='$RELAYSERVER_SUB_WG.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN:$RELAYSERVER_WG_PORT', default_allowed_ips_str='\$(getAllowedPublicIPs $PRIMARY_VPN_SUBNET)', default_persistent_keepalive=0, created_at='\$wgdbdate', updated_at='\$wgdbdate' where device_name='$RELAYSERVER_WG_INTERFACE_NAME';"
+  sudo chmod 0600 \$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db
   startStopStack wgportal start
   sleep 2
   wgPortalAuth="\$(echo \$(echo -n ${RELAYSERVER_WGPORTAL_ADMIN_EMAIL}:${RELAYSERVER_WGPORTAL_ADMIN_PASSWORD} | base64) | sed 's| ||g')"
@@ -10674,6 +10675,8 @@ EOF
       err_message="Could not log in to RelayServer. It could be wrong IP address/port and/or incorrect credentials. Please check your records and try again."
       continue
     fi
+    # Login with domain name as well...
+    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo hello >/dev/null" -f
     # 2. Upload check script
     outputRelayServerValidationScript
     echo "Uploading validation script..."
@@ -10684,6 +10687,7 @@ EOF
       err_message="There was an error uploading the validation script to the RelayServer."
       continue
     fi
+    echo "Uploading validation setup script..."
     perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c ":~/$RS_INSTALL_VALIDATION_LIB_SCRIPT_NAME" -f
     is_err=$?
     if [ $is_err -ne 0 ]; then
@@ -10731,14 +10735,14 @@ EOF
     updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
     updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   fi
-  perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   if [ "$isTransfer" = "true" ]; then
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   else
-    perfRemoteAction -m scp -p $RELAYSERVER_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
     rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   fi
-  perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
 }
 
 function loadSSHKey()
@@ -20933,7 +20937,7 @@ function version22Update()
   mailuStackID=$(getStackID mailu)
   cdnsStackID=$(getStackID clientdns-${cdns_stack_name})
 
-  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} endpointId==$PORTAINER_ENDPOINT_ID "Authorization: Bearer $PORTAINER_TOKEN" | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackIDs=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN" | jq -r '.[] | select(.Status == 1) | .Id'))
   rstackNames=($(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN" | jq -r '.[] | select(.Status == 1) | .Name'))
   numItems=$((${#rstackIDs[@]}-1))
 
@@ -21591,7 +21595,7 @@ function version39Update()
   sudo sqlite3 $HSHQ_DB "ALTER TABLE newconnections RENAME TO connections;"
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     sendRSExposeScripts
-    keylist=($(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sqlite3 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db \"select public_key,preshared_key from peers;\"" -f -d))
+    keylist=($(perfRemoteAction -m ssh -p $RELAYSERVER_SSH_PORT -o "-T" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "sudo sqlite3 $RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db \"select public_key,preshared_key from peers;\"" -f -d))
     for curKeys in "${keylist[@]}"
     do
       pub_key=$(echo "$curKeys" | cut -d "|" -f1)
