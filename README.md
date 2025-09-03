@@ -49,28 +49,29 @@ bash hshq.sh
 #### See https://wiki.homeserverhq.com/en/tutorials/setup-demo for instructions on how to setup a demo environment.
 
 ## Custom ISOs
+
+![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/LinuxDEPreview-XLibre.gif)
+
+Server builds are lightweight with command-line only (experienced users)
+
+Desktop builds provide an easy-to-use graphical user interface and implement the latest updates from [XLibre](https://github.com/X11Libre/xserver) (See animation above).
+
+They contain the following environments:
+ - [Budgie](https://wiki.homeserverhq.com/foss-projects/budgie)
+ - [Cinnamon](https://wiki.homeserverhq.com/foss-projects/cinnamon)
+ - [GNOME](https://wiki.homeserverhq.com/foss-projects/gnome)
+ - [KDE Plasma](https://wiki.homeserverhq.com/foss-projects/kde-plasma)
+ - [MATE](https://wiki.homeserverhq.com/foss-projects/mate)
+ - [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce)
+
 Description | Underlying Distro | Custom ISO |
 :------ | :------: | :------:
+Debian 12 Desktop | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.iso" target="_blank">Download (4.5 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.sha256" target="_blank">sha256</a> ]
+Ubuntu 24 Desktop | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.iso" target="_blank">Download (5.4 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.sha256" target="_blank">sha256</a> ]
 Debian 12 Server | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-server-hshq.iso" target="_blank">Download (2.0 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-server-hshq.sha256" target="_blank">sha256</a> ]
-Debian 12 [GNOME](https://wiki.homeserverhq.com/foss-projects/gnome) | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-gnome-hshq.iso" target="_blank">Download (3.9 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-gnome-hshq.sha256" target="_blank">sha256</a> ]
-Debian 12 [Cinnamon](https://wiki.homeserverhq.com/foss-projects/cinnamon) | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-cinnamon-hshq.iso" target="_blank">Download (3.9 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-cinnamon-hshq.sha256" target="_blank">sha256</a> ]
-Debian 12 [KDE Plasma](https://wiki.homeserverhq.com/foss-projects/kde-plasma) | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-kde-hshq.iso" target="_blank">Download (4.1 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-kde-hshq.sha256" target="_blank">sha256</a> ]
-Debian 12 [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce) | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-xfce-hshq.iso" target="_blank">Download (3.8 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-xfce-hshq.sha256" target="_blank">sha256</a> ]
-Debian 12 [MATE](https://wiki.homeserverhq.com/foss-projects/mate) | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-mate-hshq.iso" target="_blank">Download (3.9 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-mate-hshq.sha256" target="_blank">sha256</a> ]
-Debian 12 Oliver* | [Debian 12.9](https://wiki.homeserverhq.com/foss-projects/debian) | <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.iso" target="_blank">Download (4.5 GB)</a> [ <a href="https://links.homeserverhq.com/debian-12-oliver-hshq.sha256" target="_blank">sha256</a> ]
-Mint 22 [Cinnamon](https://wiki.homeserverhq.com/foss-projects/cinnamon) | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/mint-22-cinnamon-hshq.iso" target="_blank">Download (3.5 GB)</a> [ <a href="https://links.homeserverhq.com/mint-22-cinnamon-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 22 Server | [Ubuntu 22.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-22-server-hshq.iso" target="_blank">Download (2.8 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-22-server-hshq.sha256" target="_blank">sha256</a> ]
 Ubuntu 24 Server | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.iso" target="_blank">Download (3.0 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-server-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 [GNOME](https://wiki.homeserverhq.com/foss-projects/gnome) | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-gnome-hshq.iso" target="_blank">Download (4.0 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-gnome-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 [KDE Plasma](https://wiki.homeserverhq.com/foss-projects/kde-plasma) | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-kde-hshq.iso" target="_blank">Download (4.0 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-kde-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce) | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-xfce-hshq.iso" target="_blank">Download (4.2 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-xfce-hshq.sha256" target="_blank">sha256</a> ]
-Ubuntu 24 Oliver* | [Ubuntu 24.04](https://wiki.homeserverhq.com/foss-projects/ubuntu) | <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.iso" target="_blank">Download (5.4 GB)</a> [ <a href="https://links.homeserverhq.com/ubuntu-24-oliver-hshq.sha256" target="_blank">sha256</a> ]
 
-*An Oliver build contains ALL 5 desktop environments ([GNOME](https://wiki.homeserverhq.com/foss-projects/gnome), [Cinnamon](https://wiki.homeserverhq.com/foss-projects/cinnamon), [KDE Plasma](https://wiki.homeserverhq.com/foss-projects/kde-plasma), [XFCE](https://wiki.homeserverhq.com/foss-projects/xfce), [MATE](https://wiki.homeserverhq.com/foss-projects/mate)), plus 1 more - [Budgie](https://wiki.homeserverhq.com/foss-projects/budgie). Simply select your desired environment at the login prompt and quickly swap between environments with ease.
-
-![image](https://raw.githubusercontent.com/homeserverhq/custom-iso/refs/heads/main/assets/LinuxDEPreview.gif)
-
-Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. See [this](https://wiki.homeserverhq.com/en/tutorials/install-linux) link for more detailed instructions. If you are unsure of which one to get, just get Oliver!
+Each of the above custom ISOs provide an Easy Installation method that requires around 5 simple questions and results in a very quick (and painless) 5-10 minute Linux OS installation - start to finish. See [this](https://wiki.homeserverhq.com/en/tutorials/install-linux) link for more detailed instructions.
 
 To create a bootable USB:
   1) Download and run <a href="https://etcher.balena.io/#download-etcher" target="_blank">Balena Etcher</a>
