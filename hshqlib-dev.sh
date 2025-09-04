@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=192
+HSHQ_LIB_SCRIPT_VERSION=193
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -32,7 +32,7 @@ function init()
   IS_STACK_DEBUG=false
   USERNAME=$(id -u -n)
   PRIOR_HSHQ_VERSION=0
-  LAST_RELAYSERVER_VERSION_UPDATE=189
+  LAST_RELAYSERVER_VERSION_UPDATE=193
   IS_DESKTOP_ENV=false
   if [ -d $HOME/Desktop ]; then
     IS_DESKTOP_ENV=true
@@ -10958,7 +10958,7 @@ function connectVPN()
       echo -e " \n++++++++++++++++++++++++++++++++++++++++++++++++++\n"
     fi
     curl -s -H "X-API-Key: $SYNCTHING_API_KEY" -X POST -d "$jsonbody" -k https://127.0.0.1:$SYNCTHING_LOCAL_WEB_PORT/rest/config/devices
-    jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 3600,\"fsWatcherEnabled\": true,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
+    jsonbody="{\"id\": \"$RELAYSERVER_SYNCTHING_FOLDER_ID\", \"label\": \"RelayServer Backup\",\"filesystemType\": \"basic\", \"path\": \"/relayserver/\", \"type\": \"receiveonly\",\"devices\": [{\"deviceID\": \"$SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"},{\"deviceID\": \"$RELAYSERVER_SYNCTHING_DEVICE_ID\",\"introducedBy\": \"\",\"encryptionPassword\": \"\"}], \"rescanIntervalS\": 86400,\"fsWatcherEnabled\": false,\"fsWatcherDelayS\": 10,\"ignorePerms\": false,\"autoNormalize\": true,\"minDiskFree\": {\"value\": 1,\"unit\": \"%\"},\"versioning\": {\"type\": \"\",\"params\": {},\"cleanupIntervalS\": 3600,\"fsPath\": \"\",\"fsType\": \"basic\"},\"copiers\": 0,\"pullerMaxPendingKiB\": 0,\"hashers\": 0,\"order\": \"random\",\"ignoreDelete\": false,\"scanProgressIntervalS\": 0,\"pullerPauseS\": 0,\"maxConflicts\": 10,\"disableSparseFiles\": false,\"disableTempIndexes\": false,\"paused\": false,\"weakHashThresholdPct\": 25,\"markerName\": \".stfolder\",\"copyOwnershipFromParent\": false,\"modTimeWindowS\": 0,\"maxConcurrentWrites\": 2,\"disableFsync\": false,\"blockPullOrder\": \"standard\",\"copyRangeMethod\": \"standard\",\"caseSensitiveFS\": false,\"junctionsAsDirs\": false,\"syncOwnership\": true,\"sendOwnership\": false,\"syncXattrs\": false,\"sendXattrs\": false,\"xattrFilter\": {\"entries\": [],\"maxSingleEntrySize\": 1024,\"maxTotalSize\": 4096}}"
     echo "Setting up backup directory on HomeServer syncthing..."
     if [ "$LOG_LEVEL" = "debug" ]; then
       echo -e "Running this command on HomeServer:"
@@ -20829,6 +20829,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=189
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 193 ]; then
+    echo "Updating to Version 193..."
+    version193Update
+    HSHQ_VERSION=193
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23505,6 +23511,39 @@ EOFUR
   fi
 }
 
+function version193Update()
+{
+  if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
+    echo "========================================================================"
+    echo "  Performing updates on RelayServer."
+    echo "  This may take a few minutes, so please be patient."
+    echo "========================================================================"
+    sleep 5
+    rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
+    cat <<EOFUR > $HOME/$RS_UPDATE_SCRIPT_NAME
+#!/bin/bash
+
+function main()
+{
+  read -r -s -p "" rspw
+  echo "\$rspw" | sudo -S -v -p "" > /dev/null 2>&1
+  permsUpdateFile=$RELAYSERVER_HSHQ_STACKS_DIR/wireguard/wgportal/wg_portal.db
+  if [ -f \$permsUpdateFile ]; then
+    sudo chmod 0600 \$permsUpdateFile
+  else
+    echo "ERROR: The WG Portal db (\$permsUpdateFile) does not exist. The permissions were not updated..."
+  fi
+  rm -f ~/$RS_UPDATE_SCRIPT_NAME
+}
+main
+EOFUR
+    updateRelayServerWithScript false
+    if [ $? -ne 0 ]; then
+      echo "ERROR: The update process on the RelayServer encountered an error. Please check the logs and retry."
+      exit
+    fi
+  fi
+}
 function fixPortainerAndUpgradeDockerV188()
 {
   set +e
