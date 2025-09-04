@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=190
+HSHQ_LIB_SCRIPT_VERSION=191
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -470,7 +470,7 @@ function checkDockerPre()
   if [ $? -ne 0 ]; then
     if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
       # Docker must be installed and system rebooted
-      showMessageBox "It appears that docker is not installed, and the OS Linux version is Debian 12. Due to recent changes, docker must be installed beforehand and the system rebooted in order to continue. After the system has rebooted, please log back in with this same user ($USERNAME) and restart the installation. Press okay to proceed."
+      showMessageBox "WARNING" "It appears that docker is not installed, and the OS Linux version is Debian 12. Due to recent changes, docker must be installed beforehand and the system rebooted in order to continue. After the system has rebooted, please log back in with this same user ($USERNAME) and restart the installation (bash hshq.sh). Press okay to proceed."
       sudo DEBIAN_FRONTEND=noninteractive apt update
       sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
       sudo DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold'
@@ -3461,6 +3461,10 @@ function initConfig()
     echo "Installing sipcalc, please wait..."
     performAptInstall sipcalc > /dev/null 2>&1
   fi
+  if [[ "$(isProgramInstalled jq)" = "false" ]]; then
+    echo "Installing jq, please wait..."
+    performAptInstall jq > /dev/null 2>&1
+  fi
   if [ -z "$CONFIG_FILE" ]; then
     # Create new directories and config file
     createInitialEnv
@@ -5826,10 +5830,6 @@ function setupHostedVPN()
   if [[ "$(isProgramInstalled sipcalc)" = "false" ]]; then
     echo "Installing sipcalc, please wait..."
     performAptInstall sipcalc > /dev/null 2>&1
-  fi
-  if [[ "$(isProgramInstalled jq)" = "false" ]]; then
-    echo "Installing jq, please wait..."
-    performAptInstall jq > /dev/null 2>&1
   fi
   resetRelayServerData
   if [ -z "$RELAYSERVER_WG_VPN_NETNAME" ]; then
@@ -14690,7 +14690,6 @@ function getAllNetworkInterfacesCSV()
 function outputAllNetworkInterfaces()
 {
   allInterfacesArr=($(echo "$(getAllNetworkInterfacesCSV)" | tr "," "\n")) 
-
   for curInt in "${allInterfacesArr[@]}"
   do
     ifconfig $curInt
