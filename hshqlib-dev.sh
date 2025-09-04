@@ -23516,7 +23516,6 @@ function version193Update()
   if [ "$PRIMARY_VPN_SETUP_TYPE" = "host" ]; then
     echo "========================================================================"
     echo "  Performing updates on RelayServer."
-    echo "  This may take a few minutes, so please be patient."
     echo "========================================================================"
     sleep 5
     rm -f $HOME/$RS_UPDATE_SCRIPT_NAME
