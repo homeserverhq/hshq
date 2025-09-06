@@ -21,7 +21,7 @@
 
 ## Quick Start
 1. Buy a domain name - [link](https://wiki.homeserverhq.com/getting-started/requirements#domain)
-2. Download a Custom ISO Oliver build and install Linux - [link](https://wiki.homeserverhq.com/tutorials/install-linux)
+2. Download a Custom ISO Desktop build and install Linux - [link](https://wiki.homeserverhq.com/tutorials/install-linux)
 3. Double-click the 'Install HSHQ' shortcut on the desktop and answer the prompts accordingly
 4. Obtain a VPS to function as your RelayServer - [link](https://wiki.homeserverhq.com/getting-started/setup-relayserver)
 5. Open up the HSHQ Web Utility, go to 06 My Network -> 14 Set Up Hosted VPN, to set up your RelayServer
