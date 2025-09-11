@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=193
+HSHQ_LIB_SCRIPT_VERSION=194
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -20835,6 +20835,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=193
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 194 ]; then
+    echo "Updating to Version 194..."
+    version194Update
+    HSHQ_VERSION=194
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23543,6 +23549,16 @@ EOFUR
     fi
   fi
 }
+
+function version194Update()
+{
+  homeIntArr=($(sqlite3 $HSHQ_DB "select InterfaceName from connections where NetworkType = 'home_network';"))
+  for curHomeInt in "${homeIntArr[@]}"
+  do
+    updateStackEnv caddy-home-${curHomeInt} modFunFixCaddyHostInterfaceVar
+  done
+}
+
 function fixPortainerAndUpgradeDockerV188()
 {
   set +e
@@ -24081,6 +24097,13 @@ EOFAB
   do
     docker container restart $curCH > /dev/null 2>&1
   done
+}
+
+function modFunFixCaddyHostInterfaceVar()
+{
+  echo "Updating caddy stack: ${updateStackName}"
+  sed -i "s/\${HOMESERVER_HOST_/\${PORTAINER_HOMESERVER_HOST_/g" $HOME/${updateStackName}.env
+  sed -i "s/CADDY_HSHQ_BIND_IP=.*/CADDY_HSHQ_BIND_IP=\${$(getHSHostIPVarName $curHomeInt)}/" $HOME/${updateStackName}.env
 }
 
 function modFunCaddyHomeBindIPFix()
@@ -27240,13 +27263,13 @@ function removeWGInterfaceQuick()
 function getHSHostIPVarName()
 {
   if_name="$1"
-  echo "HOMESERVER_HOST_${if_name^^}_IP"
+  echo "PORTAINER_HOMESERVER_HOST_${if_name^^}_IP"
 }
 
 function getHSHostSubnetVarName()
 {
   if_name="$1"
-  echo "HOMESERVER_HOST_${if_name^^}_SUBNET"
+  echo "PORTAINER_HOMESERVER_HOST_${if_name^^}_SUBNET"
 }
 
 function checkIPConflict()
@@ -34385,8 +34408,8 @@ EOFPC
     curIF_IPVar=$(getHSHostIPVarName $curIF_Interface)
     curIF_SubnetVar=$(getHSHostSubnetVarName $curIF_Interface)
     if ! [ -z "$curIF_IP" ] && [ "$(checkValidIPAddress $curIF_IP)" = "true" ] && ! [ "$curIF_IP" = "$DEFAULT_UNFOUND_IP_ADDRESS" ]; then
-      echo "PORTAINER_${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
-      echo "PORTAINER_${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+      echo "${curIF_IPVar}=${curIF_IP}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
+      echo "${curIF_SubnetVar}=${curIF_Subnet}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
     fi
   done
   echo "PORTAINER_ALL_INTERFACE_IPS=${ALL_INTERFACE_IPS}" | tee -a $HSHQ_STACKS_DIR/portainer/portainer.env >/dev/null
@@ -75091,8 +75114,8 @@ services:
       - dock-proxy-net
       - dock-ext-net
     ports:
-      - "\${PORTAINER_$ipVarName}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
-      - "\${PORTAINER_$ipVarName}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
+      - "\${$ipVarName}:$CADDY_HTTP_PORT:$CADDY_HTTP_PORT"
+      - "\${$ipVarName}:$CADDY_HTTPS_PORT:$CADDY_HTTPS_PORT"
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
