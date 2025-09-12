@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=194
+HSHQ_LIB_SCRIPT_VERSION=195
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -372,6 +372,7 @@ function showNotInstalledMenu()
 {
   set +e
   checkSupportedHostOS
+  chmod 544 ~/hshq.sh
   refreshSudo
   setSudoTimeoutInstall
   if [[ "$(isProgramInstalled sshd)" = "false" ]]; then
@@ -502,6 +503,11 @@ function verifyAptSource()
       echo "true"
       return
     fi
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    if test -f /etc/apt/sources.list; then
+      echo "true"
+      return
+    fi
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     if test -f /etc/apt/sources.list.d/official-package-repositories.list; then
       echo "true"
@@ -520,6 +526,10 @@ function backupOrigAptSource()
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     if ! test -f /etc/apt/sources.list.d/ubuntu.sources.orig; then
       sudo cp /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.orig
+    fi
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    if ! test -f /etc/apt/sources.list.orig; then
+      sudo cp /etc/apt/sources.list /etc/apt/sources.list.orig
     fi
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     if ! test -f /etc/apt/sources.list.d/official-package-repositories.list.orig; then
@@ -542,6 +552,12 @@ function checkIfOrigAptSource()
     else
       echo "false"
     fi
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    if test -f /etc/apt/sources.list.orig; then
+      echo "true"
+    else
+      echo "false"
+    fi
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     if test -f /etc/apt/sources.list.d/official-package-repositories.list.orig; then
       echo "true"
@@ -557,6 +573,8 @@ function getDefaultAptSource()
     grep "^deb" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     grep "^URIs" /etc/apt/sources.list.d/ubuntu.sources.orig | head -n 1 | cut -d" " -f2
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    grep "^deb" /etc/apt/sources.list.orig | head -n 1 | cut -d" " -f2
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     grep "^URIs" /etc/apt/sources.list.d/official-package-repositories.list.orig | head -n 1 | cut -d" " -f2
   fi
@@ -568,6 +586,8 @@ function backupAptSource()
     sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo cp -f /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list.d/ubuntu.sources.backup
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    sudo cp -f /etc/apt/sources.list /etc/apt/sources.list.backup
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list /etc/apt/sources.list.d/official-package-repositories.list.backup
   fi
@@ -579,6 +599,8 @@ function removeBackupAptSource()
     sudo rm -f /etc/apt/sources.list.backup
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo rm -f /etc/apt/sources.list.d/ubuntu.sources.backup
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    sudo rm -f /etc/apt/sources.list.backup
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     sudo rm -f /etc/apt/sources.list.d/official-package-repositories.list.backup
   fi
@@ -590,6 +612,8 @@ function restoreBackupAptSource()
     sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.backup /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    sudo cp -f /etc/apt/sources.list.backup /etc/apt/sources.list
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list.backup /etc/apt/sources.list.d/official-package-repositories.list
   fi
@@ -601,6 +625,8 @@ function restoreOrigAptSource()
     sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo cp -f /etc/apt/sources.list.d/ubuntu.sources.orig /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    sudo cp -f /etc/apt/sources.list.orig /etc/apt/sources.list
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     sudo cp -f /etc/apt/sources.list.d/official-package-repositories.list.orig /etc/apt/sources.list.d/official-package-repositories.list
   fi
@@ -617,6 +643,9 @@ function replaceAptMirror()
     sudo sed -i "s|deb-src [a-z]*://[^ ]* |deb-src ${aptUrl} |g" /etc/apt/sources.list
   elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24. ]]; then
     sudo sed -i "s|^URIs.*|URIs: ${aptUrl} |g" /etc/apt/sources.list.d/ubuntu.sources
+  elif [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
+    sudo sed -i "s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list
+    sudo sed -i "s|deb-src [a-z]*://[^ ]* |deb-src ${aptUrl} |g" /etc/apt/sources.list
   elif [ "$DISTRO_ID" = "linuxmint" ] && [[ "$DISTRO_VERSION" =~ ^22. ]]; then
     sudo sed -i "/linuxmint/! s|deb [a-z]*://[^ ]* |deb ${aptUrl} |g" /etc/apt/sources.list.d/official-package-repositories.list
   fi
@@ -2919,6 +2948,9 @@ function checkSupportedHostOS()
   if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
     return
   fi
+  if [ "$DISTRO_ID" = "ubuntu" ] && [[ "$DISTRO_VERSION" =~ ^1\.1. ]] && [ "$DISTRO_NAME" = "AnduinOS" ]; then
+    return
+  fi
   if [ "$DISTRO_ID" = "debian" ] && [[ "$DISTRO_VERSION" =~ ^12. ]]; then
     return
   fi
@@ -2940,6 +2972,7 @@ function checkSupportedHostOS()
     echo "@                                                                      @"
     echo "@  - Ubuntu 22.04 (Jammy Jellyfish)                                    @"
     echo "@  - Ubuntu 24.04 (Noble Numbat)                                       @"
+    echo "@  - AnduinOS 1.1 (Noble Numbat)                                       @"
     echo "@  - Debian 12 (Bookworm)                                              @"
     echo "@  - Mint 22 (Wilma)                                                   @"
     echo "@                                                                      @"
@@ -4119,6 +4152,11 @@ function performBaseInstallation()
     echo "FATAL: Could not update image assets, exiting..."
     exit 9
   fi
+  sudo mkdir -p /usr/share/icons/HSHQ
+  sudo cp -f $HSHQ_ASSETS_DIR/icons/* /usr/share/icons/HSHQ/
+  if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
+    sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
+  fi
   draw_progress_bar 55
   logHSHQEvent info "performBaseInstallation - Starting Stack Installs"
   installBaseStacks
@@ -4202,10 +4240,6 @@ function postInstallation()
     echo "Configuring Desktop environment..."
     set +e
     rm -f ~/Desktop/InstallHSHQ.desktop
-    sudo rm -f /usr/share/applications/InstallHSHQ.desktop
-    if ! [ -f /usr/share/icons/HSHQ/Homepage.png ]; then
-      sudo cp /usr/share/icons/HSHQ/HomepageHSHQ.png /usr/share/icons/HSHQ/Homepage.png
-    fi
     rm -f ~/Desktop/HomePage.desktop
     cat <<EOFHP > ~/Desktop/HomePage.desktop
 [Desktop Entry]
@@ -23559,142 +23593,6 @@ function version194Update()
   done
 }
 
-function fixPortainerAndUpgradeDockerV188()
-{
-  set +e
-  startStopStack uptimekuma stop
-  rsi_numTries=1
-  rsi_totalTries=5
-  rsi_retVal=1
-  rstackIDsQry=""
-  if [ -z "$PORTAINER_TOKEN" ]; then
-    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  fi
-  if [ $? -ne 0 ]; then
-    echo "ERROR: Could not get Portainer auth token..." 1>&2
-    releaseLock networkchecks restartAllStacks false
-    return 2
-  fi
-  while [ $rsi_numTries -le $rsi_totalTries ]
-  do
-    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN")
-    rsi_retVal=$?
-    if [ $rsi_retVal -eq 0 ]; then
-      break
-    fi
-    ((rsi_numTries++))
-  done
-  if [ $rsi_retVal -ne 0 ]; then
-    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
-    releaseLock networkchecks restartAllStacks false
-    return 3
-  fi
-  # Need to use a temp resolver since Adguard goes down for a bit...
-  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo tee /etc/resolv.conf >/dev/null <<EOFR
-nameserver 9.9.9.9
-EOFR
-  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
-  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
-  numItems=$((${#rstackIDs[@]} - 1))
-  for curID in $(seq 0 $numItems);
-  do
-    echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    startStopStackByID ${rstackIDs[$curID]} stop
-    sleep 1
-  done
-  stopPortainer
-  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
-  docker container prune -f
-  removeDockerNetworks
-  echo "Replacing portainer env vars..."
-  # Retain all env vars
-  fixvars=($(cat $HSHQ_STACKS_DIR/portainer/portainer.env | cut -d"=" -f1))
-  for curVar in "${fixvars[@]}"
-  do
-    if ! [ "${curVar:0:10}" = "PORTAINER_" ]; then
-      sudo find $HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" {} \;
-      sudo find $HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" {} \;
-    fi
-  done
-  upgradeDocker
-  echo "Restarting Docker..."
-  sudo systemctl restart docker
-  createDockerNetworks
-  outputEnvPortainer
-  sed -i "s/\/run\/secrets\/portainer/\/run\/portainer\/portainer/g" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
-  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.1-alpine/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
-  sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} portainer v4/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
-  startPortainer
-  if [ $? -ne 0 ]; then
-    echo "There was an error restarting portainer. You will need to determine the problem and restart all of the stacks manually."
-    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-    sudo tee /etc/resolv.conf >/dev/null <<EOFR
-nameserver 127.0.0.1
-EOFR
-    exit 1
-  fi
-  total_tries=10
-  num_tries=1
-  sleep 5
-  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-  retVal=$?
-  while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
-  do
-    echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
-    sleep 5
-    ((num_tries++))
-    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
-    retVal=$?
-  done
-  if [ $retVal -ne 0 ]; then
-    echo "Error getting portainer token, exiting..."
-    releaseLock networkchecks restartAllStacks false
-    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-    sudo tee /etc/resolv.conf >/dev/null <<EOFR
-nameserver 127.0.0.1
-EOFR
-    exit 1
-  fi
-  for curID in $(seq 0 $numItems);
-  do
-    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
-    sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/docker-compose.yml $HOME/${rstackNames[$curID]}-compose.yml
-    sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env $HOME/${rstackNames[$curID]}.env
-    sudo chown $USERNAME:$USERNAME $HOME/${rstackNames[$curID]}-compose.yml
-    sudo chown $USERNAME:$USERNAME $HOME/${rstackNames[$curID]}.env
-    for curVar in "${fixvars[@]}"
-    do
-      if ! [ "${curVar:0:10}" = "PORTAINER_" ]; then
-        sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" $HOME/${rstackNames[$curID]}-compose.yml
-        sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" $HOME/${rstackNames[$curID]}-compose.yml
-        sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" $HOME/${rstackNames[$curID]}.env
-        sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" $HOME/${rstackNames[$curID]}.env
-      fi
-    done
-    updateStackByID ${rstackNames[$curID]} ${rstackIDs[$curID]} $HOME/${rstackNames[$curID]}-compose.yml $HOME/${rstackNames[$curID]}.env
-    sleep 3
-    if [ "${rstackNames[$curID]}" = "adguard" ]; then
-      waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
-      if [ $? -eq 0 ]; then
-        sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-        sudo tee /etc/resolv.conf >/dev/null <<EOFR
-nameserver 127.0.0.1
-EOFR
-      else
-        echo "WARNING: Adguard container not ready, you may experience some integration issues for a short period..."
-      fi
-    fi
-  done
-  uptimekumaStackID=$(getStackID uptimekuma)
-  extractStackToHome uptimekuma $uptimekumaStackID
-  updateStackByID uptimekuma $uptimekumaStackID $HOME/uptimekuma-compose.yml $HOME/uptimekuma.env
-  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
-  sudo tee /etc/resolv.conf >/dev/null <<EOFR
-nameserver 127.0.0.1
-EOFR
-}
-
 function updateRelayServerWithScript()
 {
   isUploadUtils="$1"
@@ -24055,6 +23953,142 @@ function upgradeDockerDebian12()
 init
 EOFRS
   chmod 500 $HOME/$RS_UPDATE_UTILS_SCRIPT_NAME
+}
+
+function fixPortainerAndUpgradeDockerV188()
+{
+  set +e
+  startStopStack uptimekuma stop
+  rsi_numTries=1
+  rsi_totalTries=5
+  rsi_retVal=1
+  rstackIDsQry=""
+  if [ -z "$PORTAINER_TOKEN" ]; then
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  fi
+  if [ $? -ne 0 ]; then
+    echo "ERROR: Could not get Portainer auth token..." 1>&2
+    releaseLock networkchecks restartAllStacks false
+    return 2
+  fi
+  while [ $rsi_numTries -le $rsi_totalTries ]
+  do
+    rstackIDsQry=$(http --check-status --ignore-stdin --verify=no --timeout=300 --print="b" GET https://127.0.0.1:$PORTAINER_LOCAL_HTTPS_PORT/api/stacks?filters={\"EndpointId\":$PORTAINER_ENDPOINT_ID} "Authorization: Bearer $PORTAINER_TOKEN")
+    rsi_retVal=$?
+    if [ $rsi_retVal -eq 0 ]; then
+      break
+    fi
+    ((rsi_numTries++))
+  done
+  if [ $rsi_retVal -ne 0 ]; then
+    echo "ERROR: Could not get list of stack IDs in Portainer..." 1>&2
+    releaseLock networkchecks restartAllStacks false
+    return 3
+  fi
+  # Need to use a temp resolver since Adguard goes down for a bit...
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 9.9.9.9
+EOFR
+  rstackIDs=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Id'))
+  rstackNames=($(echo $rstackIDsQry | jq -r '.[] | select(.Status == 1) | .Name'))
+  numItems=$((${#rstackIDs[@]} - 1))
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Stopping ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    startStopStackByID ${rstackIDs[$curID]} stop
+    sleep 1
+  done
+  stopPortainer
+  sudo docker ps -q | xargs sudo docker stop > /dev/null 2>&1
+  docker container prune -f
+  removeDockerNetworks
+  echo "Replacing portainer env vars..."
+  # Retain all env vars
+  fixvars=($(cat $HSHQ_STACKS_DIR/portainer/portainer.env | cut -d"=" -f1))
+  for curVar in "${fixvars[@]}"
+  do
+    if ! [ "${curVar:0:10}" = "PORTAINER_" ]; then
+      sudo find $HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" {} \;
+      sudo find $HSHQ_STACKS_DIR/portainer/compose -type f -exec sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" {} \;
+    fi
+  done
+  upgradeDocker
+  echo "Restarting Docker..."
+  sudo systemctl restart docker
+  createDockerNetworks
+  outputEnvPortainer
+  sed -i "s/\/run\/secrets\/portainer/\/run\/portainer\/portainer/g" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/image:.*/image: mirror.gcr.io\/portainer\/portainer-ce:2.33.1-alpine/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  sed -i "s/${STACK_VERSION_PREFIX}.*/${STACK_VERSION_PREFIX} portainer v4/" $HSHQ_STACKS_DIR/portainer/docker-compose.yml
+  startPortainer
+  if [ $? -ne 0 ]; then
+    echo "There was an error restarting portainer. You will need to determine the problem and restart all of the stacks manually."
+    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+    sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+    exit 1
+  fi
+  total_tries=10
+  num_tries=1
+  sleep 5
+  PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+  retVal=$?
+  while [ $retVal -ne 0 ] && [ $num_tries -lt $total_tries ]
+  do
+    echo "Error getting portainer token, retrying ($(($num_tries + 1)) of $total_tries)..."
+    sleep 5
+    ((num_tries++))
+    PORTAINER_TOKEN="$(getPortainerToken -u $PORTAINER_ADMIN_USERNAME -p $PORTAINER_ADMIN_PASSWORD)"
+    retVal=$?
+  done
+  if [ $retVal -ne 0 ]; then
+    echo "Error getting portainer token, exiting..."
+    releaseLock networkchecks restartAllStacks false
+    sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+    sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+    exit 1
+  fi
+  for curID in $(seq 0 $numItems);
+  do
+    echo "Starting ${rstackNames[$curID]} (${rstackIDs[$curID]})..."
+    sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/docker-compose.yml $HOME/${rstackNames[$curID]}-compose.yml
+    sudo cp $HSHQ_STACKS_DIR/portainer/compose/${rstackIDs[$curID]}/stack.env $HOME/${rstackNames[$curID]}.env
+    sudo chown $USERNAME:$USERNAME $HOME/${rstackNames[$curID]}-compose.yml
+    sudo chown $USERNAME:$USERNAME $HOME/${rstackNames[$curID]}.env
+    for curVar in "${fixvars[@]}"
+    do
+      if ! [ "${curVar:0:10}" = "PORTAINER_" ]; then
+        sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" $HOME/${rstackNames[$curID]}-compose.yml
+        sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" $HOME/${rstackNames[$curID]}-compose.yml
+        sed -i "s/\$$curVar/\$PORTAINER_$curVar/g" $HOME/${rstackNames[$curID]}.env
+        sed -i "s/\${$curVar}/\${PORTAINER_$curVar}/g" $HOME/${rstackNames[$curID]}.env
+      fi
+    done
+    updateStackByID ${rstackNames[$curID]} ${rstackIDs[$curID]} $HOME/${rstackNames[$curID]}-compose.yml $HOME/${rstackNames[$curID]}.env
+    sleep 3
+    if [ "${rstackNames[$curID]}" = "adguard" ]; then
+      waitForContainerLogString adguard 3 60 "entering listener loop proto=tls"
+      if [ $? -eq 0 ]; then
+        sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+        sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
+      else
+        echo "WARNING: Adguard container not ready, you may experience some integration issues for a short period..."
+      fi
+    fi
+  done
+  uptimekumaStackID=$(getStackID uptimekuma)
+  extractStackToHome uptimekuma $uptimekumaStackID
+  updateStackByID uptimekuma $uptimekumaStackID $HOME/uptimekuma-compose.yml $HOME/uptimekuma.env
+  sudo rm -f /etc/resolv.conf > /dev/null 2>&1
+  sudo tee /etc/resolv.conf >/dev/null <<EOFR
+nameserver 127.0.0.1
+EOFR
 }
 
 function addBindIPCaddy()
@@ -27969,7 +28003,7 @@ function installDocker()
   "ubuntu")
     if [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
       installDockerUbuntu2204
-    elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]] || [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
       installDockerUbuntu2404
     else
       echo "Linux version not found when installing Docker, exiting..."
@@ -28014,7 +28048,7 @@ function upgradeDocker()
   "ubuntu")
     if [[ "$DISTRO_VERSION" =~ ^22\.04. ]]; then
       upgradeDockerUbuntu2204
-    elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]]; then
+    elif [[ "$DISTRO_VERSION" =~ ^24\.04. ]] || [[ "$DISTRO_VERSION" =~ ^1\.1. ]]; then
       upgradeDockerUbuntu2404
     else
       echo "Linux version not found when upgrading Docker, exiting..."
@@ -34991,6 +35025,10 @@ EOFR
       sudo sed -i "s|8.8.4.4|149.112.112.112|g" $cur_np
     done
   fi
+  if sudo test -f /etc/NetworkManager/NetworkManager.conf; then
+    sudo sed -i "/^dns=/d" /etc/NetworkManager/NetworkManager.conf
+    sudo systemctl restart NetworkManager
+  fi
   if ! [ -z "$pai_curE" ]; then
     set -e
   fi
@@ -40337,7 +40375,7 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.9.1,wazuh/wazuh-indexer:4.11.2"
       image_update_map[2]="wazuh/wazuh-dashboard:4.9.1,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
-      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+      upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" version412WazuhUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
     ;;
@@ -40348,7 +40386,6 @@ function performUpdateWazuh()
       image_update_map[1]="wazuh/wazuh-indexer:4.11.2,wazuh/wazuh-indexer:4.11.2"
       image_update_map[2]="wazuh/wazuh-dashboard:4.11.2,wazuh/wazuh-dashboard:4.11.2"
       updateWazuhAgents "4.11.2-1"
-      # Don't forget to test version412WazuhUpdate
       upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" version412WazuhUpdate false
       perform_update_report="${perform_update_report}$stack_upgrade_report"
       return
@@ -40502,7 +40539,7 @@ EOFRU
 function version412WazuhUpdate()
 {
   set +e
-  grep "<indexer>" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf > /dev/null 2>&1
+  grep -q "<indexer>" $HSHQ_STACKS_DIR/wazuh/wazuh-cluster/wazuh_manager.conf
   if [ $? -ne 0 ]; then
     wazblock=$(
     cat <<EOFWZ
