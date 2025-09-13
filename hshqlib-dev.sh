@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=195
+HSHQ_LIB_SCRIPT_VERSION=196
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -29016,6 +29016,8 @@ function loadPinnedDockerImages()
   IMG_REDIS=mirror.gcr.io/redis:8.2.0-bookworm
   IMG_ALPINE=mirror.gcr.io/alpine:3.22.1
   IMG_MINIO=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+  IMG_MINIO_CLIENT=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+  IMG_MONGODB=mirror.gcr.io/mongo:8.0.13
 
   # Stack specific images
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
@@ -29086,6 +29088,7 @@ function loadPinnedDockerImages()
   IMG_JITSI_JICOFO=jitsi/jicofo:stable-10431
   IMG_JITSI_JVB=jitsi/jvb:stable-10431
   IMG_JUPYTER=continuumio/anaconda3:2024.10-1
+  IMG_KANBOARD_APP=mirror.gcr.io/kanboard/kanboard:v1.2.47
   IMG_KASM=lscr.io/linuxserver/kasm:1.17.0-ls88
   IMG_KEILA=pentacent/keila:0.17.1
   IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.11.5
@@ -29144,7 +29147,15 @@ function loadPinnedDockerImages()
   IMG_PORTAINER=mirror.gcr.io/portainer/portainer-ce:2.33.1-alpine
   IMG_PROMETHEUS=mirror.gcr.io/prom/prometheus:v3.5.0
   IMG_QBITTORRENT=linuxserver/qbittorrent:5.1.2
+  IMG_RABBITMQ=mirror.gcr.io/rabbitmq:4.1.4
   IMG_REMOTELY=immybot/remotely:1037
+  IMG_REVOLT_API=ghcr.io/revoltchat/server:20250807-1
+  IMG_REVOLT_EVENTS=ghcr.io/revoltchat/bonfire:20250807-1
+  IMG_REVOLT_WEB=ghcr.io/revoltchat/client:master
+  IMG_REVOLT_AUTUMN=ghcr.io/revoltchat/autumn:20250807-1
+  IMG_REVOLT_JANUARY=ghcr.io/revoltchat/january:20250807-1
+  IMG_REVOLT_CROND=ghcr.io/revoltchat/crond:20250807-1
+  IMG_REVOLT_PUSHD=ghcr.io/revoltchat/pushd:20250807-1
   IMG_SABNZBD=linuxserver/sabnzbd:4.5.1
   IMG_SEARXNG=mirror.gcr.io/searxng/searxng:2025.8.12-6b1516d
   IMG_SERVARR_SONARR=linuxserver/sonarr:4.0.15
@@ -29172,6 +29183,7 @@ function loadPinnedDockerImages()
   IMG_WAZUH_MANAGER=wazuh/wazuh-manager:4.11.2
   IMG_WAZUH_INDEXER=wazuh/wazuh-indexer:4.11.2
   IMG_WAZUH_DASHBOARD=wazuh/wazuh-dashboard:4.11.2
+  IMG_WEKAN_APP=ghcr.io/wekan/wekan:v7.94
   IMG_WGPORTAL=wgportal/wg-portal:1.0.19
   IMG_WIKIJS=requarks/wiki:2.5.307
   IMG_WIREGUARD=mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81
@@ -29343,6 +29355,12 @@ function getScriptStackVersion()
       echo "v1" ;;
     metabase)
       echo "v1" ;;
+    kanboard)
+      echo "v1" ;;
+    wekan)
+      echo "v1" ;;
+    revolt)
+      echo "v1" ;;
     ofelia)
       echo "v6" ;;
     sqlpad)
@@ -29507,12 +29525,20 @@ function pullDockerImages()
   pullImage $IMG_BUDIBASE_WORKER
   pullImage $IMG_BUDIBASE_PROXY
   pullImage $IMG_BUDIBASE_COUCHDB
-  pullImage $IMG_MINIO
   pullImage $IMG_AUDIOBOOKSHELF
   pullImage $IMG_STANDARDNOTES_SERVER
   pullImage $IMG_STANDARDNOTES_LOCALSTACK
   pullImage $IMG_STANDARDNOTES_WEB
   pullImage $IMG_METABASE
+  pullImage $IMG_KANBOARD_APP
+  pullImage $IMG_WEKAN_APP
+  pullImage $IMG_REVOLT_API
+  pullImage $IMG_REVOLT_EVENTS
+  pullImage $IMG_REVOLT_WEB
+  pullImage $IMG_REVOLT_AUTUMN
+  pullImage $IMG_REVOLT_JANUARY
+  pullImage $IMG_REVOLT_CROND
+  pullImage $IMG_REVOLT_PUSHD
 }
 
 function pullImagesUpdatePB()
@@ -29663,6 +29689,8 @@ function pullCommonImages()
   pullImage $IMG_NGINX
   pullImage $IMG_ALPINE
   pullImage $IMG_MINIO
+  pullImage $IMG_MINIO_CLIENT
+  pullImage $IMG_MONGODB
 }
 
 function outputEncConfigFile()
@@ -30433,6 +30461,39 @@ METABASE_DATABASE_NAME=
 METABASE_DATABASE_USER=
 METABASE_DATABASE_USER_PASSWORD=
 # Metabase (Service Details) END
+
+# Kanboard (Service Details) BEGIN
+KANBOARD_INIT_ENV=true
+KANBOARD_ADMIN_USERNAME=
+KANBOARD_ADMIN_EMAIL_ADDRESS=
+KANBOARD_ADMIN_PASSWORD=
+KANBOARD_DATABASE_NAME=
+KANBOARD_DATABASE_USER=
+KANBOARD_DATABASE_USER_PASSWORD=
+# Kanboard (Service Details) END
+
+# Wekan (Service Details) BEGIN
+WEKAN_INIT_ENV=true
+WEKAN_OIDC_CLIENT_SECRET=
+WEKAN_DATABASE_NAME=
+WEKAN_DATABASE_USER=
+WEKAN_DATABASE_USER_PASSWORD=
+# Wekan (Service Details) END
+
+# Revolt (Service Details) BEGIN
+REVOLT_INIT_ENV=true
+REVOLT_ADMIN_USERNAME=
+REVOLT_ADMIN_EMAIL_ADDRESS=
+REVOLT_ADMIN_PASSWORD=
+REVOLT_DATABASE_NAME=
+REVOLT_DATABASE_USER=
+REVOLT_DATABASE_USER_PASSWORD=
+REVOLT_REDIS_PASSWORD=
+REVOLT_RABBITMQ_USERNAME=
+REVOLT_RABBITMQ_PASSWORD=
+REVOLT_MINIO_KEY=
+REVOLT_MINIO_SECRET=
+# Revolt (Service Details) END
 
 # Service Details END
 EOFCF
@@ -31956,7 +32017,90 @@ function initServicesCredentials()
     METABASE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar METABASE_DATABASE_USER_PASSWORD $METABASE_DATABASE_USER_PASSWORD
   fi
-
+  if [ -z "$KANBOARD_ADMIN_USERNAME" ]; then
+    KANBOARD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_kanboard"
+    updateConfigVar KANBOARD_ADMIN_USERNAME $KANBOARD_ADMIN_USERNAME
+  fi
+  if [ -z "$KANBOARD_ADMIN_EMAIL_ADDRESS" ]; then
+    KANBOARD_ADMIN_EMAIL_ADDRESS=$KANBOARD_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar KANBOARD_ADMIN_EMAIL_ADDRESS $KANBOARD_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$KANBOARD_ADMIN_PASSWORD" ]; then
+    KANBOARD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KANBOARD_ADMIN_PASSWORD $KANBOARD_ADMIN_PASSWORD
+  fi
+  if [ -z "$KANBOARD_DATABASE_NAME" ]; then
+    KANBOARD_DATABASE_NAME=kanboarddb
+    updateConfigVar KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_NAME
+  fi
+  if [ -z "$KANBOARD_DATABASE_USER" ]; then
+    KANBOARD_DATABASE_USER=kanboard-user
+    updateConfigVar KANBOARD_DATABASE_USER $KANBOARD_DATABASE_USER
+  fi
+  if [ -z "$KANBOARD_DATABASE_USER_PASSWORD" ]; then
+    KANBOARD_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KANBOARD_DATABASE_USER_PASSWORD $KANBOARD_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$WEKAN_OIDC_CLIENT_SECRET" ]; then
+    WEKAN_OIDC_CLIENT_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar WEKAN_OIDC_CLIENT_SECRET $WEKAN_OIDC_CLIENT_SECRET
+  fi
+  if [ -z "$WEKAN_DATABASE_NAME" ]; then
+    WEKAN_DATABASE_NAME=wekandb
+    updateConfigVar WEKAN_DATABASE_NAME $WEKAN_DATABASE_NAME
+  fi
+  if [ -z "$WEKAN_DATABASE_USER" ]; then
+    WEKAN_DATABASE_USER=wekan-user
+    updateConfigVar WEKAN_DATABASE_USER $WEKAN_DATABASE_USER
+  fi
+  if [ -z "$WEKAN_DATABASE_USER_PASSWORD" ]; then
+    WEKAN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar WEKAN_DATABASE_USER_PASSWORD $WEKAN_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$REVOLT_ADMIN_USERNAME" ]; then
+    REVOLT_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_revolt"
+    updateConfigVar REVOLT_ADMIN_USERNAME $REVOLT_ADMIN_USERNAME
+  fi
+  if [ -z "$REVOLT_ADMIN_EMAIL_ADDRESS" ]; then
+    REVOLT_ADMIN_EMAIL_ADDRESS=$REVOLT_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar REVOLT_ADMIN_EMAIL_ADDRESS $REVOLT_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$REVOLT_ADMIN_PASSWORD" ]; then
+    REVOLT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar REVOLT_ADMIN_PASSWORD $REVOLT_ADMIN_PASSWORD
+  fi
+  if [ -z "$REVOLT_DATABASE_NAME" ]; then
+    REVOLT_DATABASE_NAME=revoltdb
+    updateConfigVar REVOLT_DATABASE_NAME $REVOLT_DATABASE_NAME
+  fi
+  if [ -z "$REVOLT_DATABASE_USER" ]; then
+    REVOLT_DATABASE_USER=revolt-user
+    updateConfigVar REVOLT_DATABASE_USER $REVOLT_DATABASE_USER
+  fi
+  if [ -z "$REVOLT_DATABASE_USER_PASSWORD" ]; then
+    REVOLT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar REVOLT_DATABASE_USER_PASSWORD $REVOLT_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$REVOLT_REDIS_PASSWORD" ]; then
+    REVOLT_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar REVOLT_REDIS_PASSWORD $REVOLT_REDIS_PASSWORD
+  fi
+  if [ -z "$REVOLT_RABBITMQ_USERNAME" ]; then
+    REVOLT_RABBITMQ_USERNAME=$ADMIN_USERNAME_BASE"_revolt_rmq"
+    updateConfigVar REVOLT_RABBITMQ_USERNAME $REVOLT_RABBITMQ_USERNAME
+  fi
+  if [ -z "$REVOLT_RABBITMQ_PASSWORD" ]; then
+    REVOLT_RABBITMQ_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar REVOLT_RABBITMQ_PASSWORD $REVOLT_RABBITMQ_PASSWORD
+  fi
+  if [ -z "$REVOLT_MINIO_KEY" ]; then
+    REVOLT_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar REVOLT_MINIO_KEY $REVOLT_MINIO_KEY
+  fi
+  if [ -z "$REVOLT_MINIO_SECRET" ]; then
+    REVOLT_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar REVOLT_MINIO_SECRET $REVOLT_MINIO_SECRET
+  fi
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -32120,6 +32264,9 @@ function checkCreateNonbackupDirByStack()
     "standardnotes")
       mkdir -p $HSHQ_NONBACKUP_DIR/standardnotes/redis
       ;;
+    "revolt")
+      mkdir -p $HSHQ_NONBACKUP_DIR/revolt/redis
+      ;;
     *)
       ;;
   esac
@@ -32216,6 +32363,7 @@ function initServiceVars()
   checkAddSvc "SVCD_JITSI=jitsi,jitsi,other,user,Jitsi,jitsi,le"
   checkAddSvc "SVCD_JUPYTER=jupyter,jupyter,primary,admin,Jupyter,jupyter,hshq"
   checkAddSvc "SVCD_LINKWARDEN=linkwarden,linkwarden,primary,user,Linkwarden,linkwarden,hshq"
+  checkAddSvc "SVCD_KANBOARD=kanboard,kanboard,primary,user,Kanboard,kanboard,hshq"
   checkAddSvc "SVCD_KASM=kasm,kasm,primary,user,Kasm,kasm,hshq"
   checkAddSvc "SVCD_KASM_WIZARD=kasm,kasm-wizard,home,admin,Kasm Wizard,kasm-wizard,hshq"
   checkAddSvc "SVCD_KEILA=keila,keila,primary,user,Keila,keila,hshq"
@@ -32251,6 +32399,7 @@ function initServiceVars()
   checkAddSvc "SVCD_PROMETHEUS=sysutils,prometheus,primary,admin,Prometheus,prometheus,hshq"
   checkAddSvc "SVCD_QBITTORRENT=qbittorrent,qbittorrent,primary,admin,qBittorrent,qbittorrent,hshq"
   checkAddSvc "SVCD_REMOTELY=remotely,remotely,primary,admin,Remotely,remotely,hshq"
+  checkAddSvc "SVCD_REVOLT=revolt,revolt,other,user,Revolt,revolt,hshq"
   checkAddSvc "SVCD_RSPAMD=mail-relay,rspamd,primary,admin,Rspamd,rspamd,hshq"
   checkAddSvc "SVCD_SABNZBD=sabnzbd,sabnzbd,primary,admin,SABnzbd,sabnzbd,hshq"
   checkAddSvc "SVCD_SEARXNG=searxng,searxng,primary,user,SearxNG,searxng,hshq"
@@ -32277,6 +32426,7 @@ function initServiceVars()
   checkAddSvc "SVCD_VAULTWARDEN=vaultwarden,vaultwarden,primary,user,Vaultwarden,vaultwarden,hshq"
   checkAddSvc "SVCD_WALLABAG=wallabag,wallabag,primary,user,Wallabag,wallabag,le"
   checkAddSvc "SVCD_WAZUH=wazuh,wazuh,primary,admin,Wazuh,wazuh,hshq"
+  checkAddSvc "SVCD_WEKAN=wekan,wekan,primary,user,Wekan,wekan,hshq"
   checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WG Portal,wgportal,hshq"
   checkAddSvc "SVCD_WIKIJS=wikijs,wikijs,other,user,Wiki.js,wikijs,hshq"
   checkAddSvc "SVCD_WORDPRESS=wordpress,wordpress,other,user,WordPress,wordpress,hshq"
@@ -32450,6 +32600,12 @@ function installStackByName()
       installStandardNotes $is_integrate ;;
     metabase)
       installMetabase $is_integrate ;;
+    kanboard)
+      installKanboard $is_integrate ;;
+    wekan)
+      installWekan $is_integrate ;;
+    revolt)
+      installRevolt $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -32633,6 +32789,12 @@ function performUpdateStackByName()
       performUpdateStandardNotes ;;
     metabase)
       performUpdateMetabase ;;
+    kanboard)
+      performUpdateKanboard ;;
+    wekan)
+      performUpdateWekan ;;
+    revolt)
+      performUpdateRevolt ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -32688,6 +32850,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JITSI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_KANBOARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KEILA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MAILU.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MASTODON.$HOMESERVER_DOMAIN\n"
@@ -32708,11 +32871,13 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PIPED_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIXELFED.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_REVOLT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STANDARDNOTES_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STANDARDNOTES_FILES.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_VAULTWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_WEKAN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
@@ -32881,6 +33046,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KANBOARD_ADMIN_EMAIL_ADDRESS $KANBOARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_REVOLT}-Admin" https://$SUB_REVOLT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $REVOLT_ADMIN_EMAIL_ADDRESS $REVOLT_ADMIN_PASSWORD)"\n"
+
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -32903,7 +33071,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_WEKAN.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Email" "\"https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
@@ -33001,6 +33169,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KANBOARD_ADMIN_EMAIL_ADDRESS $KANBOARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_REVOLT}-Admin" https://$SUB_REVOLT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $REVOLT_ADMIN_EMAIL_ADDRESS $REVOLT_ADMIN_PASSWORD)"\n"
+
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -33363,6 +33534,15 @@ function getHeimdallOrderFromSub()
     "$SUB_METABASE")
       order_num=102
       ;;
+    "$SUB_KANBOARD")
+      order_num=103
+      ;;
+    "$SUB_WEKAN")
+      order_num=104
+      ;;
+    "$SUB_REVOLT")
+      order_num=105
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -33410,13 +33590,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
 }
 
 function getScriptImageByContainerName()
@@ -34115,6 +34295,57 @@ function getScriptImageByContainerName()
     "metabase-app")
       container_image=$IMG_METABASE
       ;;
+    "kanboard-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "kanboard-app")
+      container_image=$IMG_KANBOARD_APP
+      ;;
+    "wekan-db")
+      container_image=mirror.gcr.io/mongo:8.0.13
+      ;;
+    "wekan-app")
+      container_image=$IMG_WEKAN_APP
+      ;;
+    "revolt-db")
+      container_image=mirror.gcr.io/mongo:8.0.13
+      ;;
+    "revolt-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "revolt-rabbitmq")
+      container_image=mirror.gcr.io/rabbitmq:4.1.4
+      ;;
+    "revolt-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
+    "revolt-caddy")
+      container_image=mirror.gcr.io/caddy:2.10.0
+      ;;
+    "revolt-api")
+      container_image=$IMG_REVOLT_API
+      ;;
+    "revolt-events")
+      container_image=$IMG_REVOLT_EVENTS
+      ;;
+    "revolt-web")
+      container_image=$IMG_REVOLT_WEB
+      ;;
+    "revolt-autumn")
+      container_image=$IMG_REVOLT_AUTUMN
+      ;;
+    "revolt-january")
+      container_image=$IMG_REVOLT_JANUARY
+      ;;
+    "revolt-crond")
+      container_image=$IMG_REVOLT_CROND
+      ;;
+    "revolt-pushd")
+      container_image=$IMG_REVOLT_PUSHD
+      ;;
+    "revolt-createbuckets")
+      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      ;;
     *)
       ;;
   esac
@@ -34174,6 +34405,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "AudioBookshelf" "AUDIOBOOKSHELF_INIT_ENV=false,AUDIOBOOKSHELF_ADMIN_USERNAME=,AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS=,AUDIOBOOKSHELF_ADMIN_PASSWORD=,AUDIOBOOKSHELF_JWT_SECRET=,AUDIOBOOKSHELF_OIDC_CLIENT_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "StandardNotes" "STANDARDNOTES_REDIS_PASSWORD=,STANDARDNOTES_DATABASE_NAME=,STANDARDNOTES_DATABASE_ROOT_PASSWORD=,STANDARDNOTES_DATABASE_USER=,STANDARDNOTES_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Metabase" "METABASE_INIT_ENV=false,METABASE_ADMIN_USERNAME=,METABASE_ADMIN_EMAIL_ADDRESS=,METABASE_ADMIN_PASSWORD=,METABASE_DATABASE_NAME=,METABASE_DATABASE_USER=,METABASE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Kanboard" "KANBOARD_INIT_ENV=false,KANBOARD_ADMIN_USERNAME=,KANBOARD_ADMIN_EMAIL_ADDRESS=,KANBOARD_ADMIN_PASSWORD=,KANBOARD_DATABASE_NAME=,KANBOARD_DATABASE_USER=,KANBOARD_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Wekan" "WEKAN_INIT_ENV=false,WEKAN_OIDC_CLIENT_SECRET=,WEKAN_DATABASE_NAME=,WEKAN_DATABASE_USER=,WEKAN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Revolt" "REVOLT_INIT_ENV=false,REVOLT_ADMIN_USERNAME=,REVOLT_ADMIN_EMAIL_ADDRESS=,REVOLT_ADMIN_PASSWORD=,REVOLT_DATABASE_NAME=,REVOLT_DATABASE_USER=,REVOLT_DATABASE_USER_PASSWORD=,REVOLT_REDIS_PASSWORD=,REVOLT_RABBITMQ_USERNAME=,REVOLT_RABBITMQ_PASSWORD=,REVOLT_MINIO_KEY=,REVOLT_MINIO_SECRET=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -60120,6 +60354,7 @@ EOFOT
 "Huginn" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
 "Immich" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
 "Invidious" postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_USER $INVIDIOUS_DATABASE_USER_PASSWORD
+"Kanboard" postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_USER_PASSWORD
 "Keila" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
 "Linkwarden" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
 "Mastodon" postgres mastodon-db $MASTODON_DATABASE_NAME $MASTODON_DATABASE_USER $MASTODON_DATABASE_USER_PASSWORD
@@ -63759,7 +63994,7 @@ function installNavidrome()
 {
   set +e
   is_integrate_hshq=$1
-  checkDeleteStackAndDirectory exampleservice "Navidrome"
+  checkDeleteStackAndDirectory navidrome "Navidrome"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
     return 1
@@ -65345,6 +65580,1277 @@ function performUpdateMetabase()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Kanboard
+function installKanboard()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory kanboard "Kanboard"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName kanboard-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName kanboard-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/kanboard
+  mkdir $HSHQ_STACKS_DIR/kanboard/db
+  mkdir $HSHQ_STACKS_DIR/kanboard/dbexport
+  mkdir $HSHQ_STACKS_DIR/kanboard/data
+  mkdir $HSHQ_STACKS_DIR/kanboard/plugins
+  mkdir $HSHQ_STACKS_DIR/kanboard/certs
+  chmod 777 $HSHQ_STACKS_DIR/kanboard/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $KANBOARD_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $KANBOARD_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  KANBOARD_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $KANBOARD_ADMIN_PASSWORD | tr -d ':\n')
+
+  outputConfigKanboard
+  installStack kanboard kanboard-app "" $HOME/kanboard.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$KANBOARD_INIT_ENV" = "true" ]; then
+    sendEmail -s "Kanboard Admin Login Info" -b "Kanboard Admin Username: $KANBOARD_ADMIN_USERNAME\nKanboard Admin Password: $KANBOARD_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    KANBOARD_INIT_ENV=true
+    updateConfigVar KANBOARD_INIT_ENV $KANBOARD_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KANBOARD.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://kanboard-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KANBOARD $MANAGETLS_KANBOARD "$is_integrate_hshq" $NETDEFAULT_KANBOARD "$inner_block"
+  insertSubAuthelia $SUB_KANBOARD.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll kanboard "$FMLNAME_KANBOARD" $USERTYPE_KANBOARD "https://$SUB_KANBOARD.$HOMESERVER_DOMAIN" "kanboard.png" "$(getHeimdallOrderFromSub $SUB_KANBOARD $USERTYPE_KANBOARD)"
+    restartAllCaddyContainers
+    checkAddDBConnection true kanboard "$FMLNAME_KANBOARD" postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigKanboard()
+{
+  cat <<EOFMT > $HOME/kanboard-compose.yml
+$STACK_VERSION_PREFIX kanboard $(getScriptStackVersion kanboard)
+
+services:
+  kanboard-db:
+    image: $(getScriptImageByContainerName kanboard-db)
+    container_name: kanboard-db
+    hostname: kanboard-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-kanboard-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/kanboard/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/kanboard/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.kanboard-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.kanboard-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.kanboard-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.kanboard-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.kanboard-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.kanboard-hourly-db.email-from=Kanboard Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.kanboard-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.kanboard-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.kanboard-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.kanboard-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.kanboard-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.kanboard-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.kanboard-monthly-db.email-from=Kanboard Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.kanboard-monthly-db.mail-only-on-error=false"
+
+  kanboard-app:
+    image: $(getScriptImageByContainerName kanboard-app)
+    container_name: kanboard-app
+    hostname: kanboard-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - kanboard-db
+    networks:
+      - dock-proxy-net
+      - dock-ldap-net
+      - dock-internalmail-net
+      - dock-ext-net
+      - int-kanboard-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-kanboard-data:/var/www/app/data
+      - v-kanboard-plugins:/var/www/app/plugins
+      - v-kanboard-certs:/etc/nginx/ssl
+
+volumes:
+  v-kanboard-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/kanboard/data
+  v-kanboard-plugins:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/kanboard/plugins
+  v-kanboard-certs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/kanboard/certs
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-kanboard-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/kanboard.env
+TZ=\${PORTAINER_TZ}
+DATABASE_URL=postgres://$KANBOARD_DATABASE_USER:$KANBOARD_DATABASE_USER_PASSWORD@kanboard-db/$KANBOARD_DATABASE_NAME
+POSTGRES_DB=$KANBOARD_DATABASE_NAME
+POSTGRES_USER=$KANBOARD_DATABASE_USER
+POSTGRES_PASSWORD=$KANBOARD_DATABASE_USER_PASSWORD
+LDAP_AUTH=true
+LDAP_SERVER=ldapserver
+LDAP_PORT=389
+LDAP_SSL_VERIFY=true
+LDAP_START_TLS=true
+LDAP_BIND_TYPE=proxy
+LDAP_USERNAME=$LDAP_READONLY_USER_BIND_DN
+LDAP_PASSWORD=$LDAP_READONLY_USER_PASSWORD
+LDAP_USER_BASE_DN=ou=people,$LDAP_BASE_DN
+LDAP_USER_FILTER=(&(uid=%s)(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+LDAP_USER_ATTRIBUTE_USERNAME=uid
+LDAP_USER_ATTRIBUTE_FULLNAME=cn
+LDAP_USER_ATTRIBUTE_EMAIL=main
+LDAP_USER_ATTRIBUTE_GROUPS=memberOf
+LDAP_USER_ATTRIBUTE_PHOTO=jpegPhoto
+LDAP_USER_CREATION=true
+LDAP_USER_DEFAULT_ROLE_MANAGER=false
+LDAP_GROUP_ADMIN_DN=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN
+LDAP_GROUP_MANAGER_DN=cn=managers,ou=groups,$LDAP_BASE_DN
+LDAP_GROUP_PROVIDER=true
+LDAP_GROUP_BASE_DN=ou=groups,$LDAP_BASE_DN
+LDAP_GROUP_FILTER=(&(objectclass=groupOfUniqueNames)(cn=%s*))
+LDAP_GROUP_ATTRIBUTE_NAME=cn
+MAIL_TRANSPORT=smtp
+MAIL_SMTP_HOSTNAME=$SMTP_HOSTNAME
+MAIL_SMTP_PORT=$SMTP_HOSTPORT
+MAIL_SMTP_ENCRYPTION=tls
+MAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
+EOFMT
+
+}
+
+function performUpdateKanboard()
+{
+  perform_stack_name=kanboard
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/kanboard/kanboard:v1.2.47
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/kanboard/kanboard:v1.2.47,mirror.gcr.io/kanboard/kanboard:v1.2.47"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Wekan
+function installWekan()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory wekan "Wekan"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName wekan-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName wekan-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/wekan
+  mkdir $HSHQ_STACKS_DIR/wekan/db
+  mkdir $HSHQ_STACKS_DIR/wekan/dump
+  mkdir $HSHQ_STACKS_DIR/wekan/files
+  initServicesCredentials
+  set +e
+  WEKAN_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $WEKAN_OIDC_CLIENT_SECRET | tr -d ':\n')
+  outputConfigWekan
+  oidcBlock=$(cat $HOME/wekan.oidc)
+  rm -f $HOME/wekan.oidc
+  insertOIDCClientAuthelia wekan "$oidcBlock"
+  installStack wekan wekan-app "SyncedCron" $HOME/wekan.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  sleep 3
+  docker exec -it wekan-db bash -c "mongosh -u $WEKAN_DATABASE_USER -p $WEKAN_DATABASE_USER_PASSWORD --eval \"use $WEKAN_DATABASE_NAME\" --eval \"db.settings.updateOne( {}, { \\\$set: { disableRegistration: true } } )\"" > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_WEKAN.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://wekan-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_WEKAN $MANAGETLS_WEKAN "$is_integrate_hshq" $NETDEFAULT_WEKAN "$inner_block"
+  insertSubAuthelia $SUB_WEKAN.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll wekan "$FMLNAME_WEKAN" $USERTYPE_WEKAN "https://$SUB_WEKAN.$HOMESERVER_DOMAIN" "wekan.png" "$(getHeimdallOrderFromSub $SUB_WEKAN $USERTYPE_WEKAN)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigWekan()
+{
+  cat <<EOFMT > $HOME/wekan-compose.yml
+$STACK_VERSION_PREFIX wekan $(getScriptStackVersion wekan)
+
+services:
+  wekan-db:
+    image: $(getScriptImageByContainerName wekan-db)
+    container_name: wekan-db
+    hostname: wekan-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    networks:
+      - int-wekan-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-wekan-db:/data/db
+      - v-wekan-dump:/dump
+
+  wekan-app:
+    image: $(getScriptImageByContainerName wekan-app)
+    container_name: wekan-app
+    hostname: wekan-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - wekan-db
+    networks:
+      - dock-proxy-net
+      - dock-ldap-net
+      - dock-internalmail-net
+      - dock-ext-net
+      - int-wekan-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-wekan-files:/data:rw
+
+volumes:
+  v-wekan-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wekan/db
+  v-wekan-dump:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wekan/dump
+  v-wekan-files:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/wekan/files
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-wekan-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+
+  cat <<EOFMT > $HOME/wekan.env
+TZ=\${PORTAINER_TZ}
+ROOT_URL=https://$SUB_WEKAN.$HOMESERVER_DOMAIN
+WRITABLE_PATH=/data
+WITH_API=true
+MONGO_INITDB_ROOT_USERNAME=$WEKAN_DATABASE_USER
+MONGO_INITDB_ROOT_PASSWORD=$WEKAN_DATABASE_USER_PASSWORD
+MONGO_URL=mongodb://$WEKAN_DATABASE_USER:$WEKAN_DATABASE_USER_PASSWORD@wekan-db:27017/${WEKAN_DATABASE_NAME}?authSource=admin
+MAIL_URL=smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT/?ignoreTLS=false&tls={rejectUnauthorized:true}
+MAIL_FROM=Wekan $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+PASSWORD_LOGIN_ENABLED=false
+OAUTH2_ENABLED=true
+OAUTH2_LOGIN_STYLE=redirect
+OAUTH2_CLIENT_ID=wekan
+OAUTH2_SECRET=$WEKAN_OIDC_CLIENT_SECRET
+OAUTH2_SERVER_URL=https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN
+OAUTH2_AUTH_ENDPOINT=/api/oidc/authorization
+OAUTH2_TOKEN_ENDPOINT=/api/oidc/token
+OAUTH2_USERINFO_ENDPOINT=/api/oidc/userinfo
+OAUTH2_ID_MAP=sub
+OAUTH2_USERNAME_MAP=email
+OAUTH2_FULLNAME_MAP=name
+OAUTH2_EMAIL_MAP=email
+EOFMT
+
+  cat <<EOFIM > $HOME/wekan.oidc
+# Authelia OIDC Client wekan BEGIN
+      - client_id: wekan
+        client_name: Wekan
+        client_secret: $WEKAN_OIDC_CLIENT_SECRET_HASH
+        public: false
+        authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
+        require_pkce: false
+        pkce_challenge_method: ''
+        redirect_uris:
+          - https://$SUB_WEKAN.$HOMESERVER_DOMAIN/_oauth/oidc
+        scopes:
+          - openid
+          - profile
+          - groups
+          - email
+        response_types:
+          - code
+        grant_types:
+          - authorization_code
+        access_token_signed_response_alg: none
+        userinfo_signed_response_alg: none
+        token_endpoint_auth_method: client_secret_post
+# Authelia OIDC Client wekan END
+EOFIM
+
+}
+
+function performUpdateWekan()
+{
+  perform_stack_name=wekan
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mongo:8.0.13,ghcr.io/wekan/wekan:v7.94
+      image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
+      image_update_map[1]="ghcr.io/wekan/wekan:v7.94,ghcr.io/wekan/wekan:v7.94"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Revolt
+function installRevolt()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory revolt "Revolt"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-rabbitmq)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-caddy)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-api)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-events)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-autumn)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-january)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-crond)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-pushd)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName revolt-createbuckets)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+
+  mkdir $HSHQ_STACKS_DIR/revolt
+  mkdir $HSHQ_STACKS_DIR/revolt/config
+  mkdir $HSHQ_STACKS_DIR/revolt/db
+  mkdir $HSHQ_STACKS_DIR/revolt/rabbitmq
+  mkdir $HSHQ_STACKS_DIR/revolt/minio
+  mkdir $HSHQ_STACKS_DIR/revolt/caddy
+  mkdir $HSHQ_STACKS_DIR/revolt/caddy/data
+  mkdir $HSHQ_STACKS_DIR/revolt/caddy/config
+  mkdir $HSHQ_NONBACKUP_DIR/revolt
+  mkdir $HSHQ_NONBACKUP_DIR/revolt/redis
+
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $REVOLT_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $REVOLT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  REVOLT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $REVOLT_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigRevolt
+  installStack revolt revolt-api "" $HOME/revolt.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$REVOLT_INIT_ENV" = "true" ]; then
+    sendEmail -s "Revolt Admin Login Info" -b "Revolt Admin Username: $REVOLT_ADMIN_USERNAME\nRevolt Admin Password: $REVOLT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    REVOLT_INIT_ENV=true
+    updateConfigVar REVOLT_INIT_ENV $REVOLT_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_REVOLT.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://revolt-caddy {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_REVOLT $MANAGETLS_REVOLT "$is_integrate_hshq" $NETDEFAULT_REVOLT "$inner_block"
+  insertSubAuthelia $SUB_REVOLT.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll revolt "$FMLNAME_REVOLT" $USERTYPE_REVOLT "https://$SUB_REVOLT.$HOMESERVER_DOMAIN" "revolt.png" "$(getHeimdallOrderFromSub $SUB_REVOLT $USERTYPE_REVOLT)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigRevolt()
+{
+  cat <<EOFMT > $HOME/revolt-compose.yml
+$STACK_VERSION_PREFIX revolt $(getScriptStackVersion revolt)
+
+services:
+  revolt-db:
+    image: $(getScriptImageByContainerName revolt-db)
+    container_name: revolt-db
+    hostname: revolt-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --logpath /dev/null --oplogSize 128 --quiet --auth
+    networks:
+      - int-revolt-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/db:/data/db
+
+  revolt-redis:
+    image: $(getScriptImageByContainerName revolt-redis)
+    container_name: revolt-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $REVOLT_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-revolt-redis:/data
+
+  revolt-rabbitmq:
+    image: $(getScriptImageByContainerName revolt-rabbitmq)
+    container_name: revolt-rabbitmq
+    hostname: revolt-rabbitmq
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/rabbitmq:/var/lib/rabbitmq
+
+  revolt-minio:
+    image: $(getScriptImageByContainerName revolt-minio)
+    container_name: revolt-minio
+    hostname: revolt-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      int-revolt-net:
+        aliases:
+          - revolt-uploads.minio
+          - attachments.minio
+          - avatars.minio
+          - backgrounds.minio
+          - icons.minio
+          - banners.minio
+          - emojis.minio
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/minio:/data
+
+  revolt-caddy:
+    image: $(getScriptImageByContainerName revolt-caddy)
+    container_name: revolt-caddy
+    hostname: revolt-caddy
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/data:/data
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/config:/config
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/caddy/Caddyfile:/etc/caddy/Caddyfile
+
+  revolt-api:
+    image: $(getScriptImageByContainerName revolt-api)
+    container_name: revolt-api
+    hostname: revolt-api
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+      - revolt-rabbitmq
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-events:
+    image: $(getScriptImageByContainerName revolt-events)
+    container_name: revolt-events
+    hostname: revolt-events
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-web:
+    image: $(getScriptImageByContainerName revolt-web)
+    container_name: revolt-web
+    hostname: revolt-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  revolt-autumn:
+    image: $(getScriptImageByContainerName revolt-autumn)
+    container_name: revolt-autumn
+    hostname: revolt-autumn
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-createbuckets
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-january:
+    image: $(getScriptImageByContainerName revolt-january)
+    container_name: revolt-january
+    hostname: revolt-january
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-internalmail-net
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-crond:
+    image: $(getScriptImageByContainerName revolt-crond)
+    container_name: revolt-crond
+    hostname: revolt-crond
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-minio
+    networks:
+      - int-revolt-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-pushd:
+    image: $(getScriptImageByContainerName revolt-pushd)
+    container_name: revolt-pushd
+    hostname: revolt-pushd
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-db
+      - revolt-redis
+      - revolt-rabbitmq
+    networks:
+      - int-revolt-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/config/Revolt.toml:/Revolt.toml
+
+  revolt-createbuckets:
+    image: $(getScriptImageByContainerName revolt-createbuckets)
+    container_name: revolt-createbuckets
+    hostname: revolt-createbuckets
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - revolt-minio
+    networks:
+      - int-revolt-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    entrypoint: >
+      /bin/sh -c "
+      while ! /usr/bin/mc ready minio;
+      do
+        /usr/bin/mc alias set minio http://revolt-minio:9000 $REVOLT_MINIO_KEY $REVOLT_MINIO_SECRET;
+        echo 'Waiting minio...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/revolt-uploads;
+      exit 0;"
+
+volumes:
+  v-revolt-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/revolt/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-revolt-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/revolt.env
+TZ=\${PORTAINER_TZ}
+HOSTNAME=:80
+REVOLT_PUBLIC_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN/api
+REVOLT_APP_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN
+VITE_API_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN/api
+REVOLT_EXTERNAL_WS_URL=wss://$SUB_REVOLT.$HOMESERVER_DOMAIN/ws
+AUTUMN_PUBLIC_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN/autumn
+JANUARY_PUBLIC_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN/january
+MINIO_ROOT_USER=$REVOLT_MINIO_KEY
+MINIO_ROOT_PASSWORD=$REVOLT_MINIO_SECRET
+MINIO_DOMAIN=minio
+RABBITMQ_DEFAULT_USER=$REVOLT_RABBITMQ_USERNAME
+RABBITMQ_DEFAULT_PASS=$REVOLT_RABBITMQ_PASSWORD
+MONGO_INITDB_ROOT_USERNAME=$REVOLT_DATABASE_USER
+MONGO_INITDB_ROOT_PASSWORD=$REVOLT_DATABASE_USER_PASSWORD
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+EOFMT
+  openssl ecparam -name prime256v1 -genkey -noout -out $HOME/vapid_private.pem
+  cat <<EOFMT > $HSHQ_STACKS_DIR/revolt/config/Revolt.toml
+production = true
+
+[database]
+# MongoDB connection URL
+# Defaults to the container name specified in self-hosted
+mongodb = "mongodb://$REVOLT_DATABASE_USER:$REVOLT_DATABASE_USER_PASSWORD@revolt-db:27017/${REVOLT_DATABASE_NAME}?authSource=admin"
+# mongodb = "mongodb://revolt-db:27017/${REVOLT_DATABASE_NAME}"
+# Redis connection URL
+# Defaults to the container name specified in self-hosted
+redis = "redis://:$REVOLT_REDIS_PASSWORD@revolt-redis:6379"
+
+[hosts]
+# Web locations of various services
+# Defaults assume all services are reverse-proxied
+# See https://github.com/revoltchat/self-hosted/blob/master/Caddyfile
+#
+# Remember to change these to https/wss where appropriate in production!
+app = "https://$SUB_REVOLT.$HOMESERVER_DOMAIN"
+api = "https://$SUB_REVOLT.$HOMESERVER_DOMAIN/api"
+events = "wss://$SUB_REVOLT.$HOMESERVER_DOMAIN/ws"
+autumn = "https://$SUB_REVOLT.$HOMESERVER_DOMAIN/autumn"
+january = "https://$SUB_REVOLT.$HOMESERVER_DOMAIN/january"
+voso_legacy = ""
+voso_legacy_ws = ""
+
+[rabbit]
+host = "revolt-rabbitmq"
+port = 5672
+username = "$REVOLT_RABBITMQ_USERNAME"
+password = "$REVOLT_RABBITMQ_PASSWORD"
+
+[api]
+
+[api.registration]
+# Whether an invite should be required for registration
+# See https://github.com/revoltchat/self-hosted#making-your-instance-invite-only
+invite_only = false
+
+[api.smtp]
+# Email server configuration for verification
+# Defaults to no email verification (host field is empty)
+host = "$SMTP_HOSTNAME"
+username = "$EMAIL_SMTP_EMAIL_ADDRESS"
+password = "$EMAIL_SMTP_PASSWORD"
+from_address = "Revolt $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+port = 587
+use_starttls = true
+
+[api.security]
+# Authifier Shield API key
+authifier_shield_key = ""
+# Legacy voice server management token
+voso_legacy_token = ""
+# Whether services are behind the Cloudflare network
+trust_cloudflare = false
+# easypwned endpoint
+easypwned = ""
+
+[api.security.captcha]
+# hCaptcha configuration
+hcaptcha_key = ""
+hcaptcha_sitekey = ""
+
+[api.workers]
+# Maximum concurrent connections (to proxy server)
+max_concurrent_connections = 50
+
+[api.users]
+
+[pushd]
+# this changes the names of the queues to not overlap 
+# prod/beta if they happen to be on the same exchange/instance.
+# Usually they have to be, so that messages sent from one or the other get sent to everyone
+production = true
+
+# Changes how many users are processed in each chunk when resolving role/everyone mentions.
+# Increasing this will resolve mentions faster, but will consume more memory while resolving.
+mass_mention_chunk_size = 200
+
+# none of these should need changing
+exchange = "revolt.notifications"
+message_queue = "notifications.origin.message"
+mass_mention_queue = "notifications.origin.mass_mention" # handles messages that contain role or everyone mentions
+fr_accepted_queue = "notifications.ingest.fr_accepted"   # friend request accepted
+fr_received_queue = "notifications.ingest.fr_received"   # friend request received
+generic_queue = "notifications.ingest.generic"           # generic messages (title + body)
+ack_queue = "notifications.process.ack"                  # updates badges for apple devices
+
+[pushd.vapid]
+queue = "notifications.outbound.vapid"
+private_key = "$(base64 -i $HOME/vapid_private.pem | tr -d '\n' | tr -d '=')"
+public_key = "$(openssl ec -in $HOME/vapid_private.pem -outform DER|tail --bytes 65|base64|tr '/+' '_-'|tr -d '\n'|tr -d '=')"
+
+[pushd.fcm]
+queue = "notifications.outbound.fcm"
+key_type = ""
+project_id = ""
+private_key_id = ""
+private_key = ""
+client_email = ""
+client_id = ""
+auth_uri = ""
+token_uri = ""
+auth_provider_x509_cert_url = ""
+client_x509_cert_url = ""
+
+[pushd.apn]
+sandbox = false
+queue = "notifications.outbound.apn"
+pkcs8 = ""
+key_id = ""
+team_id = ""
+
+[files]
+# Encryption key for stored files
+# Generate your own key using openssl rand -base64 32
+encryption_key = "$(openssl rand -base64 32)"
+# Quality used for lossy WebP previews (set to 100 for lossless)
+webp_quality = 80.0
+# Mime types that cannot be uploaded or served
+#
+# Example for Windows executables and Android installation files:
+# ["application/vnd.microsoft.portable-executable", "application/vnd.android.package-archive"]
+blocked_mime_types = []
+# ClamAV service
+# hostname:port
+$(if [ -z "$is_antivirus_commented_out" ]; then echo "clamd_host = \"antivirus:3310\""; else echo "clamd_host = \"\""; fi)
+
+# Mime types that should be virus scanned
+#
+# Leave empty to scan all file types
+#scan_mime_types = [
+#    "application/vnd.microsoft.portable-executable",
+#    "application/vnd.android.package-archive",
+#    "application/zip",
+#]
+
+[files.limit]
+# Minimum file size (in bytes)
+min_file_size = 1
+# Minimum image resolution
+min_resolution = [1, 1]
+# Maximum MP of images
+max_mega_pixels = 40
+# Maximum pixel side of an image
+max_pixel_side = 10_000
+
+[files.preview]
+# Maximum image resolution
+attachments = [1280, 1280]
+avatars = [128, 128]
+backgrounds = [1280, 720]
+icons = [128, 128]
+banners = [480, 480]
+emojis = [128, 128]
+
+[files.s3]
+# Configuration for S3
+# Defaults included for MinIO + self-hosted setup
+#
+# Backblaze B2:
+# - endpoint is listed on the "Buckets" page
+# - path_style_buckets is set to true
+# - region is eu-central-003 string from endpoint URL
+# - access_key_id is keyID generated on the "Application Keys" page
+# - secret_access_key is token generated on the "Application Keys" page
+# - default_bucket matches the name of the bucket you've created
+
+# S3 protocol endpoint
+endpoint = "http://revolt-minio:9000"
+# Whether to use path-style buckets
+# Generally true, except for MinIO
+path_style_buckets = false
+# S3 region name
+region = "minio"
+# S3 protocol key ID
+access_key_id = "$REVOLT_MINIO_KEY"
+# S3 protocol access key
+secret_access_key = "$REVOLT_MINIO_SECRET"
+default_bucket = "revolt-uploads"
+
+[features]
+# Feature gate options
+webhooks_enabled = false
+# Enable push notifications for mass pings (everyone, online, roles)
+# When false this will still ping in-client but will not send notifications from pushd
+mass_mentions_send_notifications = true
+# Can role/everyone pings be used at all
+mass_mentions_enabled = true
+
+[features.limits]
+
+[features.limits.global]
+group_size = 100
+message_embeds = 5
+message_replies = 5
+message_reactions = 20
+server_emoji = 100
+server_roles = 200
+server_channels = 200
+
+# How many hours since creation a user is considered new
+new_user_hours = 72
+
+# Maximum permissible body size in bytes for uploads
+# (should be greater than any one file upload limit)
+body_limit_size = 20_000_000
+
+[features.limits.new_user]
+# Limits imposed on new users
+
+# Number of outgoing friend requests permitted at any time
+outgoing_friend_requests = 5
+
+# Maximum number of owned bots
+bots = 2
+
+# Message content length
+message_length = 2000
+
+# Number of attachments that can be included
+message_attachments = 5
+
+# Maximum number of servers the user can create/join
+servers = 50
+
+[features.limits.new_user.file_upload_size_limit]
+# Maximum file size limits (in bytes)
+attachments = 20_000_000
+avatars = 4_000_000
+backgrounds = 6_000_000
+icons = 2_500_000
+banners = 6_000_000
+emojis = 500_000
+
+[features.limits.default]
+# Limits imposed on users by default
+
+# Number of outgoing friend requests permitted at any time
+outgoing_friend_requests = 10
+
+# Maximum number of owned bots
+bots = 5
+
+# Message content length
+message_length = 2000
+
+# Number of attachments that can be included
+message_attachments = 5
+
+# Maximum number of servers the user can create/join
+servers = 100
+
+[features.limits.default.file_upload_size_limit]
+# Maximum file size limits (in bytes)
+attachments = 20_000_000
+avatars = 4_000_000
+backgrounds = 6_000_000
+icons = 2_500_000
+banners = 6_000_000
+emojis = 500_000
+
+[features.advanced]
+# The max amount of messages the rabbitmq provider/db mention adder job will delay for before forcing handling of a channel.
+# default: 5
+process_message_delay_limit = 5
+
+[sentry]
+# Configuration for Sentry error reporting
+api = ""
+events = ""
+files = ""
+proxy = ""
+pushd = ""
+crond = ""
+EOFMT
+  rm -f $HOME/vapid_private.pem
+  cat <<EOFMT > $HSHQ_STACKS_DIR/revolt/caddy/Caddyfile
+:80 {
+	route /api* {
+		uri strip_prefix /api
+		reverse_proxy http://revolt-api:14702 {
+			header_down Location "^/" "/api/"
+		}
+	}
+
+	route /ws {
+		uri strip_prefix /ws
+		reverse_proxy http://revolt-events:14703 {
+			header_down Location "^/" "/ws/"
+		}
+	}
+
+	route /autumn* {
+		uri strip_prefix /autumn
+		reverse_proxy http://revolt-autumn:14704 {
+			header_down Location "^/" "/autumn/"
+		}
+	}
+
+	route /january* {
+		uri strip_prefix /january
+		reverse_proxy http://revolt-january:14705 {
+			header_down Location "^/" "/january/"
+		}
+	}
+
+	reverse_proxy http://revolt-web:5000
+}
+EOFMT
+}
+
+function performUpdateRevolt()
+{
+  perform_stack_name=revolt
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/caddy:2.10.0,ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/pushd:20250807-1,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/mongo:8.0.13,mirror.gcr.io/mongo:8.0.13"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/rabbitmq:4.1.4"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[4]="mirror.gcr.io/caddy:2.10.0,mirror.gcr.io/caddy:2.10.0"
+      image_update_map[5]="ghcr.io/revoltchat/server:20250807-1,ghcr.io/revoltchat/server:20250807-1"
+      image_update_map[6]="ghcr.io/revoltchat/bonfire:20250807-1,ghcr.io/revoltchat/bonfire:20250807-1"
+      image_update_map[7]="ghcr.io/revoltchat/client:master,ghcr.io/revoltchat/client:master"
+      image_update_map[8]="ghcr.io/revoltchat/autumn:20250807-1,ghcr.io/revoltchat/autumn:20250807-1"
+      image_update_map[9]="ghcr.io/revoltchat/january:20250807-1,ghcr.io/revoltchat/january:20250807-1"
+      image_update_map[10]="ghcr.io/revoltchat/crond:20250807-1,ghcr.io/revoltchat/crond:20250807-1"
+      image_update_map[11]="ghcr.io/revoltchat/pushd:20250807-1,ghcr.io/revoltchat/pushd:20250807-1"
+      image_update_map[12]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -65394,7 +66900,7 @@ function installExampleService()
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://exampleservice-web {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://exampleservice-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
   inner_block=$inner_block">>>>}\n"
@@ -65420,19 +66926,20 @@ services:
     image: $(getScriptImageByContainerName exampleservice-db)
     container_name: exampleservice-db
     hostname: exampleservice-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
     restart: unless-stopped
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
-    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    shm_size: 256mb
     networks:
       - int-exampleservice-net
       - dock-dbs-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-      - v-exampleservice-db:/var/lib/mysql
-      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/exampleservice/dbexport:/dbexport
     labels:
       - "ofelia.enabled=true"
@@ -73938,6 +75445,14 @@ SQLPAD_CONNECTIONS__invidious__username=$INVIDIOUS_DATABASE_USER
 SQLPAD_CONNECTIONS__invidious__password=$INVIDIOUS_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__invidious__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__invidious__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__kanboard__name=Kanboard
+SQLPAD_CONNECTIONS__kanboard__driver=postgres
+SQLPAD_CONNECTIONS__kanboard__host=kanboard-db
+SQLPAD_CONNECTIONS__kanboard__database=$KANBOARD_DATABASE_NAME
+SQLPAD_CONNECTIONS__kanboard__username=$KANBOARD_DATABASE_USER
+SQLPAD_CONNECTIONS__kanboard__password=$KANBOARD_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__kanboard__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__kanboard__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__keila__name=Keila
 SQLPAD_CONNECTIONS__keila__driver=postgres
 SQLPAD_CONNECTIONS__keila__host=keila-db
