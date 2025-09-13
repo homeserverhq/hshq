@@ -41200,7 +41200,7 @@ function installNextcloud()
   if ! [ "$(isServiceDisabled clamav)" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_antivirus
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_mode --value="daemon"
-    docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_host --value="antivirus"
+    docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_host --value="mailu-antivirus"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_port --value="3310"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_stream_max_length --value="26214400"
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_max_file_size --value="-1"
@@ -66226,7 +66226,7 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/revolt/rabbitmq:/var/lib/rabbitmq
 
-  revolt-minio:
+  minio:
     image: $(getScriptImageByContainerName revolt-minio)
     container_name: revolt-minio
     hostname: revolt-minio
@@ -66236,6 +66236,7 @@ services:
       - no-new-privileges:true
     command: server /data
     networks:
+      dock-proxy-net:
       int-revolt-net:
         aliases:
           - revolt-uploads.minio
@@ -66393,7 +66394,7 @@ services:
       - no-new-privileges:true
     depends_on:
       - revolt-db
-      - revolt-minio
+      - minio
     networks:
       - int-revolt-net
       - dock-internalmail-net
@@ -66438,7 +66439,7 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      - revolt-minio
+      - minio
     networks:
       - int-revolt-net
     volumes:
@@ -66451,11 +66452,18 @@ services:
       /bin/sh -c "
       while ! /usr/bin/mc ready minio;
       do
-        /usr/bin/mc alias set minio http://revolt-minio:9000 $REVOLT_MINIO_KEY $REVOLT_MINIO_SECRET;
+        /usr/bin/mc alias set minio http://minio:9000 $REVOLT_MINIO_KEY $REVOLT_MINIO_SECRET;
         echo 'Waiting minio...' && sleep 1;
       done;
+      /usr/bin/mc mb minio/attachments;
+      /usr/bin/mc mb minio/avatars;
+      /usr/bin/mc mb minio/backgrounds;
+      /usr/bin/mc mb minio/icons;
+      /usr/bin/mc mb minio/banners;
+      /usr/bin/mc mb minio/emojis;
       /usr/bin/mc mb minio/revolt-uploads;
-      exit 0;"
+      exit 0;
+      "
 
 volumes:
   v-revolt-redis:
@@ -66494,6 +66502,7 @@ VITE_API_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN/api
 REVOLT_EXTERNAL_WS_URL=wss://$SUB_REVOLT.$HOMESERVER_DOMAIN/ws
 AUTUMN_PUBLIC_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN/autumn
 JANUARY_PUBLIC_URL=https://$SUB_REVOLT.$HOMESERVER_DOMAIN/january
+AUTUMN_MONGO_URI=mongodb://$REVOLT_DATABASE_USER:$REVOLT_DATABASE_USER_PASSWORD@revolt-db:27017/${REVOLT_DATABASE_NAME}?authSource=admin
 MINIO_ROOT_USER=$REVOLT_MINIO_KEY
 MINIO_ROOT_PASSWORD=$REVOLT_MINIO_SECRET
 MINIO_DOMAIN=minio
@@ -66501,6 +66510,7 @@ RABBITMQ_DEFAULT_USER=$REVOLT_RABBITMQ_USERNAME
 RABBITMQ_DEFAULT_PASS=$REVOLT_RABBITMQ_PASSWORD
 MONGO_INITDB_ROOT_USERNAME=$REVOLT_DATABASE_USER
 MONGO_INITDB_ROOT_PASSWORD=$REVOLT_DATABASE_USER_PASSWORD
+MINIO_CONSOLE_ADDRESS=:9090
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 EOFMT
   openssl ecparam -name prime256v1 -genkey -noout -out $HOME/vapid_private.pem
@@ -66631,7 +66641,7 @@ webp_quality = 80.0
 blocked_mime_types = []
 # ClamAV service
 # hostname:port
-$(if [ -z "$is_antivirus_commented_out" ]; then echo "clamd_host = \"antivirus:3310\""; else echo "clamd_host = \"\""; fi)
+$(if [ -z "$is_antivirus_commented_out" ]; then echo "clamd_host = \"mailu-antivirus:3310\""; else echo "clamd_host = \"\""; fi)
 
 # Mime types that should be virus scanned
 #
@@ -66674,7 +66684,7 @@ emojis = [128, 128]
 # - default_bucket matches the name of the bucket you've created
 
 # S3 protocol endpoint
-endpoint = "http://revolt-minio:9000"
+endpoint = "http://minio:9000"
 # Whether to use path-style buckets
 # Generally true, except for MinIO
 path_style_buckets = false
