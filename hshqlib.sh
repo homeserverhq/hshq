@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=196
+HSHQ_LIB_SCRIPT_VERSION=197
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -32409,7 +32409,7 @@ function initServiceVars()
   checkAddSvc "SVCD_VAULTWARDEN=vaultwarden,vaultwarden,primary,user,Vaultwarden,vaultwarden,hshq"
   checkAddSvc "SVCD_WALLABAG=wallabag,wallabag,primary,user,Wallabag,wallabag,le"
   checkAddSvc "SVCD_WAZUH=wazuh,wazuh,primary,admin,Wazuh,wazuh,hshq"
-  checkAddSvc "SVCD_WEKAN=wekan,wekan,primary,user,Wekan,wekan,hshq"
+  checkAddSvc "SVCD_WEKAN=wekan,wekan,primary,user,WeKan,wekan,hshq"
   checkAddSvc "SVCD_WGPORTAL=wgportal,wgportal,primary,admin,WG Portal,wgportal,hshq"
   checkAddSvc "SVCD_WIKIJS=wikijs,wikijs,other,user,Wiki.js,wikijs,hshq"
   checkAddSvc "SVCD_WORDPRESS=wordpress,wordpress,other,user,WordPress,wordpress,hshq"
@@ -33053,7 +33053,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_WEKAN.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Email" "\"https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
@@ -65972,7 +65972,7 @@ MONGO_INITDB_ROOT_USERNAME=$WEKAN_DATABASE_USER
 MONGO_INITDB_ROOT_PASSWORD=$WEKAN_DATABASE_USER_PASSWORD
 MONGO_URL=mongodb://$WEKAN_DATABASE_USER:$WEKAN_DATABASE_USER_PASSWORD@wekan-db:27017/${WEKAN_DATABASE_NAME}?authSource=admin
 MAIL_URL=smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT/?ignoreTLS=false&tls={rejectUnauthorized:true}
-MAIL_FROM=Wekan $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+MAIL_FROM=WeKan $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 PASSWORD_LOGIN_ENABLED=false
 OAUTH2_ENABLED=true
@@ -65992,7 +65992,7 @@ EOFMT
   cat <<EOFIM > $HOME/wekan.oidc
 # Authelia OIDC Client wekan BEGIN
       - client_id: wekan
-        client_name: Wekan
+        client_name: WeKan
         client_secret: $WEKAN_OIDC_CLIENT_SECRET_HASH
         public: false
         authorization_policy: ${LDAP_PRIMARY_USER_GROUP_NAME}_auth
