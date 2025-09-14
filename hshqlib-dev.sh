@@ -30473,7 +30473,6 @@ KANBOARD_DATABASE_USER_PASSWORD=
 # Kanboard (Service Details) END
 
 # Wekan (Service Details) BEGIN
-WEKAN_INIT_ENV=true
 WEKAN_OIDC_CLIENT_SECRET=
 WEKAN_DATABASE_NAME=
 WEKAN_DATABASE_USER=
@@ -30481,10 +30480,6 @@ WEKAN_DATABASE_USER_PASSWORD=
 # Wekan (Service Details) END
 
 # Revolt (Service Details) BEGIN
-REVOLT_INIT_ENV=true
-REVOLT_ADMIN_USERNAME=
-REVOLT_ADMIN_EMAIL_ADDRESS=
-REVOLT_ADMIN_PASSWORD=
 REVOLT_DATABASE_NAME=
 REVOLT_DATABASE_USER=
 REVOLT_DATABASE_USER_PASSWORD=
@@ -32057,18 +32052,6 @@ function initServicesCredentials()
     WEKAN_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar WEKAN_DATABASE_USER_PASSWORD $WEKAN_DATABASE_USER_PASSWORD
   fi
-  if [ -z "$REVOLT_ADMIN_USERNAME" ]; then
-    REVOLT_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_revolt"
-    updateConfigVar REVOLT_ADMIN_USERNAME $REVOLT_ADMIN_USERNAME
-  fi
-  if [ -z "$REVOLT_ADMIN_EMAIL_ADDRESS" ]; then
-    REVOLT_ADMIN_EMAIL_ADDRESS=$REVOLT_ADMIN_USERNAME@$HOMESERVER_DOMAIN
-    updateConfigVar REVOLT_ADMIN_EMAIL_ADDRESS $REVOLT_ADMIN_EMAIL_ADDRESS
-  fi
-  if [ -z "$REVOLT_ADMIN_PASSWORD" ]; then
-    REVOLT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
-    updateConfigVar REVOLT_ADMIN_PASSWORD $REVOLT_ADMIN_PASSWORD
-  fi
   if [ -z "$REVOLT_DATABASE_NAME" ]; then
     REVOLT_DATABASE_NAME=revoltdb
     updateConfigVar REVOLT_DATABASE_NAME $REVOLT_DATABASE_NAME
@@ -33046,8 +33029,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KANBOARD_ADMIN_EMAIL_ADDRESS $KANBOARD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_REVOLT}-Admin" https://$SUB_REVOLT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $REVOLT_ADMIN_EMAIL_ADDRESS $REVOLT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KANBOARD_ADMIN_USERNAME $KANBOARD_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33169,8 +33151,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_BUDIBASE}-Admin" https://$SUB_BUDIBASE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $BUDIBASE_ADMIN_EMAIL_ADDRESS $BUDIBASE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KANBOARD_ADMIN_EMAIL_ADDRESS $KANBOARD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_REVOLT}-Admin" https://$SUB_REVOLT.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $REVOLT_ADMIN_EMAIL_ADDRESS $REVOLT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KANBOARD_ADMIN_USERNAME $KANBOARD_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34406,8 +34387,8 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "StandardNotes" "STANDARDNOTES_REDIS_PASSWORD=,STANDARDNOTES_DATABASE_NAME=,STANDARDNOTES_DATABASE_ROOT_PASSWORD=,STANDARDNOTES_DATABASE_USER=,STANDARDNOTES_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Metabase" "METABASE_INIT_ENV=false,METABASE_ADMIN_USERNAME=,METABASE_ADMIN_EMAIL_ADDRESS=,METABASE_ADMIN_PASSWORD=,METABASE_DATABASE_NAME=,METABASE_DATABASE_USER=,METABASE_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Kanboard" "KANBOARD_INIT_ENV=false,KANBOARD_ADMIN_USERNAME=,KANBOARD_ADMIN_EMAIL_ADDRESS=,KANBOARD_ADMIN_PASSWORD=,KANBOARD_DATABASE_NAME=,KANBOARD_DATABASE_USER=,KANBOARD_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Wekan" "WEKAN_INIT_ENV=false,WEKAN_OIDC_CLIENT_SECRET=,WEKAN_DATABASE_NAME=,WEKAN_DATABASE_USER=,WEKAN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
-  checkAddServiceToConfig "Revolt" "REVOLT_INIT_ENV=false,REVOLT_ADMIN_USERNAME=,REVOLT_ADMIN_EMAIL_ADDRESS=,REVOLT_ADMIN_PASSWORD=,REVOLT_DATABASE_NAME=,REVOLT_DATABASE_USER=,REVOLT_DATABASE_USER_PASSWORD=,REVOLT_REDIS_PASSWORD=,REVOLT_RABBITMQ_USERNAME=,REVOLT_RABBITMQ_PASSWORD=,REVOLT_MINIO_KEY=,REVOLT_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Wekan" "WEKAN_OIDC_CLIENT_SECRET=,WEKAN_DATABASE_NAME=,WEKAN_DATABASE_USER=,WEKAN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Revolt" "REVOLT_DATABASE_NAME=,REVOLT_DATABASE_USER=,REVOLT_DATABASE_USER_PASSWORD=,REVOLT_REDIS_PASSWORD=,REVOLT_RABBITMQ_USERNAME=,REVOLT_RABBITMQ_PASSWORD=,REVOLT_MINIO_KEY=,REVOLT_MINIO_SECRET=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -55717,26 +55698,21 @@ function installSpeedtestTrackerVPN()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn/db
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-vpn/config
   chmod 777 $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport
-
   initServicesCredentials
   set +e
-
   docker exec mailu-admin flask mailu alias-delete $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$SPEEDTEST_TRACKER_VPN_INIT_ENV" = "true" ]; then
     sendEmail -s "SpeedtestTrackerVPN Admin Login Info" -b "SpeedtestTrackerVPN Admin Username: $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerVPN Admin Password: $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     SPEEDTEST_TRACKER_VPN_INIT_ENV=true
     updateConfigVar SPEEDTEST_TRACKER_VPN_INIT_ENV $SPEEDTEST_TRACKER_VPN_INIT_ENV
   fi
-
   outputConfigSpeedtestTrackerVPN
   installStack speedtest-tracker-vpn speedtest-tracker-vpn-app "\[ls.io-init\] done" $HOME/speedtest-tracker-vpn.env 3
   retval=$?
@@ -55744,14 +55720,12 @@ function installSpeedtestTrackerVPN()
     return $retval
   fi
   sleep 5
-
   docker exec speedtest-tracker-vpn-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
   sleep 4
   startStopStack speedtest-tracker-vpn stop
   sleep 1
   startStopStack speedtest-tracker-vpn start
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -55767,7 +55741,6 @@ function installSpeedtestTrackerVPN()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_SPEEDTEST_TRACKER_VPN $MANAGETLS_SPEEDTEST_TRACKER_VPN "$is_integrate_hshq" $NETDEFAULT_SPEEDTEST_TRACKER_VPN "$inner_block"
   insertSubAuthelia $SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll speedtest-tracker-vpn "$FMLNAME_SPEEDTEST_TRACKER_VPN" $USERTYPE_SPEEDTEST_TRACKER_VPN "https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN" "speedtest-tracker.png" "$(getHeimdallOrderFromSub $SUB_SPEEDTEST_TRACKER_VPN $USERTYPE_SPEEDTEST_TRACKER_VPN)"
     restartAllCaddyContainers
@@ -55779,7 +55752,6 @@ function outputConfigSpeedtestTrackerVPN()
 {
   pw_hash=$(htpasswd -bnBC 10 "" $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
   rand_minute=$((33 + RANDOM % 24))
-
   cat <<EOFBA > $HOME/speedtest-tracker-vpn-compose.yml
 $STACK_VERSION_PREFIX speedtest-tracker-vpn $(getScriptStackVersion speedtest-tracker-vpn)
 
@@ -55863,7 +55835,6 @@ networks:
       driver: default
 
 EOFBA
-
   set -f
   cat <<EOFBA > $HOME/speedtest-tracker-vpn.env
 TZ=\${PORTAINER_TZ}
@@ -55904,7 +55875,6 @@ echo "update settings set payload='[ { \"email_address\": \"$EMAIL_ADMIN_EMAIL_A
 echo "update users set name='${HOMESERVER_ABBREV^^} SpeedtestTrackerVPN Admin', email='$SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS', password='$pw_hash' where id=1;" | psql -U $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_NAME
 
 EOFDS
-
   chmod +x $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport/setupDBSettings.sh
 }
 
@@ -65599,7 +65569,6 @@ function installKanboard()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/kanboard
   mkdir $HSHQ_STACKS_DIR/kanboard/db
   mkdir $HSHQ_STACKS_DIR/kanboard/dbexport
@@ -65612,8 +65581,7 @@ function installKanboard()
   docker exec mailu-admin flask mailu alias-delete $KANBOARD_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $KANBOARD_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  KANBOARD_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $KANBOARD_ADMIN_PASSWORD | tr -d ':\n')
-
+  KANBOARD_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 12 "" $KANBOARD_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
   outputConfigKanboard
   installStack kanboard kanboard-app "" $HOME/kanboard.env
   retVal=$?
@@ -65626,6 +65594,8 @@ function installKanboard()
     updateConfigVar KANBOARD_INIT_ENV $KANBOARD_INIT_ENV
   fi
   sleep 3
+  docker exec kanboard-db /dbexport/setupDBSettings.sh
+  rm -f $HSHQ_STACKS_DIR/kanboard/dbexport/setupDBSettings.sh
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_KANBOARD.$HOMESERVER_DOMAIN {\n"
@@ -65642,7 +65612,6 @@ function installKanboard()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_KANBOARD $MANAGETLS_KANBOARD "$is_integrate_hshq" $NETDEFAULT_KANBOARD "$inner_block"
   insertSubAuthelia $SUB_KANBOARD.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll kanboard "$FMLNAME_KANBOARD" $USERTYPE_KANBOARD "https://$SUB_KANBOARD.$HOMESERVER_DOMAIN" "kanboard.png" "$(getHeimdallOrderFromSub $SUB_KANBOARD $USERTYPE_KANBOARD)"
     restartAllCaddyContainers
@@ -65761,7 +65730,6 @@ networks:
       driver: default
 
 EOFMT
-
   cat <<EOFMT > $HOME/kanboard.env
 TZ=\${PORTAINER_TZ}
 DATABASE_URL=postgres://$KANBOARD_DATABASE_USER:$KANBOARD_DATABASE_USER_PASSWORD@kanboard-db/$KANBOARD_DATABASE_NAME
@@ -65780,7 +65748,7 @@ LDAP_USER_BASE_DN=ou=people,$LDAP_BASE_DN
 LDAP_USER_FILTER=(&(uid=%s)(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
 LDAP_USER_ATTRIBUTE_USERNAME=uid
 LDAP_USER_ATTRIBUTE_FULLNAME=cn
-LDAP_USER_ATTRIBUTE_EMAIL=main
+LDAP_USER_ATTRIBUTE_EMAIL=mail
 LDAP_USER_ATTRIBUTE_GROUPS=memberOf
 LDAP_USER_ATTRIBUTE_PHOTO=jpegPhoto
 LDAP_USER_CREATION=true
@@ -65797,7 +65765,26 @@ MAIL_SMTP_PORT=$SMTP_HOSTPORT
 MAIL_SMTP_ENCRYPTION=tls
 MAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
 EOFMT
+  cat <<EOFDS > $HSHQ_STACKS_DIR/kanboard/dbexport/setupDBSettings.sh
+#!/bin/bash
 
+PGPASSWORD=$KANBOARD_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  admUser=\$(echo "select username from users where username='admin';" | psql -t -A -U $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$admUser" ] && [ "\$admUser" = "admin" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 3 seconds, total wait=\$curSeconds seconds..."
+  sleep 3
+  curSeconds=\$((curSeconds+3))
+done
+echo "update users set username='$KANBOARD_ADMIN_USERNAME', email='$KANBOARD_ADMIN_EMAIL_ADDRESS', password='$KANBOARD_ADMIN_PASSWORD_HASH', name='$HOMESERVER_NAME Kanboard Admin' where username='admin';" | psql -U $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_NAME
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/kanboard/dbexport/setupDBSettings.sh
 }
 
 function performUpdateKanboard()
@@ -66130,20 +66117,11 @@ function installRevolt()
 
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $REVOLT_ADMIN_EMAIL_ADDRESS
-  sleep 5
-  addUserMailu alias $REVOLT_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  REVOLT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $REVOLT_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigRevolt
   installStack revolt revolt-api "" $HOME/revolt.env
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
-  fi
-  if ! [ "$REVOLT_INIT_ENV" = "true" ]; then
-    sendEmail -s "Revolt Admin Login Info" -b "Revolt Admin Username: $REVOLT_ADMIN_USERNAME\nRevolt Admin Password: $REVOLT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
-    REVOLT_INIT_ENV=true
-    updateConfigVar REVOLT_INIT_ENV $REVOLT_INIT_ENV
   fi
   sleep 3
   set -e
