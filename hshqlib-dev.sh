@@ -66040,7 +66040,6 @@ function installWekan()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/wekan
   mkdir $HSHQ_STACKS_DIR/wekan/db
   mkdir $HSHQ_STACKS_DIR/wekan/dump
@@ -67347,7 +67346,8 @@ function installMintHCM()
   addUserMailu alias $MINTHCM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   MINTHCM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MINTHCM_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigMintHCM
-  installStack minthcm minthcm-web "Starting periodic command scheduler cron" $HOME/minthcm.env 15
+  echo "Please be patient, this will take a few minutes..."
+  installStack minthcm minthcm-web "Starting periodic command scheduler cron" $HOME/minthcm.env 15 900
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
