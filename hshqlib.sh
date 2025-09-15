@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=197
+HSHQ_LIB_SCRIPT_VERSION=198
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -2792,7 +2792,7 @@ EOF
       emailVaultwardenCredentials ;;
     8)
       checkLoadConfig
-      sendRootCAEmail ;;
+      sendRootCAEmail false ;;
     9)
 	  return 0 ;;
   esac
@@ -4051,7 +4051,7 @@ function initInstallation()
     maxRSPreRetries=30
     while true;
     do
-      perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -f
+      perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -r 1 -b 1
       if [ $? -eq 0 ]; then
         break
       fi
@@ -10709,8 +10709,6 @@ EOF
       err_message="Could not log in to RelayServer. It could be wrong IP address/port and/or incorrect credentials. Please check your records and try again."
       continue
     fi
-    # Login with domain name as well...
-    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "echo hello >/dev/null" -f
     # 2. Upload check script
     outputRelayServerValidationScript
     echo "Uploading validation script..."
@@ -10769,14 +10767,14 @@ EOF
     updateConfigVar RELAYSERVER_HSHQ_STACKS_DIR $RELAYSERVER_HSHQ_STACKS_DIR
     updateConfigVar RELAYSERVER_HSHQ_SSL_DIR $RELAYSERVER_HSHQ_SSL_DIR
   fi
-  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+  perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   if [ "$isTransfer" = "true" ]; then
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_TRANSFER_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   else
-    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
+    perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
     rm -f $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME
   fi
-  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SUB_RELAYSERVER.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
+  perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
 }
 
 function loadSSHKey()
@@ -16585,7 +16583,26 @@ function sendRootCAEmail()
   if [ "$is_sudo" = "true" ]; then
     # This special case is only need during the initial installation due
     # to issues with adding members to groups (mailsenders) within a script.
-    echo -e "$mail_msg" | sudo timeout $MAILX_TIMEOUT mailx -s "Public Root Certificate" -a "From: $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
+    set +e
+    num_email_tries=1
+    max_email_tries=5
+    is_success=false
+    while [ $num_email_tries -lt $max_email_tries ]
+    do
+      rm -f dead.letter
+      echo -e "$mail_msg" | sudo timeout $MAILX_TIMEOUT mailx -s "Public Root Certificate" -a "From: $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
+      if [ $? -eq 0 ]; then
+        is_success=true
+        break
+      fi
+      echo "ERROR: Could not send email, retrying ($num_email_tries of $max_email_tries)..."
+      sleep 3
+      ((num_email_tries++))
+    done
+    if ! [ "$is_success" = "true" ]; then
+      echo "ERROR: There was a problem sending the Root CA certificate..."
+    fi
+    set -e
   else
     sendEmail -s "Public Root Certificate" -b "$mail_msg" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der
   fi
@@ -16687,17 +16704,22 @@ function sendEmail()
   set +e
   num_email_tries=1
   max_email_tries=5
+  is_email_success=false
   while [ $num_email_tries -lt $max_email_tries ]
   do
     rm -f dead.letter
     echo -e "$email_body" | timeout $MAILX_TIMEOUT mailx -s "$email_subj" -a "From: $email_from" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" $email_attachments "$email_to"
     if [ $? -eq 0 ]; then
+      is_email_success=true
       break
     fi
     echo "ERROR: Could not send email, retrying ($num_email_tries of $max_email_tries)..."
     sleep 3
     ((num_email_tries++))
   done
+  if ! [ "$is_email_success" = "true" ]; then
+    echo "ERROR: There was a problem sending this email (subj: $email_subj)..."
+  fi
 }
 
 function sendEmailToList()
@@ -29018,6 +29040,7 @@ function loadPinnedDockerImages()
   IMG_MINIO=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
   IMG_MINIO_CLIENT=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
   IMG_MONGODB=mirror.gcr.io/mongo:8.0.13
+  IMG_FRAPPE_BENCH=mirror.gcr.io/frappe/bench:v5.25.9
 
   # Stack specific images
   IMG_ADGUARD=mirror.gcr.io/adguard/adguardhome:v0.107.64
@@ -29041,9 +29064,11 @@ function loadPinnedDockerImages()
   IMG_CALIBRE_WEB=mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342
   IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.50.8
   IMG_CHANGEDETECTION_PLAYWRIGHT_CHROME=dgtlmoon/sockpuppetbrowser:latest
+  IMG_CLOUDBEAVER_APP=mirror.gcr.io/dbeaver/cloudbeaver:25.2.0
   IMG_CODESERVER=mirror.gcr.io/codercom/code-server:4.102.2
   IMG_COLLABORA=mirror.gcr.io/collabora/code:25.04.4.2.1
   IMG_COTURN=mirror.gcr.io/coturn/coturn:4.7.0
+  IMG_DBGATE_APP=mirror.gcr.io/dbgate/dbgate:6.6.3-alpine
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
   IMG_DNSMASQ=mirror.gcr.io/jpillora/dnsmasq:1.1
   IMG_DOZZLE=mirror.gcr.io/amir20/dozzle:v6.1.1
@@ -29116,6 +29141,8 @@ function loadPinnedDockerImages()
   IMG_MEALIE=ghcr.io/mealie-recipes/mealie:v3.0.2
   IMG_MESHCENTRAL=ghcr.io/ylianst/meshcentral:1.1.48
   IMG_METABASE=metabase/metabase:v0.56.2.4
+  IMG_MINTHCM_WEB=mirror.gcr.io/minthcm/minthcm:latest
+  IMG_MINTHCM_ELASTICSEARCH=docker.elastic.co/elasticsearch/elasticsearch:7.9.3
   IMG_NAVIDROME=deluan/navidrome:0.58.0
   IMG_NETDATA=mirror.gcr.io/netdata/netdata:v2.6.1
   IMG_NEXTCLOUD_APP=mirror.gcr.io/nextcloud:31.0.7-fpm-alpine
@@ -29361,8 +29388,16 @@ function getScriptStackVersion()
       echo "v1" ;;
     revolt)
       echo "v1" ;;
+    frappe-hr)
+      echo "v1" ;;
+    minthcm)
+      echo "v1" ;;
     ofelia)
       echo "v6" ;;
+    cloudbeaver)
+      echo "v1" ;;
+    dbgate)
+      echo "v1" ;;
     sqlpad)
       echo "v8" ;;
     caddy-*)
@@ -29539,6 +29574,9 @@ function pullDockerImages()
   pullImage $IMG_REVOLT_JANUARY
   pullImage $IMG_REVOLT_CROND
   pullImage $IMG_REVOLT_PUSHD
+  pullImage $IMG_MINTHCM_WEB
+  pullImage $IMG_CLOUDBEAVER_APP
+  pullImage $IMG_DBGATE_APP
 }
 
 function pullImagesUpdatePB()
@@ -30489,6 +30527,43 @@ REVOLT_RABBITMQ_PASSWORD=
 REVOLT_MINIO_KEY=
 REVOLT_MINIO_SECRET=
 # Revolt (Service Details) END
+
+# FrappeHR (Service Details) BEGIN
+FRAPPE_HR_INIT_ENV=true
+FRAPPE_HR_ADMIN_USERNAME=
+FRAPPE_HR_ADMIN_EMAIL_ADDRESS=
+FRAPPE_HR_ADMIN_PASSWORD=
+FRAPPE_HR_DATABASE_NAME=
+FRAPPE_HR_DATABASE_ROOT_PASSWORD=
+FRAPPE_HR_DATABASE_USER=
+FRAPPE_HR_DATABASE_USER_PASSWORD=
+FRAPPE_HR_REDIS_PASSWORD=
+# FrappeHR (Service Details) END
+
+# MintHCM (Service Details) BEGIN
+MINTHCM_INIT_ENV=true
+MINTHCM_ADMIN_USERNAME=
+MINTHCM_ADMIN_PASSWORD=
+MINTHCM_ADMIN_EMAIL_ADDRESS=
+MINTHCM_DATABASE_NAME=
+MINTHCM_DATABASE_ROOT_PASSWORD=
+MINTHCM_DATABASE_USER=
+MINTHCM_DATABASE_USER_PASSWORD=
+MINTHCM_ES_USER=
+MINTHCM_ES_USER_PASSWORD=
+# MintHCM (Service Details) END
+
+# CloudBeaver (Service Details) BEGIN
+CLOUDBEAVER_INIT_ENV=true
+CLOUDBEAVER_ADMIN_USERNAME=
+CLOUDBEAVER_ADMIN_PASSWORD=
+# CloudBeaver (Service Details) END
+
+# DbGate (Service Details) BEGIN
+DBGATE_INIT_ENV=true
+DBGATE_ADMIN_USERNAME=
+DBGATE_ADMIN_PASSWORD=
+# DbGate (Service Details) END
 
 # Service Details END
 EOFCF
@@ -32084,6 +32159,91 @@ function initServicesCredentials()
     REVOLT_MINIO_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar REVOLT_MINIO_SECRET $REVOLT_MINIO_SECRET
   fi
+  if [ -z "$FRAPPE_HR_ADMIN_USERNAME" ]; then
+    FRAPPE_HR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_frappe_hr"
+    updateConfigVar FRAPPE_HR_ADMIN_USERNAME $FRAPPE_HR_ADMIN_USERNAME
+  fi
+  if [ -z "$FRAPPE_HR_ADMIN_EMAIL_ADDRESS" ]; then
+    FRAPPE_HR_ADMIN_EMAIL_ADDRESS=$FRAPPE_HR_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar FRAPPE_HR_ADMIN_EMAIL_ADDRESS $FRAPPE_HR_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$FRAPPE_HR_ADMIN_PASSWORD" ]; then
+    FRAPPE_HR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRAPPE_HR_ADMIN_PASSWORD $FRAPPE_HR_ADMIN_PASSWORD
+  fi
+  if [ -z "$FRAPPE_HR_DATABASE_NAME" ]; then
+    FRAPPE_HR_DATABASE_NAME=frappe-hrdb
+    updateConfigVar FRAPPE_HR_DATABASE_NAME $FRAPPE_HR_DATABASE_NAME
+  fi
+  if [ -z "$FRAPPE_HR_DATABASE_ROOT_PASSWORD" ]; then
+    FRAPPE_HR_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRAPPE_HR_DATABASE_ROOT_PASSWORD $FRAPPE_HR_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$FRAPPE_HR_DATABASE_USER" ]; then
+    FRAPPE_HR_DATABASE_USER=frappe-hrdb
+    updateConfigVar FRAPPE_HR_DATABASE_USER $FRAPPE_HR_DATABASE_USER
+  fi
+  if [ -z "$FRAPPE_HR_DATABASE_USER_PASSWORD" ]; then
+    FRAPPE_HR_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRAPPE_HR_DATABASE_USER_PASSWORD $FRAPPE_HR_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$FRAPPE_HR_REDIS_PASSWORD" ]; then
+    FRAPPE_HR_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar FRAPPE_HR_REDIS_PASSWORD $FRAPPE_HR_REDIS_PASSWORD
+  fi
+  if [ -z "$MINTHCM_ADMIN_USERNAME" ]; then
+    MINTHCM_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_minthcm"
+    updateConfigVar MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_USERNAME
+  fi
+  if [ -z "$MINTHCM_ADMIN_PASSWORD" ]; then
+    MINTHCM_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINTHCM_ADMIN_PASSWORD $MINTHCM_ADMIN_PASSWORD
+  fi
+  if [ -z "$MINTHCM_ADMIN_EMAIL_ADDRESS" ]; then
+    MINTHCM_ADMIN_EMAIL_ADDRESS=$MINTHCM_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar MINTHCM_ADMIN_EMAIL_ADDRESS $MINTHCM_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$MINTHCM_DATABASE_NAME" ]; then
+    MINTHCM_DATABASE_NAME=minthcmdb
+    updateConfigVar MINTHCM_DATABASE_NAME $MINTHCM_DATABASE_NAME
+  fi
+  if [ -z "$MINTHCM_DATABASE_ROOT_PASSWORD" ]; then
+    MINTHCM_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINTHCM_DATABASE_ROOT_PASSWORD $MINTHCM_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$MINTHCM_DATABASE_USER" ]; then
+    MINTHCM_DATABASE_USER=minthcm-user
+    updateConfigVar MINTHCM_DATABASE_USER $MINTHCM_DATABASE_USER
+  fi
+  if [ -z "$MINTHCM_DATABASE_USER_PASSWORD" ]; then
+    MINTHCM_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINTHCM_DATABASE_USER_PASSWORD $MINTHCM_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$MINTHCM_ES_USER" ]; then
+    MINTHCM_ES_USER=minthcm-user
+    updateConfigVar MINTHCM_ES_USER $MINTHCM_ES_USER
+  fi
+  if [ -z "$MINTHCM_ES_USER_PASSWORD" ]; then
+    MINTHCM_ES_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar MINTHCM_ES_USER_PASSWORD $MINTHCM_ES_USER_PASSWORD
+  fi
+  if [ -z "$CLOUDBEAVER_ADMIN_USERNAME" ]; then
+    CLOUDBEAVER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_cloudbeaver"
+    updateConfigVar CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_USERNAME
+  fi
+  if [ -z "$CLOUDBEAVER_ADMIN_PASSWORD" ]; then
+    CLOUDBEAVER_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CLOUDBEAVER_ADMIN_PASSWORD $CLOUDBEAVER_ADMIN_PASSWORD
+  fi
+  if [ -z "$DBGATE_ADMIN_USERNAME" ]; then
+    DBGATE_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_dbgate"
+    updateConfigVar DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_USERNAME
+  fi
+  if [ -z "$DBGATE_ADMIN_PASSWORD" ]; then
+    DBGATE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DBGATE_ADMIN_PASSWORD $DBGATE_ADMIN_PASSWORD
+  fi
+
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -32303,9 +32463,11 @@ function initServiceVars()
   checkAddSvc "SVCD_CALIBRE_WEB=calibre,calibre-web,other,user,Calibre-Web,calibre-web,le"
   checkAddSvc "SVCD_CHANGEDETECTION=changedetection,changedetection,primary,user,Change Detection,changedetection,hshq"
   checkAddSvc "SVCD_CLIENTDNS=clientdns,clientdns,primary,admin,ClientDNS,clientdns,hshq"
+  checkAddSvc "SVCD_CLOUDBEAVER=cloudbeaver,cloudbeaver,primary,admin,CloudBeaver,cloudbeaver,hshq"
   checkAddSvc "SVCD_CODESERVER=codeserver,codeserver,primary,admin,CodeServer,codeserver,hshq"
   checkAddSvc "SVCD_COLLABORA=collabora,collabora,other,user,Collabora,collabora,hshq"
   checkAddSvc "SVCD_COTURN=coturn,coturn,other,user,Coturn,coturn,hshq"
+  checkAddSvc "SVCD_DBGATE=dbgate,dbgate,primary,admin,DbGate,dbgate,hshq"
   checkAddSvc "SVCD_DISCOURSE=discourse,discourse,other,user,Discourse,discourse,hshq"
   checkAddSvc "SVCD_DOZZLE=dozzle,dozzle,primary,admin,Dozzle,dozzle,hshq"
   checkAddSvc "SVCD_DRAWIO_WEB=drawio,drawio,primary,user,Draw.io,drawio,hshq"
@@ -32320,6 +32482,7 @@ function initServiceVars()
   sed -i "s/SVCD_FIREFLY=/SVCD_FIREFLY_APP=/" $CONFIG_FILE
   checkAddSvc "SVCD_FIREFLY_APP=firefly,firefly,home,admin,Firefly III,fireflyiii,hshq"
   checkAddSvc "SVCD_FIREFLY_IMPORTER=firefly,firefly-importer,home,admin,Firefly III-Importer,fireflyiii-importer,hshq"
+  checkAddSvc "SVCD_FRAPPE_HR=frappe-hr,frappe-hr,primary,user,Frappe HR,frappe-hr,hshq"
   checkAddSvc "SVCD_FRESHRSS=freshrss,freshrss,primary,user,FreshRSS,freshrss,le"
   checkAddSvc "SVCD_GHOST=ghost,ghost,other,user,Ghost,ghost,hshq"
   checkAddSvc "SVCD_GITEA=gitea,gitea,primary,user,Gitea,gitea,le"
@@ -32359,6 +32522,7 @@ function initServiceVars()
   checkAddSvc "SVCD_MEALIE=mealie,mealie,other,user,Mealie,mealie,hshq"
   checkAddSvc "SVCD_MESHCENTRAL=meshcentral,meshcentral,primary,admin,MeshCentral,meshcentral,hshq"
   checkAddSvc "SVCD_METABASE=metabase,metabase,primary,user,Metabase,metabase,hshq"
+  checkAddSvc "SVCD_MINTHCM=minthcm,minthcm,primary,user,MintHCM,minthcm,hshq"
   checkAddSvc "SVCD_NAVIDROME=navidrome,navidrome,other,user,Navidrome,navidrome,hshq"
   checkAddSvc "SVCD_NETDATA=netdata,netdata,primary,admin,Netdata,netdata,hshq"
   checkAddSvc "SVCD_NEXTCLOUD=nextcloud,nextcloud,other,user,Nextcloud,nextcloud,hshq"
@@ -32589,12 +32753,20 @@ function installStackByName()
       installWekan $is_integrate ;;
     revolt)
       installRevolt $is_integrate ;;
+    frappe-hr)
+      installFrappeHR $is_integrate ;;
+    minthcm)
+      installMintHCM $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
       installOfelia $is_integrate ;;
     script-server)
       installScriptServer $is_integrate ;;
+    cloudbeaver)
+      installCloudBeaver $is_integrate ;;
+    dbgate)
+      installDbGate $is_integrate ;;
     sqlpad)
       installSQLPad $is_integrate ;;
     uptimekuma)
@@ -32778,12 +32950,20 @@ function performUpdateStackByName()
       performUpdateWekan ;;
     revolt)
       performUpdateRevolt ;;
+    frappe-hr)
+      performUpdateFrappeHR ;;
+    minthcm)
+      performUpdateMintHCM ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
       performUpdateOfelia ;;
     script-server)
       performUpdateScriptServer ;;
+    cloudbeaver)
+      performUpdateCloudBeaver ;;
+    dbgate)
+      performUpdateDbGate ;;
     sqlpad)
       performUpdateSQLPad ;;
     uptimekuma)
@@ -32878,11 +33058,13 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_FRAPPE_HR.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_MINTHCM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
@@ -32901,7 +33083,9 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - ${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CODESERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DBGATE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DOZZLE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DUPLICATI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FIREFLY_APP.$HOMESERVER_DOMAIN\n"
@@ -33030,6 +33214,10 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KANBOARD_ADMIN_USERNAME $KANBOARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FRAPPE_HR}-Admin" https://$SUB_FRAPPE_HR.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRAPPE_HR_ADMIN_USERNAME $FRAPPE_HR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33152,6 +33340,10 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUDIOBOOKSHELF}-Admin" https://$SUB_AUDIOBOOKSHELF.$HOMESERVER_DOMAIN/audiobookshelf/login $HOMESERVER_ABBREV $AUDIOBOOKSHELF_ADMIN_USERNAME $AUDIOBOOKSHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_METABASE}-Admin" https://$SUB_METABASE.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $METABASE_ADMIN_EMAIL_ADDRESS $METABASE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KANBOARD}-Admin" https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $KANBOARD_ADMIN_USERNAME $KANBOARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FRAPPE_HR}-Admin" https://$SUB_FRAPPE_HR.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $FRAPPE_HR_ADMIN_USERNAME $FRAPPE_HR_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33263,6 +33455,12 @@ function getHeimdallOrderFromSub()
       order_num=16
       ;;
     "$SUB_SQLPAD")
+      order_num=17
+      ;;
+    "$SUB_CLOUDBEAVER")
+      order_num=17
+      ;;
+    "$SUB_DBGATE")
       order_num=17
       ;;
     "$SUB_HOMEASSISTANT_APP")
@@ -33524,6 +33722,12 @@ function getHeimdallOrderFromSub()
     "$SUB_REVOLT")
       order_num=105
       ;;
+    "$SUB_FRAPPE_HR")
+      order_num=106
+      ;;
+    "$SUB_MINTHCM")
+      order_num=107
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -33571,13 +33775,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,dbgate,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
 }
 
 function getScriptImageByContainerName()
@@ -34327,6 +34531,30 @@ function getScriptImageByContainerName()
     "revolt-createbuckets")
       container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
+    "frappe-hr-db")
+      container_image=mirror.gcr.io/mariadb:10.8.8
+      ;;
+    "frappe-hr-app")
+      container_image=mirror.gcr.io/frappe/bench:v5.25.9
+      ;;
+    "frappe-hr-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "minthcm-db")
+      container_image=mirror.gcr.io/percona:8.0.43-34
+      ;;
+    "minthcm-web")
+      container_image=$IMG_MINTHCM_WEB
+      ;;
+    "minthcm-es")
+      container_image=$IMG_MINTHCM_ELASTICSEARCH
+      ;;
+    "cloudbeaver-app")
+      container_image=$IMG_CLOUDBEAVER_APP
+      ;;
+    "dbgate-app")
+      container_image=$IMG_DBGATE_APP
+      ;;
     *)
       ;;
   esac
@@ -34389,6 +34617,10 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Kanboard" "KANBOARD_INIT_ENV=false,KANBOARD_ADMIN_USERNAME=,KANBOARD_ADMIN_EMAIL_ADDRESS=,KANBOARD_ADMIN_PASSWORD=,KANBOARD_DATABASE_NAME=,KANBOARD_DATABASE_USER=,KANBOARD_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Wekan" "WEKAN_OIDC_CLIENT_SECRET=,WEKAN_DATABASE_NAME=,WEKAN_DATABASE_USER=,WEKAN_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Revolt" "REVOLT_DATABASE_NAME=,REVOLT_DATABASE_USER=,REVOLT_DATABASE_USER_PASSWORD=,REVOLT_REDIS_PASSWORD=,REVOLT_RABBITMQ_USERNAME=,REVOLT_RABBITMQ_PASSWORD=,REVOLT_MINIO_KEY=,REVOLT_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "FrappeHR" "FRAPPE_HR_INIT_ENV=false,FRAPPE_HR_ADMIN_USERNAME=,FRAPPE_HR_ADMIN_EMAIL_ADDRESS=,FRAPPE_HR_ADMIN_PASSWORD=,FRAPPE_HR_DATABASE_NAME=,FRAPPE_HR_DATABASE_ROOT_PASSWORD=,FRAPPE_HR_DATABASE_USER=,FRAPPE_HR_DATABASE_USER_PASSWORD=,FRAPPE_HR_REDIS_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "MintHCM" "MINTHCM_INIT_ENV=false,MINTHCM_ADMIN_USERNAME=,MINTHCM_ADMIN_PASSWORD=,MINTHCM_ADMIN_EMAIL_ADDRESS=,MINTHCM_DATABASE_NAME=,MINTHCM_DATABASE_ROOT_PASSWORD=,MINTHCM_DATABASE_USER=,MINTHCM_DATABASE_USER_PASSWORD=,MINTHCM_ES_USER=,MINTHCM_ES_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "CloudBeaver" "CLOUDBEAVER_INIT_ENV=false,CLOUDBEAVER_ADMIN_USERNAME=,CLOUDBEAVER_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "DbGate" "DBGATE_INIT_ENV=false,DBGATE_ADMIN_USERNAME=,DBGATE_ADMIN_PASSWORD=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -46974,6 +47206,7 @@ function installGhost()
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_NOTHOMESUBNET\n"
   inner_block=$inner_block">>>>>>>>path /ghost/*\n"
   inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>redir @insecureadmin /\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://ghost-web:2368 {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
   inner_block=$inner_block">>>>>>}\n"
@@ -60315,6 +60548,7 @@ EOFOT
 "Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
 "EspoCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
 "Firefly" postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD
+"FrappeHR" mysql frappe-hr-db $FRAPPE_HR_DATABASE_NAME $FRAPPE_HR_DATABASE_USER $FRAPPE_HR_DATABASE_USER_PASSWORD
 "FreshRSS" postgres freshrss-db $FRESHRSS_DATABASE_NAME $FRESHRSS_DATABASE_USER $FRESHRSS_DATABASE_USER_PASSWORD
 "Ghost" mysql ghost-db $GHOST_DATABASE_NAME $GHOST_DATABASE_USER $GHOST_DATABASE_USER_PASSWORD
 "Gitea" postgres gitea-db $GITEA_DATABASE_NAME $GITEA_DATABASE_USER $GITEA_DATABASE_USER_PASSWORD
@@ -60333,6 +60567,7 @@ EOFOT
 "Mealie" postgres mealie-db $MEALIE_DATABASE_NAME $MEALIE_DATABASE_USER $MEALIE_DATABASE_USER_PASSWORD
 "MeshCentral" mysql meshcentral-db $MESHCENTRAL_DATABASE_NAME $MESHCENTRAL_DATABASE_USER $MESHCENTRAL_DATABASE_USER_PASSWORD
 "Metabase" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
+"MintHCM" mysql minthcm-db $MINTHCM_DATABASE_NAME $MINTHCM_DATABASE_USER $MINTHCM_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
 "Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
@@ -64071,8 +64306,8 @@ function performUpdateNavidrome()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=exampleimage
-      image_update_map[0]="exampleimage,exampleimage"
+      curImageList=deluan/navidrome:0.58.0
+      image_update_map[0]="deluan/navidrome:0.58.0,deluan/navidrome:0.58.0"
     ;;
     *)
       is_upgrade_error=true
@@ -65829,7 +66064,6 @@ function installWekan()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/wekan
   mkdir $HSHQ_STACKS_DIR/wekan/db
   mkdir $HSHQ_STACKS_DIR/wekan/dump
@@ -65867,6 +66101,7 @@ function installWekan()
 
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll wekan "$FMLNAME_WEKAN" $USERTYPE_WEKAN "https://$SUB_WEKAN.$HOMESERVER_DOMAIN" "wekan.png" "$(getHeimdallOrderFromSub $SUB_WEKAN $USERTYPE_WEKAN)"
+    checkAddDBConnection true wekan "$FMLNAME_WEKAN" mongodb wekan-db $WEKAN_DATABASE_NAME $WEKAN_DATABASE_USER $WEKAN_DATABASE_USER_PASSWORD
     restartAllCaddyContainers
   fi
 }
@@ -66142,6 +66377,7 @@ function installRevolt()
   insertSubAuthelia $SUB_REVOLT.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll revolt "$FMLNAME_REVOLT" $USERTYPE_REVOLT "https://$SUB_REVOLT.$HOMESERVER_DOMAIN" "revolt.png" "$(getHeimdallOrderFromSub $SUB_REVOLT $USERTYPE_REVOLT)"
+    checkAddDBConnection true revolt "$FMLNAME_REVOLT" mongodb revolt-db $REVOLT_DATABASE_NAME $REVOLT_DATABASE_USER $REVOLT_DATABASE_USER_PASSWORD
     restartAllCaddyContainers
   fi
 }
@@ -66839,6 +67075,1137 @@ function performUpdateRevolt()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# FrappeHR
+function installFrappeHR()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory frappe-hr "FrappeHR"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName frappe-hr-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName frappe-hr-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName frappe-hr-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/frappe-hr
+  mkdir $HSHQ_STACKS_DIR/frappe-hr/db
+  mkdir $HSHQ_STACKS_DIR/frappe-hr/dbexport
+  mkdir $HSHQ_STACKS_DIR/frappe-hr/workspace
+  chmod 777 $HSHQ_STACKS_DIR/frappe-hr/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $FRAPPE_HR_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $FRAPPE_HR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  FRAPPE_HR_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $FRAPPE_HR_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigFrappeHR
+  installStack frappe-hr frappe-hr-app "" $HOME/frappe-hr.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$FRAPPE_HR_INIT_ENV" = "true" ]; then
+    sendEmail -s "FrappeHR Admin Login Info" -b "FrappeHR Admin Username: $FRAPPE_HR_ADMIN_USERNAME\nFrappeHR Admin Password: $FRAPPE_HR_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    FRAPPE_HR_INIT_ENV=true
+    updateConfigVar FRAPPE_HR_INIT_ENV $FRAPPE_HR_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_FRAPPE_HR.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>@socketio {\n"
+  inner_block=$inner_block">>>>>>>>path /socket.io*\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>handle @socketio {\n"
+  inner_block=$inner_block">>>>>>>>reverse_proxy http://frappe-hr-app:9000\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://frappe-hr-app:8000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_FRAPPE_HR $MANAGETLS_FRAPPE_HR "$is_integrate_hshq" $NETDEFAULT_FRAPPE_HR "$inner_block"
+  insertSubAuthelia $SUB_FRAPPE_HR.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll frappe-hr "$FMLNAME_FRAPPE_HR" $USERTYPE_FRAPPE_HR "https://$SUB_FRAPPE_HR.$HOMESERVER_DOMAIN" "frappe-hr.png" "$(getHeimdallOrderFromSub $SUB_FRAPPE_HR $USERTYPE_FRAPPE_HR)"
+    restartAllCaddyContainers
+    checkAddDBConnection true frappe-hr "$FMLNAME_FRAPPE_HR" mysql frappe-hr-db $FRAPPE_HR_DATABASE_NAME $FRAPPE_HR_DATABASE_USER $FRAPPE_HR_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigFrappeHR()
+{
+  cat <<EOFMT > $HOME/frappe-hr-compose.yml
+$STACK_VERSION_PREFIX frappe-hr $(getScriptStackVersion frappe-hr)
+
+services:
+  mariadb:
+    image: $(getScriptImageByContainerName frappe-hr-db)
+    container_name: frappe-hr-db
+    hostname: frappe-hr-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --skip-character-set-client-handshake --skip-innodb-read-only-compressed
+    networks:
+      - int-frappe-hr-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-frappe-hr-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/frappe-hr/dbexport:/dbexport
+    environment:
+      - MYSQL_ROOT_PASSWORD=123
+#      - MYSQL_DATABASE=$FRAPPE_HR_DATABASE_NAME
+#      - MYSQL_ROOT_PASSWORD=$FRAPPE_HR_DATABASE_ROOT_PASSWORD
+#      - MYSQL_USER=$FRAPPE_HR_DATABASE_USER
+#      - MYSQL_PASSWORD=$FRAPPE_HR_DATABASE_USER_PASSWORD
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.frappe-hr-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.frappe-hr-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.frappe-hr-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.frappe-hr-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.frappe-hr-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.frappe-hr-hourly-db.email-from=FrappeHR Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.frappe-hr-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.frappe-hr-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.frappe-hr-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.frappe-hr-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.frappe-hr-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.frappe-hr-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.frappe-hr-monthly-db.email-from=FrappeHR Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.frappe-hr-monthly-db.mail-only-on-error=false"
+
+  frappe-hr-app:
+    image: $(getScriptImageByContainerName frappe-hr-app)
+    container_name: frappe-hr-app
+    hostname: frappe-hr-app
+    restart: unless-stopped
+    env_file: stack.env
+    command: bash /workspace/init.sh
+    working_dir: /home/frappe
+    depends_on:
+      - mariadb
+    networks:
+      - int-frappe-hr-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/frappe-hr/workspace:/workspace
+    environment:
+      - SHELL=/bin/bash
+
+  redis:
+    image: $(getScriptImageByContainerName frappe-hr-redis)
+    container_name: frappe-hr-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --appendonly no
+    networks:
+      - int-frappe-hr-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+volumes:
+  v-frappe-hr-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/frappe-hr/db
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-frappe-hr-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/frappe-hr.env
+TZ=\${PORTAINER_TZ}
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/frappe-hr/workspace/init.sh
+#!bin/bash
+
+if [ -d "/home/frappe/frappe-bench/apps/frappe" ]; then
+    echo "Bench already exists, skipping init"
+    cd frappe-bench
+    bench start
+else
+    echo "Creating new bench..."
+fi
+
+export PATH="\${NVM_DIR}/versions/node/v\${NODE_VERSION_DEVELOP}/bin/:\${PATH}"
+
+bench init --skip-redis-config-generation frappe-bench
+
+cd frappe-bench
+
+# Use containers instead of localhost
+bench set-mariadb-host mariadb
+bench set-redis-cache-host redis://redis:6379
+bench set-redis-queue-host redis://redis:6379
+bench set-redis-socketio-host redis://redis:6379
+
+# Remove redis, watch from Procfile
+sed -i '/redis/d' ./Procfile
+sed -i '/watch/d' ./Procfile
+
+bench get-app erpnext
+bench get-app hrms
+
+bench new-site hrms.localhost --force --mariadb-root-password 123 --admin-password admin --no-mariadb-socket
+
+bench --site hrms.localhost install-app hrms
+bench --site hrms.localhost set-config developer_mode 1
+bench --site hrms.localhost enable-scheduler
+bench --site hrms.localhost clear-cache
+bench use hrms.localhost
+
+bench start
+EOFMT
+}
+
+function performUpdateFrappeHR()
+{
+  perform_stack_name=frappe-hr
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mariadb:10.8.8,mirror.gcr.io/frappe/bench:v5.25.9,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/mariadb:10.8.8,mirror.gcr.io/mariadb:10.8.8"
+      image_update_map[1]="mirror.gcr.io/frappe/bench:v5.25.9,mirror.gcr.io/frappe/bench:v5.25.9"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# MintHCM
+function installMintHCM()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory minthcm "MintHCM"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName minthcm-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName minthcm-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName minthcm-es)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/minthcm
+  mkdir $HSHQ_STACKS_DIR/minthcm/db
+  mkdir $HSHQ_STACKS_DIR/minthcm/dbexport
+  mkdir $HSHQ_STACKS_DIR/minthcm/es
+  mkdir $HSHQ_STACKS_DIR/minthcm/www
+  mkdir $HSHQ_STACKS_DIR/minthcm/cron
+  chmod 777 $HSHQ_STACKS_DIR/minthcm/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $MINTHCM_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $MINTHCM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  MINTHCM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MINTHCM_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigMintHCM
+  echo "Please be patient, this will take a few minutes..."
+  installStack minthcm minthcm-web "Starting periodic command scheduler cron" $HOME/minthcm.env 15 900
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$MINTHCM_INIT_ENV" = "true" ]; then
+    sendEmail -s "MintHCM Admin Login Info" -b "MintHCM Admin Username: $MINTHCM_ADMIN_USERNAME\nMintHCM Admin Password: $MINTHCM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    MINTHCM_INIT_ENV=true
+    updateConfigVar MINTHCM_INIT_ENV $MINTHCM_INIT_ENV
+  fi
+  sleep 3
+  docker exec minthcm-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/minthcm/dbexport/setupDBSettings.sh
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_MINTHCM.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://minthcm-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_MINTHCM $MANAGETLS_MINTHCM "$is_integrate_hshq" $NETDEFAULT_MINTHCM "$inner_block"
+  insertSubAuthelia $SUB_MINTHCM.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll minthcm "$FMLNAME_MINTHCM" $USERTYPE_MINTHCM "https://$SUB_MINTHCM.$HOMESERVER_DOMAIN" "minthcm.png" "$(getHeimdallOrderFromSub $SUB_MINTHCM $USERTYPE_MINTHCM)"
+    restartAllCaddyContainers
+    checkAddDBConnection true minthcm "$FMLNAME_MINTHCM" mysql minthcm-db $MINTHCM_DATABASE_NAME $MINTHCM_DATABASE_USER $MINTHCM_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigMintHCM()
+{
+  cat <<EOFMT > $HOME/minthcm-compose.yml
+$STACK_VERSION_PREFIX minthcm $(getScriptStackVersion minthcm)
+
+services:
+  minthcm-db:
+    image: $(getScriptImageByContainerName minthcm-db)
+    container_name: minthcm-db
+    hostname: minthcm-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-minthcm-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-minthcm-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/minthcm/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.minthcm-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.minthcm-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.minthcm-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.minthcm-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.minthcm-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.minthcm-hourly-db.email-from=MintHCM Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.minthcm-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.minthcm-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.minthcm-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.minthcm-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.minthcm-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.minthcm-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.minthcm-monthly-db.email-from=MintHCM Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.minthcm-monthly-db.mail-only-on-error=false"
+
+  minthcm-web:
+    image: $(getScriptImageByContainerName minthcm-web)
+    container_name: minthcm-web
+    hostname: minthcm-www
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    tty: true
+    stdin_open: true
+    depends_on:
+      - minthcm-db
+      - minthcm-es
+    networks:
+      - int-minthcm-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-minthcm-www:/var/www/html
+      - v-minthcm-cron:/var/spool/cron/crontabs
+
+  minthcm-es:
+    image: $(getScriptImageByContainerName minthcm-es)
+    container_name: minthcm-es
+    hostname: minthcm-es
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 4g
+    networks:
+      - int-minthcm-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-minthcm-es:/usr/share/elasticsearch/data
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+
+volumes:
+  v-minthcm-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/minthcm/db
+  v-minthcm-es:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/minthcm/es
+  v-minthcm-www:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/minthcm/www
+  v-minthcm-cron:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/minthcm/cron
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-minthcm-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/minthcm.env
+TZ=\${PORTAINER_TZ}
+MYSQL_DATABASE=$MINTHCM_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$MINTHCM_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$MINTHCM_DATABASE_USER
+MYSQL_PASSWORD=$MINTHCM_DATABASE_USER_PASSWORD
+SYS_NICE=CAP_SYS_NICE
+MYSQL_DEFAULT_AUTHENTICATION_PLUGIN=caching_sha2_password
+node.name=es1
+cluster.name=minthcm
+discovery.type=single-node
+xpack.security.enabled=false
+ES_JAVA_OPTS=-Xms512m -Xmx512m
+WEB_PORT=80
+DB_HOST=minthcm-db
+DB_PORT=3306
+DB_NAME=$MINTHCM_DATABASE_NAME
+DB_USER=$MINTHCM_DATABASE_USER
+DB_PASS=$MINTHCM_DATABASE_USER_PASSWORD
+MINT_URL=https://$SUB_MINTHCM.$HOMESERVER_DOMAIN
+MINT_USER=$MINTHCM_ADMIN_USERNAME
+MINT_PASS=$MINTHCM_ADMIN_PASSWORD
+ELASTICSEARCH_HOST=minthcm-es
+ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_USERNAME=$MINTHCM_ES_USER
+ELASTICSEARCH_PASSWORD=$MINTHCM_ES_USER_PASSWORD
+INSTALL_DEMO_DATA=$(if [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then echo "yes"; else echo "no"; fi)
+SSL=no
+REBUILD_FRONTEND=no
+EOFMT
+  cat <<EOFDS > $HSHQ_STACKS_DIR/minthcm/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+mysql -N -u $MINTHCM_DATABASE_USER -p$MINTHCM_DATABASE_USER_PASSWORD -e "use $MINTHCM_DATABASE_NAME; update outbound_email set smtp_from_name='MintCRM $(getAdminEmailName)', smtp_from_addr='$EMAIL_SMTP_EMAIL_ADDRESS', mail_smtpserver='mailu-front', mail_smtpauth_req=0 where user_id=1;"
+
+mysql -N -u $MINTHCM_DATABASE_USER -p$MINTHCM_DATABASE_USER_PASSWORD -e "use $MINTHCM_DATABASE_NAME; update users set first_name='$(getAdminEmailName)', last_name='$HOMESERVER_NAME' where id=1;"
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/minthcm/dbexport/setupDBSettings.sh
+}
+
+function performUpdateMintHCM()
+{
+  perform_stack_name=minthcm
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/percona:8.0.43-34,mirror.gcr.io/minthcm/minthcm:latest,docker.elastic.co/elasticsearch/elasticsearch:7.9.3
+      image_update_map[0]="mirror.gcr.io/percona:8.0.43-34,mirror.gcr.io/percona:8.0.43-34"
+      image_update_map[1]="mirror.gcr.io/minthcm/minthcm:latest,mirror.gcr.io/minthcm/minthcm:latest"
+      image_update_map[2]="docker.elastic.co/elasticsearch/elasticsearch:7.9.3,docker.elastic.co/elasticsearch/elasticsearch:7.9.3"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# CloudBeaver
+function installCloudBeaver()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory cloudbeaver "CloudBeaver"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName cloudbeaver-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/cloudbeaver
+  mkdir $HSHQ_STACKS_DIR/cloudbeaver/workspace
+  initServicesCredentials
+  set +e
+  outputConfigCloudBeaver
+  installStack cloudbeaver cloudbeaver-app "" $HOME/cloudbeaver.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$CLOUDBEAVER_INIT_ENV" = "true" ]; then
+    sendEmail -s "CloudBeaver Admin Login Info" -b "CloudBeaver Admin Username: $CLOUDBEAVER_ADMIN_USERNAME\nCloudBeaver Admin Password: $CLOUDBEAVER_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    CLOUDBEAVER_INIT_ENV=true
+    updateConfigVar CLOUDBEAVER_INIT_ENV $CLOUDBEAVER_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://cloudbeaver-app:8978 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CLOUDBEAVER $MANAGETLS_CLOUDBEAVER "$is_integrate_hshq" $NETDEFAULT_CLOUDBEAVER "$inner_block"
+  insertSubAuthelia $SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll cloudbeaver "$FMLNAME_CLOUDBEAVER" $USERTYPE_CLOUDBEAVER "https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN" "cloudbeaver.png" "$(getHeimdallOrderFromSub $SUB_CLOUDBEAVER $USERTYPE_CLOUDBEAVER)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigCloudBeaver()
+{
+  cat <<EOFMT > $HOME/cloudbeaver-compose.yml
+$STACK_VERSION_PREFIX cloudbeaver $(getScriptStackVersion cloudbeaver)
+
+services:
+  cloudbeaver-app:
+    image: $(getScriptImageByContainerName cloudbeaver-app)
+    container_name: cloudbeaver-app
+    hostname: cloudbeaver-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/cloudbeaver/workspace:/opt/cloudbeaver/workspace
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+
+EOFMT
+
+  cat <<EOFMT > $HOME/cloudbeaver.env
+TZ=\${PORTAINER_TZ}
+CB_SERVER_NAME=$HOMESERVER_NAME - CloudBeaver
+CB_SERVER_URL=https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN
+CB_ADMIN_NAME=$CLOUDBEAVER_ADMIN_USERNAME
+CB_ADMIN_PASSWORD=$CLOUDBEAVER_ADMIN_PASSWORD
+EOFMT
+
+}
+
+function performUpdateCloudBeaver()
+{
+  perform_stack_name=cloudbeaver
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/dbeaver/cloudbeaver:25.2.0
+      image_update_map[0]="mirror.gcr.io/dbeaver/cloudbeaver:25.2.0,mirror.gcr.io/dbeaver/cloudbeaver:25.2.0"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# DbGate
+function installDbGate()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory dbgate "DbGate"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dbgate-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/dbgate
+  mkdir $HSHQ_STACKS_DIR/dbgate/data
+  initServicesCredentials
+  set +e
+  outputConfigDbGate
+  installStack dbgate dbgate-app "" $HOME/dbgate.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DBGATE_INIT_ENV" = "true" ]; then
+    sendEmail -s "DbGate Admin Login Info" -b "DbGate Admin Username: $DBGATE_ADMIN_USERNAME\nDbGate Admin Password: $DBGATE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DBGATE_INIT_ENV=true
+    updateConfigVar DBGATE_INIT_ENV $DBGATE_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DBGATE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://dbgate-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DBGATE $MANAGETLS_DBGATE "$is_integrate_hshq" $NETDEFAULT_DBGATE "$inner_block"
+  insertSubAuthelia $SUB_DBGATE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll dbgate "$FMLNAME_DBGATE" $USERTYPE_DBGATE "https://$SUB_DBGATE.$HOMESERVER_DOMAIN" "dbgate.png" "$(getHeimdallOrderFromSub $SUB_DBGATE $USERTYPE_DBGATE)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigDbGate()
+{
+  cat <<EOFMT > $HOME/dbgate-compose.yml
+$STACK_VERSION_PREFIX dbgate $(getScriptStackVersion dbgate)
+
+services:
+  dbgate-app:
+    image: $(getScriptImageByContainerName dbgate-app)
+    container_name: dbgate-app
+    hostname: dbgate-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-dbgate-db:/root/.dbgate
+
+volumes:
+  v-dbgate-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/dbgate/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+
+EOFMT
+
+  cat <<EOFMT > $HOME/dbgate.env
+TZ=\${PORTAINER_TZ}
+LOGIN=$DBGATE_ADMIN_USERNAME
+PASSWORD=$DBGATE_ADMIN_PASSWORD
+CONNECTIONS=Adminer,MindsDB,Langfuse,Budibase,Discourse,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,Kanboard,Keila,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MintHCM,Nextcloud,Ombi,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Vaultwarden,Wallabag,Wikijs,WordPress,Yamtrack
+LABEL_Adminer=Adminer
+ENGINE_Adminer=mysql@dbgate-plugin-mysql
+SERVER_Adminer=adminer-db
+DATABASE_Adminer=$ADMINER_DATABASE_NAME
+USER_Adminer=$ADMINER_DATABASE_USER
+PASSWORD_Adminer=$ADMINER_DATABASE_USER_PASSWORD
+PORT_Adminer=3306
+LABEL_MindsDB=MindsDB
+ENGINE_MindsDB=postgres@dbgate-plugin-postgres
+SERVER_MindsDB=aistack-mindsdb-db
+DATABASE_MindsDB=$AISTACK_MINDSDB_DATABASE_NAME
+USER_MindsDB=$AISTACK_MINDSDB_DATABASE_USER
+PASSWORD_MindsDB=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+PORT_MindsDB=5432
+LABEL_Langfuse=Langfuse
+ENGINE_Langfuse=postgres@dbgate-plugin-postgres
+SERVER_Langfuse=aistack-mindsdb-db
+DATABASE_Langfuse=$AISTACK_LANGFUSE_DATABASE_NAME
+USER_Langfuse=$AISTACK_MINDSDB_DATABASE_USER
+PASSWORD_Langfuse=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+PORT_Langfuse=5432
+LABEL_Budibase=Budibase
+ENGINE_Budibase=mysql@dbgate-plugin-mysql
+SERVER_Budibase=budibase-db
+DATABASE_Budibase=$BUDIBASE_DATABASE_NAME
+USER_Budibase=$BUDIBASE_DATABASE_USER
+PASSWORD_Budibase=$BUDIBASE_DATABASE_USER_PASSWORD
+PORT_Budibase=3306
+LABEL_Discourse=Discourse
+ENGINE_Discourse=postgres@dbgate-plugin-postgres
+SERVER_Discourse=discourse-db
+DATABASE_Discourse=$DISCOURSE_DATABASE_NAME
+USER_Discourse=$DISCOURSE_DATABASE_USER
+PASSWORD_Discourse=$DISCOURSE_DATABASE_USER_PASSWORD
+PORT_Discourse=5432
+LABEL_EspoCRM=EspoCRM
+ENGINE_EspoCRM=mysql@dbgate-plugin-mysql
+SERVER_EspoCRM=espocrm-db
+DATABASE_EspoCRM=$ESPOCRM_DATABASE_NAME
+USER_EspoCRM=$ESPOCRM_DATABASE_USER
+PASSWORD_EspoCRM=$ESPOCRM_DATABASE_USER_PASSWORD
+PORT_EspoCRM=3306
+LABEL_Firefly=Firefly
+ENGINE_Firefly=postgres@dbgate-plugin-postgres
+SERVER_Firefly=firefly-db
+DATABASE_Firefly=$FIREFLY_DATABASE_NAME
+USER_Firefly=$FIREFLY_DATABASE_USER
+PASSWORD_Firefly=$FIREFLY_DATABASE_USER_PASSWORD
+PORT_Firefly=5432
+LABEL_FrappeHR=FrappeHR
+ENGINE_FrappeHR=mysql@dbgate-plugin-mysql
+SERVER_FrappeHR=frappe-hr-db
+DATABASE_FrappeHR=$FRAPPE_HR_DATABASE_NAME
+USER_FrappeHR=$FRAPPE_HR_DATABASE_USER
+PASSWORD_FrappeHR=$FRAPPE_HR_DATABASE_USER_PASSWORD
+PORT_FrappeHR=3306
+LABEL_FreshRSS=FreshRSS
+ENGINE_FreshRSS=postgres@dbgate-plugin-postgres
+SERVER_FreshRSS=freshrss-db
+DATABASE_FreshRSS=$FRESHRSS_DATABASE_NAME
+USER_FreshRSS=$FRESHRSS_DATABASE_USER
+PASSWORD_FreshRSS=$FRESHRSS_DATABASE_USER_PASSWORD
+PORT_FreshRSS=5432
+LABEL_Ghost=Ghost
+ENGINE_Ghost=mysql@dbgate-plugin-mysql
+SERVER_Ghost=ghost-db
+DATABASE_Ghost=$GHOST_DATABASE_NAME
+USER_Ghost=$GHOST_DATABASE_USER
+PASSWORD_Ghost=$GHOST_DATABASE_USER_PASSWORD
+PORT_Ghost=3306
+LABEL_Gitea=Gitea
+ENGINE_Gitea=postgres@dbgate-plugin-postgres
+SERVER_Gitea=gitea-db
+DATABASE_Gitea=$GITEA_DATABASE_NAME
+USER_Gitea=$GITEA_DATABASE_USER
+PASSWORD_Gitea=$GITEA_DATABASE_USER_PASSWORD
+PORT_Gitea=5432
+LABEL_Gitlab=Gitlab
+ENGINE_Gitlab=postgres@dbgate-plugin-postgres
+SERVER_Gitlab=gitlab-db
+DATABASE_Gitlab=$GITLAB_DATABASE_NAME
+USER_Gitlab=$GITLAB_DATABASE_USER
+PASSWORD_Gitlab=$GITLAB_DATABASE_USER_PASSWORD
+PORT_Gitlab=5432
+LABEL_Guacamole=Guacamole
+ENGINE_Guacamole=mysql@dbgate-plugin-mysql
+SERVER_Guacamole=guacamole-db
+DATABASE_Guacamole=$GUACAMOLE_DATABASE_NAME
+USER_Guacamole=$GUACAMOLE_DATABASE_USER
+PASSWORD_Guacamole=$GUACAMOLE_DATABASE_USER_PASSWORD
+PORT_Guacamole=3306
+LABEL_HomeAssistant=HomeAssistant
+ENGINE_HomeAssistant=postgres@dbgate-plugin-postgres
+SERVER_HomeAssistant=homeassistant-db
+DATABASE_HomeAssistant=$HOMEASSISTANT_DATABASE_NAME
+USER_HomeAssistant=$HOMEASSISTANT_DATABASE_USER
+PASSWORD_HomeAssistant=$HOMEASSISTANT_DATABASE_USER_PASSWORD
+PORT_HomeAssistant=5432
+LABEL_Huginn=Huginn
+ENGINE_Huginn=postgres@dbgate-plugin-postgres
+SERVER_Huginn=huginn-db
+DATABASE_Huginn=$HUGINN_DATABASE_NAME
+USER_Huginn=$HUGINN_DATABASE_USER
+PASSWORD_Huginn=$HUGINN_DATABASE_USER_PASSWORD
+PORT_Huginn=5432
+LABEL_Immich=Immich
+ENGINE_Immich=postgres@dbgate-plugin-postgres
+SERVER_Immich=immich-db
+DATABASE_Immich=$IMMICH_DATABASE_NAME
+USER_Immich=$IMMICH_DATABASE_USER
+PASSWORD_Immich=$IMMICH_DATABASE_USER_PASSWORD
+PORT_Immich=5432
+LABEL_Invidious=Invidious
+ENGINE_Invidious=postgres@dbgate-plugin-postgres
+SERVER_Invidious=invidious-db
+DATABASE_Invidious=$INVIDIOUS_DATABASE_NAME
+USER_Invidious=$INVIDIOUS_DATABASE_USER
+PASSWORD_Invidious=$INVIDIOUS_DATABASE_USER_PASSWORD
+PORT_Invidious=5432
+LABEL_Kanboard=Kanboard
+ENGINE_Kanboard=postgres@dbgate-plugin-postgres
+SERVER_Kanboard=kanboard-db
+DATABASE_Kanboard=$KANBOARD_DATABASE_NAME
+USER_Kanboard=$KANBOARD_DATABASE_USER
+PASSWORD_Kanboard=$KANBOARD_DATABASE_USER_PASSWORD
+PORT_Kanboard=5432
+LABEL_Keila=Keila
+ENGINE_Keila=postgres@dbgate-plugin-postgres
+SERVER_Keila=keila-db
+DATABASE_Keila=$KEILA_DATABASE_NAME
+USER_Keila=$KEILA_DATABASE_USER
+PASSWORD_Keila=$KEILA_DATABASE_USER_PASSWORD
+PORT_Keila=5432
+LABEL_Linkwarden=Linkwarden
+ENGINE_Linkwarden=postgres@dbgate-plugin-postgres
+SERVER_Linkwarden=linkwarden-db
+DATABASE_Linkwarden=$LINKWARDEN_DATABASE_NAME
+USER_Linkwarden=$LINKWARDEN_DATABASE_USER
+PASSWORD_Linkwarden=$LINKWARDEN_DATABASE_USER_PASSWORD
+PORT_Linkwarden=5432
+LABEL_Mastodon=Mastodon
+ENGINE_Mastodon=postgres@dbgate-plugin-postgres
+SERVER_Mastodon=mastodon-db
+DATABASE_Mastodon=$MASTODON_DATABASE_NAME
+USER_Mastodon=$MASTODON_DATABASE_USER
+PASSWORD_Mastodon=$MASTODON_DATABASE_USER_PASSWORD
+PORT_Mastodon=5432
+LABEL_Matomo=Matomo
+ENGINE_Matomo=mysql@dbgate-plugin-mysql
+SERVER_Matomo=matomo-db
+DATABASE_Matomo=$MATOMO_DATABASE_NAME
+USER_Matomo=$MATOMO_DATABASE_USER
+PASSWORD_Matomo=$MATOMO_DATABASE_USER_PASSWORD
+PORT_Matomo=3306
+LABEL_Matrix=Matrix
+ENGINE_Matrix=postgres@dbgate-plugin-postgres
+SERVER_Matrix=matrix-db
+DATABASE_Matrix=$MATRIX_DATABASE_NAME
+USER_Matrix=$MATRIX_DATABASE_USER
+PASSWORD_Matrix=$MATRIX_DATABASE_USER_PASSWORD
+PORT_Matrix=5432
+LABEL_Mealie=Mealie
+ENGINE_Mealie=postgres@dbgate-plugin-postgres
+SERVER_Mealie=mealie-db
+DATABASE_Mealie=$MEALIE_DATABASE_NAME
+USER_Mealie=$MEALIE_DATABASE_USER
+PASSWORD_Mealie=$MEALIE_DATABASE_USER_PASSWORD
+PORT_Mealie=5432
+LABEL_MeshCentral=MeshCentral
+ENGINE_MeshCentral=mysql@dbgate-plugin-mysql
+SERVER_MeshCentral=meshcentral-db
+DATABASE_MeshCentral=$MESHCENTRAL_DATABASE_NAME
+USER_MeshCentral=$MESHCENTRAL_DATABASE_USER
+PASSWORD_MeshCentral=$MESHCENTRAL_DATABASE_USER_PASSWORD
+PORT_MeshCentral=3306
+LABEL_Metabase=Metabase
+ENGINE_Metabase=postgres@dbgate-plugin-postgres
+SERVER_Metabase=metabase-db
+DATABASE_Metabase=$METABASE_DATABASE_NAME
+USER_Metabase=$METABASE_DATABASE_USER
+PASSWORD_Metabase=$METABASE_DATABASE_USER_PASSWORD
+PORT_Metabase=5432
+LABEL_MintHCM=MintHCM
+ENGINE_MintHCM=mysql@dbgate-plugin-mysql
+SERVER_MintHCM=minthcm-db
+DATABASE_MintHCM=$MINTHCM_DATABASE_NAME
+USER_MintHCM=$MINTHCM_DATABASE_USER
+PASSWORD_MintHCM=$MINTHCM_DATABASE_USER_PASSWORD
+PORT_MintHCM=3306
+LABEL_Nextcloud=Nextcloud
+ENGINE_Nextcloud=postgres@dbgate-plugin-postgres
+SERVER_Nextcloud=nextcloud-db
+DATABASE_Nextcloud=$NEXTCLOUD_DATABASE_NAME
+USER_Nextcloud=$NEXTCLOUD_DATABASE_USER
+PASSWORD_Nextcloud=$NEXTCLOUD_DATABASE_USER_PASSWORD
+PORT_Nextcloud=5432
+LABEL_Ombi=Ombi
+ENGINE_Ombi=mysql@dbgate-plugin-mysql
+SERVER_Ombi=ombi-db
+DATABASE_Ombi=$OMBI_DATABASE_NAME
+USER_Ombi=$OMBI_DATABASE_USER
+PASSWORD_Ombi=$OMBI_DATABASE_USER_PASSWORD
+PORT_Ombi=3306
+LABEL_Paperless=Paperless
+ENGINE_Paperless=postgres@dbgate-plugin-postgres
+SERVER_Paperless=paperless-db
+DATABASE_Paperless=$PAPERLESS_DATABASE_NAME
+USER_Paperless=$PAPERLESS_DATABASE_USER
+PASSWORD_Paperless=$PAPERLESS_DATABASE_USER_PASSWORD
+PORT_Paperless=5432
+LABEL_Pastefy=Pastefy
+ENGINE_Pastefy=mysql@dbgate-plugin-mysql
+SERVER_Pastefy=pastefy-db
+DATABASE_Pastefy=$PASTEFY_DATABASE_NAME
+USER_Pastefy=$PASTEFY_DATABASE_USER
+PASSWORD_Pastefy=$PASTEFY_DATABASE_USER_PASSWORD
+PORT_Pastefy=3306
+LABEL_PeerTube=PeerTube
+ENGINE_PeerTube=postgres@dbgate-plugin-postgres
+SERVER_PeerTube=peertube-db
+DATABASE_PeerTube=$PEERTUBE_DATABASE_NAME
+USER_PeerTube=$PEERTUBE_DATABASE_USER
+PASSWORD_PeerTube=$PEERTUBE_DATABASE_USER_PASSWORD
+PORT_PeerTube=5432
+LABEL_Penpot=Penpot
+ENGINE_Penpot=postgres@dbgate-plugin-postgres
+SERVER_Penpot=penpot-db
+DATABASE_Penpot=$PENPOT_DATABASE_NAME
+USER_Penpot=$PENPOT_DATABASE_USER
+PASSWORD_Penpot=$PENPOT_DATABASE_USER_PASSWORD
+PORT_Penpot=5432
+LABEL_PhotoPrism=PhotoPrism
+ENGINE_PhotoPrism=mysql@dbgate-plugin-mysql
+SERVER_PhotoPrism=photoprism-db
+DATABASE_PhotoPrism=$PHOTOPRISM_DATABASE_NAME
+USER_PhotoPrism=$PHOTOPRISM_DATABASE_USER
+PASSWORD_PhotoPrism=$PHOTOPRISM_DATABASE_USER_PASSWORD
+PORT_PhotoPrism=3306
+LABEL_Piped=Piped
+ENGINE_Piped=postgres@dbgate-plugin-postgres
+SERVER_Piped=piped-db
+DATABASE_Piped=$PIPED_DATABASE_NAME
+USER_Piped=$PIPED_DATABASE_USER
+PASSWORD_Piped=$PIPED_DATABASE_USER_PASSWORD
+PORT_Piped=5432
+LABEL_Pixelfed=Pixelfed
+ENGINE_Pixelfed=mysql@dbgate-plugin-mysql
+SERVER_Pixelfed=pixelfed-db
+DATABASE_Pixelfed=$PIXELFED_DATABASE_NAME
+USER_Pixelfed=$PIXELFED_DATABASE_USER
+PASSWORD_Pixelfed=$PIXELFED_DATABASE_USER_PASSWORD
+PORT_Pixelfed=3306
+LABEL_Shlink=Shlink
+ENGINE_Shlink=postgres@dbgate-plugin-postgres
+SERVER_Shlink=shlink-db
+DATABASE_Shlink=$SHLINK_DATABASE_NAME
+USER_Shlink=$SHLINK_DATABASE_USER
+PASSWORD_Shlink=$SHLINK_DATABASE_USER_PASSWORD
+PORT_Shlink=5432
+LABEL_SpeedtestTrackerLocal=SpeedtestTrackerLocal
+ENGINE_SpeedtestTrackerLocal=postgres@dbgate-plugin-postgres
+SERVER_SpeedtestTrackerLocal=speedtest-tracker-local-db
+DATABASE_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+USER_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+PASSWORD_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+PORT_SpeedtestTrackerLocal=5432
+LABEL_SpeedtestTrackerVPN=SpeedtestTrackerVPN
+ENGINE_SpeedtestTrackerVPN=postgres@dbgate-plugin-postgres
+SERVER_SpeedtestTrackerVPN=speedtest-tracker-vpn-db
+DATABASE_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+USER_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
+PASSWORD_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+PORT_SpeedtestTrackerVPN=5432
+LABEL_StandardNotes=StandardNotes
+ENGINE_StandardNotes=mysql@dbgate-plugin-mysql
+SERVER_StandardNotes=standardnotes-db
+DATABASE_StandardNotes=$STANDARDNOTES_DATABASE_NAME
+USER_StandardNotes=$STANDARDNOTES_DATABASE_USER
+PASSWORD_StandardNotes=$STANDARDNOTES_DATABASE_USER_PASSWORD
+PORT_StandardNotes=3306
+LABEL_Vaultwarden=Vaultwarden
+ENGINE_Vaultwarden=postgres@dbgate-plugin-postgres
+SERVER_Vaultwarden=vaultwarden-db
+DATABASE_Vaultwarden=$VAULTWARDEN_DATABASE_NAME
+USER_Vaultwarden=$VAULTWARDEN_DATABASE_USER
+PASSWORD_Vaultwarden=$VAULTWARDEN_DATABASE_USER_PASSWORD
+PORT_Vaultwarden=5432
+LABEL_Wallabag=Wallabag
+ENGINE_Wallabag=postgres@dbgate-plugin-postgres
+SERVER_Wallabag=wallabag-db
+DATABASE_Wallabag=$WALLABAG_DATABASE_NAME
+USER_Wallabag=$WALLABAG_DATABASE_USER
+PASSWORD_Wallabag=$WALLABAG_DATABASE_USER_PASSWORD
+PORT_Wallabag=5432
+LABEL_Wikijs=Wikijs
+ENGINE_Wikijs=postgres@dbgate-plugin-postgres
+SERVER_Wikijs=wikijs-db
+DATABASE_Wikijs=$WIKIJS_DATABASE_NAME
+USER_Wikijs=$WIKIJS_DATABASE_USER
+PASSWORD_Wikijs=$WIKIJS_DATABASE_USER_PASSWORD
+PORT_Wikijs=5432
+LABEL_WordPress=WordPress
+ENGINE_WordPress=mysql@dbgate-plugin-mysql
+SERVER_WordPress=wordpress-db
+DATABASE_WordPress=$WORDPRESS_DATABASE_NAME
+USER_WordPress=$WORDPRESS_DATABASE_USER
+PASSWORD_WordPress=$WORDPRESS_DATABASE_USER_PASSWORD
+PORT_WordPress=3306
+LABEL_Yamtrack=Yamtrack
+ENGINE_Yamtrack=postgres@dbgate-plugin-postgres
+SERVER_Yamtrack=yamtrack-db
+DATABASE_Yamtrack=$YAMTRACK_DATABASE_NAME
+USER_Yamtrack=$YAMTRACK_DATABASE_USER
+PASSWORD_Yamtrack=$YAMTRACK_DATABASE_USER_PASSWORD
+PORT_Yamtrack=5432
+EOFMT
+
+}
+
+function performUpdateDbGate()
+{
+  perform_stack_name=dbgate
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/dbgate/dbgate:6.6.3-alpine
+      image_update_map[0]="mirror.gcr.io/dbgate/dbgate:6.6.3-alpine,mirror.gcr.io/dbgate/dbgate:6.6.3-alpine"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function modFunAddUpdateConnectionDbGate()
+{
+  grep -q "LABEL_${sdb_formal}" $HOME/${updateStackName}.env
+  if [ $? -eq 0 ]; then
+    return 3
+  fi
+  echo "LABEL_${sdb_formal}=$sdb_formal" >> $HOME/${updateStackName}.env
+  case "$sdb_driver" in
+    mysql)
+      echo "ENGINE_${sdb_formal}=mysql@dbgate-plugin-mysql" >> $HOME/${updateStackName}.env
+      echo "PORT_${sdb_formal}=3306" >> $HOME/${updateStackName}.env
+      ;;
+    postgres)
+      echo "ENGINE_${sdb_formal}=postgres@dbgate-plugin-postgres" >> $HOME/${updateStackName}.env
+      echo "PORT_${sdb_formal}=5432" >> $HOME/${updateStackName}.env
+      ;;
+    mongodb)
+      echo "ENGINE_${sdb_formal}=mongo@dbgate-plugin-mongo" >> $HOME/${updateStackName}.env
+      echo "PORT_${sdb_formal}=27017" >> $HOME/${updateStackName}.env
+      ;;
+    sqlite)
+      echo "ENGINE_${sdb_formal}=sqlite@dbgate-plugin-sqlite" >> $HOME/${updateStackName}.env
+      ;;
+  esac
+  echo "SERVER_${sdb_formal}=$sdb_host" >> $HOME/${updateStackName}.env
+  echo "DATABASE_${sdb_formal}=$sdb_database" >> $HOME/${updateStackName}.env
+  echo "USER_${sdb_formal}=$sdb_username" >> $HOME/${updateStackName}.env
+  echo "PASSWORD_${sdb_formal}=$sdb_password" >> $HOME/${updateStackName}.env
+  curConnections=$(grep ^CONNECTIONS= $HOME/${updateStackName}.env | sed 's/^[^=]*=//' | sed 's/ *$//g' | sed 's/"//g')
+  sed -i "s|^CONNECTIONS=.*|CONNECTIONS=${curConnections},${sdb_formal}|g" $HOME/${updateStackName}.env
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -66854,7 +68221,6 @@ function installExampleService()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/exampleservice
   mkdir $HSHQ_STACKS_DIR/exampleservice/config
   mkdir $HSHQ_STACKS_DIR/exampleservice/db
@@ -66867,7 +68233,6 @@ function installExampleService()
   sleep 5
   addUserMailu alias $EXAMPLESERVICE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   EXAMPLESERVICE_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $EXAMPLESERVICE_ADMIN_PASSWORD | tr -d ':\n')
-
   outputConfigExampleService
   installStack exampleservice exampleservice-app "" $HOME/exampleservice.env
   retVal=$?
@@ -66896,7 +68261,6 @@ function installExampleService()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_EXAMPLESERVICE $MANAGETLS_EXAMPLESERVICE "$is_integrate_hshq" $NETDEFAULT_EXAMPLESERVICE "$inner_block"
   insertSubAuthelia $SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE" $USERTYPE_EXAMPLESERVICE "https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN" "exampleservice.png" "$(getHeimdallOrderFromSub $SUB_EXAMPLESERVICE $USERTYPE_EXAMPLESERVICE)"
     restartAllCaddyContainers
@@ -67003,12 +68367,10 @@ networks:
       driver: default
 
 EOFMT
-
   cat <<EOFMT > $HOME/exampleservice.env
 TZ=\${PORTAINER_TZ}
 
 EOFMT
-
 }
 
 function performUpdateExampleService()
@@ -68183,7 +69545,7 @@ decryptConfigFileAndLoadEnvNoPrompts
 
 set +e
 echo "Emailing Root CA..."
-sendRootCAEmail
+sendRootCAEmail false
 set -e
 performExitFunctions false
 
@@ -75361,6 +76723,14 @@ SQLPAD_CONNECTIONS__firefly__username=$FIREFLY_DATABASE_USER
 SQLPAD_CONNECTIONS__firefly__password=$FIREFLY_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__firefly__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__firefly__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__frappe-hr__name=FrappeHR
+SQLPAD_CONNECTIONS__frappe-hr__driver=mysql
+SQLPAD_CONNECTIONS__frappe-hr__host=frappe-hr-db
+SQLPAD_CONNECTIONS__frappe-hr__database=$FRAPPE_HR_DATABASE_NAME
+SQLPAD_CONNECTIONS__frappe-hr__username=$FRAPPE_HR_DATABASE_USER
+SQLPAD_CONNECTIONS__frappe-hr__password=$FRAPPE_HR_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__frappe-hr__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__frappe-hr__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__freshrss__name=FreshRSS
 SQLPAD_CONNECTIONS__freshrss__driver=postgres
 SQLPAD_CONNECTIONS__freshrss__host=freshrss-db
@@ -75505,6 +76875,14 @@ SQLPAD_CONNECTIONS__metabase__username=$METABASE_DATABASE_USER
 SQLPAD_CONNECTIONS__metabase__password=$METABASE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__metabase__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__metabase__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__minthcm__name=MintHCM
+SQLPAD_CONNECTIONS__minthcm__driver=mysql
+SQLPAD_CONNECTIONS__minthcm__host=minthcm-db
+SQLPAD_CONNECTIONS__minthcm__database=$MINTHCM_DATABASE_NAME
+SQLPAD_CONNECTIONS__minthcm__username=$MINTHCM_DATABASE_USER
+SQLPAD_CONNECTIONS__minthcm__password=$MINTHCM_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__minthcm__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__minthcm__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__nextcloud__name=Nextcloud
 SQLPAD_CONNECTIONS__nextcloud__driver=postgres
 SQLPAD_CONNECTIONS__nextcloud__host=nextcloud-db
@@ -75710,8 +77088,12 @@ function performUpdateSQLPad()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-function modFunUpdateSQLPad()
+function modFunAddUpdateConnectionSQLPad()
 {
+  case "$sdb_driver" in
+    mongodb|sqlite)
+      return 0;;
+  esac
   grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     return 3
@@ -75737,7 +77119,7 @@ function checkAddDBConnection()
   sdb_username="$7"
   sdb_password="$8"
   set +e
-  updateStackEnv sqlpad modFunUpdateSQLPad > /dev/null 2>&1
+  updateStackEnv sqlpad modFunAddUpdateConnectionSQLPad > /dev/null 2>&1
   usRetVal=$?
   if [ $usRetVal -eq 2 ]; then
     echo "WARNING: Could not find SQLPad stack, it may not be installed."
@@ -75745,6 +77127,15 @@ function checkAddDBConnection()
     echo "INFO: Already added to SQLPad - $sdb_formal"
   elif [ $usRetVal -ne 0 ]; then
     echo "ERROR: There was an unknown error with SQLPad"
+  fi
+  updateStackEnv dbgate modFunAddUpdateConnectionDbGate > /dev/null 2>&1
+  usRetVal=$?
+  if [ $usRetVal -eq 2 ]; then
+    echo "WARNING: Could not find DbGate stack, it may not be installed."
+  elif [ $usRetVal -eq 3 ]; then
+    echo "INFO: Already added to DbGate - $sdb_formal"
+  elif [ $usRetVal -ne 0 ]; then
+    echo "ERROR: There was an unknown error with DbGate"
   fi
   # See the importDBConnectionsAIStack() function for more details
   # This is dead code for now, but it may be revisited in some form or fashion later
