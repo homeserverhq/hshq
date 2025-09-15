@@ -6267,8 +6267,8 @@ function startValidation()
       DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
     else
       echo "-----------------------------------------------------------------"
-      echo "  Sudo is not installed. Please either log in with the root"
-      echo "  account or install it manually."
+      echo "  ERROR: Sudo is not installed. Please either log in with"
+      echo "  the root account or install it manually."
       echo "-----------------------------------------------------------------"
       exit 2
     fi
@@ -6278,7 +6278,7 @@ function startValidation()
     id "\$newUsername" > /dev/null 2>&1
     if [ \$? -eq 0 ]; then
       echo "-----------------------------------------------------------------"
-      echo "  User (\$newUsername) already exists, exiting..."
+      echo "  ERROR: User (\$newUsername) already exists."
       echo "-----------------------------------------------------------------"
       removeMyself
       exit 1
@@ -6293,7 +6293,7 @@ function startValidation()
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
       echo "-----------------------------------------------------------------"
-      echo "  The sudo password for \$curUsername is incorrect, exiting..."
+      echo "  ERROR: The sudo password for \$curUsername is incorrect."
       echo "-----------------------------------------------------------------"
       removeMyself
       exit 2
@@ -10727,14 +10727,23 @@ EOF
       continue
     fi
     echo "Performing pre-installation checks, please wait..."
-    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$USER_RELAY_SUDO_PW"
+    set -o pipefail
+    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$USER_RELAY_SUDO_PW" | tee /tmp/rsValidationOutput.txt
     is_err=$?
+    set +o pipefail
     if [ $is_err -ne 0 ]; then
+      err_message="$(cat /tmp/rsValidationOutput.txt)"
+      rm -f /tmp/rsValidationOutput.txt
       continue
-    else
+    fi
+    if [ $is_err -eq 0 ]; then
       break
     fi
   done
+  if [ -f /tmp/rsValidationOutput.txt ]; then
+    cat /tmp/rsValidationOutput.txt
+  fi
+  rm -f /tmp/rsValidationOutput.txt
   refreshSudo
   rs_cur_password=""
   updateConfigVar RELAYSERVER_CURRENT_SSH_PORT $RELAYSERVER_CURRENT_SSH_PORT
