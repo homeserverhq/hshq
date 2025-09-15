@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=198
+HSHQ_LIB_SCRIPT_VERSION=199
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -6266,10 +6266,10 @@ function startValidation()
       dpkg --configure -a > /dev/null 2>&1
       DEBIAN_FRONTEND=noninteractive apt install -y -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='--force-confold' sudo > /dev/null 2>&1
     else
-      echo "------------------------------------------------------------------------------------"
-      echo "  Sudo is not installed."
-      echo "  Please either log in with the root account or install it manually."
-      echo "------------------------------------------------------------------------------------"
+      echo "-----------------------------------------------------------------"
+      echo "  ERROR: Sudo is not installed. Please either log in with"
+      echo "  the root account or install it manually."
+      echo "-----------------------------------------------------------------"
       exit 2
     fi
   fi
@@ -6277,9 +6277,9 @@ function startValidation()
     read -r -s -p "" USER_RELAY_SUDO_PW
     id "\$newUsername" > /dev/null 2>&1
     if [ \$? -eq 0 ]; then
-      echo "------------------------------------------------------------------------------------"
-      echo "  User (\$newUsername) already exists, exiting..."
-      echo "------------------------------------------------------------------------------------"
+      echo "-----------------------------------------------------------------"
+      echo "  ERROR: User (\$newUsername) already exists."
+      echo "-----------------------------------------------------------------"
       removeMyself
       exit 1
     fi
@@ -6292,9 +6292,9 @@ function startValidation()
     read -r -s -p "" USER_RELAY_SUDO_PW
     echo "\$USER_RELAY_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ \$? -ne 0 ]; then
-      echo "------------------------------------------------------------------------------------"
-      echo "  The sudo password for \$curUsername is incorrect, exiting..."
-      echo "------------------------------------------------------------------------------------"
+      echo "-----------------------------------------------------------------"
+      echo "  ERROR: The sudo password for \$curUsername is incorrect."
+      echo "-----------------------------------------------------------------"
       removeMyself
       exit 2
     fi
@@ -10727,8 +10727,10 @@ EOF
       continue
     fi
     echo "Performing pre-installation checks, please wait..."
-    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$USER_RELAY_SUDO_PW" > /tmp/rsValidationOutput.txt
+    set -o pipefail
+    perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -s "$rs_cur_password" -o "-T -o 'StrictHostKeyChecking accept-new' -o ConnectTimeout=10" -u $rs_cur_username -h $RELAYSERVER_SERVER_IP -c "bash ~/$RS_INSTALL_VALIDATION_SCRIPT_NAME -s" -f -i "$USER_RELAY_SUDO_PW" | tee /tmp/rsValidationOutput.txt
     is_err=$?
+    set +o pipefail
     if [ $is_err -ne 0 ]; then
       err_message="$(cat /tmp/rsValidationOutput.txt)"
       rm -f /tmp/rsValidationOutput.txt
