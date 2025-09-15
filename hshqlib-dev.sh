@@ -16583,7 +16583,26 @@ function sendRootCAEmail()
   if [ "$is_sudo" = "true" ]; then
     # This special case is only need during the initial installation due
     # to issues with adding members to groups (mailsenders) within a script.
-    echo -e "$mail_msg" | sudo timeout $MAILX_TIMEOUT mailx -s "Public Root Certificate" -a "From: $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
+    set +e
+    num_email_tries=1
+    max_email_tries=5
+    is_success=false
+    while [ $num_email_tries -lt $max_email_tries ]
+    do
+      rm -f dead.letter
+      echo -e "$mail_msg" | sudo timeout $MAILX_TIMEOUT mailx -s "Public Root Certificate" -a "From: $(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -A $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der "$EMAIL_ADMIN_EMAIL_ADDRESS"
+      if [ $? -eq 0 ]; then
+        is_success=true
+        break
+      fi
+      echo "ERROR: Could not send email, retrying ($num_email_tries of $max_email_tries)..."
+      sleep 3
+      ((num_email_tries++))
+    done
+    if ! [ "$is_success" = "true" ]; then
+      echo "ERROR: There was a problem sending the Root CA certificate..."
+    fi
+    set -e
   else
     sendEmail -s "Public Root Certificate" -b "$mail_msg" -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.crt -a $HSHQ_SSL_DIR/${CERTS_ROOT_CA_NAME}.der
   fi
@@ -16685,17 +16704,22 @@ function sendEmail()
   set +e
   num_email_tries=1
   max_email_tries=5
+  is_email_success=false
   while [ $num_email_tries -lt $max_email_tries ]
   do
     rm -f dead.letter
     echo -e "$email_body" | timeout $MAILX_TIMEOUT mailx -s "$email_subj" -a "From: $email_from" -a "Message-Id: <$(uuidgen)@$HOMESERVER_DOMAIN>" $email_attachments "$email_to"
     if [ $? -eq 0 ]; then
+      is_email_success=true
       break
     fi
     echo "ERROR: Could not send email, retrying ($num_email_tries of $max_email_tries)..."
     sleep 3
     ((num_email_tries++))
   done
+  if ! [ "$is_email_success" = "true" ]; then
+    echo "ERROR: There was a problem sending this email (subj: $email_subj)..."
+  fi
 }
 
 function sendEmailToList()
