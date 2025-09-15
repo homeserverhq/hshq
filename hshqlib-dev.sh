@@ -4051,7 +4051,7 @@ function initInstallation()
     maxRSPreRetries=30
     while true;
     do
-      perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -f
+      perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10 -o 'StrictHostKeyChecking accept-new'" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "sleep 1;if [ -f ~/$RELAYSERVER_NOT_READY_FILE ]; then exit 1; fi" -r 1 -b 1
       if [ $? -eq 0 ]; then
         break
       fi
