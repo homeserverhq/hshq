@@ -5789,6 +5789,9 @@ function webSetupHostedVPN()
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
+  if [ "$IS_INSTALLED" = "true" ]; then
+    addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
+  fi
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
@@ -13098,6 +13101,7 @@ function removeMyNetworkPrimaryVPN()
   fi
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${ifaceName}.conf
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
+  deleteDomainAdguardHS "*.$ext_prefix.$domain_name"
   checkDeleteStackAndDirectory caddy-$ifaceName "Caddy" true true
   removeHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
   docker container stop uptimekuma >/dev/null
