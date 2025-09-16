@@ -68338,15 +68338,15 @@ function installTwenty()
   docker exec mailu-admin flask mailu alias-delete $TWENTY_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $TWENTY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  TWENTY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $TWENTY_ADMIN_PASSWORD | tr -d ':\n')
+  TWENTY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $TWENTY_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
   outputConfigTwenty
-  installStack twenty twenty-app "" $HOME/twenty.env
+  installStack twenty twenty-app "Nest application successfully started" $HOME/twenty.env 15 900
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
   if ! [ "$TWENTY_INIT_ENV" = "true" ]; then
-    sendEmail -s "Twenty Admin Login Info" -b "Twenty Admin Username: $TWENTY_ADMIN_USERNAME\nTwenty Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "Twenty Admin Login Info" -b "Follow are some generated credentials that you can use to configure Twenty CRM. You will still need to go through the initial onboarding wizard on the first time you access the site and enter the information accordingly. \n\nTwenty Admin Username: $TWENTY_ADMIN_USERNAME\nTwenty Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\nTwenty Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     TWENTY_INIT_ENV=true
     updateConfigVar TWENTY_INIT_ENV $TWENTY_INIT_ENV
   fi
