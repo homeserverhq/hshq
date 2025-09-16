@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=199
+HSHQ_LIB_SCRIPT_VERSION=200
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -5789,6 +5789,7 @@ function webSetupHostedVPN()
   outputRelayServerInstallSetupScript
   outputRelayServerInstallFreshScript
   outputRelayServerInstallTransferScript
+  addDomainAdguardHS "*.$EXT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN" "$RELAYSERVER_SERVER_IP"
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_SETUP_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   perfRemoteAction -m scp -p $RELAYSERVER_CURRENT_SSH_PORT -a $HSHQ_RELAYSERVER_DIR/scripts/$RS_INSTALL_FRESH_SCRIPT_NAME -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c ":/home/$RELAYSERVER_REMOTE_USERNAME" -f
   perfRemoteAction -m ssh -p $RELAYSERVER_CURRENT_SSH_PORT -o "-T -o ConnectTimeout=10" -u $RELAYSERVER_REMOTE_USERNAME -h $RELAYSERVER_SERVER_IP -c "touch ~/$RELAYSERVER_SCRIPTS_UPLOADED_FILE" -f
@@ -6349,7 +6350,7 @@ function checkForHSHQ()
   findhshq="\$(find /home -maxdepth 3 -type d -name hshq 2>/dev/null | head -n 1)"
   if ! [ -z "\$findhshq" ]; then
     echo "------------------------------------------------------------------------------------"
-    echo "  An hshq directory already exists: \$findhshq. You must log into the"
+    echo "  ERROR: An hshq directory already exists: \$findhshq. You must log into the"
     echo "  RelayServer and run the nuke.sh script (bash nuke.sh) to clear everything out."
     echo "------------------------------------------------------------------------------------"
     exit 5
@@ -6361,8 +6362,8 @@ function checkForRunningDockerContainers()
   is_containers=\$(docker ps -q 2>/dev/null | head -n 1)
   if ! [ -z "\$is_containers" ]; then
     echo "------------------------------------------------------------------------------------"
-    echo "  There are currently running docker containers, the server must be clear"
-    echo "  of all activity."
+    echo "  ERROR: There are currently running docker containers,"
+    echo "  the server must be clear of all activity."
     echo "------------------------------------------------------------------------------------"
     exit 6
   fi
@@ -13098,6 +13099,7 @@ function removeMyNetworkPrimaryVPN()
   fi
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${ifaceName}.conf
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
+  deleteDomainAdguardHS "*.$ext_prefix.$domain_name"
   checkDeleteStackAndDirectory caddy-$ifaceName "Caddy" true true
   removeHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
   docker container stop uptimekuma >/dev/null
@@ -29205,6 +29207,7 @@ function loadPinnedDockerImages()
   IMG_STIRLINGPDF=mirror.gcr.io/stirlingtools/stirling-pdf:1.2.0
   IMG_SYNCTHING=mirror.gcr.io/syncthing/syncthing:2.0.0
   IMG_TOMCAT=tomcat:11
+  IMG_TWENTY_APP=mirror.gcr.io/twentycrm/twenty:v1.5.3
   IMG_UPTIMEKUMA=louislam/uptime-kuma:1.23.16-alpine
   IMG_VAULTWARDEN_APP=mirror.gcr.io/vaultwarden/server:1.34.3-alpine
   IMG_VAULTWARDEN_LDAP=mirror.gcr.io/vividboarder/vaultwarden_ldap:2.1.2
@@ -29394,14 +29397,16 @@ function getScriptStackVersion()
       echo "v1" ;;
     minthcm)
       echo "v1" ;;
-    ofelia)
-      echo "v6" ;;
     cloudbeaver)
+      echo "v1" ;;
+    twenty)
       echo "v1" ;;
     dbgate)
       echo "v1" ;;
     sqlpad)
       echo "v8" ;;
+    ofelia)
+      echo "v6" ;;
     caddy-*)
       echo "v5" ;;
     clientdns-*)
@@ -29579,6 +29584,7 @@ function pullDockerImages()
   pullImage $IMG_MINTHCM_WEB
   pullImage $IMG_CLOUDBEAVER_APP
   pullImage $IMG_DBGATE_APP
+  pullImage $IMG_TWENTY_APP
 }
 
 function pullImagesUpdatePB()
@@ -30566,6 +30572,19 @@ DBGATE_INIT_ENV=true
 DBGATE_ADMIN_USERNAME=
 DBGATE_ADMIN_PASSWORD=
 # DbGate (Service Details) END
+
+# Twenty (Service Details) BEGIN
+TWENTY_INIT_ENV=true
+TWENTY_ADMIN_USERNAME=
+TWENTY_ADMIN_EMAIL_ADDRESS=
+TWENTY_ADMIN_PASSWORD=
+TWENTY_DATABASE_NAME=
+TWENTY_DATABASE_USER=
+TWENTY_DATABASE_USER_PASSWORD=
+TWENTY_REDIS_PASSWORD=
+TWENTY_MINIO_KEY=
+TWENTY_MINIO_SECRET=
+# Twenty (Service Details) END
 
 # Service Details END
 EOFCF
@@ -32246,6 +32265,42 @@ function initServicesCredentials()
     updateConfigVar DBGATE_ADMIN_PASSWORD $DBGATE_ADMIN_PASSWORD
   fi
 
+  if [ -z "$TWENTY_ADMIN_USERNAME" ]; then
+    TWENTY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_twenty"
+    updateConfigVar TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_USERNAME
+  fi
+  if [ -z "$TWENTY_ADMIN_EMAIL_ADDRESS" ]; then
+    TWENTY_ADMIN_EMAIL_ADDRESS=$TWENTY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$TWENTY_ADMIN_PASSWORD" ]; then
+    TWENTY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TWENTY_ADMIN_PASSWORD $TWENTY_ADMIN_PASSWORD
+  fi
+  if [ -z "$TWENTY_DATABASE_NAME" ]; then
+    TWENTY_DATABASE_NAME=twentydb
+    updateConfigVar TWENTY_DATABASE_NAME $TWENTY_DATABASE_NAME
+  fi
+  if [ -z "$TWENTY_DATABASE_USER" ]; then
+    TWENTY_DATABASE_USER=twenty-user
+    updateConfigVar TWENTY_DATABASE_USER $TWENTY_DATABASE_USER
+  fi
+  if [ -z "$TWENTY_DATABASE_USER_PASSWORD" ]; then
+    TWENTY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TWENTY_DATABASE_USER_PASSWORD $TWENTY_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$TWENTY_REDIS_PASSWORD" ]; then
+    TWENTY_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar TWENTY_REDIS_PASSWORD $TWENTY_REDIS_PASSWORD
+  fi
+  if [ -z "$TWENTY_MINIO_KEY" ]; then
+    TWENTY_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar TWENTY_MINIO_KEY $TWENTY_MINIO_KEY
+  fi
+  if [ -z "$TWENTY_MINIO_SECRET" ]; then
+    TWENTY_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar TWENTY_MINIO_SECRET $TWENTY_MINIO_SECRET
+  fi
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -32412,6 +32467,9 @@ function checkCreateNonbackupDirByStack()
     "revolt")
       mkdir -p $HSHQ_NONBACKUP_DIR/revolt/redis
       ;;
+    "twenty")
+      mkdir -p $HSHQ_NONBACKUP_DIR/twenty/redis
+      ;;
     *)
       ;;
   esac
@@ -32571,6 +32629,7 @@ function initServiceVars()
   checkAddSvc "SVCD_STIRLINGPDF=stirlingpdf,stirlingpdf,primary,user,Stirling PDF,stirlingpdf,hshq"
   checkAddSvc "SVCD_SYNCTHING=syncthing,syncthing,primary,admin,Syncthing,syncthing,hshq"
   checkAddSvc "SVCD_SYSUTILS=sysutils,sysutils,primary,admin,SysUtils,sysutils,hshq"
+  checkAddSvc "SVCD_TWENTY=twenty,twenty,primary,user,Twenty,twenty,hshq"
   checkAddSvc "SVCD_UPTIMEKUMA=uptimekuma,uptimekuma,primary,admin,UptimeKuma,uptimekuma,hshq"
   checkAddSvc "SVCD_VAULTWARDEN=vaultwarden,vaultwarden,primary,user,Vaultwarden,vaultwarden,hshq"
   checkAddSvc "SVCD_WALLABAG=wallabag,wallabag,primary,user,Wallabag,wallabag,le"
@@ -32759,6 +32818,8 @@ function installStackByName()
       installFrappeHR $is_integrate ;;
     minthcm)
       installMintHCM $is_integrate ;;
+    twenty)
+      installTwenty $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -32956,6 +33017,8 @@ function performUpdateStackByName()
       performUpdateFrappeHR ;;
     minthcm)
       performUpdateMintHCM ;;
+    twenty)
+      performUpdateTwenty ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -33074,6 +33137,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_STANDARDNOTES_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_TWENTY.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -33220,6 +33284,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33346,7 +33411,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
-
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -33730,6 +33795,9 @@ function getHeimdallOrderFromSub()
     "$SUB_MINTHCM")
       order_num=107
       ;;
+    "$SUB_TWENTY")
+      order_num=108
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -33777,13 +33845,13 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,dbgate,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,dbgate,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
 }
 
 function getScriptImageByContainerName()
@@ -34557,6 +34625,21 @@ function getScriptImageByContainerName()
     "dbgate-app")
       container_image=$IMG_DBGATE_APP
       ;;
+    "twenty-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "twenty-app")
+      container_image=$IMG_TWENTY_APP
+      ;;
+    "twenty-worker")
+      container_image=$IMG_TWENTY_APP
+      ;;
+    "twenty-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "twenty-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
     *)
       ;;
   esac
@@ -34623,6 +34706,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "MintHCM" "MINTHCM_INIT_ENV=false,MINTHCM_ADMIN_USERNAME=,MINTHCM_ADMIN_PASSWORD=,MINTHCM_ADMIN_EMAIL_ADDRESS=,MINTHCM_DATABASE_NAME=,MINTHCM_DATABASE_ROOT_PASSWORD=,MINTHCM_DATABASE_USER=,MINTHCM_DATABASE_USER_PASSWORD=,MINTHCM_ES_USER=,MINTHCM_ES_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "CloudBeaver" "CLOUDBEAVER_INIT_ENV=false,CLOUDBEAVER_ADMIN_USERNAME=,CLOUDBEAVER_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "DbGate" "DBGATE_INIT_ENV=false,DBGATE_ADMIN_USERNAME=,DBGATE_ADMIN_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Twenty" "TWENTY_INIT_ENV=false,TWENTY_ADMIN_USERNAME=,TWENTY_ADMIN_EMAIL_ADDRESS=,TWENTY_ADMIN_PASSWORD=,TWENTY_DATABASE_NAME=,TWENTY_DATABASE_USER=,TWENTY_DATABASE_USER_PASSWORD=,TWENTY_REDIS_PASSWORD=,TWENTY_MINIO_KEY=,TWENTY_MINIO_SECRET=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -60583,6 +60667,7 @@ EOFOT
 "StandardNotes" mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME $STANDARDNOTES_DATABASE_USER $STANDARDNOTES_DATABASE_USER_PASSWORD
 "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
 "$FMLNAME_SPEEDTEST_TRACKER_VPN" postgres speedtest-tracker-vpn-db $SPEEDTEST_TRACKER_VPN_DATABASE_NAME $SPEEDTEST_TRACKER_VPN_DATABASE_USER $SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+"Twenty" postgres twenty-db $TWENTY_DATABASE_NAME $TWENTY_DATABASE_USER $TWENTY_DATABASE_USER_PASSWORD
 "Vaultwarden" postgres vaultwarden-db $VAULTWARDEN_DATABASE_NAME $VAULTWARDEN_DATABASE_USER $VAULTWARDEN_DATABASE_USER_PASSWORD
 "Wallabag" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
 "Wikijs" postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD
@@ -68115,6 +68200,13 @@ DATABASE_StandardNotes=$STANDARDNOTES_DATABASE_NAME
 USER_StandardNotes=$STANDARDNOTES_DATABASE_USER
 PASSWORD_StandardNotes=$STANDARDNOTES_DATABASE_USER_PASSWORD
 PORT_StandardNotes=3306
+LABEL_Twenty=Twenty
+ENGINE_Twenty=postgres@dbgate-plugin-postgres
+SERVER_Twenty=twenty-db
+DATABASE_Twenty=$TWENTY_DATABASE_NAME
+USER_Twenty=$TWENTY_DATABASE_USER
+PASSWORD_Twenty=$TWENTY_DATABASE_USER_PASSWORD
+PORT_Twenty=5432
 LABEL_Vaultwarden=Vaultwarden
 ENGINE_Vaultwarden=postgres@dbgate-plugin-postgres
 SERVER_Vaultwarden=vaultwarden-db
@@ -68206,6 +68298,298 @@ function modFunAddUpdateConnectionDbGate()
   echo "PASSWORD_${sdb_formal}=$sdb_password" >> $HOME/${updateStackName}.env
   curConnections=$(grep ^CONNECTIONS= $HOME/${updateStackName}.env | sed 's/^[^=]*=//' | sed 's/ *$//g' | sed 's/"//g')
   sed -i "s|^CONNECTIONS=.*|CONNECTIONS=${curConnections},${sdb_formal}|g" $HOME/${updateStackName}.env
+}
+
+# Twenty
+function installTwenty()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory twenty "Twenty"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName twenty-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName twenty-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName twenty-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName twenty-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/twenty
+  mkdir $HSHQ_STACKS_DIR/twenty/data
+  mkdir $HSHQ_STACKS_DIR/twenty/minio
+  mkdir $HSHQ_NONBACKUP_DIR/twenty
+  mkdir $HSHQ_NONBACKUP_DIR/twenty/redis
+  mkdir $HSHQ_STACKS_DIR/twenty/db
+  mkdir $HSHQ_STACKS_DIR/twenty/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/twenty/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $TWENTY_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $TWENTY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  TWENTY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $TWENTY_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
+  outputConfigTwenty
+  installStack twenty twenty-app "Nest application successfully started" $HOME/twenty.env 15 900
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$TWENTY_INIT_ENV" = "true" ]; then
+    sendEmail -s "Twenty Admin Login Info" -b "Follow are some generated credentials that you can use to configure Twenty CRM. You will still need to go through the initial onboarding wizard on the first time you access the site and enter the information accordingly. \n\nTwenty Admin Username: $TWENTY_ADMIN_USERNAME\nTwenty Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\nTwenty Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    TWENTY_INIT_ENV=true
+    updateConfigVar TWENTY_INIT_ENV $TWENTY_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_TWENTY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://twenty-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_TWENTY $MANAGETLS_TWENTY "$is_integrate_hshq" $NETDEFAULT_TWENTY "$inner_block"
+  insertSubAuthelia $SUB_TWENTY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll twenty "$FMLNAME_TWENTY" $USERTYPE_TWENTY "https://$SUB_TWENTY.$HOMESERVER_DOMAIN" "twenty.png" "$(getHeimdallOrderFromSub $SUB_TWENTY $USERTYPE_TWENTY)"
+    restartAllCaddyContainers
+    checkAddDBConnection true twenty "$FMLNAME_TWENTY" postgres twenty-db $TWENTY_DATABASE_NAME $TWENTY_DATABASE_USER $TWENTY_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigTwenty()
+{
+  cat <<EOFMT > $HOME/twenty-compose.yml
+$STACK_VERSION_PREFIX twenty $(getScriptStackVersion twenty)
+
+services:
+  twenty-db:
+    image: $(getScriptImageByContainerName twenty-db)
+    container_name: twenty-db
+    hostname: twenty-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-twenty-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.twenty-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.twenty-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.twenty-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.twenty-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.twenty-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.twenty-hourly-db.email-from=Twenty Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.twenty-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.twenty-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.twenty-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.twenty-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.twenty-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.twenty-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.twenty-monthly-db.email-from=Twenty Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.twenty-monthly-db.mail-only-on-error=false"
+
+  twenty-app:
+    image: $(getScriptImageByContainerName twenty-app)
+    container_name: twenty-app
+    hostname: twenty-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - twenty-db
+    networks:
+      - int-twenty-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    environment:
+      - DISABLE_DB_MIGRATIONS=false
+      - DISABLE_CRON_JOBS_REGISTRATION=false
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-twenty-data:/app/packages/twenty-server/.local-storage
+
+  twenty-worker:
+    image: $(getScriptImageByContainerName twenty-worker)
+    container_name: twenty-worker
+    hostname: twenty-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: ["yarn", "worker:prod"]
+    depends_on:
+      - twenty-db
+    networks:
+      - int-twenty-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    environment:
+      - DISABLE_DB_MIGRATIONS=true
+      - DISABLE_CRON_JOBS_REGISTRATION=true
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-twenty-data:/app/packages/twenty-server/.local-storage
+
+  twenty-redis:
+    image: $(getScriptImageByContainerName twenty-redis)
+    container_name: twenty-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $TWENTY_REDIS_PASSWORD
+      --appendonly yes
+      --maxmemory-policy noeviction
+    networks:
+      - int-twenty-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-twenty-redis:/data
+
+  twenty-minio:
+    image: $(getScriptImageByContainerName twenty-minio)
+    container_name: twenty-minio
+    hostname: twenty-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-twenty-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/minio:/data
+
+volumes:
+  v-twenty-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/twenty/data
+  v-twenty-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/twenty/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-twenty-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/twenty.env
+TZ=\${PORTAINER_TZ}
+NODE_PORT=3000
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+PG_DATABASE_URL=postgres://$TWENTY_DATABASE_USER:$TWENTY_DATABASE_USER_PASSWORD@twenty-db:5432/$TWENTY_DATABASE_NAME
+PG_DATABASE_HOST=twenty-db
+PG_DATABASE_PORT=5432
+PG_DATABASE_USER=$TWENTY_DATABASE_USER
+PG_DATABASE_PASSWORD=$TWENTY_DATABASE_USER_PASSWORD
+POSTGRES_DB=$TWENTY_DATABASE_NAME
+POSTGRES_USER=$TWENTY_DATABASE_USER
+POSTGRES_PASSWORD=$TWENTY_DATABASE_USER_PASSWORD
+SERVER_URL=https://$SUB_TWENTY.$HOMESERVER_DOMAIN
+REDIS_URL=redis://:$TWENTY_REDIS_PASSWORD@twenty-redis:6379
+STORAGE_TYPE=local
+APP_SECRET=$(openssl rand -base64 32)
+EMAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+EMAIL_FROM_NAME=Twenty $(getAdminEmailName)
+EMAIL_SYSTEM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+EMAIL_DRIVER=smtp
+EMAIL_SMTP_HOST=$SMTP_HOSTNAME
+EMAIL_SMTP_PORT=$SMTP_HOSTPORT
+EOFMT
+}
+
+function performUpdateTwenty()
+{
+  perform_stack_name=twenty
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/twentycrm/twenty:v1.5.3,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v1.5.3,mirror.gcr.io/twentycrm/twenty:v1.5.3"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
 # ExampleService
@@ -76989,6 +77373,14 @@ SQLPAD_CONNECTIONS__standardnotes__username=$STANDARDNOTES_DATABASE_USER
 SQLPAD_CONNECTIONS__standardnotes__password=$STANDARDNOTES_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__standardnotes__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__standardnotes__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__twenty__name=Twenty
+SQLPAD_CONNECTIONS__twenty__driver=postgres
+SQLPAD_CONNECTIONS__twenty__host=twenty-db
+SQLPAD_CONNECTIONS__twenty__database=$TWENTY_DATABASE_NAME
+SQLPAD_CONNECTIONS__twenty__username=$TWENTY_DATABASE_USER
+SQLPAD_CONNECTIONS__twenty__password=$TWENTY_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__twenty__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__twenty__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__vaultwarden__name=Vaultwarden
 SQLPAD_CONNECTIONS__vaultwarden__driver=postgres
 SQLPAD_CONNECTIONS__vaultwarden__host=vaultwarden-db
