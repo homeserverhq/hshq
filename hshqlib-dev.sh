@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=200
+HSHQ_LIB_SCRIPT_VERSION=201
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -34640,6 +34640,9 @@ function getScriptImageByContainerName()
     "twenty-minio")
       container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
       ;;
+    "twenty-createbuckets")
+      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      ;;
     *)
       ;;
   esac
@@ -66735,7 +66738,6 @@ services:
     image: $(getScriptImageByContainerName revolt-createbuckets)
     container_name: revolt-createbuckets
     hostname: revolt-createbuckets
-    restart: unless-stopped
     env_file: stack.env
     security_opt:
       - no-new-privileges:true
@@ -66807,11 +66809,11 @@ AUTUMN_MONGO_URI=mongodb://$REVOLT_DATABASE_USER:$REVOLT_DATABASE_USER_PASSWORD@
 MINIO_ROOT_USER=$REVOLT_MINIO_KEY
 MINIO_ROOT_PASSWORD=$REVOLT_MINIO_SECRET
 MINIO_DOMAIN=minio
+MINIO_CONSOLE_ADDRESS=:9090
 RABBITMQ_DEFAULT_USER=$REVOLT_RABBITMQ_USERNAME
 RABBITMQ_DEFAULT_PASS=$REVOLT_RABBITMQ_PASSWORD
 MONGO_INITDB_ROOT_USERNAME=$REVOLT_DATABASE_USER
 MONGO_INITDB_ROOT_PASSWORD=$REVOLT_DATABASE_USER_PASSWORD
-MINIO_CONSOLE_ADDRESS=:9090
 NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 EOFMT
   openssl ecparam -name prime256v1 -genkey -noout -out $HOME/vapid_private.pem
@@ -68326,6 +68328,10 @@ function installTwenty()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName twenty-createbuckets)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/twenty
   mkdir $HSHQ_STACKS_DIR/twenty/data
@@ -68508,6 +68514,34 @@ services:
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
       - \${PORTAINER_HSHQ_STACKS_DIR}/twenty/minio:/data
 
+  twenty-createbuckets:
+    image: $(getScriptImageByContainerName twenty-createbuckets)
+    container_name: twenty-createbuckets
+    hostname: twenty-createbuckets
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - twenty-minio
+    networks:
+      - int-twenty-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    entrypoint: >
+      /bin/sh -c "
+      while ! /usr/bin/mc ready minio;
+      do
+        /usr/bin/mc alias set minio http://twenty-minio:9000 $TWENTY_MINIO_KEY $TWENTY_MINIO_SECRET;
+        echo 'Waiting minio...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/bucket-twenty;
+      exit 0;
+      "
+
 volumes:
   v-twenty-data:
     driver: local
@@ -68556,7 +68590,16 @@ POSTGRES_USER=$TWENTY_DATABASE_USER
 POSTGRES_PASSWORD=$TWENTY_DATABASE_USER_PASSWORD
 SERVER_URL=https://$SUB_TWENTY.$HOMESERVER_DOMAIN
 REDIS_URL=redis://:$TWENTY_REDIS_PASSWORD@twenty-redis:6379
-STORAGE_TYPE=local
+STORAGE_TYPE=S3
+STORAGE_S3_REGION=region-twenty
+STORAGE_S3_NAME=bucket-twenty
+STORAGE_S3_ENDPOINT=http://twenty-minio:9000
+STORAGE_S3_ACCESS_KEY_ID=$TWENTY_MINIO_KEY
+STORAGE_S3_SECRET_ACCESS_KEY=$TWENTY_MINIO_SECRET
+MINIO_ROOT_USER=$TWENTY_MINIO_KEY
+MINIO_ROOT_PASSWORD=$TWENTY_MINIO_SECRET
+MINIO_DOMAIN=region-twenty
+MINIO_CONSOLE_ADDRESS=:9090
 APP_SECRET=$(openssl rand -base64 32)
 EMAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
 EMAIL_FROM_NAME=Twenty $(getAdminEmailName)
@@ -68576,11 +68619,12 @@ function performUpdateTwenty()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/twentycrm/twenty:v1.5.3,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/twentycrm/twenty:v1.5.3,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
       image_update_map[1]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
       image_update_map[2]="mirror.gcr.io/twentycrm/twenty:v1.5.3,mirror.gcr.io/twentycrm/twenty:v1.5.3"
       image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
     ;;
     *)
       is_upgrade_error=true
