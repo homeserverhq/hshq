@@ -33265,7 +33265,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33392,7 +33392,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -57997,6 +57997,7 @@ services:
     networks:
       - int-penpot-net
       - dock-proxy-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
