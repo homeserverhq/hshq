@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_WRAPPER_SCRIPT_VERSION=22
+HSHQ_WRAPPER_SCRIPT_VERSION=23
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
 #
@@ -42,6 +42,7 @@ function main()
   actcheckbox=black,yellow
   '
   USERNAME=$(id -u -n)
+  HSHQ_APP_TYPE=home
   if [ -f $HOME/hshq/hshq.dev ]; then
     HSHQ_WRAP_URL=https://homeserverhq.com/hshq-dev.sh
     HSHQ_WRAP_VER_URL=https://homeserverhq.com/ver/getwrapversion-dev
