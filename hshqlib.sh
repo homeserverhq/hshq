@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=201
+HSHQ_LIB_SCRIPT_VERSION=202
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -3454,29 +3454,6 @@ function checkConfigAvailable()
   fi
 }
 
-function addToDisabledServices()
-{
-  atds_curE=${-//[^e]/}
-  set +e
-  dis_svc=$1
-  if [ "$DISABLED_SERVICES" = "none" ]; then
-    return
-  fi
-  echo $DISABLED_SERVICES | grep $dis_svc > /dev/null 2>&1
-  if [ $? -ne 0 ]; then
-    if [ -z "$DISABLED_SERVICES" ]; then
-      DISABLED_SERVICES="$dis_svc"
-    else
-      DISABLED_SERVICES="${DISABLED_SERVICES},$dis_svc"
-    fi
-    updatePlaintextRootConfigVar DISABLED_SERVICES $DISABLED_SERVICES
-  fi
-  set +e
-  if ! [ -z "$atds_curE" ]; then
-    set -e
-  fi
-}
-
 function initConfig()
 {
   if [ "$IS_INSTALLING" = "true" ]; then
@@ -3542,7 +3519,6 @@ function initConfig()
     echo "Installing grepcidr, please wait..."
     performAptInstall grepcidr > /dev/null 2>&1
   fi
-
   is_add_error=false
   default_iface=$(getDefaultIface)
   add_interface=""
@@ -3587,7 +3563,6 @@ function initConfig()
     fi
     set -e
   done
-
   if [ "$(checkIsIPPrivate $HOMESERVER_HOST_PRIMARY_INTERFACE_IP)" = "false" ]; then
     if [ -z "$CONNECTING_IP" ]; then
       showMessageBox "Error with Connecting IP" "Could not determine connecting IP, exiting..."
@@ -3596,7 +3571,6 @@ function initConfig()
       addHomeNetIP ${CONNECTING_IP}/32 false
     fi
   fi
-
   if [ -z "$USERID" ]; then
     USERID=$(id -u)
     updatePlaintextRootConfigVar USERID $USERID
@@ -3610,25 +3584,40 @@ function initConfig()
     updateConfigVar XDG_RUNTIME_DIR $XDG_RUNTIME_DIR
   fi
   if [ -z "$DISABLED_SERVICES" ]; then
-    if [ $total_ram -lt 8 ]; then
-      DISABLED_SERVICES=$DS_MEM_LOW
-    elif [ $total_ram -lt 12 ]; then
-      DISABLED_SERVICES=$DS_MEM_12
-    elif [ $total_ram -lt 16 ]; then
-      DISABLED_SERVICES=$DS_MEM_16
-    elif [ $total_ram -lt 22 ]; then
-      DISABLED_SERVICES=$DS_MEM_22
-    elif [ $total_ram -lt 28 ]; then
-      DISABLED_SERVICES=$DS_MEM_28
+    if [ "$HSHQ_APP_TYPE" = "business" ]; then
+      if [ $total_ram -lt 8 ]; then
+        DISABLED_SERVICES=$DS_MEM_LOW
+      elif [ $total_ram -lt 12 ]; then
+        DISABLED_SERVICES=$BDS_MEM_12
+      elif [ $total_ram -lt 16 ]; then
+        DISABLED_SERVICES=$BDS_MEM_16
+      elif [ $total_ram -lt 22 ]; then
+        DISABLED_SERVICES=$BDS_MEM_22
+      elif [ $total_ram -lt 28 ]; then
+        DISABLED_SERVICES=$BDS_MEM_28
+      else
+        DISABLED_SERVICES=$BDS_MEM_HIGH
+      fi
     else
-      DISABLED_SERVICES=$DS_MEM_HIGH
+      if [ $total_ram -lt 8 ]; then
+        DISABLED_SERVICES=$DS_MEM_LOW
+      elif [ $total_ram -lt 12 ]; then
+        DISABLED_SERVICES=$DS_MEM_12
+      elif [ $total_ram -lt 16 ]; then
+        DISABLED_SERVICES=$DS_MEM_16
+      elif [ $total_ram -lt 22 ]; then
+        DISABLED_SERVICES=$DS_MEM_22
+      elif [ $total_ram -lt 28 ]; then
+        DISABLED_SERVICES=$DS_MEM_28
+      else
+        DISABLED_SERVICES=$DS_MEM_HIGH
+      fi
     fi
     updatePlaintextRootConfigVar DISABLED_SERVICES $DISABLED_SERVICES
   fi
-
   while [ -z "$HOMESERVER_DOMAIN" ]
   do
-	HOMESERVER_DOMAIN=$(promptUserInputMenu "" "Enter HomeServer Domain" "Enter your HomeServer domain name, i.e. example.com. You must own this domain to route external emails and/or post services on the public internet: ")
+	HOMESERVER_DOMAIN=$(promptUserInputMenu "" "Enter Domain" "Enter your domain name, i.e. example.com. You must own this domain to route external emails and/or post services on the public internet: ")
 	if [ -z "$HOMESERVER_DOMAIN" ]; then
 	  showMessageBox "Domain Empty" "The domain cannot be empty"
     elif [ $(checkValidString "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
@@ -3644,14 +3633,12 @@ function initConfig()
 	  updatePlaintextRootConfigVar HOMESERVER_DOMAIN $HOMESERVER_DOMAIN
 	fi
   done
-
   new_hostname="HomeServer-$(echo $HOMESERVER_DOMAIN | sed 's/\./-/g')"
   if [ -z "$(cat /etc/hosts | grep $new_hostname)" ]; then
     echo "127.0.1.1 $new_hostname" | sudo tee -a /etc/hosts
   fi
   sudo hostnamectl set-hostname $new_hostname
   rm -f $HOME/dead.letter
-
   EXT_DOMAIN_PREFIX=""
   while [ -z "$EXT_DOMAIN_PREFIX" ]
   do
@@ -3669,7 +3656,6 @@ function initConfig()
 	  updatePlaintextRootConfigVar EXT_DOMAIN_PREFIX $EXT_DOMAIN_PREFIX
 	fi
   done
-
   INT_DOMAIN_PREFIX=""
   while [ -z "$INT_DOMAIN_PREFIX" ]
   do
@@ -3687,7 +3673,6 @@ function initConfig()
 	  updatePlaintextRootConfigVar INT_DOMAIN_PREFIX $INT_DOMAIN_PREFIX
 	fi
   done
-
   while [ -z "$HOMESERVER_NAME" ]
   do
 	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc. No special characters except for commas, hyphens, or periods. This will appear in window titles, certificates, among other things: ")
@@ -3741,7 +3726,6 @@ function initConfig()
       set -e
     fi
   done
-
   set +e
   CURRENT_SSH_PORT=$(grep "^Port" /etc/ssh/sshd_config)
   if [ $? -eq 0 ]; then
@@ -3851,7 +3835,6 @@ function initConfig()
       updateConfigVar LDAP_PRIMARY_USER_FULLNAME "$LDAP_PRIMARY_USER_FULLNAME"
     fi
   done
-
   if [ -z "$LDAP_PRIMARY_USER_PASSWORD_HASH" ]; then
     tmp_pw1=""
     tmp_pw2=""
@@ -3884,7 +3867,6 @@ function initConfig()
     tmp_pw2=""
     set -e
   fi
-
   while [ -z "$ADMIN_USERNAME_BASE" ] || [ "$ADMIN_USERNAME_BASE" = "admin" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
@@ -3898,12 +3880,10 @@ function initConfig()
     fi
     updatePlaintextRootConfigVar ADMIN_USERNAME_BASE $ADMIN_USERNAME_BASE
   done
-
   if [[ "$(isProgramInstalled pwgen)" = "false" ]]; then
     echo "Installing pwgen, please wait..."
     performAptInstall pwgen > /dev/null 2>&1
   fi
-
   while [ -z "$EMAIL_ADMIN_USERNAME" ]
   do
     if [ "$IS_ACCEPT_DEFAULTS" = "yes" ]; then
@@ -13100,6 +13080,7 @@ function removeMyNetworkPrimaryVPN()
   sudo rm -f $HSHQ_WIREGUARD_DIR/vpn/${ifaceName}.conf
   deleteDomainAdguardHS "*.$int_prefix.$domain_name"
   deleteDomainAdguardHS "*.$ext_prefix.$domain_name"
+  addDomainAdguardHS "*.$ext_prefix.$domain_name" "A"
   checkDeleteStackAndDirectory caddy-$ifaceName "Caddy" true true
   removeHomeNetIP ${RELAYSERVER_SERVER_IP}/32 true
   docker container stop uptimekuma >/dev/null
@@ -20901,6 +20882,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=194
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 202 ]; then
+    echo "Updating to Version 202..."
+    version202Update
+    HSHQ_VERSION=202
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -20976,7 +20963,6 @@ function version14Update()
   if ! [ -z "$v14_curE" ]; then
     set -e
   fi
-  addToDisabledServices netdata
 }
 
 function version22Update()
@@ -21568,21 +21554,9 @@ function version30Update()
   fi
 }
 
-function version31Update()
-{
-  addToDisabledServices jupyter
-}
-
-function version32Update()
-{
-  addToDisabledServices paperless
-}
-
 function version34Update()
 {
   sudo sed -i "/timestamp_timeout/a Defaults passwd_tries=$SUDO_MAX_RETRIES" /etc/sudoers
-  addToDisabledServices speedtest-tracker-local
-  addToDisabledServices speedtest-tracker-vpn
 }
 
 function version35Update()
@@ -23617,6 +23591,12 @@ function version194Update()
   do
     updateStackEnv caddy-home-${curHomeInt} modFunFixCaddyHostInterfaceVar
   done
+}
+
+function version202Update()
+{
+  sudo sed -i "/HOMESERVER_ABBREV=.*/a HSHQ_APP_TYPE=home" $HSHQ_PLAINTEXT_ROOT_CONFIG
+  HSHQ_APP_TYPE=home
 }
 
 function updateRelayServerWithScript()
@@ -27061,7 +27041,7 @@ function outputWGDockInternetScript()
 
 CONFIG_FILE=\$1
 COMMAND=\$2
-HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_CONFIG_DIR/ptRootConfig.conf
+HSHQ_PLAINTEXT_ROOT_CONFIG=$HSHQ_PLAINTEXT_ROOT_CONFIG
 
 set +e
 function main()
@@ -30602,6 +30582,7 @@ HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
 HOMESERVER_DOMAIN=
 HOMESERVER_NAME=
 HOMESERVER_ABBREV=
+HSHQ_APP_TYPE=$HSHQ_APP_TYPE
 EMAIL_ADMIN_EMAIL_ADDRESS=
 EXT_DOMAIN_PREFIX=
 INT_DOMAIN_PREFIX=
@@ -33284,7 +33265,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33411,7 +33392,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MINTHCM}-Admin" https://$SUB_MINTHCM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $MINTHCM_ADMIN_USERNAME $MINTHCM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -33852,6 +33833,11 @@ function initServiceDefaults()
   DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
   DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
   DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf
 }
 
 function getScriptImageByContainerName()
@@ -58011,6 +57997,7 @@ services:
     networks:
       - int-penpot-net
       - dock-proxy-net
+      - dock-ext-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
