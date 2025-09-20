@@ -68724,7 +68724,7 @@ function installOdoo()
   ODOO_DATABASE_NAME=postgres
   outputConfigOdoo
   ODOO_DATABASE_NAME=$odbname
-  installStack odoo odoo-app "running on odoo-app:8069" $HOME/odoo.env
+  installStack odoo odoo-app "running on odoo-app:8069" $HOME/odoo.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -68734,9 +68734,38 @@ function installOdoo()
     ODOO_INIT_ENV=true
     updateConfigVar ODOO_INIT_ENV $ODOO_INIT_ENV
   fi
-  sleep 3
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ODOO.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://odoo-app:8069 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ODOO $MANAGETLS_ODOO "$is_integrate_hshq" $NETDEFAULT_ODOO "$inner_block"
+  insertSubAuthelia $SUB_ODOO.$HOMESERVER_DOMAIN bypass
+  restartAllCaddyContainers
+  sleep 5
+  set +e
   echo "Initializing Odoo database..."
-  curl "https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/database/create" --data "master_pwd=$ODOO_ADMIN_PASSWORD&name=$ODOO_DATABASE_NAME&login=$ODOO_ADMIN_USERNAME&password=$ODOO_ADMIN_PASSWORD&phone=5555555&lang=en_US&country_code=us" --compressed > /dev/null 2>&1
+  num_tries=0
+  total_tries=5
+  while [ $num_tries -lt $total_tries ]
+  do
+    curl "https://$SUB_ODOO.$HOMESERVER_DOMAIN/" > /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+      break
+    fi
+    echo "Could not reach Odoo subdomain, retrying in 5 seconds..."
+    sleep 5
+    ((num_tries++))
+  done
+  curl "https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/database/create" --data "master_pwd=$ODOO_ADMIN_PASSWORD&name=$ODOO_DATABASE_NAME&login=$ODOO_ADMIN_USERNAME&password=$ODOO_ADMIN_PASSWORD&phone=5551212&lang=en_US&country_code=us" --compressed > /dev/null 2>&1
   echo "Modifying initial settings..."
   docker exec -it odoo-app bash -c "odoo shell -p 8070 --db_host odoo-db -r $ODOO_DATABASE_USER -w $ODOO_DATABASE_USER_PASSWORD -d $ODOO_DATABASE_NAME < /etc/odoo/initconfig.py" > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/odoo/config/initconfig.py
@@ -68760,21 +68789,6 @@ EOFDS
   echo "Restarting stack..."
   updateStackEnv odoo outputEnvOdoo > /dev/null 2>&1
   set -e
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_ODOO.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://odoo-app:8069 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_ODOO $MANAGETLS_ODOO "$is_integrate_hshq" $NETDEFAULT_ODOO "$inner_block"
-  insertSubAuthelia $SUB_ODOO.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll odoo "$FMLNAME_ODOO" $USERTYPE_ODOO "https://$SUB_ODOO.$HOMESERVER_DOMAIN" "odoo.png" "$(getHeimdallOrderFromSub $SUB_ODOO $USERTYPE_ODOO)"
     restartAllCaddyContainers
