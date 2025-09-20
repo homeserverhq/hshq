@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=202
+HSHQ_LIB_SCRIPT_VERSION=203
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -29135,6 +29135,7 @@ function loadPinnedDockerImages()
   IMG_NEXTCLOUD_TALKRECORD=ghcr.io/nextcloud-releases/aio-talk-recording:20250811_115851
   IMG_NTFY=mirror.gcr.io/binwiederhier/ntfy:v2.14.0
   IMG_NODE_EXPORTER=mirror.gcr.io/prom/node-exporter:v1.9.1
+  IMG_ODOO_APP=mirror.gcr.io/odoo:19.0-20250918
   IMG_OFELIA=mirror.gcr.io/mcuadros/ofelia:0.3.18
   IMG_OMBI_APP=linuxserver/ombi:4.47.1
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
@@ -29381,6 +29382,8 @@ function getScriptStackVersion()
       echo "v1" ;;
     twenty)
       echo "v1" ;;
+    odoo)
+      echo "v1" ;;
     dbgate)
       echo "v1" ;;
     sqlpad)
@@ -29565,6 +29568,7 @@ function pullDockerImages()
   pullImage $IMG_CLOUDBEAVER_APP
   pullImage $IMG_DBGATE_APP
   pullImage $IMG_TWENTY_APP
+  pullImage $IMG_ODOO_APP
 }
 
 function pullImagesUpdatePB()
@@ -30565,6 +30569,16 @@ TWENTY_REDIS_PASSWORD=
 TWENTY_MINIO_KEY=
 TWENTY_MINIO_SECRET=
 # Twenty (Service Details) END
+
+# Odoo (Service Details) BEGIN
+ODOO_INIT_ENV=false
+ODOO_ADMIN_USERNAME=
+ODOO_ADMIN_EMAIL_ADDRESS=
+ODOO_ADMIN_PASSWORD=
+ODOO_DATABASE_NAME=
+ODOO_DATABASE_USER=
+ODOO_DATABASE_USER_PASSWORD=
+# Odoo (Service Details) END
 
 # Service Details END
 EOFCF
@@ -32245,7 +32259,6 @@ function initServicesCredentials()
     DBGATE_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar DBGATE_ADMIN_PASSWORD $DBGATE_ADMIN_PASSWORD
   fi
-
   if [ -z "$TWENTY_ADMIN_USERNAME" ]; then
     TWENTY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_twenty"
     updateConfigVar TWENTY_ADMIN_USERNAME $TWENTY_ADMIN_USERNAME
@@ -32282,6 +32295,31 @@ function initServicesCredentials()
     TWENTY_MINIO_SECRET=$(pwgen -c -n 32 1)
     updateConfigVar TWENTY_MINIO_SECRET $TWENTY_MINIO_SECRET
   fi
+  if [ -z "$ODOO_ADMIN_USERNAME" ]; then
+    ODOO_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_odoo"
+    updateConfigVar ODOO_ADMIN_USERNAME $ODOO_ADMIN_USERNAME
+  fi
+  if [ -z "$ODOO_ADMIN_EMAIL_ADDRESS" ]; then
+    ODOO_ADMIN_EMAIL_ADDRESS=$ODOO_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ODOO_ADMIN_EMAIL_ADDRESS $ODOO_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$ODOO_ADMIN_PASSWORD" ]; then
+    ODOO_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ODOO_ADMIN_PASSWORD $ODOO_ADMIN_PASSWORD
+  fi
+  if [ -z "$ODOO_DATABASE_NAME" ]; then
+    ODOO_DATABASE_NAME=odoodb
+    updateConfigVar ODOO_DATABASE_NAME $ODOO_DATABASE_NAME
+  fi
+  if [ -z "$ODOO_DATABASE_USER" ]; then
+    ODOO_DATABASE_USER=odoo-user
+    updateConfigVar ODOO_DATABASE_USER $ODOO_DATABASE_USER
+  fi
+  if [ -z "$ODOO_DATABASE_USER_PASSWORD" ]; then
+    ODOO_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ODOO_DATABASE_USER_PASSWORD $ODOO_DATABASE_USER_PASSWORD
+  fi
+
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -32570,6 +32608,7 @@ function initServiceVars()
   checkAddSvc "SVCD_NCTALKHPB=nextcloud,spreed,other,user,Nextcloud Talk HPB,spreed,hshq"
   checkAddSvc "SVCD_NCTALKRECORD=nextcloud,nctalk-record,other,user,Nextcloud Talk Recording,nctalk-record,hshq"
   checkAddSvc "SVCD_NTFY=ntfy,ntfy,primary,admin,NTFY,ntfy,hshq"
+  checkAddSvc "SVCD_ODOO=odoo,odoo,primary,user,Odoo,odoo,hshq"
   checkAddSvc "SVCD_OMBI_APP=ombi,ombi,primary,user,Ombi,ombi,le"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
@@ -32801,6 +32840,8 @@ function installStackByName()
       installMintHCM $is_integrate ;;
     twenty)
       installTwenty $is_integrate ;;
+    odoo)
+      installOdoo $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -33000,6 +33041,8 @@ function performUpdateStackByName()
       performUpdateMintHCM ;;
     twenty)
       performUpdateTwenty ;;
+    odoo)
+      performUpdateOdoo ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -33072,6 +33115,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_NCTALKHPB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_NTFY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ODOO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OMBI_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
@@ -33266,6 +33310,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ODOO}-Admin" https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $ODOO_ADMIN_USERNAME $ODOO_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33393,6 +33438,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLOUDBEAVER}-Admin" https://$SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLOUDBEAVER_ADMIN_USERNAME $CLOUDBEAVER_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ODOO}-Admin" https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $ODOO_ADMIN_USERNAME $ODOO_ADMIN_PASSWORD)"\n"
+
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}-RelayServer" https://$SUB_ADGUARD.$INT_DOMAIN_PREFIX.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $RELAYSERVER_ADGUARD_ADMIN_USERNAME $RELAYSERVER_ADGUARD_ADMIN_PASSWORD)"\n"
@@ -33779,6 +33826,9 @@ function getHeimdallOrderFromSub()
     "$SUB_TWENTY")
       order_num=108
       ;;
+    "$SUB_ODOO")
+      order_num=109
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -33826,16 +33876,16 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,dbgate,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,dbgate,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf
 }
@@ -34629,6 +34679,12 @@ function getScriptImageByContainerName()
     "twenty-createbuckets")
       container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
+    "odoo-db")
+      container_image=mirror.gcr.io/postgres:15.0-bullseye
+      ;;
+    "odoo-app")
+      container_image=$IMG_ODOO_APP
+      ;;
     *)
       ;;
   esac
@@ -34696,6 +34752,7 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "CloudBeaver" "CLOUDBEAVER_INIT_ENV=false,CLOUDBEAVER_ADMIN_USERNAME=,CLOUDBEAVER_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "DbGate" "DBGATE_INIT_ENV=false,DBGATE_ADMIN_USERNAME=,DBGATE_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Twenty" "TWENTY_INIT_ENV=false,TWENTY_ADMIN_USERNAME=,TWENTY_ADMIN_EMAIL_ADDRESS=,TWENTY_ADMIN_PASSWORD=,TWENTY_DATABASE_NAME=,TWENTY_DATABASE_USER=,TWENTY_DATABASE_USER_PASSWORD=,TWENTY_REDIS_PASSWORD=,TWENTY_MINIO_KEY=,TWENTY_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Odoo" "ODOO_INIT_ENV=false,ODOO_ADMIN_USERNAME=,ODOO_ADMIN_EMAIL_ADDRESS=,ODOO_ADMIN_PASSWORD=,ODOO_DATABASE_NAME=,ODOO_DATABASE_USER=,ODOO_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -60645,6 +60702,7 @@ EOFOT
 "Metabase" postgres metabase-db $METABASE_DATABASE_NAME $METABASE_DATABASE_USER $METABASE_DATABASE_USER_PASSWORD
 "MintHCM" mysql minthcm-db $MINTHCM_DATABASE_NAME $MINTHCM_DATABASE_USER $MINTHCM_DATABASE_USER_PASSWORD
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
+"Odoo" postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_USER $ODOO_DATABASE_USER_PASSWORD
 "Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
 "Pastefy" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
@@ -68105,6 +68163,13 @@ DATABASE_Nextcloud=$NEXTCLOUD_DATABASE_NAME
 USER_Nextcloud=$NEXTCLOUD_DATABASE_USER
 PASSWORD_Nextcloud=$NEXTCLOUD_DATABASE_USER_PASSWORD
 PORT_Nextcloud=5432
+LABEL_Odoo=Odoo
+ENGINE_Odoo=postgres@dbgate-plugin-postgres
+SERVER_Odoo=odoo-db
+DATABASE_Odoo=$ODOO_DATABASE_NAME
+USER_Odoo=$ODOO_DATABASE_USER
+PASSWORD_Odoo=$ODOO_DATABASE_USER_PASSWORD
+PORT_Odoo=5432
 LABEL_Ombi=Ombi
 ENGINE_Ombi=mysql@dbgate-plugin-mysql
 SERVER_Ombi=ombi-db
@@ -68623,6 +68688,245 @@ function performUpdateTwenty()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Odoo
+function installOdoo()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory odoo "Odoo"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName odoo-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName odoo-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/odoo
+  mkdir $HSHQ_STACKS_DIR/odoo/addons
+  mkdir $HSHQ_STACKS_DIR/odoo/config
+  mkdir $HSHQ_STACKS_DIR/odoo/db
+  mkdir $HSHQ_STACKS_DIR/odoo/dbexport
+  mkdir $HSHQ_STACKS_DIR/odoo/web
+  chmod 777 $HSHQ_STACKS_DIR/odoo/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $ODOO_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $ODOO_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  ODOO_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ODOO_ADMIN_PASSWORD | tr -d ':\n')
+  odbname=$ODOO_DATABASE_NAME
+  ODOO_DATABASE_NAME=postgres
+  outputConfigOdoo
+  ODOO_DATABASE_NAME=$odbname
+  installStack odoo odoo-app "running on odoo-app:8069" $HOME/odoo.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$ODOO_INIT_ENV" = "true" ]; then
+    sendEmail -s "Odoo Admin Login Info" -b "Odoo Admin Username: $ODOO_ADMIN_USERNAME\nOdoo Admin Password: $ODOO_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ODOO_INIT_ENV=true
+    updateConfigVar ODOO_INIT_ENV $ODOO_INIT_ENV
+  fi
+  sleep 3
+  echo "Initializing Odoo database..."
+  curl "https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/database/create" --data "master_pwd=$ODOO_ADMIN_PASSWORD&name=$ODOO_DATABASE_NAME&login=$ODOO_ADMIN_USERNAME&password=$ODOO_ADMIN_PASSWORD&phone=5555555&lang=en_US&country_code=us" --compressed > /dev/null 2>&1
+  echo "Modifying initial settings..."
+  docker exec -it odoo-app bash -c "odoo shell -p 8070 --db_host odoo-db -r $ODOO_DATABASE_USER -w $ODOO_DATABASE_USER_PASSWORD -d $ODOO_DATABASE_NAME < /etc/odoo/initconfig.py" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/odoo/config/initconfig.py
+  echo "Adding modules..."
+  docker exec -it odoo-app bash -c "odoo -p 8070 --db_host odoo-db -r $ODOO_DATABASE_USER -w $ODOO_DATABASE_USER_PASSWORD -d $ODOO_DATABASE_NAME -i crm,mail,account,account_invoicing,hr,hr_expense,planning --stop-after-init --without-demo=True" > /dev/null 2>&1
+  dtnow=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/odoo/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$ODOO_DATABASE_USER_PASSWORD
+
+echo "insert into ir_mail_server(id, smtp_port, sequence, create_uid, write_uid, name, smtp_host, smtp_authentication, smtp_encryption, smtp_debug, active, create_date, write_date, max_email_size) values(1,$SMTP_HOSTPORT,10,2,2,'HSHQ','$SMTP_HOSTNAME','login','starttls_strict',false,true,'$dtnow', '$dtnow',0);" | psql -U $ODOO_DATABASE_USER $ODOO_DATABASE_NAME
+
+echo "update ir_module_module set state='to remove' where name in ('google_gmail', 'microsoft_outlook');" | psql -U $ODOO_DATABASE_USER $ODOO_DATABASE_NAME
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/odoo/dbexport/setupDBSettings.sh
+  docker exec odoo-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/odoo/dbexport/setupDBSettings.sh
+  docker exec -it odoo-app bash -c "odoo -p 8070 --db_host odoo-db -r $ODOO_DATABASE_USER -w $ODOO_DATABASE_USER_PASSWORD -d $ODOO_DATABASE_NAME -u google_gmail,microsoft_outlook --stop-after-init --without-demo=True" > /dev/null 2>&1
+  echo "Odoo Initialization complete!"
+  echo "Restarting stack..."
+  updateStackEnv odoo outputEnvOdoo > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ODOO.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://odoo-app:8069 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ODOO $MANAGETLS_ODOO "$is_integrate_hshq" $NETDEFAULT_ODOO "$inner_block"
+  insertSubAuthelia $SUB_ODOO.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll odoo "$FMLNAME_ODOO" $USERTYPE_ODOO "https://$SUB_ODOO.$HOMESERVER_DOMAIN" "odoo.png" "$(getHeimdallOrderFromSub $SUB_ODOO $USERTYPE_ODOO)"
+    restartAllCaddyContainers
+    checkAddDBConnection true odoo "$FMLNAME_ODOO" postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_USER $ODOO_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigOdoo()
+{
+  cat <<EOFMT > $HOME/odoo-compose.yml
+$STACK_VERSION_PREFIX odoo $(getScriptStackVersion odoo)
+
+services:
+  odoo-db:
+    image: $(getScriptImageByContainerName odoo-db)
+    container_name: odoo-db
+    hostname: odoo-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-odoo-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/odoo/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/odoo/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.odoo-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.odoo-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.odoo-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.odoo-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.odoo-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.odoo-hourly-db.email-from=Odoo Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.odoo-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.odoo-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.odoo-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.odoo-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.odoo-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.odoo-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.odoo-monthly-db.email-from=Odoo Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.odoo-monthly-db.mail-only-on-error=false"
+
+  odoo-app:
+    image: $(getScriptImageByContainerName odoo-app)
+    container_name: odoo-app
+    hostname: odoo-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - odoo-db
+    networks:
+      - int-odoo-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-odoo-web:/var/lib/odoo
+      - \${PORTAINER_HSHQ_STACKS_DIR}/odoo/config:/etc/odoo
+      - \${PORTAINER_HSHQ_STACKS_DIR}/odoo/addons:/mnt/extra-addons
+
+volumes:
+  v-odoo-web:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/odoo/web
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-odoo-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  outputEnvOdoo
+  cat <<EOFMT > $HSHQ_STACKS_DIR/odoo/config/initconfig.py
+env['res.company'].search([], limit=1).write({'name': '$HOMESERVER_NAME'})
+user = env['res.users'].search([('login','=','$ODOO_ADMIN_USERNAME')])
+user.name = 'Odoo $(getAdminEmailName)'
+user.complete_name = '$HOMESERVER_NAME Odoo $(getAdminEmailName)'
+user.tz = '$TZ'
+user.email = '$ODOO_ADMIN_EMAIL_ADDRESS'
+user.signature = '<p>$HOMESERVER_NAME Odoo $(getAdminEmailName)</p>'
+self.env.cr.commit()
+EOFMT
+}
+
+function outputEnvOdoo()
+{
+  rm -f $HOME/odoo.env
+  cat <<EOFMT > $HOME/odoo.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$ODOO_DATABASE_NAME
+POSTGRES_USER=$ODOO_DATABASE_USER
+POSTGRES_PASSWORD=$ODOO_DATABASE_USER_PASSWORD
+HOST=odoo-db
+USER=$ODOO_DATABASE_USER
+PASSWORD=$ODOO_DATABASE_USER_PASSWORD
+EOFMT
+}
+
+function performUpdateOdoo()
+{
+  perform_stack_name=odoo
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/odoo:19.0-20250918
+      image_update_map[0]="mirror.gcr.io/postgres:15.0-bullseye,mirror.gcr.io/postgres:15.0-bullseye"
+      image_update_map[1]="mirror.gcr.io/odoo:19.0-20250918,mirror.gcr.io/odoo:19.0-20250918"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -68681,7 +68985,7 @@ function installExampleService()
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE" $USERTYPE_EXAMPLESERVICE "https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN" "exampleservice.png" "$(getHeimdallOrderFromSub $SUB_EXAMPLESERVICE $USERTYPE_EXAMPLESERVICE)"
     restartAllCaddyContainers
-    checkAddDBConnection true exampleservice "$FMLNAME_EXAMPLESERVICE" mysql exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
+    checkAddDBConnection true exampleservice "$FMLNAME_EXAMPLESERVICE" postgres exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -77308,6 +77612,14 @@ SQLPAD_CONNECTIONS__nextcloud__username=$NEXTCLOUD_DATABASE_USER
 SQLPAD_CONNECTIONS__nextcloud__password=$NEXTCLOUD_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__nextcloud__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__nextcloud__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__odoo__name=Odoo
+SQLPAD_CONNECTIONS__odoo__driver=postgres
+SQLPAD_CONNECTIONS__odoo__host=odoo-db
+SQLPAD_CONNECTIONS__odoo__database=$ODOO_DATABASE_NAME
+SQLPAD_CONNECTIONS__odoo__username=$ODOO_DATABASE_USER
+SQLPAD_CONNECTIONS__odoo__password=$ODOO_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__odoo__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__odoo__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__ombi__name=Ombi
 SQLPAD_CONNECTIONS__ombi__driver=mysql
 SQLPAD_CONNECTIONS__ombi__host=ombi-db
