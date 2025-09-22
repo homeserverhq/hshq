@@ -200,7 +200,7 @@ function init()
   SS_UPDATING=updating
   SS_REMOVING=removing
   SS_RUNNING=running
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php8.3-cli"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php-cli"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
@@ -274,6 +274,7 @@ function main()
     return
   fi
   if ! [ -z "$USER_SUDO_PW" ]; then
+    sudo -k
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
       USER_SUDO_PW=""
@@ -3405,6 +3406,7 @@ function refreshSudo()
 {
   rsu_curE=${-//[^e]/}
   set +e
+  sudo -k
   if ! [ -z "$USER_SUDO_PW" ]; then
     echo "$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
@@ -6109,6 +6111,7 @@ function transferHostedVPN()
     return 0
   fi
   temp_pw=""
+  sudo -k
   while [ -z "$temp_pw" ]
   do
     temp_pw=$(promptPasswordMenu "Enter Password" "Enter the sudo password for $USERNAME: ")
@@ -23612,7 +23615,7 @@ function version202Update()
 function version204Update()
 {
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
-  performAptInstall php8.3-cli > /dev/null 2>&1
+  performAptInstall php-cli > /dev/null 2>&1
 }
 
 function updateRelayServerWithScript()
@@ -69265,6 +69268,7 @@ function installEasyAppointments()
   docker exec mailu-admin flask mailu alias-delete $EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS
   sleep 5
   addUserMailu alias $EASYAPPOINTMENTS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  generateCert easyappointments-app easyappointments-app
   outputConfigEasyAppointments
   set +e
   installStack easyappointments easyappointments-db "Ready for start up" $HOME/easyappointments.env 3
@@ -69370,12 +69374,17 @@ services:
       - dock-proxy-net
       - dock-ext-net
       - dock-internalmail-net
+      - dock-ldap-net
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
       - /etc/ssl/certs:/etc/ssl/certs:ro
       - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
       - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/easyappointments-app.crt:/ldapcerts/easyappointments-app.crt
+      - \${PORTAINER_HSHQ_SSL_DIR}/easyappointments-app.key:/ldapcerts/easyappointments-app.key
+      - \${PORTAINER_HSHQ_STACKS_DIR}/easyappointments/ldap.conf:/etc/ldap/ldap.conf:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/easyappointments/constants.php:/var/www/html/application/config/constants.php:ro
 
 volumes:
   v-easyappointments-db:
@@ -69397,6 +69406,9 @@ networks:
     external: true
   dock-dbs-net:
     name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
     external: true
   int-easyappointments-net:
     driver: bridge
@@ -69779,14 +69791,14 @@ INSERT INTO \`ea_settings\` VALUES
 (60,NULL,NULL,'matomo_analytics_site_id','1'),
 (61,NULL,NULL,'default_language','english'),
 (62,NULL,NULL,'default_timezone','UTC'),
-(63,'$dtnow','$dtnow','ldap_is_active','0'),
-(64,'$dtnow','$dtnow','ldap_host',''),
-(65,'$dtnow','$dtnow','ldap_port',''),
-(66,'$dtnow','$dtnow','ldap_user_dn',''),
-(67,'$dtnow','$dtnow','ldap_password',''),
-(68,'$dtnow','$dtnow','ldap_base_dn',''),
-(69,'$dtnow','$dtnow','ldap_filter','(&(objectClass=*)(|(cn={{KEYWORD}})(sn={{KEYWORD}})(mail={{KEYWORD}})(givenName={{KEYWORD}})(uid={{KEYWORD}})))'),
-(70,'$dtnow','$dtnow','ldap_field_mapping','{\n    \"first_name\": \"givenname\",\n    \"last_name\": \"sn\",\n    \"email\": \"mail\",\n    \"phone_number\": \"telephonenumber\",\n    \"username\": \"cn\"\n}'),
+(63,'$dtnow','$dtnow','ldap_is_active','1'),
+(64,'$dtnow','$dtnow','ldap_host','ldaps://ldapserver'),
+(65,'$dtnow','$dtnow','ldap_port','389'),
+(66,'$dtnow','$dtnow','ldap_user_dn','$LDAP_READONLY_USER_BIND_DN'),
+(67,'$dtnow','$dtnow','ldap_password','$LDAP_READONLY_USER_PASSWORD'),
+(68,'$dtnow','$dtnow','ldap_base_dn','$LDAP_BASE_DN'),
+(69,'$dtnow','$dtnow','ldap_filter','(&(objectClass=person)(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))'),
+(70,'$dtnow','$dtnow','ldap_field_mapping','{\n    \"first_name\": \"givenname\",\n    \"last_name\": \"sn\",\n    \"email\": \"mail\",\n    \"username\": \"uid\"\n}'),
 (71,'$dtnow','$dtnow','company_name','$HOMESERVER_NAME'),
 (72,'$dtnow','$dtnow','company_email','$EMAIL_ADMIN_EMAIL_ADDRESS'),
 (73,'$dtnow','$dtnow','company_link','www.$HOMESERVER_DOMAIN');
@@ -69915,6 +69927,173 @@ CREATE TABLE \`ea_webhooks\` (
 
 EOFSQ
   rm -f $HOME/pwhashgen.php
+  cat <<EOFLD > $HSHQ_STACKS_DIR/easyappointments/ldap.conf
+TLS_CERT /ldapcerts/easyappointments-app.crt
+TLS_KEY /ldapcerts/easyappointments-app.key
+TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+TLS_REQCERT never
+TLS_REQSAN never
+EOFLD
+  cat <<EOFLD > $HSHQ_STACKS_DIR/easyappointments/constants.php
+<?php defined('BASEPATH') or exit('No direct script access allowed');
+
+/*
+|--------------------------------------------------------------------------
+| File and Directory Modes
+|--------------------------------------------------------------------------
+|
+| These prefs are used when checking and setting modes when working
+| with the file system.  The defaults are fine on servers with proper
+| security, but you may wish (or even need) to change the values in
+| certain environments (Apache running a separate process for each
+| user, PHP under CGI with Apache suEXEC, etc.).  Octal values should
+| always be used to set the mode correctly.
+|
+*/
+const FILE_READ_MODE = 0644;
+const FILE_WRITE_MODE = 0666;
+const DIR_READ_MODE = 0755;
+const DIR_WRITE_MODE = 0777;
+
+/*
+|--------------------------------------------------------------------------
+| File Stream Modes
+|--------------------------------------------------------------------------
+|
+| These modes are used when working with fopen()/popen()
+|
+*/
+
+const FOPEN_READ = 'rb';
+const FOPEN_READ_WRITE = 'r+b';
+const FOPEN_WRITE_CREATE_DESTRUCTIVE = 'wb'; // truncates existing file data, use with care
+const FOPEN_READ_WRITE_CREATE_DESTRUCTIVE = 'w+b'; // truncates existing file data, use with care
+const FOPEN_WRITE_CREATE = 'ab';
+const FOPEN_READ_WRITE_CREATE = 'a+b';
+const FOPEN_WRITE_CREATE_STRICT = 'xb';
+const FOPEN_READ_WRITE_CREATE_STRICT = 'x+b';
+
+/*
+|--------------------------------------------------------------------------
+| Application Data
+|--------------------------------------------------------------------------
+|
+| These constants are used globally from the application when handling data.
+|
+*/
+const DB_SLUG_CUSTOMER = 'customer';
+const DB_SLUG_PROVIDER = 'provider';
+const DB_SLUG_ADMIN = 'admin';
+const DB_SLUG_SECRETARY = 'secretary';
+
+const FILTER_TYPE_ALL = 'all';
+const FILTER_TYPE_PROVIDER = 'provider';
+const FILTER_TYPE_SERVICE = 'service';
+
+const AJAX_SUCCESS = 'SUCCESS';
+const AJAX_FAILURE = 'FAILURE';
+
+const SETTINGS_SYSTEM = 'SETTINGS_SYSTEM';
+const SETTINGS_USER = 'SETTINGS_USER';
+
+const PRIV_VIEW = 1;
+const PRIV_ADD = 2;
+const PRIV_EDIT = 4;
+const PRIV_DELETE = 8;
+
+const PRIV_APPOINTMENTS = 'appointments';
+const PRIV_CUSTOMERS = 'customers';
+const PRIV_SERVICES = 'services';
+const PRIV_USERS = 'users';
+const PRIV_SYSTEM_SETTINGS = 'system_settings';
+const PRIV_USER_SETTINGS = 'user_settings';
+const PRIV_WEBHOOKS = 'webhooks';
+const PRIV_BLOCKED_PERIODS = 'blocked_periods';
+
+const DATE_FORMAT_DMY = 'DMY';
+const DATE_FORMAT_MDY = 'MDY';
+const DATE_FORMAT_YMD = 'YMD';
+
+const TIME_FORMAT_REGULAR = 'regular';
+const TIME_FORMAT_MILITARY = 'military';
+
+const MIN_PASSWORD_LENGTH = 7;
+const MAX_PASSWORD_LENGTH = 100;
+const ANY_PROVIDER = 'any-provider';
+
+const CALENDAR_VIEW_DEFAULT = 'default';
+const CALENDAR_VIEW_TABLE = 'table';
+
+const AVAILABILITIES_TYPE_FLEXIBLE = 'flexible';
+const AVAILABILITIES_TYPE_FIXED = 'fixed';
+
+const EVENT_MINIMUM_DURATION = 5; // Minutes
+
+const DEFAULT_COMPANY_COLOR = '#ffffff';
+
+const LDAP_DEFAULT_FILTER = '(&(objectClass=*)(|(cn={{KEYWORD}})(sn={{KEYWORD}})(mail={{KEYWORD}})(givenName={{KEYWORD}})(uid={{KEYWORD}})))';
+
+const LDAP_WHITELISTED_ATTRIBUTES = [
+    'givenname',
+    'cn',
+    'dn',
+    'sn',
+    'mail',
+    'telephonenumber',
+    'description',
+    'member',
+    'objectclass',
+    'objectcategory',
+    'instancetype',
+    'whencreated',
+    'name',
+    'samaccountname',
+    'samaccounttype',
+    'objectcategory',
+    'memberof',
+    'distinguishedname',
+    'uid',
+];
+
+const LDAP_DEFAULT_FIELD_MAPPING = [
+    'first_name' => 'givenname',
+    'last_name' => 'sn',
+    'email' => 'mail',
+    'phone_number' => 'telephonenumber',
+    'username' => 'cn',
+];
+
+/*
+|--------------------------------------------------------------------------
+| Webhook Actions
+|--------------------------------------------------------------------------
+|
+| External application endpoints can subscribe to these webhook actions.  
+|
+*/
+
+const WEBHOOK_APPOINTMENT_SAVE = 'appointment_save';
+const WEBHOOK_APPOINTMENT_DELETE = 'appointment_delete';
+const WEBHOOK_UNAVAILABILITY_SAVE = 'unavailability_save';
+const WEBHOOK_UNAVAILABILITY_DELETE = 'unavailability_delete';
+const WEBHOOK_CUSTOMER_SAVE = 'customer_save';
+const WEBHOOK_CUSTOMER_DELETE = 'customer_delete';
+const WEBHOOK_SERVICE_SAVE = 'service_save';
+const WEBHOOK_SERVICE_DELETE = 'service_delete';
+const WEBHOOK_SERVICE_CATEGORY_SAVE = 'service_category_save';
+const WEBHOOK_SERVICE_CATEGORY_DELETE = 'service_category_delete';
+const WEBHOOK_PROVIDER_SAVE = 'provider_save';
+const WEBHOOK_PROVIDER_DELETE = 'provider_delete';
+const WEBHOOK_SECRETARY_SAVE = 'secretary_save';
+const WEBHOOK_SECRETARY_DELETE = 'secretary_delete';
+const WEBHOOK_ADMIN_SAVE = 'admin_save';
+const WEBHOOK_ADMIN_DELETE = 'admin_delete';
+const WEBHOOK_BLOCKED_PERIOD_SAVE = 'blocked_period_save';
+const WEBHOOK_BLOCKED_PERIOD_DELETE = 'blocked_period_delete';
+
+/* End of file constants.php */
+/* Location: ./application/config/constants.php */
+EOFLD
 }
 
 function performUpdateEasyAppointments()
@@ -70575,6 +70754,7 @@ function main()
     stty echo
     exit 1
   fi
+  sudo -k
   echo "\$USER_SUDO_PW" | sudo -S -v -p "" > /dev/null 2>&1
   if [ \$? -ne 0 ]; then
     echo "bad"
