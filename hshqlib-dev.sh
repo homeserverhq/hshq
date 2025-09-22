@@ -69790,7 +69790,7 @@ INSERT INTO \`ea_settings\` VALUES
 (59,NULL,NULL,'label_custom_field_5',''),
 (60,NULL,NULL,'matomo_analytics_site_id','1'),
 (61,NULL,NULL,'default_language','english'),
-(62,NULL,NULL,'default_timezone','UTC'),
+(62,NULL,NULL,'default_timezone','$TZ'),
 (63,'$dtnow','$dtnow','ldap_is_active','1'),
 (64,'$dtnow','$dtnow','ldap_host','ldaps://ldapserver'),
 (65,'$dtnow','$dtnow','ldap_port','389'),
@@ -69867,7 +69867,7 @@ CREATE TABLE \`ea_users\` (
   \`state\` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   \`zip_code\` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   \`notes\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  \`timezone\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT 'UTC',
+  \`timezone\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT '$TZ',
   \`language\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT 'english',
   \`custom_field_1\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   \`custom_field_2\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -69931,8 +69931,8 @@ EOFSQ
 TLS_CERT /ldapcerts/easyappointments-app.crt
 TLS_KEY /ldapcerts/easyappointments-app.key
 TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
-TLS_REQCERT never
-TLS_REQSAN never
+TLS_REQCERT always
+TLS_REQSAN always
 EOFLD
   cat <<EOFLD > $HSHQ_STACKS_DIR/easyappointments/constants.php
 <?php defined('BASEPATH') or exit('No direct script access allowed');
@@ -79880,7 +79880,7 @@ return [
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => '$TZ',
 
     /*
     |--------------------------------------------------------------------------
