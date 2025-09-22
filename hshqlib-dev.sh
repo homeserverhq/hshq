@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=203
+HSHQ_LIB_SCRIPT_VERSION=204
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -200,7 +200,7 @@ function init()
   SS_UPDATING=updating
   SS_REMOVING=removing
   SS_RUNNING=running
-  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg"
+  UTILS_LIST="wget|wget whiptail|whiptail awk|gawk screen|screen pwgen|pwgen argon2|argon2 dig|dnsutils htpasswd|apache2-utils ssh|ssh sshd|openssh-server sshpass|sshpass wg|wireguard-tools qrencode|qrencode openssl|openssl faketime|faketime bc|bc sipcalc|sipcalc jq|jq git|git http|httpie sqlite3|sqlite3 curl|curl sha1sum|coreutils lsb_release|lsb-release nano|nano cron|cron ping|iputils-ping route|net-tools grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher certutil|libnss3-tools update-ca-certificates|ca-certificates gpg|gnupg python3|python3 pip3|python3-pip unzip|unzip hwinfo|hwinfo netplan|netplan.io netplan|openvswitch-switch uuidgen|uuid-runtime aa-enforce|apparmor-utils logrotate|logrotate yq|yq iwlist|wireless-tools sudo|sudo gcc|build-essential gio|libglib2.0-bin ffmpeg|ffmpeg php|php8.3-cli"
   DESKTOP_APT_LIST=""
   APT_REMOVE_LIST="vim vim-tiny vim-common xxd needrestart bsd-mailx"
   RELAYSERVER_UTILS_LIST="curl|curl awk|gawk whiptail|whiptail nano|nano screen|screen htpasswd|apache2-utils pwgen|pwgen git|git http|httpie jq|jq sqlite3|sqlite3 wg|wireguard-tools qrencode|qrencode route|net-tools sipcalc|sipcalc mailx|mailutils ipset|ipset uuidgen|uuid-runtime grepcidr|grepcidr networkd-dispatcher|networkd-dispatcher aa-enforce|apparmor-utils logrotate|logrotate"
@@ -3481,6 +3481,10 @@ function initConfig()
     loadConfigVars true
   fi
   set +e
+  replaceType="HomeServer"
+  if [ "$HSHQ_APP_TYPE" = "business" ]; then
+    replaceType="company"
+  fi
   if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
     showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
     mbres=$?
@@ -3617,7 +3621,7 @@ function initConfig()
   fi
   while [ -z "$HOMESERVER_DOMAIN" ]
   do
-	HOMESERVER_DOMAIN=$(promptUserInputMenu "" "Enter Domain" "Enter your domain name, i.e. example.com. You must own this domain to route external emails and/or post services on the public internet: ")
+	HOMESERVER_DOMAIN=$(promptUserInputMenu "" "Enter Domain" "Enter your $replaceType domain name, i.e. example.com. You must own this domain to route external emails and/or post services on the public internet: ")
 	if [ -z "$HOMESERVER_DOMAIN" ]; then
 	  showMessageBox "Domain Empty" "The domain cannot be empty"
     elif [ $(checkValidString "$HOMESERVER_DOMAIN" ".-") = "false" ]; then
@@ -3675,11 +3679,11 @@ function initConfig()
   done
   while [ -z "$HOMESERVER_NAME" ]
   do
-	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter HomeServer Name" "Enter your HomeServer name with desired formatting, i.e. capitalization, spaces, etc. No special characters except for commas, hyphens, or periods. This will appear in window titles, certificates, among other things: ")
+	HOMESERVER_NAME=$(promptUserInputMenu "" "Enter Name" "Enter your $replaceType name with desired formatting, i.e. capitalization, spaces, etc. No special characters except for commas, hyphens, or periods. This will appear in window titles, certificates, among other things: ")
 	if [ -z "$HOMESERVER_NAME" ]; then
-	  showMessageBox "HomeServer Name Empty" "The name cannot be empty"
+	  showMessageBox "Name Empty" "The name cannot be empty"
     elif [ $(checkValidStringUpperLowerNumbers "$HOMESERVER_NAME" "[:space:],.-") = "false" ]; then
-      showMessageBox "Invalid Character(s)" "The HomeServer name contains invalid character(s)."
+      showMessageBox "Invalid Character(s)" "The name contains invalid character(s)."
       HOMESERVER_NAME=""
 	else
 	  updatePlaintextRootConfigVar HOMESERVER_NAME "$HOMESERVER_NAME"
@@ -3687,9 +3691,9 @@ function initConfig()
   done
   while [ -z "$HOMESERVER_ABBREV" ]
   do
-    HOMESERVER_ABBREV=$(promptUserInputMenu "" "Enter HomeServer Abbrev" "Enter an abbreviation for your HomeServer, 3 to 10 lowercase alpha-numeric characters. This will be used as a default prefix for admin usernames as well as some other uses: ")
+    HOMESERVER_ABBREV=$(promptUserInputMenu "" "Enter Abbrev" "Enter an abbreviation for your $replaceType, 3 to 10 lowercase alpha-numeric characters. This will be used as a default prefix for admin usernames as well as some other uses: ")
     if [ -z "$HOMESERVER_ABBREV" ]; then
-      showMessageBox "HomeServer Abbrev Empty" "The abbreviation cannot be empty."
+      showMessageBox "Abbrev Empty" "The abbreviation cannot be empty."
     elif [ $(checkValidString "$HOMESERVER_ABBREV") = "false" ]; then
       showMessageBox "Invalid Character(s)" "The abbreviation contains invalid character(s). It must consist of a-z (lowercase) and/or 0-9"
       HOMESERVER_ABBREV=""
@@ -3741,7 +3745,7 @@ function initConfig()
   updatePlaintextRootConfigVar CURRENT_SSH_PORT $CURRENT_SSH_PORT
   while [ -z "$SSH_PORT" ]
   do
-    SSH_PORT=$(promptUserInputMenu $((9000 + $RANDOM % 999)) "Enter HomeServer SSH Port" "It is highly advised to change your default SSH port (22), since bots will constantly probe port 22. A random port between 9000-9999 has been generated for you. Ensure you remember this port in order to log back in.")
+    SSH_PORT=$(promptUserInputMenu $((9000 + $RANDOM % 999)) "Enter SSH Port" "It is highly advised to change your default SSH port (22), since bots will constantly probe port 22. A random port between 9000-9999 has been generated for you. Ensure you remember this port in order to log back in.")
     if [ -z "$SSH_PORT" ]; then
       showMessageBox "SSH Port Empty" "The SSH port cannot be empty"
     elif [ "$(checkValidNumber $SSH_PORT)" = "false" ]; then
@@ -3807,7 +3811,7 @@ function initConfig()
   # Do the boring things that must be done
   while [ -z "$LDAP_PRIMARY_USER_USERNAME" ]
   do
-    LDAP_PRIMARY_USER_USERNAME=$(promptUserInputMenu $USERNAME "Enter First User" "Enter the username for your first HomeServer user account: ")
+    LDAP_PRIMARY_USER_USERNAME=$(promptUserInputMenu $USERNAME "Enter First User" "Enter the username for your first LDAP/email account: ")
     if [ -z "$LDAP_PRIMARY_USER_USERNAME" ]; then
       showMessageBox "Username Empty" "The username cannot be empty"
     elif [ $(checkValidString "$LDAP_PRIMARY_USER_USERNAME") = "false" ]; then
@@ -3825,7 +3829,7 @@ function initConfig()
   fi
   while [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]
   do
-    LDAP_PRIMARY_USER_FULLNAME=$(promptUserInputMenu "$curFullName" "Enter Full Name" "Enter the full name for your first HomeServer user account: ")
+    LDAP_PRIMARY_USER_FULLNAME=$(promptUserInputMenu "$curFullName" "Enter Full Name" "Enter the full name for your first LDAP/email user account: ")
     if [ -z "$LDAP_PRIMARY_USER_FULLNAME" ]; then
       showMessageBox "Name Empty" "The name cannot be empty"
     elif [ $(checkValidStringUpperLowerNumbers "$LDAP_PRIMARY_USER_FULLNAME" "[:space:].,-") = "false" ]; then
@@ -3841,7 +3845,7 @@ function initConfig()
     set +e
     while [ -z "$tmp_pw1" ] || ! [ "$tmp_pw1" = "$tmp_pw2" ]
     do
-      tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password for your HomeServer user ($LDAP_PRIMARY_USER_USERNAME) account: ")
+      tmp_pw1=$(promptPasswordMenu "Create Password" "Create a password for your LDAP/email user ($LDAP_PRIMARY_USER_USERNAME) account: ")
       if [ $? -ne 0 ]; then exit; fi
       if [ -z "$tmp_pw1" ]; then
         showMessageBox "Password Empty" "The password cannot be empty, please try again."
@@ -20888,6 +20892,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=202
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 204 ]; then
+    echo "Updating to Version 204..."
+    version204Update
+    HSHQ_VERSION=204
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23597,6 +23607,12 @@ function version202Update()
 {
   sudo sed -i "/HOMESERVER_ABBREV=.*/a HSHQ_APP_TYPE=home" $HSHQ_PLAINTEXT_ROOT_CONFIG
   HSHQ_APP_TYPE=home
+}
+
+function version204Update()
+{
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  performAptInstall php8.3-cli > /dev/null 2>&1
 }
 
 function updateRelayServerWithScript()
@@ -29044,6 +29060,7 @@ function loadPinnedDockerImages()
   IMG_BUDIBASE_PROXY=mirror.gcr.io/budibase/proxy:3.15.0
   IMG_BUDIBASE_COUCHDB=mirror.gcr.io/budibase/couchdb:v3.3.3-sqs-v2.1.1
   IMG_CADDY=mirror.gcr.io/caddy:2.10.0
+  IMG_CALCOM=mirror.gcr.io/calcom/cal.com:v5.7.1
   IMG_CALIBRE_SERVER=mirror.gcr.io/linuxserver/calibre:8.8.0
   IMG_CALIBRE_WEB=mirror.gcr.io/linuxserver/calibre-web:0.6.24-ls342
   IMG_CHANGEDETECTION_APP=ghcr.io/dgtlmoon/changedetection.io:0.50.8
@@ -29060,10 +29077,11 @@ function loadPinnedDockerImages()
   IMG_DRAWIO_EXPORT=mirror.gcr.io/jgraph/export-server
   IMG_DRAWIO_WEB=mirror.gcr.io/jgraph/drawio:28.0.7
   IMG_DUPLICATI=mirror.gcr.io/linuxserver/duplicati:v2.1.0.5_stable_2025-03-04-ls256
+  IMG_EASYAPPOINTMENTS_APP=mirror.gcr.io/alextselegidis/easyappointments:1.5.2
+  IMG_ESPOCRM_APP=mirror.gcr.io/espocrm/espocrm:9.1.8-apache
   IMG_EXCALIDRAW_SERVER=mirror.gcr.io/excalidraw/excalidraw-room
   IMG_EXCALIDRAW_STORAGE=mirror.gcr.io/kiliandeca/excalidraw-storage-backend
   IMG_EXCALIDRAW_WEB=mirror.gcr.io/kiliandeca/excalidraw
-  IMG_ESPOCRM_APP=mirror.gcr.io/espocrm/espocrm:9.1.8-apache
   IMG_FILEBROWSER=mirror.gcr.io/filebrowser/filebrowser:v2.42.3
   IMG_FILEDROP=filedrop/filedrop:1
   IMG_FIREFLY_APP=mirror.gcr.io/fireflyiii/core:version-6.2.21
@@ -29160,6 +29178,7 @@ function loadPinnedDockerImages()
   IMG_PROMETHEUS=mirror.gcr.io/prom/prometheus:v3.5.0
   IMG_QBITTORRENT=linuxserver/qbittorrent:5.1.2
   IMG_RABBITMQ=mirror.gcr.io/rabbitmq:4.1.4
+  IMG_RALLLY_APP=mirror.gcr.io/lukevella/rallly:4.4.1
   IMG_REMOTELY=immybot/remotely:1037
   IMG_REVOLT_API=ghcr.io/revoltchat/server:20250807-1
   IMG_REVOLT_EVENTS=ghcr.io/revoltchat/bonfire:20250807-1
@@ -29384,6 +29403,12 @@ function getScriptStackVersion()
       echo "v1" ;;
     odoo)
       echo "v1" ;;
+    calcom)
+      echo "v1" ;;
+    rallly)
+      echo "v1" ;;
+    easyappointments)
+      echo "v1" ;;
     dbgate)
       echo "v1" ;;
     sqlpad)
@@ -29569,6 +29594,9 @@ function pullDockerImages()
   pullImage $IMG_DBGATE_APP
   pullImage $IMG_TWENTY_APP
   pullImage $IMG_ODOO_APP
+  pullImage $IMG_CALCOM
+  pullImage $IMG_RALLLY_APP
+  pullImage $IMG_EASYAPPOINTMENTS_APP
 }
 
 function pullImagesUpdatePB()
@@ -30579,6 +30607,39 @@ ODOO_DATABASE_NAME=
 ODOO_DATABASE_USER=
 ODOO_DATABASE_USER_PASSWORD=
 # Odoo (Service Details) END
+
+# Calcom (Service Details) BEGIN
+CALCOM_INIT_ENV=false
+CALCOM_ADMIN_USERNAME=
+CALCOM_ADMIN_EMAIL_ADDRESS=
+CALCOM_ADMIN_PASSWORD=
+CALCOM_DATABASE_NAME=
+CALCOM_DATABASE_USER=
+CALCOM_DATABASE_USER_PASSWORD=
+# Calcom (Service Details) END
+
+# Rallly (Service Details) BEGIN
+RALLLY_INIT_ENV=false
+RALLLY_ADMIN_USERNAME=
+RALLLY_ADMIN_EMAIL_ADDRESS=
+RALLLY_ADMIN_PASSWORD=
+RALLLY_DATABASE_NAME=
+RALLLY_DATABASE_USER=
+RALLLY_DATABASE_USER_PASSWORD=
+RALLLY_MINIO_KEY=
+RALLLY_MINIO_SECRET=
+# Rallly (Service Details) END
+
+# EasyAppointments (Service Details) BEGIN
+EASYAPPOINTMENTS_INIT_ENV=true
+EASYAPPOINTMENTS_ADMIN_USERNAME=
+EASYAPPOINTMENTS_ADMIN_PASSWORD=
+EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS=
+EASYAPPOINTMENTS_DATABASE_NAME=
+EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD=
+EASYAPPOINTMENTS_DATABASE_USER=
+EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=
+# EasyAppointments (Service Details) END
 
 # Service Details END
 EOFCF
@@ -32319,6 +32380,90 @@ function initServicesCredentials()
     ODOO_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar ODOO_DATABASE_USER_PASSWORD $ODOO_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$CALCOM_ADMIN_USERNAME" ]; then
+    CALCOM_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_calcom"
+    updateConfigVar CALCOM_ADMIN_USERNAME $CALCOM_ADMIN_USERNAME
+  fi
+  if [ -z "$CALCOM_ADMIN_EMAIL_ADDRESS" ]; then
+    CALCOM_ADMIN_EMAIL_ADDRESS=$CALCOM_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar CALCOM_ADMIN_EMAIL_ADDRESS $CALCOM_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$CALCOM_ADMIN_PASSWORD" ]; then
+    CALCOM_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CALCOM_ADMIN_PASSWORD $CALCOM_ADMIN_PASSWORD
+  fi
+  if [ -z "$CALCOM_DATABASE_NAME" ]; then
+    CALCOM_DATABASE_NAME=calcomdb
+    updateConfigVar CALCOM_DATABASE_NAME $CALCOM_DATABASE_NAME
+  fi
+  if [ -z "$CALCOM_DATABASE_USER" ]; then
+    CALCOM_DATABASE_USER=calcom-user
+    updateConfigVar CALCOM_DATABASE_USER $CALCOM_DATABASE_USER
+  fi
+  if [ -z "$CALCOM_DATABASE_USER_PASSWORD" ]; then
+    CALCOM_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar CALCOM_DATABASE_USER_PASSWORD $CALCOM_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$RALLLY_ADMIN_USERNAME" ]; then
+    RALLLY_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rallly"
+    updateConfigVar RALLLY_ADMIN_USERNAME $RALLLY_ADMIN_USERNAME
+  fi
+  if [ -z "$RALLLY_ADMIN_EMAIL_ADDRESS" ]; then
+    RALLLY_ADMIN_EMAIL_ADDRESS=$RALLLY_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$RALLLY_ADMIN_PASSWORD" ]; then
+    RALLLY_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RALLLY_ADMIN_PASSWORD $RALLLY_ADMIN_PASSWORD
+  fi
+  if [ -z "$RALLLY_DATABASE_NAME" ]; then
+    RALLLY_DATABASE_NAME=ralllydb
+    updateConfigVar RALLLY_DATABASE_NAME $RALLLY_DATABASE_NAME
+  fi
+  if [ -z "$RALLLY_DATABASE_USER" ]; then
+    RALLLY_DATABASE_USER=rallly-user
+    updateConfigVar RALLLY_DATABASE_USER $RALLLY_DATABASE_USER
+  fi
+  if [ -z "$RALLLY_DATABASE_USER_PASSWORD" ]; then
+    RALLLY_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar RALLLY_DATABASE_USER_PASSWORD $RALLLY_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$RALLLY_MINIO_KEY" ]; then
+    RALLLY_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar RALLLY_MINIO_KEY $RALLLY_MINIO_KEY
+  fi
+  if [ -z "$RALLLY_MINIO_SECRET" ]; then
+    RALLLY_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar RALLLY_MINIO_SECRET $RALLLY_MINIO_SECRET
+  fi
+  if [ -z "$EASYAPPOINTMENTS_ADMIN_USERNAME" ]; then
+    EASYAPPOINTMENTS_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_easyappointments"
+    updateConfigVar EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_USERNAME
+  fi
+  if [ -z "$EASYAPPOINTMENTS_ADMIN_PASSWORD" ]; then
+    EASYAPPOINTMENTS_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar EASYAPPOINTMENTS_ADMIN_PASSWORD $EASYAPPOINTMENTS_ADMIN_PASSWORD
+  fi
+  if [ -z "$EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS" ]; then
+    EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS=$EASYAPPOINTMENTS_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS $EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$EASYAPPOINTMENTS_DATABASE_NAME" ]; then
+    EASYAPPOINTMENTS_DATABASE_NAME=easyappointmentsdb
+    updateConfigVar EASYAPPOINTMENTS_DATABASE_NAME $EASYAPPOINTMENTS_DATABASE_NAME
+  fi
+  if [ -z "$EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD" ]; then
+    EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD $EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$EASYAPPOINTMENTS_DATABASE_USER" ]; then
+    EASYAPPOINTMENTS_DATABASE_USER=easyappointments-user
+    updateConfigVar EASYAPPOINTMENTS_DATABASE_USER $EASYAPPOINTMENTS_DATABASE_USER
+  fi
+  if [ -z "$EASYAPPOINTMENTS_DATABASE_USER_PASSWORD" ]; then
+    EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar EASYAPPOINTMENTS_DATABASE_USER_PASSWORD $EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
+  fi
 
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -32538,6 +32683,8 @@ function initServiceVars()
   checkAddSvc "SVCD_BUDIBASE=budibase,budibase,other,user,Budibase,budibase,hshq"
   checkAddSvc "SVCD_CADDY=caddy,caddy,primary,admin,Caddy,caddy,hshq"
   checkAddSvc "SVCD_CADDYDNS=caddy,caddy-dns,primary,admin,CaddyDNS,caddy-dns,hshq"
+  checkAddSvc "SVCD_CALCOM_APP=calcom,calcom,primary,user,Calcom,calcom,hshq"
+  checkAddSvc "SVCD_CALCOM_STUDIO=calcom,calcom-studio,primary,admin,Calcom Studio,calcom-studio,hshq"
   checkAddSvc "SVCD_CALIBRE_SERVER=calibre,calibre-server,primary,admin,Calibre-Server,calibre-server,hshq"
   checkAddSvc "SVCD_CALIBRE_WEB=calibre,calibre-web,other,user,Calibre-Web,calibre-web,le"
   checkAddSvc "SVCD_CHANGEDETECTION=changedetection,changedetection,primary,user,Change Detection,changedetection,hshq"
@@ -32551,6 +32698,7 @@ function initServiceVars()
   checkAddSvc "SVCD_DOZZLE=dozzle,dozzle,primary,admin,Dozzle,dozzle,hshq"
   checkAddSvc "SVCD_DRAWIO_WEB=drawio,drawio,primary,user,Draw.io,drawio,hshq"
   checkAddSvc "SVCD_DUPLICATI=duplicati,duplicati,home,admin,Duplicati,duplicati,hshq"
+  checkAddSvc "SVCD_EASYAPPOINTMENTS=easyappointments,easyappointments,primary,user,EasyAppointments,easyappointments,hshq"
   checkAddSvc "SVCD_ESPOCRM=espocrm,espocrm,primary,user,EspoCRM,espocrm,hshq"
   checkAddSvc "SVCD_EXCALIDRAW_WEB=excalidraw,excalidraw,primary,user,Excalidraw,excalidraw,hshq"
   checkAddSvc "SVCD_EXCALIDRAW_SERVER=excalidraw,excalidraw-server,primary,user,Excalidraw Server,excalidraw-server,hshq"
@@ -32625,6 +32773,7 @@ function initServiceVars()
   checkAddSvc "SVCD_POSTFIX=mail-relay,mail,primary,admin,Mail,mail,hshq"
   checkAddSvc "SVCD_PROMETHEUS=sysutils,prometheus,primary,admin,Prometheus,prometheus,hshq"
   checkAddSvc "SVCD_QBITTORRENT=qbittorrent,qbittorrent,primary,admin,qBittorrent,qbittorrent,hshq"
+  checkAddSvc "SVCD_RALLLY=rallly,rallly,primary,user,Rallly,rallly,hshq"
   checkAddSvc "SVCD_REMOTELY=remotely,remotely,primary,admin,Remotely,remotely,hshq"
   checkAddSvc "SVCD_REVOLT=revolt,revolt,other,user,Revolt,revolt,hshq"
   checkAddSvc "SVCD_RSPAMD=mail-relay,rspamd,primary,admin,Rspamd,rspamd,hshq"
@@ -32842,6 +32991,12 @@ function installStackByName()
       installTwenty $is_integrate ;;
     odoo)
       installOdoo $is_integrate ;;
+    calcom)
+      installCalcom $is_integrate ;;
+    rallly)
+      installRallly $is_integrate ;;
+    easyappointments)
+      installEasyAppointments $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -33043,6 +33198,12 @@ function performUpdateStackByName()
       performUpdateTwenty ;;
     odoo)
       performUpdateOdoo ;;
+    calcom)
+      performUpdateCalcom ;;
+    rallly)
+      performUpdateRallly ;;
+    easyappointments)
+      performUpdateEasyAppointments ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -33077,9 +33238,11 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BUDIBASE.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CALCOM_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ESPOCRM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EXCALIDRAW_SERVER.$HOMESERVER_DOMAIN\n"
@@ -33123,6 +33286,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIXELFED.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_RALLLY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REMOTELY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_REVOLT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SHLINK_APP.$HOMESERVER_DOMAIN\n"
@@ -33172,6 +33336,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_ADGUARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ADMINER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_CALCOM_STUDIO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_SERVER.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - ${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CLOUDBEAVER.$HOMESERVER_DOMAIN\n"
@@ -33311,6 +33476,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ODOO}-Admin" https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $ODOO_ADMIN_USERNAME $ODOO_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALCOM}-Admin" https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $CALCOM_ADMIN_EMAIL_ADDRESS $CALCOM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RALLLY}-Admin" https://$SUB_RALLLY.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_EASYAPPOINTMENTS}-Admin" https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login $HOMESERVER_ABBREV $EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33439,6 +33607,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ODOO}-Admin" https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $ODOO_ADMIN_USERNAME $ODOO_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CALCOM}-Admin" https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $CALCOM_ADMIN_EMAIL_ADDRESS $CALCOM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RALLLY}-Admin" https://$SUB_RALLLY.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_EASYAPPOINTMENTS}-Admin" https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login $HOMESERVER_ABBREV $EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33829,6 +34000,18 @@ function getHeimdallOrderFromSub()
     "$SUB_ODOO")
       order_num=109
       ;;
+    "$SUB_CALCOM_APP")
+      order_num=110
+      ;;
+    "$SUB_CALCOM_STUDIO")
+      order_num=110
+      ;;
+    "$SUB_RALLLY")
+      order_num=111
+      ;;
+    "$SUB_EASYAPPOINTMENTS")
+      order_num=112
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -33876,18 +34059,18 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,dbgate,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,dbgate,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly
 }
 
 function getScriptImageByContainerName()
@@ -34685,6 +34868,33 @@ function getScriptImageByContainerName()
     "odoo-app")
       container_image=$IMG_ODOO_APP
       ;;
+    "calcom-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "calcom-app")
+      container_image=$IMG_CALCOM
+      ;;
+    "calcom-studio")
+      container_image=$IMG_CALCOM
+      ;;
+    "rallly-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "rallly-app")
+      container_image=$IMG_RALLLY_APP
+      ;;
+    "rallly-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
+    "rallly-createbuckets")
+      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      ;;
+    "easyappointments-db")
+      container_image=mirror.gcr.io/mariadb:10.7.3
+      ;;
+    "easyappointments-app")
+      container_image=$IMG_EASYAPPOINTMENTS_APP
+      ;;
     *)
       ;;
   esac
@@ -34753,6 +34963,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "DbGate" "DBGATE_INIT_ENV=false,DBGATE_ADMIN_USERNAME=,DBGATE_ADMIN_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Twenty" "TWENTY_INIT_ENV=false,TWENTY_ADMIN_USERNAME=,TWENTY_ADMIN_EMAIL_ADDRESS=,TWENTY_ADMIN_PASSWORD=,TWENTY_DATABASE_NAME=,TWENTY_DATABASE_USER=,TWENTY_DATABASE_USER_PASSWORD=,TWENTY_REDIS_PASSWORD=,TWENTY_MINIO_KEY=,TWENTY_MINIO_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Odoo" "ODOO_INIT_ENV=false,ODOO_ADMIN_USERNAME=,ODOO_ADMIN_EMAIL_ADDRESS=,ODOO_ADMIN_PASSWORD=,ODOO_DATABASE_NAME=,ODOO_DATABASE_USER=,ODOO_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Calcom" "CALCOM_INIT_ENV=false,CALCOM_ADMIN_USERNAME=,CALCOM_ADMIN_EMAIL_ADDRESS=,CALCOM_ADMIN_PASSWORD=,CALCOM_DATABASE_NAME=,CALCOM_DATABASE_USER=,CALCOM_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Rallly" "RALLLY_INIT_ENV=false,RALLLY_ADMIN_USERNAME=,RALLLY_ADMIN_EMAIL_ADDRESS=,RALLLY_ADMIN_PASSWORD=,RALLLY_DATABASE_NAME=,RALLLY_DATABASE_USER=,RALLLY_DATABASE_USER_PASSWORD=,RALLLY_MINIO_KEY=,RALLLY_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "EasyAppointments" "EASYAPPOINTMENTS_INIT_ENV=false,EASYAPPOINTMENTS_ADMIN_USERNAME=,EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS=,EASYAPPOINTMENTS_ADMIN_PASSWORD=,EASYAPPOINTMENTS_DATABASE_NAME=,EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD=,EASYAPPOINTMENTS_DATABASE_USER=,EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -60678,7 +60891,9 @@ EOFOT
 "Adminer" mysql adminer-db $ADMINER_DATABASE_NAME $ADMINER_DATABASE_USER $ADMINER_DATABASE_USER_PASSWORD
 "MindsDB" postgres aistack-mindsdb-db $AISTACK_MINDSDB_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Langfuse" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+"Calcom" postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_USER $CALCOM_DATABASE_USER_PASSWORD
 "Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
+"EasyAppointments" mysql easyappointments-db $EASYAPPOINTMENTS_DATABASE_NAME $EASYAPPOINTMENTS_DATABASE_USER $EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
 "EspoCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
 "Firefly" postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD
 "FrappeHR" mysql frappe-hr-db $FRAPPE_HR_DATABASE_NAME $FRAPPE_HR_DATABASE_USER $FRAPPE_HR_DATABASE_USER_PASSWORD
@@ -60711,6 +60926,7 @@ EOFOT
 "PhotoPrism" mysql photoprism-db $PHOTOPRISM_DATABASE_NAME $PHOTOPRISM_DATABASE_USER $PHOTOPRISM_DATABASE_USER_PASSWORD
 "Piped" postgres piped-db $PIPED_DATABASE_NAME $PIPED_DATABASE_USER $PIPED_DATABASE_USER_PASSWORD
 "Pixelfed" mysql pixelfed-db $PIXELFED_DATABASE_NAME $PIXELFED_DATABASE_USER $PIXELFED_DATABASE_USER_PASSWORD
+"Rallly" postgres rallly-db $RALLLY_DATABASE_NAME $RALLLY_DATABASE_USER $RALLLY_DATABASE_USER_PASSWORD
 "Shlink" postgres shlink-db $SHLINK_DATABASE_NAME $SHLINK_DATABASE_USER $SHLINK_DATABASE_USER_PASSWORD
 "StandardNotes" mysql standardnotes-db $STANDARDNOTES_DATABASE_NAME $STANDARDNOTES_DATABASE_USER $STANDARDNOTES_DATABASE_USER_PASSWORD
 "$FMLNAME_SPEEDTEST_TRACKER_LOCAL" postgres speedtest-tracker-local-db $SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER $SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
@@ -67865,495 +68081,6 @@ function performUpdateCloudBeaver()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
-# DbGate
-function installDbGate()
-{
-  set +e
-  is_integrate_hshq=$1
-  checkDeleteStackAndDirectory dbgate "DbGate"
-  cdRes=$?
-  if [ $cdRes -ne 0 ]; then
-    return 1
-  fi
-  pullImage $(getScriptImageByContainerName dbgate-app)
-  if [ $? -ne 0 ]; then
-    return 1
-  fi
-  set -e
-  mkdir $HSHQ_STACKS_DIR/dbgate
-  mkdir $HSHQ_STACKS_DIR/dbgate/data
-  initServicesCredentials
-  set +e
-  outputConfigDbGate
-  installStack dbgate dbgate-app "" $HOME/dbgate.env
-  retVal=$?
-  if [ $retVal -ne 0 ]; then
-    return $retVal
-  fi
-  if ! [ "$DBGATE_INIT_ENV" = "true" ]; then
-    sendEmail -s "DbGate Admin Login Info" -b "DbGate Admin Username: $DBGATE_ADMIN_USERNAME\nDbGate Admin Password: $DBGATE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
-    DBGATE_INIT_ENV=true
-    updateConfigVar DBGATE_INIT_ENV $DBGATE_INIT_ENV
-  fi
-  sleep 3
-  set -e
-  inner_block=""
-  inner_block=$inner_block">>https://$SUB_DBGATE.$HOMESERVER_DOMAIN {\n"
-  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
-  inner_block=$inner_block">>>>handle @subnet {\n"
-  inner_block=$inner_block">>>>>>reverse_proxy http://dbgate-app:3000 {\n"
-  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
-  inner_block=$inner_block">>>>>>}\n"
-  inner_block=$inner_block">>>>}\n"
-  inner_block=$inner_block">>>>respond 404\n"
-  inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_DBGATE $MANAGETLS_DBGATE "$is_integrate_hshq" $NETDEFAULT_DBGATE "$inner_block"
-  insertSubAuthelia $SUB_DBGATE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
-
-  if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll dbgate "$FMLNAME_DBGATE" $USERTYPE_DBGATE "https://$SUB_DBGATE.$HOMESERVER_DOMAIN" "dbgate.png" "$(getHeimdallOrderFromSub $SUB_DBGATE $USERTYPE_DBGATE)"
-    restartAllCaddyContainers
-  fi
-}
-
-function outputConfigDbGate()
-{
-  cat <<EOFMT > $HOME/dbgate-compose.yml
-$STACK_VERSION_PREFIX dbgate $(getScriptStackVersion dbgate)
-
-services:
-  dbgate-app:
-    image: $(getScriptImageByContainerName dbgate-app)
-    container_name: dbgate-app
-    hostname: dbgate-app
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - dock-proxy-net
-      - dock-dbs-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - v-dbgate-db:/root/.dbgate
-
-volumes:
-  v-dbgate-db:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: \${PORTAINER_HSHQ_STACKS_DIR}/dbgate/data
-
-networks:
-  dock-proxy-net:
-    name: dock-proxy
-    external: true
-  dock-dbs-net:
-    name: dock-dbs
-    external: true
-
-EOFMT
-
-  cat <<EOFMT > $HOME/dbgate.env
-TZ=\${PORTAINER_TZ}
-LOGIN=$DBGATE_ADMIN_USERNAME
-PASSWORD=$DBGATE_ADMIN_PASSWORD
-CONNECTIONS=Adminer,MindsDB,Langfuse,Budibase,Discourse,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,Kanboard,Keila,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MintHCM,Nextcloud,Ombi,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Vaultwarden,Wallabag,Wikijs,WordPress,Yamtrack
-LABEL_Adminer=Adminer
-ENGINE_Adminer=mysql@dbgate-plugin-mysql
-SERVER_Adminer=adminer-db
-DATABASE_Adminer=$ADMINER_DATABASE_NAME
-USER_Adminer=$ADMINER_DATABASE_USER
-PASSWORD_Adminer=$ADMINER_DATABASE_USER_PASSWORD
-PORT_Adminer=3306
-LABEL_MindsDB=MindsDB
-ENGINE_MindsDB=postgres@dbgate-plugin-postgres
-SERVER_MindsDB=aistack-mindsdb-db
-DATABASE_MindsDB=$AISTACK_MINDSDB_DATABASE_NAME
-USER_MindsDB=$AISTACK_MINDSDB_DATABASE_USER
-PASSWORD_MindsDB=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-PORT_MindsDB=5432
-LABEL_Langfuse=Langfuse
-ENGINE_Langfuse=postgres@dbgate-plugin-postgres
-SERVER_Langfuse=aistack-mindsdb-db
-DATABASE_Langfuse=$AISTACK_LANGFUSE_DATABASE_NAME
-USER_Langfuse=$AISTACK_MINDSDB_DATABASE_USER
-PASSWORD_Langfuse=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
-PORT_Langfuse=5432
-LABEL_Budibase=Budibase
-ENGINE_Budibase=mysql@dbgate-plugin-mysql
-SERVER_Budibase=budibase-db
-DATABASE_Budibase=$BUDIBASE_DATABASE_NAME
-USER_Budibase=$BUDIBASE_DATABASE_USER
-PASSWORD_Budibase=$BUDIBASE_DATABASE_USER_PASSWORD
-PORT_Budibase=3306
-LABEL_Discourse=Discourse
-ENGINE_Discourse=postgres@dbgate-plugin-postgres
-SERVER_Discourse=discourse-db
-DATABASE_Discourse=$DISCOURSE_DATABASE_NAME
-USER_Discourse=$DISCOURSE_DATABASE_USER
-PASSWORD_Discourse=$DISCOURSE_DATABASE_USER_PASSWORD
-PORT_Discourse=5432
-LABEL_EspoCRM=EspoCRM
-ENGINE_EspoCRM=mysql@dbgate-plugin-mysql
-SERVER_EspoCRM=espocrm-db
-DATABASE_EspoCRM=$ESPOCRM_DATABASE_NAME
-USER_EspoCRM=$ESPOCRM_DATABASE_USER
-PASSWORD_EspoCRM=$ESPOCRM_DATABASE_USER_PASSWORD
-PORT_EspoCRM=3306
-LABEL_Firefly=Firefly
-ENGINE_Firefly=postgres@dbgate-plugin-postgres
-SERVER_Firefly=firefly-db
-DATABASE_Firefly=$FIREFLY_DATABASE_NAME
-USER_Firefly=$FIREFLY_DATABASE_USER
-PASSWORD_Firefly=$FIREFLY_DATABASE_USER_PASSWORD
-PORT_Firefly=5432
-LABEL_FrappeHR=FrappeHR
-ENGINE_FrappeHR=mysql@dbgate-plugin-mysql
-SERVER_FrappeHR=frappe-hr-db
-DATABASE_FrappeHR=$FRAPPE_HR_DATABASE_NAME
-USER_FrappeHR=$FRAPPE_HR_DATABASE_USER
-PASSWORD_FrappeHR=$FRAPPE_HR_DATABASE_USER_PASSWORD
-PORT_FrappeHR=3306
-LABEL_FreshRSS=FreshRSS
-ENGINE_FreshRSS=postgres@dbgate-plugin-postgres
-SERVER_FreshRSS=freshrss-db
-DATABASE_FreshRSS=$FRESHRSS_DATABASE_NAME
-USER_FreshRSS=$FRESHRSS_DATABASE_USER
-PASSWORD_FreshRSS=$FRESHRSS_DATABASE_USER_PASSWORD
-PORT_FreshRSS=5432
-LABEL_Ghost=Ghost
-ENGINE_Ghost=mysql@dbgate-plugin-mysql
-SERVER_Ghost=ghost-db
-DATABASE_Ghost=$GHOST_DATABASE_NAME
-USER_Ghost=$GHOST_DATABASE_USER
-PASSWORD_Ghost=$GHOST_DATABASE_USER_PASSWORD
-PORT_Ghost=3306
-LABEL_Gitea=Gitea
-ENGINE_Gitea=postgres@dbgate-plugin-postgres
-SERVER_Gitea=gitea-db
-DATABASE_Gitea=$GITEA_DATABASE_NAME
-USER_Gitea=$GITEA_DATABASE_USER
-PASSWORD_Gitea=$GITEA_DATABASE_USER_PASSWORD
-PORT_Gitea=5432
-LABEL_Gitlab=Gitlab
-ENGINE_Gitlab=postgres@dbgate-plugin-postgres
-SERVER_Gitlab=gitlab-db
-DATABASE_Gitlab=$GITLAB_DATABASE_NAME
-USER_Gitlab=$GITLAB_DATABASE_USER
-PASSWORD_Gitlab=$GITLAB_DATABASE_USER_PASSWORD
-PORT_Gitlab=5432
-LABEL_Guacamole=Guacamole
-ENGINE_Guacamole=mysql@dbgate-plugin-mysql
-SERVER_Guacamole=guacamole-db
-DATABASE_Guacamole=$GUACAMOLE_DATABASE_NAME
-USER_Guacamole=$GUACAMOLE_DATABASE_USER
-PASSWORD_Guacamole=$GUACAMOLE_DATABASE_USER_PASSWORD
-PORT_Guacamole=3306
-LABEL_HomeAssistant=HomeAssistant
-ENGINE_HomeAssistant=postgres@dbgate-plugin-postgres
-SERVER_HomeAssistant=homeassistant-db
-DATABASE_HomeAssistant=$HOMEASSISTANT_DATABASE_NAME
-USER_HomeAssistant=$HOMEASSISTANT_DATABASE_USER
-PASSWORD_HomeAssistant=$HOMEASSISTANT_DATABASE_USER_PASSWORD
-PORT_HomeAssistant=5432
-LABEL_Huginn=Huginn
-ENGINE_Huginn=postgres@dbgate-plugin-postgres
-SERVER_Huginn=huginn-db
-DATABASE_Huginn=$HUGINN_DATABASE_NAME
-USER_Huginn=$HUGINN_DATABASE_USER
-PASSWORD_Huginn=$HUGINN_DATABASE_USER_PASSWORD
-PORT_Huginn=5432
-LABEL_Immich=Immich
-ENGINE_Immich=postgres@dbgate-plugin-postgres
-SERVER_Immich=immich-db
-DATABASE_Immich=$IMMICH_DATABASE_NAME
-USER_Immich=$IMMICH_DATABASE_USER
-PASSWORD_Immich=$IMMICH_DATABASE_USER_PASSWORD
-PORT_Immich=5432
-LABEL_Invidious=Invidious
-ENGINE_Invidious=postgres@dbgate-plugin-postgres
-SERVER_Invidious=invidious-db
-DATABASE_Invidious=$INVIDIOUS_DATABASE_NAME
-USER_Invidious=$INVIDIOUS_DATABASE_USER
-PASSWORD_Invidious=$INVIDIOUS_DATABASE_USER_PASSWORD
-PORT_Invidious=5432
-LABEL_Kanboard=Kanboard
-ENGINE_Kanboard=postgres@dbgate-plugin-postgres
-SERVER_Kanboard=kanboard-db
-DATABASE_Kanboard=$KANBOARD_DATABASE_NAME
-USER_Kanboard=$KANBOARD_DATABASE_USER
-PASSWORD_Kanboard=$KANBOARD_DATABASE_USER_PASSWORD
-PORT_Kanboard=5432
-LABEL_Keila=Keila
-ENGINE_Keila=postgres@dbgate-plugin-postgres
-SERVER_Keila=keila-db
-DATABASE_Keila=$KEILA_DATABASE_NAME
-USER_Keila=$KEILA_DATABASE_USER
-PASSWORD_Keila=$KEILA_DATABASE_USER_PASSWORD
-PORT_Keila=5432
-LABEL_Linkwarden=Linkwarden
-ENGINE_Linkwarden=postgres@dbgate-plugin-postgres
-SERVER_Linkwarden=linkwarden-db
-DATABASE_Linkwarden=$LINKWARDEN_DATABASE_NAME
-USER_Linkwarden=$LINKWARDEN_DATABASE_USER
-PASSWORD_Linkwarden=$LINKWARDEN_DATABASE_USER_PASSWORD
-PORT_Linkwarden=5432
-LABEL_Mastodon=Mastodon
-ENGINE_Mastodon=postgres@dbgate-plugin-postgres
-SERVER_Mastodon=mastodon-db
-DATABASE_Mastodon=$MASTODON_DATABASE_NAME
-USER_Mastodon=$MASTODON_DATABASE_USER
-PASSWORD_Mastodon=$MASTODON_DATABASE_USER_PASSWORD
-PORT_Mastodon=5432
-LABEL_Matomo=Matomo
-ENGINE_Matomo=mysql@dbgate-plugin-mysql
-SERVER_Matomo=matomo-db
-DATABASE_Matomo=$MATOMO_DATABASE_NAME
-USER_Matomo=$MATOMO_DATABASE_USER
-PASSWORD_Matomo=$MATOMO_DATABASE_USER_PASSWORD
-PORT_Matomo=3306
-LABEL_Matrix=Matrix
-ENGINE_Matrix=postgres@dbgate-plugin-postgres
-SERVER_Matrix=matrix-db
-DATABASE_Matrix=$MATRIX_DATABASE_NAME
-USER_Matrix=$MATRIX_DATABASE_USER
-PASSWORD_Matrix=$MATRIX_DATABASE_USER_PASSWORD
-PORT_Matrix=5432
-LABEL_Mealie=Mealie
-ENGINE_Mealie=postgres@dbgate-plugin-postgres
-SERVER_Mealie=mealie-db
-DATABASE_Mealie=$MEALIE_DATABASE_NAME
-USER_Mealie=$MEALIE_DATABASE_USER
-PASSWORD_Mealie=$MEALIE_DATABASE_USER_PASSWORD
-PORT_Mealie=5432
-LABEL_MeshCentral=MeshCentral
-ENGINE_MeshCentral=mysql@dbgate-plugin-mysql
-SERVER_MeshCentral=meshcentral-db
-DATABASE_MeshCentral=$MESHCENTRAL_DATABASE_NAME
-USER_MeshCentral=$MESHCENTRAL_DATABASE_USER
-PASSWORD_MeshCentral=$MESHCENTRAL_DATABASE_USER_PASSWORD
-PORT_MeshCentral=3306
-LABEL_Metabase=Metabase
-ENGINE_Metabase=postgres@dbgate-plugin-postgres
-SERVER_Metabase=metabase-db
-DATABASE_Metabase=$METABASE_DATABASE_NAME
-USER_Metabase=$METABASE_DATABASE_USER
-PASSWORD_Metabase=$METABASE_DATABASE_USER_PASSWORD
-PORT_Metabase=5432
-LABEL_MintHCM=MintHCM
-ENGINE_MintHCM=mysql@dbgate-plugin-mysql
-SERVER_MintHCM=minthcm-db
-DATABASE_MintHCM=$MINTHCM_DATABASE_NAME
-USER_MintHCM=$MINTHCM_DATABASE_USER
-PASSWORD_MintHCM=$MINTHCM_DATABASE_USER_PASSWORD
-PORT_MintHCM=3306
-LABEL_Nextcloud=Nextcloud
-ENGINE_Nextcloud=postgres@dbgate-plugin-postgres
-SERVER_Nextcloud=nextcloud-db
-DATABASE_Nextcloud=$NEXTCLOUD_DATABASE_NAME
-USER_Nextcloud=$NEXTCLOUD_DATABASE_USER
-PASSWORD_Nextcloud=$NEXTCLOUD_DATABASE_USER_PASSWORD
-PORT_Nextcloud=5432
-LABEL_Odoo=Odoo
-ENGINE_Odoo=postgres@dbgate-plugin-postgres
-SERVER_Odoo=odoo-db
-DATABASE_Odoo=$ODOO_DATABASE_NAME
-USER_Odoo=$ODOO_DATABASE_USER
-PASSWORD_Odoo=$ODOO_DATABASE_USER_PASSWORD
-PORT_Odoo=5432
-LABEL_Ombi=Ombi
-ENGINE_Ombi=mysql@dbgate-plugin-mysql
-SERVER_Ombi=ombi-db
-DATABASE_Ombi=$OMBI_DATABASE_NAME
-USER_Ombi=$OMBI_DATABASE_USER
-PASSWORD_Ombi=$OMBI_DATABASE_USER_PASSWORD
-PORT_Ombi=3306
-LABEL_Paperless=Paperless
-ENGINE_Paperless=postgres@dbgate-plugin-postgres
-SERVER_Paperless=paperless-db
-DATABASE_Paperless=$PAPERLESS_DATABASE_NAME
-USER_Paperless=$PAPERLESS_DATABASE_USER
-PASSWORD_Paperless=$PAPERLESS_DATABASE_USER_PASSWORD
-PORT_Paperless=5432
-LABEL_Pastefy=Pastefy
-ENGINE_Pastefy=mysql@dbgate-plugin-mysql
-SERVER_Pastefy=pastefy-db
-DATABASE_Pastefy=$PASTEFY_DATABASE_NAME
-USER_Pastefy=$PASTEFY_DATABASE_USER
-PASSWORD_Pastefy=$PASTEFY_DATABASE_USER_PASSWORD
-PORT_Pastefy=3306
-LABEL_PeerTube=PeerTube
-ENGINE_PeerTube=postgres@dbgate-plugin-postgres
-SERVER_PeerTube=peertube-db
-DATABASE_PeerTube=$PEERTUBE_DATABASE_NAME
-USER_PeerTube=$PEERTUBE_DATABASE_USER
-PASSWORD_PeerTube=$PEERTUBE_DATABASE_USER_PASSWORD
-PORT_PeerTube=5432
-LABEL_Penpot=Penpot
-ENGINE_Penpot=postgres@dbgate-plugin-postgres
-SERVER_Penpot=penpot-db
-DATABASE_Penpot=$PENPOT_DATABASE_NAME
-USER_Penpot=$PENPOT_DATABASE_USER
-PASSWORD_Penpot=$PENPOT_DATABASE_USER_PASSWORD
-PORT_Penpot=5432
-LABEL_PhotoPrism=PhotoPrism
-ENGINE_PhotoPrism=mysql@dbgate-plugin-mysql
-SERVER_PhotoPrism=photoprism-db
-DATABASE_PhotoPrism=$PHOTOPRISM_DATABASE_NAME
-USER_PhotoPrism=$PHOTOPRISM_DATABASE_USER
-PASSWORD_PhotoPrism=$PHOTOPRISM_DATABASE_USER_PASSWORD
-PORT_PhotoPrism=3306
-LABEL_Piped=Piped
-ENGINE_Piped=postgres@dbgate-plugin-postgres
-SERVER_Piped=piped-db
-DATABASE_Piped=$PIPED_DATABASE_NAME
-USER_Piped=$PIPED_DATABASE_USER
-PASSWORD_Piped=$PIPED_DATABASE_USER_PASSWORD
-PORT_Piped=5432
-LABEL_Pixelfed=Pixelfed
-ENGINE_Pixelfed=mysql@dbgate-plugin-mysql
-SERVER_Pixelfed=pixelfed-db
-DATABASE_Pixelfed=$PIXELFED_DATABASE_NAME
-USER_Pixelfed=$PIXELFED_DATABASE_USER
-PASSWORD_Pixelfed=$PIXELFED_DATABASE_USER_PASSWORD
-PORT_Pixelfed=3306
-LABEL_Shlink=Shlink
-ENGINE_Shlink=postgres@dbgate-plugin-postgres
-SERVER_Shlink=shlink-db
-DATABASE_Shlink=$SHLINK_DATABASE_NAME
-USER_Shlink=$SHLINK_DATABASE_USER
-PASSWORD_Shlink=$SHLINK_DATABASE_USER_PASSWORD
-PORT_Shlink=5432
-LABEL_SpeedtestTrackerLocal=SpeedtestTrackerLocal
-ENGINE_SpeedtestTrackerLocal=postgres@dbgate-plugin-postgres
-SERVER_SpeedtestTrackerLocal=speedtest-tracker-local-db
-DATABASE_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
-USER_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
-PASSWORD_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
-PORT_SpeedtestTrackerLocal=5432
-LABEL_SpeedtestTrackerVPN=SpeedtestTrackerVPN
-ENGINE_SpeedtestTrackerVPN=postgres@dbgate-plugin-postgres
-SERVER_SpeedtestTrackerVPN=speedtest-tracker-vpn-db
-DATABASE_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
-USER_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
-PASSWORD_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
-PORT_SpeedtestTrackerVPN=5432
-LABEL_StandardNotes=StandardNotes
-ENGINE_StandardNotes=mysql@dbgate-plugin-mysql
-SERVER_StandardNotes=standardnotes-db
-DATABASE_StandardNotes=$STANDARDNOTES_DATABASE_NAME
-USER_StandardNotes=$STANDARDNOTES_DATABASE_USER
-PASSWORD_StandardNotes=$STANDARDNOTES_DATABASE_USER_PASSWORD
-PORT_StandardNotes=3306
-LABEL_Twenty=Twenty
-ENGINE_Twenty=postgres@dbgate-plugin-postgres
-SERVER_Twenty=twenty-db
-DATABASE_Twenty=$TWENTY_DATABASE_NAME
-USER_Twenty=$TWENTY_DATABASE_USER
-PASSWORD_Twenty=$TWENTY_DATABASE_USER_PASSWORD
-PORT_Twenty=5432
-LABEL_Vaultwarden=Vaultwarden
-ENGINE_Vaultwarden=postgres@dbgate-plugin-postgres
-SERVER_Vaultwarden=vaultwarden-db
-DATABASE_Vaultwarden=$VAULTWARDEN_DATABASE_NAME
-USER_Vaultwarden=$VAULTWARDEN_DATABASE_USER
-PASSWORD_Vaultwarden=$VAULTWARDEN_DATABASE_USER_PASSWORD
-PORT_Vaultwarden=5432
-LABEL_Wallabag=Wallabag
-ENGINE_Wallabag=postgres@dbgate-plugin-postgres
-SERVER_Wallabag=wallabag-db
-DATABASE_Wallabag=$WALLABAG_DATABASE_NAME
-USER_Wallabag=$WALLABAG_DATABASE_USER
-PASSWORD_Wallabag=$WALLABAG_DATABASE_USER_PASSWORD
-PORT_Wallabag=5432
-LABEL_Wikijs=Wikijs
-ENGINE_Wikijs=postgres@dbgate-plugin-postgres
-SERVER_Wikijs=wikijs-db
-DATABASE_Wikijs=$WIKIJS_DATABASE_NAME
-USER_Wikijs=$WIKIJS_DATABASE_USER
-PASSWORD_Wikijs=$WIKIJS_DATABASE_USER_PASSWORD
-PORT_Wikijs=5432
-LABEL_WordPress=WordPress
-ENGINE_WordPress=mysql@dbgate-plugin-mysql
-SERVER_WordPress=wordpress-db
-DATABASE_WordPress=$WORDPRESS_DATABASE_NAME
-USER_WordPress=$WORDPRESS_DATABASE_USER
-PASSWORD_WordPress=$WORDPRESS_DATABASE_USER_PASSWORD
-PORT_WordPress=3306
-LABEL_Yamtrack=Yamtrack
-ENGINE_Yamtrack=postgres@dbgate-plugin-postgres
-SERVER_Yamtrack=yamtrack-db
-DATABASE_Yamtrack=$YAMTRACK_DATABASE_NAME
-USER_Yamtrack=$YAMTRACK_DATABASE_USER
-PASSWORD_Yamtrack=$YAMTRACK_DATABASE_USER_PASSWORD
-PORT_Yamtrack=5432
-EOFMT
-
-}
-
-function performUpdateDbGate()
-{
-  perform_stack_name=dbgate
-  prepPerformUpdate
-  if [ $? -ne 0 ]; then return 1; fi
-  # The current version is included as a placeholder for when the next version arrives.
-  case "$perform_stack_ver" in
-    1)
-      newVer=v1
-      curImageList=mirror.gcr.io/dbgate/dbgate:6.6.3-alpine
-      image_update_map[0]="mirror.gcr.io/dbgate/dbgate:6.6.3-alpine,mirror.gcr.io/dbgate/dbgate:6.6.3-alpine"
-    ;;
-    *)
-      is_upgrade_error=true
-      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
-      return
-    ;;
-  esac
-  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
-  perform_update_report="${perform_update_report}$stack_upgrade_report"
-}
-
-function modFunAddUpdateConnectionDbGate()
-{
-  grep -q "LABEL_${sdb_formal}" $HOME/${updateStackName}.env
-  if [ $? -eq 0 ]; then
-    return 3
-  fi
-  echo "LABEL_${sdb_formal}=$sdb_formal" >> $HOME/${updateStackName}.env
-  case "$sdb_driver" in
-    mysql)
-      echo "ENGINE_${sdb_formal}=mysql@dbgate-plugin-mysql" >> $HOME/${updateStackName}.env
-      echo "PORT_${sdb_formal}=3306" >> $HOME/${updateStackName}.env
-      ;;
-    postgres)
-      echo "ENGINE_${sdb_formal}=postgres@dbgate-plugin-postgres" >> $HOME/${updateStackName}.env
-      echo "PORT_${sdb_formal}=5432" >> $HOME/${updateStackName}.env
-      ;;
-    mongodb)
-      echo "ENGINE_${sdb_formal}=mongo@dbgate-plugin-mongo" >> $HOME/${updateStackName}.env
-      echo "PORT_${sdb_formal}=27017" >> $HOME/${updateStackName}.env
-      ;;
-    sqlite)
-      echo "ENGINE_${sdb_formal}=sqlite@dbgate-plugin-sqlite" >> $HOME/${updateStackName}.env
-      ;;
-  esac
-  echo "SERVER_${sdb_formal}=$sdb_host" >> $HOME/${updateStackName}.env
-  echo "DATABASE_${sdb_formal}=$sdb_database" >> $HOME/${updateStackName}.env
-  echo "USER_${sdb_formal}=$sdb_username" >> $HOME/${updateStackName}.env
-  echo "PASSWORD_${sdb_formal}=$sdb_password" >> $HOME/${updateStackName}.env
-  curConnections=$(grep ^CONNECTIONS= $HOME/${updateStackName}.env | sed 's/^[^=]*=//' | sed 's/ *$//g' | sed 's/"//g')
-  sed -i "s|^CONNECTIONS=.*|CONNECTIONS=${curConnections},${sdb_formal}|g" $HOME/${updateStackName}.env
-}
-
 # Twenty
 function installTwenty()
 {
@@ -68405,11 +68132,9 @@ function installTwenty()
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
-  if ! [ "$TWENTY_INIT_ENV" = "true" ]; then
-    sendEmail -s "Twenty Admin Login Info" -b "Follow are some generated credentials that you can use to configure Twenty CRM. You will still need to go through the initial onboarding wizard on the first time you access the site and enter the information accordingly. \n\nTwenty Admin Username: $TWENTY_ADMIN_USERNAME\nTwenty Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\nTwenty Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
-    TWENTY_INIT_ENV=true
-    updateConfigVar TWENTY_INIT_ENV $TWENTY_INIT_ENV
-  fi
+  sendEmail -s "$FMLNAME_TWENTY Admin Login Info" -b "Below are some generated credentials that you can use to configure $FMLNAME_TWENTY. You will still need to go through the initial onboarding wizard the first time you access the site, and enter the information manually. \n\n$FMLNAME_TWENTY Admin Username: $TWENTY_ADMIN_USERNAME\n$FMLNAME_TWENTY Admin Email: $TWENTY_ADMIN_EMAIL_ADDRESS\n$FMLNAME_TWENTY Admin Password: $TWENTY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  TWENTY_INIT_ENV=true
+  updateConfigVar TWENTY_INIT_ENV $TWENTY_INIT_ENV
   sleep 3
   set -e
   inner_block=""
@@ -68941,6 +68666,1280 @@ function performUpdateOdoo()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# Calcom
+function installCalcom()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory calcom "Calcom"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName calcom-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName calcom-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/calcom
+  mkdir $HSHQ_STACKS_DIR/calcom/db
+  mkdir $HSHQ_STACKS_DIR/calcom/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/calcom/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $CALCOM_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $CALCOM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  CALCOM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 12 "" $CALCOM_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/' | sed 's/\$/\\\$/g')
+  outputConfigCalcom
+  installStack calcom calcom-app "Ready in" $HOME/calcom.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$CALCOM_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_CALCOM_APP Admin Login Info" -b "$FMLNAME_CALCOM_APP Admin Email: $CALCOM_ADMIN_EMAIL_ADDRESS\n$FMLNAME_CALCOM_APP Admin Password: $CALCOM_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    CALCOM_INIT_ENV=true
+    updateConfigVar CALCOM_INIT_ENV $CALCOM_INIT_ENV
+  fi
+  sleep 3
+  docker exec calcom-db /dbexport/setupDBSettings.sh
+  rm -f $HSHQ_STACKS_DIR/calcom/dbexport/setupDBSettings.sh
+  startStopStack calcom stop
+  startStopStack calcom start
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://calcom-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CALCOM_APP $MANAGETLS_CALCOM_APP "$is_integrate_hshq" $NETDEFAULT_CALCOM_APP "$inner_block"
+  insertSubAuthelia $SUB_CALCOM_APP.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_CALCOM_STUDIO.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://calcom-studio:5555 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_CALCOM_STUDIO $MANAGETLS_CALCOM_STUDIO "$is_integrate_hshq" $NETDEFAULT_CALCOM_STUDIO "$inner_block"
+  insertSubAuthelia $SUB_CALCOM_STUDIO.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll calcom "$FMLNAME_CALCOM_APP" $USERTYPE_CALCOM_APP "https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN" "calcom.png" "$(getHeimdallOrderFromSub $SUB_CALCOM_APP $USERTYPE_CALCOM_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true calcom "$FMLNAME_CALCOM_APP" postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_USER $CALCOM_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigCalcom()
+{
+  cat <<EOFMT > $HOME/calcom-compose.yml
+$STACK_VERSION_PREFIX calcom $(getScriptStackVersion calcom)
+
+services:
+  calcom-db:
+    image: $(getScriptImageByContainerName calcom-db)
+    container_name: calcom-db
+    hostname: calcom-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-calcom-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/calcom/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/calcom/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.calcom-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.calcom-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.calcom-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.calcom-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.calcom-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.calcom-hourly-db.email-from=Calcom Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.calcom-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.calcom-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.calcom-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.calcom-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.calcom-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.calcom-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.calcom-monthly-db.email-from=Calcom Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.calcom-monthly-db.mail-only-on-error=false"
+
+  calcom-app:
+    image: $(getScriptImageByContainerName calcom-app)
+    container_name: calcom-app
+    hostname: calcom-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - calcom-db
+    networks:
+      - int-calcom-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+#  calcom-studio:
+#    image: $(getScriptImageByContainerName calcom-studio)
+#    container_name: calcom-studio
+#    hostname: calcom-studio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    depends_on:
+#      - calcom-db
+#    command:
+#      - npx
+#      - prisma
+#      - studio
+#    networks:
+#      - int-calcom-net
+#      - dock-proxy-net
+#      - dock-ext-net
+#   volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-calcom-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/calcom.env
+TZ=\${PORTAINER_TZ}
+NEXT_PUBLIC_LICENSE_CONSENT=
+LICENSE=
+ALLOWED_HOSTNAMES='"$HOMESERVER_DOMAIN","$SUB_CALCOM_APP.$HOMESERVER_DOMAIN","$SUB_CALCOM_STUDIO.$HOMESERVER_DOMAIN","calcom-app:3000","localhost:3000","calcom-studio:5555","localhost:5555"'
+NEXT_PUBLIC_WEBAPP_URL=https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN
+NEXT_PUBLIC_API_V2_URL=https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/api/v2
+NEXTAUTH_URL=https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/api/auth
+NEXTAUTH_SECRET=$(pwgen -n 32 1)
+CALENDSO_ENCRYPTION_KEY=$(pwgen -n 32 1)
+POSTGRES_USER=$CALCOM_DATABASE_USER
+POSTGRES_PASSWORD=$CALCOM_DATABASE_USER_PASSWORD
+POSTGRES_DB=$CALCOM_DATABASE_NAME
+DATABASE_HOST=calcom-db:5432
+DATABASE_URL=postgresql://$CALCOM_DATABASE_USER:$CALCOM_DATABASE_USER_PASSWORD@calcom-db/$CALCOM_DATABASE_NAME
+DATABASE_DIRECT_URL=\${DATABASE_URL}
+CALCOM_TELEMETRY_DISABLED=1
+EMAIL_FROM_NAME=Cal.com $(getAdminEmailName)
+EMAIL_FROM=$EMAIL_ADMIN_EMAIL_ADDRESS
+EMAIL_SERVER="smtp://$SMTP_HOSTNAME:$SMTP_HOSTPORT/?ignoreTLS=true"
+NODE_ENV=production
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+TURBO_TELEMETRY_DISABLED=1
+DO_NOT_TRACK=1
+CSP_POLICY=
+NEXT_PUBLIC_WEBSITE_TERMS_URL=
+NEXT_PUBLIC_WEBSITE_PRIVACY_POLICY_URL=
+NEXT_PUBLIC_SINGLE_ORG_SLUG=
+ORGANIZATIONS_ENABLED=
+EOFMT
+  dtnow=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/calcom/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$CALCOM_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  vapp=\$(echo "select slug from \"App\" limit 1;" | psql -t -A -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$vapp" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 3 seconds, total wait=\$curSeconds seconds..."
+  sleep 3
+  curSeconds=\$((curSeconds+3))
+done
+
+echo "insert into users(id,username,name,email,\"timeZone\",\"weekStart\",\"startTime\",\"endTime\",created,\"bufferTime\",\"emailVerified\",\"hideBranding\",\"completedOnboarding\",\"twoFactorEnabled\",locale,\"identityProvider\",verified,\"timeFormat\",\"defaultScheduleId\",\"allowDynamicBooking\",role,\"disableImpersonation\",\"allowSEOIndexing\",\"receiveMonthlyDigestEmail\",locked,\"isPlatformManaged\",\"smsLockState\",\"smsLockReviewedByAdmin\",\"creationSource\",\"whitelistWorkflows\") values(1,'${ADMIN_USERNAME_BASE}-calcom','Cal.com $(getAdminEmailName)','$CALCOM_ADMIN_EMAIL_ADDRESS','$TZ','Sunday',0,1440,'$dtnow',0,'$dtnow',false,true,false,'en','CAL',false,12,1,true,'ADMIN',false,true,true,false,false,'UNLOCKED',false,'webapp',false);" | psql -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME > /dev/null 2>&1
+
+echo "insert into \"UserPassword\"(\"userId\",hash) values(1,'$CALCOM_ADMIN_PASSWORD_HASH');" | psql -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME > /dev/null 2>&1
+
+echo "insert into \"Schedule\"(id,\"userId\",name,\"timeZone\") values(1,1,'Working Hours','$TZ');" | psql -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME > /dev/null 2>&1
+
+echo "insert into \"Availability\"(id,days,\"startTime\",\"endTime\",\"scheduleId\") values(1, ARRAY [1, 2, 3, 4, 5],'09:00:00','17:00:00',1);" | psql -U $CALCOM_DATABASE_USER $CALCOM_DATABASE_NAME > /dev/null 2>&1
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/calcom/dbexport/setupDBSettings.sh
+}
+
+function performUpdateCalcom()
+{
+  perform_stack_name=calcom
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/calcom/cal.com:v5.7.1
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/calcom/cal.com:v5.7.1,mirror.gcr.io/calcom/cal.com:v5.7.1"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Rallly
+function installRallly()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory rallly "Rallly"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName rallly-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName rallly-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName rallly-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName rallly-createbuckets)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/rallly
+  mkdir $HSHQ_STACKS_DIR/rallly/db
+  mkdir $HSHQ_STACKS_DIR/rallly/dbexport
+  mkdir $HSHQ_STACKS_DIR/rallly/minio
+  chmod 777 $HSHQ_STACKS_DIR/rallly/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $RALLLY_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $RALLLY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  RALLLY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $RALLLY_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigRallly
+  installStack rallly rallly-app "Ready in" $HOME/rallly.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$RALLLY_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_RALLLY Admin Login Info" -b "This service only requires an email address, as a confirmation token is automatically sent via email during login. The following address has been registered as the administrator, and the admin section can be reached by going to https://$SUB_RALLLY.$HOMESERVER_DOMAIN/control-panel \n\n$FMLNAME_RALLLY Admin Email: $RALLLY_ADMIN_EMAIL_ADDRESS\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    RALLLY_INIT_ENV=true
+    updateConfigVar RALLLY_INIT_ENV $RALLLY_INIT_ENV
+  fi
+  sleep 3
+  docker exec rallly-db /dbexport/setupDBSettings.sh
+  rm -f $HSHQ_STACKS_DIR/rallly/dbexport/setupDBSettings.sh
+  startStopStack rallly stop
+  startStopStack rallly start
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_RALLLY.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://rallly-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_RALLLY $MANAGETLS_RALLLY "$is_integrate_hshq" $NETDEFAULT_RALLLY "$inner_block"
+  insertSubAuthelia $SUB_RALLLY.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll rallly "$FMLNAME_RALLLY" $USERTYPE_RALLLY "https://$SUB_RALLLY.$HOMESERVER_DOMAIN" "rallly.png" "$(getHeimdallOrderFromSub $SUB_RALLLY $USERTYPE_RALLLY)"
+    restartAllCaddyContainers
+    checkAddDBConnection true rallly "$FMLNAME_RALLLY" postgres rallly-db $RALLLY_DATABASE_NAME $RALLLY_DATABASE_USER $RALLLY_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigRallly()
+{
+  cat <<EOFMT > $HOME/rallly-compose.yml
+$STACK_VERSION_PREFIX rallly $(getScriptStackVersion rallly)
+
+services:
+  rallly-db:
+    image: $(getScriptImageByContainerName rallly-db)
+    container_name: rallly-db
+    hostname: rallly-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-rallly-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.rallly-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.rallly-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.rallly-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.rallly-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.rallly-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.rallly-hourly-db.email-from=Rallly Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.rallly-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.rallly-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.rallly-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.rallly-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.rallly-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.rallly-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.rallly-monthly-db.email-from=Rallly Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.rallly-monthly-db.mail-only-on-error=false"
+
+  rallly-app:
+    image: $(getScriptImageByContainerName rallly-app)
+    container_name: rallly-app
+    hostname: rallly-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - rallly-db
+    networks:
+      - int-rallly-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  rallly-minio:
+    image: $(getScriptImageByContainerName rallly-minio)
+    container_name: rallly-minio
+    hostname: rallly-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-rallly-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/rallly/minio:/data
+
+  rallly-createbuckets:
+    image: $(getScriptImageByContainerName rallly-createbuckets)
+    container_name: rallly-createbuckets
+    hostname: rallly-createbuckets
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - rallly-minio
+    networks:
+      - int-rallly-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    entrypoint: >
+      /bin/sh -c "
+      while ! /usr/bin/mc ready minio;
+      do
+        /usr/bin/mc alias set minio http://rallly-minio:9000 $RALLLY_MINIO_KEY $RALLLY_MINIO_SECRET;
+        echo 'Waiting minio...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/rallly;
+      /usr/bin/mc anonymous set public minio/rallly/public;
+      exit 0;
+      "
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-rallly-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/rallly.env
+TZ=\${PORTAINER_TZ}
+NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
+NEXT_PUBLIC_BASE_URL=https://$SUB_RALLLY.$HOMESERVER_DOMAIN
+AUTH_URL=https://$SUB_RALLLY.$HOMESERVER_DOMAIN
+SECRET_PASSWORD=$(pwgen -n 32 1)
+SUPPORT_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+NOREPLY_EMAIL=$EMAIL_ADMIN_EMAIL_ADDRESS
+NOREPLY_EMAIL_NAME=Rallly $(getAdminEmailName)
+INITIAL_ADMIN_EMAIL=$RALLLY_ADMIN_EMAIL_ADDRESS
+SMTP_HOST=$SMTP_HOSTNAME
+SMTP_PORT=$SMTP_HOSTPORT
+SMTP_REJECT_UNAUTHORIZED=true
+POSTGRES_DB=$RALLLY_DATABASE_NAME
+POSTGRES_USER=$RALLLY_DATABASE_USER
+POSTGRES_PASSWORD=$RALLLY_DATABASE_USER_PASSWORD
+DATABASE_URL=postgres://$RALLLY_DATABASE_USER:$RALLLY_DATABASE_USER_PASSWORD@rallly-db:5432/$RALLLY_DATABASE_NAME
+DIRECT_DATABASE_URL=\${DATABASE_URL}
+NEXT_PUBLIC_SELF_HOSTED=true
+NODE_ENV=production
+S3_REGION=rallly
+S3_BUCKET_NAME=rallly
+S3_ENDPOINT=http://rallly-minio:9000
+S3_ACCESS_KEY_ID=$RALLLY_MINIO_KEY
+S3_SECRET_ACCESS_KEY=$RALLLY_MINIO_SECRET
+MINIO_ROOT_USER=$RALLLY_MINIO_KEY
+MINIO_ROOT_PASSWORD=$RALLLY_MINIO_SECRET
+MINIO_DOMAIN=rallly
+MINIO_CONSOLE_ADDRESS=:9090
+EOFMT
+  dtnow=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFDS > $HSHQ_STACKS_DIR/rallly/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+PGPASSWORD=$RALLLY_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  testdb=\$(echo "select id from instance_settings limit 1;" | psql -t -A -U $RALLLY_DATABASE_USER $RALLLY_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$testdb" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 3 seconds, total wait=\$curSeconds seconds..."
+  sleep 3
+  curSeconds=\$((curSeconds+3))
+done
+adminID=$(pwgen -n 25 1)
+spaceID=$(uuidgen)
+spaceMemberID=$(uuidgen)
+
+echo "insert into users(id,name,email,created_at,updated_at,email_verified,locale,time_format,time_zone,week_start,banned,role) values('\$adminID','Rallly $(getAdminEmailName)','$RALLLY_ADMIN_EMAIL_ADDRESS','$dtnow','$dtnow','$dtnow','en','hours12','$TZ',1,false,'admin');" | psql -U $RALLLY_DATABASE_USER $RALLLY_DATABASE_NAME > /dev/null 2>&1
+
+echo "insert into spaces(id,name,owner_id,created_at,updated_at) values('\$spaceID','Personal', '\$adminID', '$dtnow', '$dtnow');" | psql -U $RALLLY_DATABASE_USER $RALLLY_DATABASE_NAME > /dev/null 2>&1
+
+echo "insert into space_members(id,space_id,user_id,created_at,updated_at,role,last_selected_at) values('\$spaceMemberID','\$spaceID','\$adminID','$dtnow','$dtnow','ADMIN','$dtnow');" | psql -U $RALLLY_DATABASE_USER $RALLLY_DATABASE_NAME > /dev/null 2>&1
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/rallly/dbexport/setupDBSettings.sh
+}
+
+function performUpdateRallly()
+{
+  perform_stack_name=rallly
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,mirror.gcr.io/lukevella/rallly:4.4.1,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="mirror.gcr.io/lukevella/rallly:4.4.1,mirror.gcr.io/lukevella/rallly:4.4.1"
+      image_update_map[2]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[3]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# EasyAppointments
+function installEasyAppointments()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory easyappointments "EasyAppointments"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName easyappointments-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName easyappointments-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/easyappointments
+  mkdir $HSHQ_STACKS_DIR/easyappointments/db
+  mkdir $HSHQ_STACKS_DIR/easyappointments/dbexport
+  chmod 777 $HSHQ_STACKS_DIR/easyappointments/dbexport
+  initServicesCredentials
+  set +e
+  docker exec mailu-admin flask mailu alias-delete $EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS
+  sleep 5
+  addUserMailu alias $EASYAPPOINTMENTS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  outputConfigEasyAppointments
+  set +e
+  installStack easyappointments easyappointments-db "Ready for start up" $HOME/easyappointments.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$EASYAPPOINTMENTS_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_EASYAPPOINTMENTS Admin Login Info" -b "$FMLNAME_EASYAPPOINTMENTS Admin Username: $EASYAPPOINTMENTS_ADMIN_USERNAME\n$FMLNAME_EASYAPPOINTMENTS Admin Password: $EASYAPPOINTMENTS_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    EASYAPPOINTMENTS_INIT_ENV=true
+    updateConfigVar EASYAPPOINTMENTS_INIT_ENV $EASYAPPOINTMENTS_INIT_ENV
+  fi
+  sleep 5
+  set +e
+  echo "Initializing database..."
+  docker exec easyappointments-db /dbexport/setupDBSettings.sh
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    echo "There was a problem initializing the database, please remove EasyAppointments and try again. If the problem persists, then please open an issue on https://github.com/homeserverhq/hshq."
+    return $retVal
+  fi
+  echo "Initialization complete!"
+  rm -f $HSHQ_STACKS_DIR/easyappointments/dbexport/setupDBSettings.sh
+  rm -f $HSHQ_STACKS_DIR/easyappointments/dbexport/initdb.sql
+  startStopStack easyappointments stop
+  startStopStack easyappointments start
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://easyappointments-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_EASYAPPOINTMENTS $MANAGETLS_EASYAPPOINTMENTS "$is_integrate_hshq" $NETDEFAULT_EASYAPPOINTMENTS "$inner_block"
+  insertSubAuthelia $SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll easyappointments "$FMLNAME_EASYAPPOINTMENTS" $USERTYPE_EASYAPPOINTMENTS "https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN" "easyappointments.png" "$(getHeimdallOrderFromSub $SUB_EASYAPPOINTMENTS $USERTYPE_EASYAPPOINTMENTS)"
+    restartAllCaddyContainers
+    checkAddDBConnection true easyappointments "$FMLNAME_EASYAPPOINTMENTS" mysql easyappointments-db $EASYAPPOINTMENTS_DATABASE_NAME $EASYAPPOINTMENTS_DATABASE_USER $EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigEasyAppointments()
+{
+  cat <<EOFMT > $HOME/easyappointments-compose.yml
+$STACK_VERSION_PREFIX easyappointments $(getScriptStackVersion easyappointments)
+
+services:
+  easyappointments-db:
+    image: $(getScriptImageByContainerName easyappointments-db)
+    container_name: easyappointments-db
+    hostname: easyappointments-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-easyappointments-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-easyappointments-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/easyappointments/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.easyappointments-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.easyappointments-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.easyappointments-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.easyappointments-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.easyappointments-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.easyappointments-hourly-db.email-from=EasyAppointments Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.easyappointments-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.easyappointments-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.easyappointments-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.easyappointments-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.easyappointments-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.easyappointments-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.easyappointments-monthly-db.email-from=EasyAppointments Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.easyappointments-monthly-db.mail-only-on-error=false"
+
+  easyappointments-app:
+    image: $(getScriptImageByContainerName easyappointments-app)
+    container_name: easyappointments-app
+    hostname: easyappointments-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - easyappointments-db
+    networks:
+      - int-easyappointments-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+volumes:
+  v-easyappointments-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/easyappointments/db
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-easyappointments-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/easyappointments.env
+TZ=\${PORTAINER_TZ}
+MYSQL_DATABASE=$EASYAPPOINTMENTS_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$EASYAPPOINTMENTS_DATABASE_USER
+MYSQL_PASSWORD=$EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
+BASE_URL=https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN
+DEBUG_MODE=TRUE
+DB_HOST=easyappointments-db
+DB_NAME=$EASYAPPOINTMENTS_DATABASE_NAME
+DB_USERNAME=$EASYAPPOINTMENTS_DATABASE_USER
+DB_PASSWORD=$EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
+MAIL_PROTOCOL=smtp
+MAIL_SMTP_DEBUG=0
+MAIL_SMTP_AUTH=0
+MAIL_SMTP_HOST=$SMTP_HOSTNAME
+MAIL_SMTP_USER=
+MAIL_SMTP_PASS=
+MAIL_SMTP_CRYPTO=tls
+MAIL_SMTP_PORT=$SMTP_HOSTPORT
+MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAIL_FROM_NAME=Easy!Appointments $(getAdminEmailName)
+MAIL_REPLY_TO_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+EOFMT
+  cat <<EOFMT > $HOME/pwhashgen.php
+<?php
+\$password = \$argv[1];
+\$salt = \$argv[2];
+\$half = (int) (strlen(\$salt) / 2);
+\$hash = hash('sha256', substr(\$salt, 0, \$half) . \$password . substr(\$salt, \$half));
+for (\$i = 0; \$i < 100000; \$i++)
+{
+  \$hash = hash('sha256', \$hash);
+}
+echo "\$hash";
+?>
+EOFMT
+  pwsalt=$(pwgen -n 64 1)
+  EASYAPPOINTMENTS_ADMIN_PASSWORD_HASH=$(php $HOME/pwhashgen.php $EASYAPPOINTMENTS_ADMIN_PASSWORD $pwsalt)
+  cat <<EOFDS > $HSHQ_STACKS_DIR/easyappointments/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+mysql -N -u $EASYAPPOINTMENTS_DATABASE_USER -p$EASYAPPOINTMENTS_DATABASE_USER_PASSWORD < /dbexport/initdb.sql
+
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/easyappointments/dbexport/setupDBSettings.sh
+  dtnow=$(date -u '+%Y-%m-%d %H:%M:%S')
+  cat <<EOFSQ > $HSHQ_STACKS_DIR/easyappointments/dbexport/initdb.sql
+use $EASYAPPOINTMENTS_DATABASE_NAME;
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;
+/*!40103 SET TIME_ZONE='+00:00' */;
+/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
+/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
+/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
+/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+
+--
+-- Table structure for table \`ea_appointments\`
+--
+
+DROP TABLE IF EXISTS \`ea_appointments\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_appointments\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`book_datetime\` datetime DEFAULT NULL,
+  \`start_datetime\` datetime DEFAULT NULL,
+  \`end_datetime\` datetime DEFAULT NULL,
+  \`location\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`notes\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`hash\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`color\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT '#7cbae8',
+  \`status\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT '',
+  \`is_unavailability\` tinyint(4) NOT NULL DEFAULT 0,
+  \`id_users_provider\` int(11) DEFAULT NULL,
+  \`id_users_customer\` int(11) DEFAULT NULL,
+  \`id_services\` int(11) DEFAULT NULL,
+  \`id_google_calendar\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`id_caldav_calendar\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (\`id\`),
+  KEY \`id_users_provider\` (\`id_users_provider\`),
+  KEY \`id_users_customer\` (\`id_users_customer\`),
+  KEY \`id_services\` (\`id_services\`),
+  CONSTRAINT \`appointments_services\` FOREIGN KEY (\`id_services\`) REFERENCES \`ea_services\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT \`appointments_users_customer\` FOREIGN KEY (\`id_users_customer\`) REFERENCES \`ea_users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT \`appointments_users_provider\` FOREIGN KEY (\`id_users_provider\`) REFERENCES \`ea_users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table \`ea_blocked_periods\`
+--
+
+DROP TABLE IF EXISTS \`ea_blocked_periods\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_blocked_periods\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`start_datetime\` datetime DEFAULT NULL,
+  \`end_datetime\` datetime DEFAULT NULL,
+  \`notes\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table \`ea_consents\`
+--
+
+DROP TABLE IF EXISTS \`ea_consents\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_consents\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`created\` timestamp NULL DEFAULT NULL,
+  \`modified\` timestamp NULL DEFAULT NULL,
+  \`first_name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`last_name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`email\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`ip\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`type\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table \`ea_migrations\`
+--
+
+DROP TABLE IF EXISTS \`ea_migrations\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_migrations\` (
+  \`version\` bigint(20) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table \`ea_migrations\`
+--
+
+LOCK TABLES \`ea_migrations\` WRITE;
+/*!40000 ALTER TABLE \`ea_migrations\` DISABLE KEYS */;
+INSERT INTO \`ea_migrations\` VALUES
+(60);
+/*!40000 ALTER TABLE \`ea_migrations\` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table \`ea_roles\`
+--
+
+DROP TABLE IF EXISTS \`ea_roles\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_roles\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`slug\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`is_admin\` tinyint(4) DEFAULT NULL,
+  \`appointments\` int(11) DEFAULT NULL,
+  \`customers\` int(11) DEFAULT NULL,
+  \`services\` int(11) DEFAULT NULL,
+  \`users\` int(11) DEFAULT NULL,
+  \`system_settings\` int(11) DEFAULT NULL,
+  \`user_settings\` int(11) DEFAULT NULL,
+  \`webhooks\` int(11) DEFAULT NULL,
+  \`blocked_periods\` int(11) DEFAULT NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table \`ea_roles\`
+--
+
+LOCK TABLES \`ea_roles\` WRITE;
+/*!40000 ALTER TABLE \`ea_roles\` DISABLE KEYS */;
+INSERT INTO \`ea_roles\` VALUES
+(1,NULL,NULL,'Administrator','admin',1,15,15,15,15,15,15,15,15),
+(2,NULL,NULL,'Provider','provider',0,15,15,0,0,0,15,0,0),
+(3,NULL,NULL,'Customer','customer',0,0,0,0,0,0,0,0,0),
+(4,NULL,NULL,'Secretary','secretary',0,15,15,0,0,0,15,0,0);
+/*!40000 ALTER TABLE \`ea_roles\` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table \`ea_secretaries_providers\`
+--
+
+DROP TABLE IF EXISTS \`ea_secretaries_providers\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_secretaries_providers\` (
+  \`id_users_secretary\` int(11) NOT NULL,
+  \`id_users_provider\` int(11) NOT NULL,
+  PRIMARY KEY (\`id_users_secretary\`,\`id_users_provider\`),
+  KEY \`secretaries_users_provider\` (\`id_users_provider\`),
+  CONSTRAINT \`secretaries_users_provider\` FOREIGN KEY (\`id_users_provider\`) REFERENCES \`ea_users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT \`secretaries_users_secretary\` FOREIGN KEY (\`id_users_secretary\`) REFERENCES \`ea_users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb3;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table \`ea_service_categories\`
+--
+
+DROP TABLE IF EXISTS \`ea_service_categories\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_service_categories\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`description\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table \`ea_services\`
+--
+
+DROP TABLE IF EXISTS \`ea_services\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_services\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`duration\` int(11) DEFAULT NULL,
+  \`price\` decimal(10,2) DEFAULT NULL,
+  \`currency\` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`description\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`color\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT '#7cbae8',
+  \`location\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`availabilities_type\` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT 'flexible',
+  \`attendants_number\` int(11) DEFAULT 1,
+  \`is_private\` tinyint(4) DEFAULT 0,
+  \`id_service_categories\` int(11) DEFAULT NULL,
+  PRIMARY KEY (\`id\`),
+  KEY \`id_service_categories\` (\`id_service_categories\`),
+  CONSTRAINT \`services_service_categories\` FOREIGN KEY (\`id_service_categories\`) REFERENCES \`ea_service_categories\` (\`id\`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table \`ea_services\`
+--
+
+LOCK TABLES \`ea_services\` WRITE;
+/*!40000 ALTER TABLE \`ea_services\` DISABLE KEYS */;
+INSERT INTO \`ea_services\` VALUES
+(1,'$dtnow','$dtnow','Service',30,0.00,'',NULL,'#7cbae8',NULL,'flexible',1,0,NULL);
+/*!40000 ALTER TABLE \`ea_services\` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table \`ea_services_providers\`
+--
+
+DROP TABLE IF EXISTS \`ea_services_providers\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_services_providers\` (
+  \`id_users\` int(11) NOT NULL,
+  \`id_services\` int(11) NOT NULL,
+  PRIMARY KEY (\`id_users\`,\`id_services\`),
+  KEY \`services_providers_services\` (\`id_services\`),
+  CONSTRAINT \`services_providers_services\` FOREIGN KEY (\`id_services\`) REFERENCES \`ea_services\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT \`services_providers_users_provider\` FOREIGN KEY (\`id_users\`) REFERENCES \`ea_users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table \`ea_settings\`
+--
+
+DROP TABLE IF EXISTS \`ea_settings\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_settings\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`name\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`value\` longtext COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB AUTO_INCREMENT=74 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table \`ea_settings\`
+--
+
+LOCK TABLES \`ea_settings\` WRITE;
+/*!40000 ALTER TABLE \`ea_settings\` DISABLE KEYS */;
+INSERT INTO \`ea_settings\` VALUES
+(1,NULL,NULL,'company_working_plan','{\"monday\":{\"start\":\"09:00\",\"end\":\"18:00\",\"breaks\":[{\"start\":\"14:30\",\"end\":\"15:00\"}]},\"tuesday\":{\"start\":\"09:00\",\"end\":\"18:00\",\"breaks\":[{\"start\":\"14:30\",\"end\":\"15:00\"}]},\"wednesday\":{\"start\":\"09:00\",\"end\":\"18:00\",\"breaks\":[{\"start\":\"14:30\",\"end\":\"15:00\"}]},\"thursday\":{\"start\":\"09:00\",\"end\":\"18:00\",\"breaks\":[{\"start\":\"14:30\",\"end\":\"15:00\"}]},\"friday\":{\"start\":\"09:00\",\"end\":\"18:00\",\"breaks\":[{\"start\":\"14:30\",\"end\":\"15:00\"}]},\"saturday\":{\"start\":\"09:00\",\"end\":\"18:00\",\"breaks\":[{\"start\":\"14:30\",\"end\":\"15:00\"}]},\"sunday\":{\"start\":\"09:00\",\"end\":\"18:00\",\"breaks\":[{\"start\":\"14:30\",\"end\":\"15:00\"}]}}'),
+(2,NULL,NULL,'book_advance_timeout','30'),
+(3,NULL,NULL,'google_analytics_code',''),
+(4,NULL,NULL,'customer_notifications','1'),
+(5,NULL,NULL,'date_format','DMY'),
+(6,NULL,NULL,'require_captcha','0'),
+(7,NULL,NULL,'time_format','regular'),
+(8,NULL,NULL,'display_cookie_notice','0'),
+(9,NULL,NULL,'cookie_notice_content','Cookie notice content.'),
+(10,NULL,NULL,'display_terms_and_conditions','0'),
+(11,NULL,NULL,'terms_and_conditions_content','Terms and conditions content.'),
+(12,NULL,NULL,'display_privacy_policy','0'),
+(13,NULL,NULL,'privacy_policy_content','Privacy policy content.'),
+(14,NULL,NULL,'first_weekday','sunday'),
+(16,NULL,NULL,'api_token',''),
+(17,NULL,NULL,'display_any_provider','1'),
+(18,NULL,NULL,'display_first_name','1'),
+(19,NULL,NULL,'require_first_name','1'),
+(20,NULL,NULL,'display_last_name','1'),
+(21,NULL,NULL,'require_last_name','1'),
+(22,NULL,NULL,'display_email','1'),
+(23,NULL,NULL,'require_email','1'),
+(24,NULL,NULL,'display_phone_number','1'),
+(25,NULL,NULL,'require_phone_number','1'),
+(26,NULL,NULL,'display_address','1'),
+(27,NULL,NULL,'require_address','0'),
+(28,NULL,NULL,'display_city','1'),
+(29,NULL,NULL,'require_city','0'),
+(30,NULL,NULL,'display_zip_code','1'),
+(31,NULL,NULL,'require_zip_code','0'),
+(32,NULL,NULL,'display_notes','1'),
+(33,NULL,NULL,'require_notes','0'),
+(34,NULL,NULL,'matomo_analytics_url',''),
+(35,NULL,NULL,'display_delete_personal_information','0'),
+(36,NULL,NULL,'disable_booking','0'),
+(37,NULL,NULL,'disable_booking_message','<p style=\"text-align: center;\">Thanks for stopping by!</p><p style=\"text-align: center;\">We are not accepting new appointments at the moment, please check back again later.</p>'),
+(38,NULL,NULL,'company_logo',''),
+(39,NULL,NULL,'company_color','#ffffff'),
+(40,NULL,NULL,'display_login_button','1'),
+(41,NULL,NULL,'theme','default'),
+(42,'$dtnow','$dtnow','limit_customer_access','0'),
+(43,NULL,NULL,'future_booking_limit','90'),
+(44,NULL,NULL,'appointment_status_options','[\"Booked\", \"Confirmed\", \"Rescheduled\", \"Cancelled\", \"Draft\"]'),
+(45,NULL,NULL,'display_custom_field_1','0'),
+(46,NULL,NULL,'require_custom_field_1','0'),
+(47,NULL,NULL,'label_custom_field_1',''),
+(48,NULL,NULL,'display_custom_field_2','0'),
+(49,NULL,NULL,'require_custom_field_2','0'),
+(50,NULL,NULL,'label_custom_field_2',''),
+(51,NULL,NULL,'display_custom_field_3','0'),
+(52,NULL,NULL,'require_custom_field_3','0'),
+(53,NULL,NULL,'label_custom_field_3',''),
+(54,NULL,NULL,'display_custom_field_4','0'),
+(55,NULL,NULL,'require_custom_field_4','0'),
+(56,NULL,NULL,'label_custom_field_4',''),
+(57,NULL,NULL,'display_custom_field_5','0'),
+(58,NULL,NULL,'require_custom_field_5','0'),
+(59,NULL,NULL,'label_custom_field_5',''),
+(60,NULL,NULL,'matomo_analytics_site_id','1'),
+(61,NULL,NULL,'default_language','english'),
+(62,NULL,NULL,'default_timezone','UTC'),
+(63,'$dtnow','$dtnow','ldap_is_active','0'),
+(64,'$dtnow','$dtnow','ldap_host',''),
+(65,'$dtnow','$dtnow','ldap_port',''),
+(66,'$dtnow','$dtnow','ldap_user_dn',''),
+(67,'$dtnow','$dtnow','ldap_password',''),
+(68,'$dtnow','$dtnow','ldap_base_dn',''),
+(69,'$dtnow','$dtnow','ldap_filter','(&(objectClass=*)(|(cn={{KEYWORD}})(sn={{KEYWORD}})(mail={{KEYWORD}})(givenName={{KEYWORD}})(uid={{KEYWORD}})))'),
+(70,'$dtnow','$dtnow','ldap_field_mapping','{\n    \"first_name\": \"givenname\",\n    \"last_name\": \"sn\",\n    \"email\": \"mail\",\n    \"phone_number\": \"telephonenumber\",\n    \"username\": \"cn\"\n}'),
+(71,'$dtnow','$dtnow','company_name','$HOMESERVER_NAME'),
+(72,'$dtnow','$dtnow','company_email','$EMAIL_ADMIN_EMAIL_ADDRESS'),
+(73,'$dtnow','$dtnow','company_link','www.$HOMESERVER_DOMAIN');
+/*!40000 ALTER TABLE \`ea_settings\` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table \`ea_user_settings\`
+--
+
+DROP TABLE IF EXISTS \`ea_user_settings\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_user_settings\` (
+  \`id_users\` int(11) NOT NULL,
+  \`username\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`password\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`salt\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`working_plan\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`working_plan_exceptions\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`notifications\` tinyint(4) DEFAULT NULL,
+  \`google_sync\` tinyint(4) DEFAULT NULL,
+  \`google_token\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`google_calendar\` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`caldav_sync\` tinyint(4) DEFAULT 0,
+  \`caldav_url\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`caldav_username\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`caldav_password\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`sync_past_days\` int(11) DEFAULT 30,
+  \`sync_future_days\` int(11) DEFAULT 90,
+  \`calendar_view\` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT 'default',
+  PRIMARY KEY (\`id_users\`),
+  CONSTRAINT \`user_settings_users\` FOREIGN KEY (\`id_users\`) REFERENCES \`ea_users\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table \`ea_user_settings\`
+--
+
+LOCK TABLES \`ea_user_settings\` WRITE;
+/*!40000 ALTER TABLE \`ea_user_settings\` DISABLE KEYS */;
+INSERT INTO \`ea_user_settings\` VALUES
+(1,'$EASYAPPOINTMENTS_ADMIN_USERNAME','$EASYAPPOINTMENTS_ADMIN_PASSWORD_HASH','$pwsalt',NULL,NULL,1,NULL,NULL,NULL,0,NULL,NULL,NULL,30,90,'default');
+/*!40000 ALTER TABLE \`ea_user_settings\` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table \`ea_users\`
+--
+
+DROP TABLE IF EXISTS \`ea_users\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_users\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`first_name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`last_name\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`email\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`mobile_number\` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`phone_number\` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`address\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`city\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`state\` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`zip_code\` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`notes\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`timezone\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT 'UTC',
+  \`language\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT 'english',
+  \`custom_field_1\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`custom_field_2\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`custom_field_3\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`custom_field_4\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`custom_field_5\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`is_private\` tinyint(4) DEFAULT 0,
+  \`ldap_dn\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`id_roles\` int(11) DEFAULT NULL,
+  PRIMARY KEY (\`id\`),
+  KEY \`id_roles\` (\`id_roles\`),
+  CONSTRAINT \`users_roles\` FOREIGN KEY (\`id_roles\`) REFERENCES \`ea_roles\` (\`id\`) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table \`ea_users\`
+--
+
+LOCK TABLES \`ea_users\` WRITE;
+/*!40000 ALTER TABLE \`ea_users\` DISABLE KEYS */;
+INSERT INTO \`ea_users\` VALUES
+(1,'$dtnow','$dtnow','EasyAppointments','$(getAdminEmailName)','$EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS',NULL,'1235551212',NULL,NULL,NULL,NULL,NULL,'UTC','english',NULL,NULL,NULL,NULL,NULL,0,NULL,1);
+/*!40000 ALTER TABLE \`ea_users\` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table \`ea_webhooks\`
+--
+
+DROP TABLE IF EXISTS \`ea_webhooks\`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!40101 SET character_set_client = utf8 */;
+CREATE TABLE \`ea_webhooks\` (
+  \`id\` int(11) NOT NULL AUTO_INCREMENT,
+  \`create_datetime\` datetime DEFAULT NULL,
+  \`update_datetime\` datetime DEFAULT NULL,
+  \`name\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`url\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`actions\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`secret_header\` varchar(256) COLLATE utf8mb4_unicode_ci DEFAULT 'X-Ea-Token',
+  \`secret_token\` varchar(512) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  \`is_ssl_verified\` tinyint(4) NOT NULL DEFAULT 1,
+  \`notes\` text COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  PRIMARY KEY (\`id\`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
+/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
+/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;
+/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
+/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
+
+EOFSQ
+  rm -f $HOME/pwhashgen.php
+}
+
+function performUpdateEasyAppointments()
+{
+  perform_stack_name=easyappointments
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mariadb:10.7.3,alextselegidis/easyappointments:1.5.2
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/alextselegidis/easyappointments:1.5.2,mirror.gcr.io/alextselegidis/easyappointments:1.5.2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -68949,6 +69948,10 @@ function installExampleService()
   checkDeleteStackAndDirectory exampleservice "ExampleService"
   cdRes=$?
   if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName exampleservice-db)
+  if [ $? -ne 0 ]; then
     return 1
   fi
   pullImage $(getScriptImageByContainerName exampleservice-app)
@@ -68975,7 +69978,7 @@ function installExampleService()
     return $retVal
   fi
   if ! [ "$EXAMPLESERVICE_INIT_ENV" = "true" ]; then
-    sendEmail -s "ExampleService Admin Login Info" -b "ExampleService Admin Username: $EXAMPLESERVICE_ADMIN_USERNAME\nExampleService Admin Password: $EXAMPLESERVICE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "$FMLNAME_EXAMPLESERVICE_APP Admin Login Info" -b "$FMLNAME_EXAMPLESERVICE_APP Admin Username: $EXAMPLESERVICE_ADMIN_USERNAME\n$FMLNAME_EXAMPLESERVICE_APP Admin Email: $EXAMPLESERVICE_ADMIN_EMAIL_ADDRESS\n$FMLNAME_EXAMPLESERVICE_APP Admin Password: $EXAMPLESERVICE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     EXAMPLESERVICE_INIT_ENV=true
     updateConfigVar EXAMPLESERVICE_INIT_ENV $EXAMPLESERVICE_INIT_ENV
   fi
@@ -77309,6 +78312,516 @@ function outputStackListsScriptServer()
   done
 }
 
+# DbGate
+function installDbGate()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory dbgate "DbGate"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dbgate-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/dbgate
+  mkdir $HSHQ_STACKS_DIR/dbgate/data
+  initServicesCredentials
+  set +e
+  outputConfigDbGate
+  installStack dbgate dbgate-app "" $HOME/dbgate.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DBGATE_INIT_ENV" = "true" ]; then
+    sendEmail -s "DbGate Admin Login Info" -b "DbGate Admin Username: $DBGATE_ADMIN_USERNAME\nDbGate Admin Password: $DBGATE_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DBGATE_INIT_ENV=true
+    updateConfigVar DBGATE_INIT_ENV $DBGATE_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DBGATE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://dbgate-app:3000 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DBGATE $MANAGETLS_DBGATE "$is_integrate_hshq" $NETDEFAULT_DBGATE "$inner_block"
+  insertSubAuthelia $SUB_DBGATE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll dbgate "$FMLNAME_DBGATE" $USERTYPE_DBGATE "https://$SUB_DBGATE.$HOMESERVER_DOMAIN" "dbgate.png" "$(getHeimdallOrderFromSub $SUB_DBGATE $USERTYPE_DBGATE)"
+    restartAllCaddyContainers
+  fi
+}
+
+function outputConfigDbGate()
+{
+  cat <<EOFMT > $HOME/dbgate-compose.yml
+$STACK_VERSION_PREFIX dbgate $(getScriptStackVersion dbgate)
+
+services:
+  dbgate-app:
+    image: $(getScriptImageByContainerName dbgate-app)
+    container_name: dbgate-app
+    hostname: dbgate-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dock-proxy-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-dbgate-db:/root/.dbgate
+
+volumes:
+  v-dbgate-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/dbgate/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+
+EOFMT
+
+  cat <<EOFMT > $HOME/dbgate.env
+TZ=\${PORTAINER_TZ}
+LOGIN=$DBGATE_ADMIN_USERNAME
+PASSWORD=$DBGATE_ADMIN_PASSWORD
+CONNECTIONS=Adminer,MindsDB,Langfuse,Budibase,Discourse,EspoCRM,Firefly,FrappeHR,FreshRSS,Ghost,Gitea,Gitlab,Guacamole,HomeAssistant,Huginn,Immich,Invidious,Kanboard,Keila,Linkwarden,Mastodon,Matomo,Matrix,Mealie,MeshCentral,Metabase,MintHCM,Nextcloud,Ombi,Paperless,Pastefy,PeerTube,Penpot,PhotoPrism,Piped,Pixelfed,Shlink,SpeedtestTrackerLocal,SpeedtestTrackerVPN,StandardNotes,Vaultwarden,Wallabag,Wikijs,WordPress,Yamtrack
+LABEL_Adminer=Adminer
+ENGINE_Adminer=mysql@dbgate-plugin-mysql
+SERVER_Adminer=adminer-db
+DATABASE_Adminer=$ADMINER_DATABASE_NAME
+USER_Adminer=$ADMINER_DATABASE_USER
+PASSWORD_Adminer=$ADMINER_DATABASE_USER_PASSWORD
+PORT_Adminer=3306
+LABEL_MindsDB=MindsDB
+ENGINE_MindsDB=postgres@dbgate-plugin-postgres
+SERVER_MindsDB=aistack-mindsdb-db
+DATABASE_MindsDB=$AISTACK_MINDSDB_DATABASE_NAME
+USER_MindsDB=$AISTACK_MINDSDB_DATABASE_USER
+PASSWORD_MindsDB=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+PORT_MindsDB=5432
+LABEL_Langfuse=Langfuse
+ENGINE_Langfuse=postgres@dbgate-plugin-postgres
+SERVER_Langfuse=aistack-mindsdb-db
+DATABASE_Langfuse=$AISTACK_LANGFUSE_DATABASE_NAME
+USER_Langfuse=$AISTACK_MINDSDB_DATABASE_USER
+PASSWORD_Langfuse=$AISTACK_MINDSDB_DATABASE_USER_PASSWORD
+PORT_Langfuse=5432
+LABEL_Budibase=Budibase
+ENGINE_Budibase=mysql@dbgate-plugin-mysql
+SERVER_Budibase=budibase-db
+DATABASE_Budibase=$BUDIBASE_DATABASE_NAME
+USER_Budibase=$BUDIBASE_DATABASE_USER
+PASSWORD_Budibase=$BUDIBASE_DATABASE_USER_PASSWORD
+PORT_Budibase=3306
+LABEL_Calcom=Calcom
+ENGINE_Calcom=postgres@dbgate-plugin-postgres
+SERVER_Calcom=calcom-db
+DATABASE_Calcom=$CALCOM_DATABASE_NAME
+USER_Calcom=$CALCOM_DATABASE_USER
+PASSWORD_Calcom=$CALCOM_DATABASE_USER_PASSWORD
+PORT_Calcom=5432
+LABEL_Discourse=Discourse
+ENGINE_Discourse=postgres@dbgate-plugin-postgres
+SERVER_Discourse=discourse-db
+DATABASE_Discourse=$DISCOURSE_DATABASE_NAME
+USER_Discourse=$DISCOURSE_DATABASE_USER
+PASSWORD_Discourse=$DISCOURSE_DATABASE_USER_PASSWORD
+PORT_Discourse=5432
+LABEL_EasyAppointments=EasyAppointments
+ENGINE_EasyAppointments=mysql@dbgate-plugin-mysql
+SERVER_EasyAppointments=easyappointments-db
+DATABASE_EasyAppointments=$EASYAPPOINTMENTS_DATABASE_NAME
+USER_EasyAppointments=$EASYAPPOINTMENTS_DATABASE_USER
+PASSWORD_EasyAppointments=$EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
+PORT_EasyAppointments=3306
+LABEL_EspoCRM=EspoCRM
+ENGINE_EspoCRM=mysql@dbgate-plugin-mysql
+SERVER_EspoCRM=espocrm-db
+DATABASE_EspoCRM=$ESPOCRM_DATABASE_NAME
+USER_EspoCRM=$ESPOCRM_DATABASE_USER
+PASSWORD_EspoCRM=$ESPOCRM_DATABASE_USER_PASSWORD
+PORT_EspoCRM=3306
+LABEL_Firefly=Firefly
+ENGINE_Firefly=postgres@dbgate-plugin-postgres
+SERVER_Firefly=firefly-db
+DATABASE_Firefly=$FIREFLY_DATABASE_NAME
+USER_Firefly=$FIREFLY_DATABASE_USER
+PASSWORD_Firefly=$FIREFLY_DATABASE_USER_PASSWORD
+PORT_Firefly=5432
+LABEL_FrappeHR=FrappeHR
+ENGINE_FrappeHR=mysql@dbgate-plugin-mysql
+SERVER_FrappeHR=frappe-hr-db
+DATABASE_FrappeHR=$FRAPPE_HR_DATABASE_NAME
+USER_FrappeHR=$FRAPPE_HR_DATABASE_USER
+PASSWORD_FrappeHR=$FRAPPE_HR_DATABASE_USER_PASSWORD
+PORT_FrappeHR=3306
+LABEL_FreshRSS=FreshRSS
+ENGINE_FreshRSS=postgres@dbgate-plugin-postgres
+SERVER_FreshRSS=freshrss-db
+DATABASE_FreshRSS=$FRESHRSS_DATABASE_NAME
+USER_FreshRSS=$FRESHRSS_DATABASE_USER
+PASSWORD_FreshRSS=$FRESHRSS_DATABASE_USER_PASSWORD
+PORT_FreshRSS=5432
+LABEL_Ghost=Ghost
+ENGINE_Ghost=mysql@dbgate-plugin-mysql
+SERVER_Ghost=ghost-db
+DATABASE_Ghost=$GHOST_DATABASE_NAME
+USER_Ghost=$GHOST_DATABASE_USER
+PASSWORD_Ghost=$GHOST_DATABASE_USER_PASSWORD
+PORT_Ghost=3306
+LABEL_Gitea=Gitea
+ENGINE_Gitea=postgres@dbgate-plugin-postgres
+SERVER_Gitea=gitea-db
+DATABASE_Gitea=$GITEA_DATABASE_NAME
+USER_Gitea=$GITEA_DATABASE_USER
+PASSWORD_Gitea=$GITEA_DATABASE_USER_PASSWORD
+PORT_Gitea=5432
+LABEL_Gitlab=Gitlab
+ENGINE_Gitlab=postgres@dbgate-plugin-postgres
+SERVER_Gitlab=gitlab-db
+DATABASE_Gitlab=$GITLAB_DATABASE_NAME
+USER_Gitlab=$GITLAB_DATABASE_USER
+PASSWORD_Gitlab=$GITLAB_DATABASE_USER_PASSWORD
+PORT_Gitlab=5432
+LABEL_Guacamole=Guacamole
+ENGINE_Guacamole=mysql@dbgate-plugin-mysql
+SERVER_Guacamole=guacamole-db
+DATABASE_Guacamole=$GUACAMOLE_DATABASE_NAME
+USER_Guacamole=$GUACAMOLE_DATABASE_USER
+PASSWORD_Guacamole=$GUACAMOLE_DATABASE_USER_PASSWORD
+PORT_Guacamole=3306
+LABEL_HomeAssistant=HomeAssistant
+ENGINE_HomeAssistant=postgres@dbgate-plugin-postgres
+SERVER_HomeAssistant=homeassistant-db
+DATABASE_HomeAssistant=$HOMEASSISTANT_DATABASE_NAME
+USER_HomeAssistant=$HOMEASSISTANT_DATABASE_USER
+PASSWORD_HomeAssistant=$HOMEASSISTANT_DATABASE_USER_PASSWORD
+PORT_HomeAssistant=5432
+LABEL_Huginn=Huginn
+ENGINE_Huginn=postgres@dbgate-plugin-postgres
+SERVER_Huginn=huginn-db
+DATABASE_Huginn=$HUGINN_DATABASE_NAME
+USER_Huginn=$HUGINN_DATABASE_USER
+PASSWORD_Huginn=$HUGINN_DATABASE_USER_PASSWORD
+PORT_Huginn=5432
+LABEL_Immich=Immich
+ENGINE_Immich=postgres@dbgate-plugin-postgres
+SERVER_Immich=immich-db
+DATABASE_Immich=$IMMICH_DATABASE_NAME
+USER_Immich=$IMMICH_DATABASE_USER
+PASSWORD_Immich=$IMMICH_DATABASE_USER_PASSWORD
+PORT_Immich=5432
+LABEL_Invidious=Invidious
+ENGINE_Invidious=postgres@dbgate-plugin-postgres
+SERVER_Invidious=invidious-db
+DATABASE_Invidious=$INVIDIOUS_DATABASE_NAME
+USER_Invidious=$INVIDIOUS_DATABASE_USER
+PASSWORD_Invidious=$INVIDIOUS_DATABASE_USER_PASSWORD
+PORT_Invidious=5432
+LABEL_Kanboard=Kanboard
+ENGINE_Kanboard=postgres@dbgate-plugin-postgres
+SERVER_Kanboard=kanboard-db
+DATABASE_Kanboard=$KANBOARD_DATABASE_NAME
+USER_Kanboard=$KANBOARD_DATABASE_USER
+PASSWORD_Kanboard=$KANBOARD_DATABASE_USER_PASSWORD
+PORT_Kanboard=5432
+LABEL_Keila=Keila
+ENGINE_Keila=postgres@dbgate-plugin-postgres
+SERVER_Keila=keila-db
+DATABASE_Keila=$KEILA_DATABASE_NAME
+USER_Keila=$KEILA_DATABASE_USER
+PASSWORD_Keila=$KEILA_DATABASE_USER_PASSWORD
+PORT_Keila=5432
+LABEL_Linkwarden=Linkwarden
+ENGINE_Linkwarden=postgres@dbgate-plugin-postgres
+SERVER_Linkwarden=linkwarden-db
+DATABASE_Linkwarden=$LINKWARDEN_DATABASE_NAME
+USER_Linkwarden=$LINKWARDEN_DATABASE_USER
+PASSWORD_Linkwarden=$LINKWARDEN_DATABASE_USER_PASSWORD
+PORT_Linkwarden=5432
+LABEL_Mastodon=Mastodon
+ENGINE_Mastodon=postgres@dbgate-plugin-postgres
+SERVER_Mastodon=mastodon-db
+DATABASE_Mastodon=$MASTODON_DATABASE_NAME
+USER_Mastodon=$MASTODON_DATABASE_USER
+PASSWORD_Mastodon=$MASTODON_DATABASE_USER_PASSWORD
+PORT_Mastodon=5432
+LABEL_Matomo=Matomo
+ENGINE_Matomo=mysql@dbgate-plugin-mysql
+SERVER_Matomo=matomo-db
+DATABASE_Matomo=$MATOMO_DATABASE_NAME
+USER_Matomo=$MATOMO_DATABASE_USER
+PASSWORD_Matomo=$MATOMO_DATABASE_USER_PASSWORD
+PORT_Matomo=3306
+LABEL_Matrix=Matrix
+ENGINE_Matrix=postgres@dbgate-plugin-postgres
+SERVER_Matrix=matrix-db
+DATABASE_Matrix=$MATRIX_DATABASE_NAME
+USER_Matrix=$MATRIX_DATABASE_USER
+PASSWORD_Matrix=$MATRIX_DATABASE_USER_PASSWORD
+PORT_Matrix=5432
+LABEL_Mealie=Mealie
+ENGINE_Mealie=postgres@dbgate-plugin-postgres
+SERVER_Mealie=mealie-db
+DATABASE_Mealie=$MEALIE_DATABASE_NAME
+USER_Mealie=$MEALIE_DATABASE_USER
+PASSWORD_Mealie=$MEALIE_DATABASE_USER_PASSWORD
+PORT_Mealie=5432
+LABEL_MeshCentral=MeshCentral
+ENGINE_MeshCentral=mysql@dbgate-plugin-mysql
+SERVER_MeshCentral=meshcentral-db
+DATABASE_MeshCentral=$MESHCENTRAL_DATABASE_NAME
+USER_MeshCentral=$MESHCENTRAL_DATABASE_USER
+PASSWORD_MeshCentral=$MESHCENTRAL_DATABASE_USER_PASSWORD
+PORT_MeshCentral=3306
+LABEL_Metabase=Metabase
+ENGINE_Metabase=postgres@dbgate-plugin-postgres
+SERVER_Metabase=metabase-db
+DATABASE_Metabase=$METABASE_DATABASE_NAME
+USER_Metabase=$METABASE_DATABASE_USER
+PASSWORD_Metabase=$METABASE_DATABASE_USER_PASSWORD
+PORT_Metabase=5432
+LABEL_MintHCM=MintHCM
+ENGINE_MintHCM=mysql@dbgate-plugin-mysql
+SERVER_MintHCM=minthcm-db
+DATABASE_MintHCM=$MINTHCM_DATABASE_NAME
+USER_MintHCM=$MINTHCM_DATABASE_USER
+PASSWORD_MintHCM=$MINTHCM_DATABASE_USER_PASSWORD
+PORT_MintHCM=3306
+LABEL_Nextcloud=Nextcloud
+ENGINE_Nextcloud=postgres@dbgate-plugin-postgres
+SERVER_Nextcloud=nextcloud-db
+DATABASE_Nextcloud=$NEXTCLOUD_DATABASE_NAME
+USER_Nextcloud=$NEXTCLOUD_DATABASE_USER
+PASSWORD_Nextcloud=$NEXTCLOUD_DATABASE_USER_PASSWORD
+PORT_Nextcloud=5432
+LABEL_Odoo=Odoo
+ENGINE_Odoo=postgres@dbgate-plugin-postgres
+SERVER_Odoo=odoo-db
+DATABASE_Odoo=$ODOO_DATABASE_NAME
+USER_Odoo=$ODOO_DATABASE_USER
+PASSWORD_Odoo=$ODOO_DATABASE_USER_PASSWORD
+PORT_Odoo=5432
+LABEL_Ombi=Ombi
+ENGINE_Ombi=mysql@dbgate-plugin-mysql
+SERVER_Ombi=ombi-db
+DATABASE_Ombi=$OMBI_DATABASE_NAME
+USER_Ombi=$OMBI_DATABASE_USER
+PASSWORD_Ombi=$OMBI_DATABASE_USER_PASSWORD
+PORT_Ombi=3306
+LABEL_Paperless=Paperless
+ENGINE_Paperless=postgres@dbgate-plugin-postgres
+SERVER_Paperless=paperless-db
+DATABASE_Paperless=$PAPERLESS_DATABASE_NAME
+USER_Paperless=$PAPERLESS_DATABASE_USER
+PASSWORD_Paperless=$PAPERLESS_DATABASE_USER_PASSWORD
+PORT_Paperless=5432
+LABEL_Pastefy=Pastefy
+ENGINE_Pastefy=mysql@dbgate-plugin-mysql
+SERVER_Pastefy=pastefy-db
+DATABASE_Pastefy=$PASTEFY_DATABASE_NAME
+USER_Pastefy=$PASTEFY_DATABASE_USER
+PASSWORD_Pastefy=$PASTEFY_DATABASE_USER_PASSWORD
+PORT_Pastefy=3306
+LABEL_PeerTube=PeerTube
+ENGINE_PeerTube=postgres@dbgate-plugin-postgres
+SERVER_PeerTube=peertube-db
+DATABASE_PeerTube=$PEERTUBE_DATABASE_NAME
+USER_PeerTube=$PEERTUBE_DATABASE_USER
+PASSWORD_PeerTube=$PEERTUBE_DATABASE_USER_PASSWORD
+PORT_PeerTube=5432
+LABEL_Penpot=Penpot
+ENGINE_Penpot=postgres@dbgate-plugin-postgres
+SERVER_Penpot=penpot-db
+DATABASE_Penpot=$PENPOT_DATABASE_NAME
+USER_Penpot=$PENPOT_DATABASE_USER
+PASSWORD_Penpot=$PENPOT_DATABASE_USER_PASSWORD
+PORT_Penpot=5432
+LABEL_PhotoPrism=PhotoPrism
+ENGINE_PhotoPrism=mysql@dbgate-plugin-mysql
+SERVER_PhotoPrism=photoprism-db
+DATABASE_PhotoPrism=$PHOTOPRISM_DATABASE_NAME
+USER_PhotoPrism=$PHOTOPRISM_DATABASE_USER
+PASSWORD_PhotoPrism=$PHOTOPRISM_DATABASE_USER_PASSWORD
+PORT_PhotoPrism=3306
+LABEL_Piped=Piped
+ENGINE_Piped=postgres@dbgate-plugin-postgres
+SERVER_Piped=piped-db
+DATABASE_Piped=$PIPED_DATABASE_NAME
+USER_Piped=$PIPED_DATABASE_USER
+PASSWORD_Piped=$PIPED_DATABASE_USER_PASSWORD
+PORT_Piped=5432
+LABEL_Pixelfed=Pixelfed
+ENGINE_Pixelfed=mysql@dbgate-plugin-mysql
+SERVER_Pixelfed=pixelfed-db
+DATABASE_Pixelfed=$PIXELFED_DATABASE_NAME
+USER_Pixelfed=$PIXELFED_DATABASE_USER
+PASSWORD_Pixelfed=$PIXELFED_DATABASE_USER_PASSWORD
+PORT_Pixelfed=3306
+LABEL_Gitlab=Rallly
+ENGINE_Rallly=postgres@dbgate-plugin-postgres
+SERVER_Rallly=rallly-db
+DATABASE_Rallly=$RALLLY_DATABASE_NAME
+USER_Rallly=$RALLLY_DATABASE_USER
+PASSWORD_Rallly=$RALLLY_DATABASE_USER_PASSWORD
+PORT_Rallly=5432
+LABEL_Shlink=Shlink
+ENGINE_Shlink=postgres@dbgate-plugin-postgres
+SERVER_Shlink=shlink-db
+DATABASE_Shlink=$SHLINK_DATABASE_NAME
+USER_Shlink=$SHLINK_DATABASE_USER
+PASSWORD_Shlink=$SHLINK_DATABASE_USER_PASSWORD
+PORT_Shlink=5432
+LABEL_SpeedtestTrackerLocal=SpeedtestTrackerLocal
+ENGINE_SpeedtestTrackerLocal=postgres@dbgate-plugin-postgres
+SERVER_SpeedtestTrackerLocal=speedtest-tracker-local-db
+DATABASE_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_NAME
+USER_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER
+PASSWORD_SpeedtestTrackerLocal=$SPEEDTEST_TRACKER_LOCAL_DATABASE_USER_PASSWORD
+PORT_SpeedtestTrackerLocal=5432
+LABEL_SpeedtestTrackerVPN=SpeedtestTrackerVPN
+ENGINE_SpeedtestTrackerVPN=postgres@dbgate-plugin-postgres
+SERVER_SpeedtestTrackerVPN=speedtest-tracker-vpn-db
+DATABASE_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_NAME
+USER_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_USER
+PASSWORD_SpeedtestTrackerVPN=$SPEEDTEST_TRACKER_VPN_DATABASE_USER_PASSWORD
+PORT_SpeedtestTrackerVPN=5432
+LABEL_StandardNotes=StandardNotes
+ENGINE_StandardNotes=mysql@dbgate-plugin-mysql
+SERVER_StandardNotes=standardnotes-db
+DATABASE_StandardNotes=$STANDARDNOTES_DATABASE_NAME
+USER_StandardNotes=$STANDARDNOTES_DATABASE_USER
+PASSWORD_StandardNotes=$STANDARDNOTES_DATABASE_USER_PASSWORD
+PORT_StandardNotes=3306
+LABEL_Twenty=Twenty
+ENGINE_Twenty=postgres@dbgate-plugin-postgres
+SERVER_Twenty=twenty-db
+DATABASE_Twenty=$TWENTY_DATABASE_NAME
+USER_Twenty=$TWENTY_DATABASE_USER
+PASSWORD_Twenty=$TWENTY_DATABASE_USER_PASSWORD
+PORT_Twenty=5432
+LABEL_Vaultwarden=Vaultwarden
+ENGINE_Vaultwarden=postgres@dbgate-plugin-postgres
+SERVER_Vaultwarden=vaultwarden-db
+DATABASE_Vaultwarden=$VAULTWARDEN_DATABASE_NAME
+USER_Vaultwarden=$VAULTWARDEN_DATABASE_USER
+PASSWORD_Vaultwarden=$VAULTWARDEN_DATABASE_USER_PASSWORD
+PORT_Vaultwarden=5432
+LABEL_Wallabag=Wallabag
+ENGINE_Wallabag=postgres@dbgate-plugin-postgres
+SERVER_Wallabag=wallabag-db
+DATABASE_Wallabag=$WALLABAG_DATABASE_NAME
+USER_Wallabag=$WALLABAG_DATABASE_USER
+PASSWORD_Wallabag=$WALLABAG_DATABASE_USER_PASSWORD
+PORT_Wallabag=5432
+LABEL_Wikijs=Wikijs
+ENGINE_Wikijs=postgres@dbgate-plugin-postgres
+SERVER_Wikijs=wikijs-db
+DATABASE_Wikijs=$WIKIJS_DATABASE_NAME
+USER_Wikijs=$WIKIJS_DATABASE_USER
+PASSWORD_Wikijs=$WIKIJS_DATABASE_USER_PASSWORD
+PORT_Wikijs=5432
+LABEL_WordPress=WordPress
+ENGINE_WordPress=mysql@dbgate-plugin-mysql
+SERVER_WordPress=wordpress-db
+DATABASE_WordPress=$WORDPRESS_DATABASE_NAME
+USER_WordPress=$WORDPRESS_DATABASE_USER
+PASSWORD_WordPress=$WORDPRESS_DATABASE_USER_PASSWORD
+PORT_WordPress=3306
+LABEL_Yamtrack=Yamtrack
+ENGINE_Yamtrack=postgres@dbgate-plugin-postgres
+SERVER_Yamtrack=yamtrack-db
+DATABASE_Yamtrack=$YAMTRACK_DATABASE_NAME
+USER_Yamtrack=$YAMTRACK_DATABASE_USER
+PASSWORD_Yamtrack=$YAMTRACK_DATABASE_USER_PASSWORD
+PORT_Yamtrack=5432
+EOFMT
+
+}
+
+function performUpdateDbGate()
+{
+  perform_stack_name=dbgate
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/dbgate/dbgate:6.6.3-alpine
+      image_update_map[0]="mirror.gcr.io/dbgate/dbgate:6.6.3-alpine,mirror.gcr.io/dbgate/dbgate:6.6.3-alpine"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+function modFunAddUpdateConnectionDbGate()
+{
+  grep -q "LABEL_${sdb_formal}" $HOME/${updateStackName}.env
+  if [ $? -eq 0 ]; then
+    return 3
+  fi
+  echo "LABEL_${sdb_formal}=$sdb_formal" >> $HOME/${updateStackName}.env
+  case "$sdb_driver" in
+    mysql)
+      echo "ENGINE_${sdb_formal}=mysql@dbgate-plugin-mysql" >> $HOME/${updateStackName}.env
+      echo "PORT_${sdb_formal}=3306" >> $HOME/${updateStackName}.env
+      ;;
+    postgres)
+      echo "ENGINE_${sdb_formal}=postgres@dbgate-plugin-postgres" >> $HOME/${updateStackName}.env
+      echo "PORT_${sdb_formal}=5432" >> $HOME/${updateStackName}.env
+      ;;
+    mongodb)
+      echo "ENGINE_${sdb_formal}=mongo@dbgate-plugin-mongo" >> $HOME/${updateStackName}.env
+      echo "PORT_${sdb_formal}=27017" >> $HOME/${updateStackName}.env
+      ;;
+    sqlite)
+      echo "ENGINE_${sdb_formal}=sqlite@dbgate-plugin-sqlite" >> $HOME/${updateStackName}.env
+      ;;
+  esac
+  echo "SERVER_${sdb_formal}=$sdb_host" >> $HOME/${updateStackName}.env
+  echo "DATABASE_${sdb_formal}=$sdb_database" >> $HOME/${updateStackName}.env
+  echo "USER_${sdb_formal}=$sdb_username" >> $HOME/${updateStackName}.env
+  echo "PASSWORD_${sdb_formal}=$sdb_password" >> $HOME/${updateStackName}.env
+  curConnections=$(grep ^CONNECTIONS= $HOME/${updateStackName}.env | sed 's/^[^=]*=//' | sed 's/ *$//g' | sed 's/"//g')
+  sed -i "s|^CONNECTIONS=.*|CONNECTIONS=${curConnections},${sdb_formal}|g" $HOME/${updateStackName}.env
+}
+
 # SQLPad
 function installSQLPad()
 {
@@ -77434,6 +78947,14 @@ SQLPAD_CONNECTIONS__budibase__username=$BUDIBASE_DATABASE_USER
 SQLPAD_CONNECTIONS__budibase__password=$BUDIBASE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__budibase__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__budibase__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__calcom__name=Calcom
+SQLPAD_CONNECTIONS__calcom__driver=postgres
+SQLPAD_CONNECTIONS__calcom__host=calcom-db
+SQLPAD_CONNECTIONS__calcom__database=$CALCOM_DATABASE_NAME
+SQLPAD_CONNECTIONS__calcom__username=$CALCOM_DATABASE_USER
+SQLPAD_CONNECTIONS__calcom__password=$CALCOM_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__calcom__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__calcom__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__discourse__name=Discourse
 SQLPAD_CONNECTIONS__discourse__driver=postgres
 SQLPAD_CONNECTIONS__discourse__host=discourse-db
@@ -77442,6 +78963,14 @@ SQLPAD_CONNECTIONS__discourse__username=$DISCOURSE_DATABASE_USER
 SQLPAD_CONNECTIONS__discourse__password=$DISCOURSE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__discourse__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__discourse__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__easyappointments__name=EasyAppointments
+SQLPAD_CONNECTIONS__easyappointments__driver=mysql
+SQLPAD_CONNECTIONS__easyappointments__host=easyappointments-db
+SQLPAD_CONNECTIONS__easyappointments__database=$EASYAPPOINTMENTS_DATABASE_NAME
+SQLPAD_CONNECTIONS__easyappointments__username=$EASYAPPOINTMENTS_DATABASE_USER
+SQLPAD_CONNECTIONS__easyappointments__password=$EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__easyappointments__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__easyappointments__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__espocrm__name=EspoCRM
 SQLPAD_CONNECTIONS__espocrm__driver=mysql
 SQLPAD_CONNECTIONS__espocrm__host=espocrm-db
@@ -77698,6 +79227,14 @@ SQLPAD_CONNECTIONS__pixelfed__username=$PIXELFED_DATABASE_USER
 SQLPAD_CONNECTIONS__pixelfed__password=$PIXELFED_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__pixelfed__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__pixelfed__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__rallly__name=Rallly
+SQLPAD_CONNECTIONS__rallly__driver=postgres
+SQLPAD_CONNECTIONS__rallly__host=rallly-db
+SQLPAD_CONNECTIONS__rallly__database=$RALLLY_DATABASE_NAME
+SQLPAD_CONNECTIONS__rallly__username=$RALLLY_DATABASE_USER
+SQLPAD_CONNECTIONS__rallly__password=$RALLLY_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__rallly__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__rallly__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__shlink__name=Shlink
 SQLPAD_CONNECTIONS__shlink__driver=postgres
 SQLPAD_CONNECTIONS__shlink__host=shlink-db
@@ -77870,6 +79407,7 @@ function checkAddDBConnection()
   sdb_username="$7"
   sdb_password="$8"
   set +e
+
   updateStackEnv sqlpad modFunAddUpdateConnectionSQLPad > /dev/null 2>&1
   usRetVal=$?
   if [ $usRetVal -eq 2 ]; then
