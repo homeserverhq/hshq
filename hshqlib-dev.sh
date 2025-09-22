@@ -3483,10 +3483,6 @@ function initConfig()
     loadConfigVars true
   fi
   set +e
-  replaceType="HomeServer"
-  if [ "$HSHQ_APP_TYPE" = "business" ]; then
-    replaceType="company"
-  fi
   if [ -z "$IS_ACCEPT_DEFAULTS" ]; then
     showYesNoMessageBox "Accept Defaults?" "Do you wish to use defaults where applicable?"
     mbres=$?
@@ -3620,6 +3616,31 @@ function initConfig()
       fi
     fi
     updatePlaintextRootConfigVar DISABLED_SERVICES $DISABLED_SERVICES
+  fi
+  if [ "$HSHQ_APP_TYPE" = "home" ]; then
+    selecttypemenu=$(cat << EOF
+
+$(getLogo)
+
+Is this server for your home or business?
+EOF
+)
+    menures=$(whiptail --title "Select an option" --menu "$selecttypemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+    "1" "Home" \
+    "2" "Business" 3>&1 1>&2 2>&3)
+    if [ $? -ne 0 ]; then
+      menures=1
+    fi
+    case $menures in
+      1)
+        HSHQ_APP_TYPE=home ;;
+      2)
+        HSHQ_APP_TYPE=business ;;
+    esac
+  fi
+  replaceType="HomeServer"
+  if [ "$HSHQ_APP_TYPE" = "business" ]; then
+    replaceType="company"
   fi
   while [ -z "$HOMESERVER_DOMAIN" ]
   do
