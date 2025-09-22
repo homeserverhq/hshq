@@ -3585,6 +3585,28 @@ function initConfig()
     XDG_RUNTIME_DIR="/run/user/$USERID"
     updateConfigVar XDG_RUNTIME_DIR $XDG_RUNTIME_DIR
   fi
+  if [ "$HSHQ_APP_TYPE" = "home" ]; then
+    selecttypemenu=$(cat << EOF
+
+$(getLogo)
+
+Is this server for your home or business?
+EOF
+)
+    menures=$(whiptail --title "Select an option" --menu "$selecttypemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
+    "1" "Home" \
+    "2" "Business" 3>&1 1>&2 2>&3)
+    if [ $? -ne 0 ]; then
+      menures=1
+    fi
+    case $menures in
+      1)
+        HSHQ_APP_TYPE=home ;;
+      2)
+        HSHQ_APP_TYPE=business ;;
+    esac
+  fi
+  updatePlaintextRootConfigVar HSHQ_APP_TYPE $HSHQ_APP_TYPE
   if [ -z "$DISABLED_SERVICES" ]; then
     if [ "$HSHQ_APP_TYPE" = "business" ]; then
       if [ $total_ram -lt 8 ]; then
@@ -3616,27 +3638,6 @@ function initConfig()
       fi
     fi
     updatePlaintextRootConfigVar DISABLED_SERVICES $DISABLED_SERVICES
-  fi
-  if [ "$HSHQ_APP_TYPE" = "home" ]; then
-    selecttypemenu=$(cat << EOF
-
-$(getLogo)
-
-Is this server for your home or business?
-EOF
-)
-    menures=$(whiptail --title "Select an option" --menu "$selecttypemenu" $MENU_HEIGHT $MENU_WIDTH $MENU_INT_HEIGHT \
-    "1" "Home" \
-    "2" "Business" 3>&1 1>&2 2>&3)
-    if [ $? -ne 0 ]; then
-      menures=1
-    fi
-    case $menures in
-      1)
-        HSHQ_APP_TYPE=home ;;
-      2)
-        HSHQ_APP_TYPE=business ;;
-    esac
   fi
   replaceType="HomeServer"
   if [ "$HSHQ_APP_TYPE" = "business" ]; then
