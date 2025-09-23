@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=204
+HSHQ_LIB_SCRIPT_VERSION=205
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -69323,7 +69323,7 @@ function installEasyAppointments()
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
-  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADERALLOWFRAME\n"
   inner_block=$inner_block">>>>handle @subnet {\n"
   inner_block=$inner_block">>>>>>reverse_proxy http://easyappointments-app {\n"
   inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
@@ -69912,7 +69912,7 @@ CREATE TABLE \`ea_users\` (
 LOCK TABLES \`ea_users\` WRITE;
 /*!40000 ALTER TABLE \`ea_users\` DISABLE KEYS */;
 INSERT INTO \`ea_users\` VALUES
-(1,'$dtnow','$dtnow','EasyAppointments','$(getAdminEmailName)','$EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS',NULL,'1235551212',NULL,NULL,NULL,NULL,NULL,'UTC','english',NULL,NULL,NULL,NULL,NULL,0,NULL,1);
+(1,'$dtnow','$dtnow','EasyAppointments','$(getAdminEmailName)','$EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS',NULL,'1235551212',NULL,NULL,NULL,NULL,NULL,'$TZ','english',NULL,NULL,NULL,NULL,NULL,0,NULL,1);
 /*!40000 ALTER TABLE \`ea_users\` ENABLE KEYS */;
 UNLOCK TABLES;
 
