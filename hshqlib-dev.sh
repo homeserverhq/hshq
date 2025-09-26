@@ -70853,6 +70853,10 @@ function installZammad()
   docker exec zammad-railsserver bash -c "cp /config/auto_wizard.json /opt/zammad/auto_wizard.json;/docker-entrypoint.sh bundle exec rails runner /config/init.rb" > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/zammad/config/auto_wizard.json
   rm -f $HSHQ_STACKS_DIR/zammad/config/init.rb
+  #echo "Restarting stack..."
+  #startStopStack zammad stop
+  #sleep 3
+  #startStopStack zammad start
   set -e
   inner_block=""
   inner_block=$inner_block">>https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN {\n"
@@ -71252,69 +71256,72 @@ services:
       - /etc/timezone:/etc/timezone:ro
       - v-zammad-redis:/data
 
-  zammad-es:
-    image: $(getScriptImageByContainerName zammad-es)
-    container_name: zammad-es
-    hostname: zammad-es
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    mem_limit: 2g
-    networks:
-      - int-zammad-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - v-zammad-es:/usr/share/elasticsearch/data
+#  zammad-es:
+#    image: $(getScriptImageByContainerName zammad-es)
+#    container_name: zammad-es
+#    hostname: zammad-es
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    mem_limit: 2g
+#    networks:
+#      - int-zammad-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - v-zammad-es:/usr/share/elasticsearch/data
 
-  zammad-minio:
-    image: $(getScriptImageByContainerName zammad-minio)
-    container_name: zammad-minio
-    hostname: zammad-minio
-    restart: unless-stopped
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    command: server /data
-    networks:
-      - dock-proxy-net
-      - int-zammad-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/minio:/data
-
-  zammad-createbuckets:
-    image: $(getScriptImageByContainerName zammad-createbuckets)
-    container_name: zammad-createbuckets
-    hostname: zammad-createbuckets
-    env_file: stack.env
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      - zammad-minio
-    networks:
-      - int-zammad-net
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
-      - /etc/ssl/certs:/etc/ssl/certs:ro
-      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
-      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
-    entrypoint: >
-      /bin/sh -c "
-      while ! /usr/bin/mc ready minio;
-      do
-        /usr/bin/mc alias set minio http://zammad-minio:9000 $ZAMMAD_MINIO_KEY $ZAMMAD_MINIO_SECRET;
-        echo 'Waiting minio...' && sleep 1;
-      done;
-      /usr/bin/mc mb minio/zammad;
-      exit 0;
-      "
+# If enabling minio, ensure to add this to environment variables:
+# S3_URL=http://$ZAMMAD_MINIO_KEY:$ZAMMAD_MINIO_SECRET@zammad-minio:9000/zammad?region=zammad&force_path_style=true
+#
+#  zammad-minio:
+#    image: $(getScriptImageByContainerName zammad-minio)
+#    container_name: zammad-minio
+#    hostname: zammad-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-zammad-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/minio:/data
+#
+#  zammad-createbuckets:
+#    image: $(getScriptImageByContainerName zammad-createbuckets)
+#    container_name: zammad-createbuckets
+#    hostname: zammad-createbuckets
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    depends_on:
+#      - zammad-minio
+#    networks:
+#      - int-zammad-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#    entrypoint: >
+#      /bin/sh -c "
+#      while ! /usr/bin/mc ready minio;
+#      do
+#        /usr/bin/mc alias set minio http://zammad-minio:9000 $ZAMMAD_MINIO_KEY $ZAMMAD_MINIO_SECRET;
+#        echo 'Waiting minio...' && sleep 1;
+#      done;
+#      /usr/bin/mc mb minio/zammad;
+#      exit 0;
+#      "
 
 volumes:
   v-zammad-storage:
@@ -71382,8 +71389,7 @@ REDIS_URL=redis://:$ZAMMAD_REDIS_PASSWORD@zammad-redis:6379
 BACKUP_DIR=/var/tmp/zammad
 BACKUP_TIME=03:00
 HOLD_DAYS=10
-AUTOWIZARD_JSON=
-ELASTICSEARCH_ENABLED=true
+ELASTICSEARCH_ENABLED=false
 ELASTICSEARCH_HOST=zammad-es
 ELASTICSEARCH_PORT=9200
 ELASTICSEARCH_USER=$ZAMMAD_ES_USERNAME
