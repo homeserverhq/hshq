@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=205
+HSHQ_LIB_SCRIPT_VERSION=206
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -20923,6 +20923,12 @@ function checkUpdateVersion()
     HSHQ_VERSION=204
     updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
   fi
+  if [ $HSHQ_VERSION -lt 205 ]; then
+    echo "Updating to Version 205..."
+    version205Update
+    HSHQ_VERSION=205
+    updatePlaintextRootConfigVar HSHQ_VERSION $HSHQ_VERSION
+  fi
   if [ $HSHQ_VERSION -lt $HSHQ_LIB_SCRIPT_VERSION ]; then
     echo "Updating to Version $HSHQ_LIB_SCRIPT_VERSION..."
     HSHQ_VERSION=$HSHQ_LIB_SCRIPT_VERSION
@@ -23638,6 +23644,16 @@ function version204Update()
 {
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   performAptInstall php-cli > /dev/null 2>&1
+}
+
+function version205Update()
+{
+  set +e
+  sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
+  performAptInstall ruby > /dev/null 2>&1
+  performAptInstall ruby-dev > /dev/null 2>&1
+  sudo gem install argon2 > /dev/null 2>&1
+  set -e
 }
 
 function updateRelayServerWithScript()
@@ -29184,6 +29200,7 @@ function loadPinnedDockerImages()
   IMG_OPENLDAP_MANAGER=wheelybird/ldap-user-manager:v1.11
   IMG_OPENLDAP_PHP=osixia/phpldapadmin:stable
   IMG_OPENLDAP_SERVER=osixia/openldap:1.5.0
+  IMG_OPENPROJECT_APP=mirror.gcr.io/openproject/openproject:16.4.1-slim
   IMG_PAPERLESS_APP=ghcr.io/paperless-ngx/paperless-ngx:2.17.1
   IMG_PAPERLESS_GOTENBERG=mirror.gcr.io/gotenberg/gotenberg:8.21
   IMG_PAPERLESS_TIKA=mirror.gcr.io/apache/tika:3.2.2.0-full
@@ -29246,6 +29263,9 @@ function loadPinnedDockerImages()
   IMG_WIREGUARD=mirror.gcr.io/linuxserver/wireguard:1.0.20250521-r0-ls81
   IMG_WORDPRESS=mirror.gcr.io/wordpress:php8.4-apache
   IMG_YAMTRACK_APP=ghcr.io/fuzzygrim/yamtrack:0.24.7
+  IMG_ZAMMAD=ghcr.io/zammad/zammad:6.5.2-2
+  IMG_ZULIP_APP=mirror.gcr.io/zulip/docker-zulip:11.2-0
+  IMG_ZULIP_DB=mirror.gcr.io/zulip/zulip-postgresql:14
 }
 
 function getScriptStackVersion()
@@ -29433,6 +29453,12 @@ function getScriptStackVersion()
     rallly)
       echo "v1" ;;
     easyappointments)
+      echo "v1" ;;
+    openproject)
+      echo "v1" ;;
+    zammad)
+      echo "v1" ;;
+    zulip)
       echo "v1" ;;
     dbgate)
       echo "v1" ;;
@@ -29622,6 +29648,10 @@ function pullDockerImages()
   pullImage $IMG_CALCOM
   pullImage $IMG_RALLLY_APP
   pullImage $IMG_EASYAPPOINTMENTS_APP
+  pullImage $IMG_OPENPROJECT_APP
+  pullImage $IMG_ZAMMAD
+  pullImage $IMG_ZULIP_APP
+  pullImage $IMG_ZULIP_DB
 }
 
 function pullImagesUpdatePB()
@@ -30666,9 +30696,57 @@ EASYAPPOINTMENTS_DATABASE_USER=
 EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=
 # EasyAppointments (Service Details) END
 
+# OpenProject (Service Details) BEGIN
+OPENPROJECT_INIT_ENV=true
+OPENPROJECT_ADMIN_USERNAME=
+OPENPROJECT_ADMIN_EMAIL_ADDRESS=
+OPENPROJECT_ADMIN_PASSWORD=
+OPENPROJECT_DATABASE_NAME=
+OPENPROJECT_DATABASE_ROOT_PASSWORD=
+OPENPROJECT_DATABASE_USER=
+OPENPROJECT_DATABASE_USER_PASSWORD=
+OPENPROJECT_MINIO_KEY=
+OPENPROJECT_MINIO_SECRET=
+# OpenProject (Service Details) END
+
+# Zammad (Service Details) BEGIN
+ZAMMAD_INIT_ENV=true
+ZAMMAD_ADMIN_USERNAME=
+ZAMMAD_ADMIN_EMAIL_ADDRESS=
+ZAMMAD_ADMIN_PASSWORD=
+ZAMMAD_DATABASE_NAME=
+ZAMMAD_DATABASE_ROOT_PASSWORD=
+ZAMMAD_DATABASE_USER=
+ZAMMAD_DATABASE_USER_PASSWORD=
+ZAMMAD_REDIS_PASSWORD=
+ZAMMAD_ES_USERNAME=
+ZAMMAD_ES_PASSWORD=
+ZAMMAD_MINIO_KEY=
+ZAMMAD_MINIO_SECRET=
+ZAMMAD_DEDICATED_EMAIL_USERNAME=
+ZAMMAD_DEDICATED_EMAIL_ADDRESS=
+ZAMMAD_DEDICATED_EMAIL_PASSWORD=
+# Zammad (Service Details) END
+
+# Zulip (Service Details) BEGIN
+ZULIP_INIT_ENV=true
+ZULIP_ADMIN_USERNAME=
+ZULIP_ADMIN_EMAIL_ADDRESS=
+ZULIP_ADMIN_PASSWORD=
+ZULIP_DATABASE_NAME=
+ZULIP_DATABASE_ROOT_PASSWORD=
+ZULIP_DATABASE_USER=
+ZULIP_DATABASE_USER_PASSWORD=
+ZULIP_REDIS_PASSWORD=
+ZULIP_RABBITMQ_USERNAME=
+ZULIP_RABBITMQ_PASSWORD=
+ZULIP_MEMCACHE_PASSWORD=
+ZULIP_MINIO_KEY=
+ZULIP_MINIO_SECRET=
+# Zulip (Service Details) END
+
 # Service Details END
 EOFCF
-
 }
 
 function outputPlainTextRootConfig()
@@ -32489,6 +32567,142 @@ function initServicesCredentials()
     EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar EASYAPPOINTMENTS_DATABASE_USER_PASSWORD $EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
   fi
+  if [ -z "$OPENPROJECT_ADMIN_USERNAME" ]; then
+    OPENPROJECT_ADMIN_USERNAME=admin
+    updateConfigVar OPENPROJECT_ADMIN_USERNAME $OPENPROJECT_ADMIN_USERNAME
+  fi
+  if [ -z "$OPENPROJECT_ADMIN_EMAIL_ADDRESS" ]; then
+    OPENPROJECT_ADMIN_EMAIL_ADDRESS=$ADMIN_USERNAME_BASE"_openproject"@$HOMESERVER_DOMAIN
+    updateConfigVar OPENPROJECT_ADMIN_EMAIL_ADDRESS $OPENPROJECT_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$OPENPROJECT_ADMIN_PASSWORD" ]; then
+    OPENPROJECT_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENPROJECT_ADMIN_PASSWORD $OPENPROJECT_ADMIN_PASSWORD
+  fi
+  if [ -z "$OPENPROJECT_DATABASE_NAME" ]; then
+    OPENPROJECT_DATABASE_NAME=openprojectdb
+    updateConfigVar OPENPROJECT_DATABASE_NAME $OPENPROJECT_DATABASE_NAME
+  fi
+  if [ -z "$OPENPROJECT_DATABASE_USER" ]; then
+    OPENPROJECT_DATABASE_USER=openproject-user
+    updateConfigVar OPENPROJECT_DATABASE_USER $OPENPROJECT_DATABASE_USER
+  fi
+  if [ -z "$OPENPROJECT_DATABASE_USER_PASSWORD" ]; then
+    OPENPROJECT_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar OPENPROJECT_DATABASE_USER_PASSWORD $OPENPROJECT_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$OPENPROJECT_MINIO_KEY" ]; then
+    OPENPROJECT_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar OPENPROJECT_MINIO_KEY $OPENPROJECT_MINIO_KEY
+  fi
+  if [ -z "$OPENPROJECT_MINIO_SECRET" ]; then
+    OPENPROJECT_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar OPENPROJECT_MINIO_SECRET $OPENPROJECT_MINIO_SECRET
+  fi
+  if [ -z "$ZAMMAD_ADMIN_USERNAME" ]; then
+    ZAMMAD_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_zammad"
+    updateConfigVar ZAMMAD_ADMIN_USERNAME $ZAMMAD_ADMIN_USERNAME
+  fi
+  if [ -z "$ZAMMAD_ADMIN_EMAIL_ADDRESS" ]; then
+    ZAMMAD_ADMIN_EMAIL_ADDRESS=$ZAMMAD_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$ZAMMAD_ADMIN_PASSWORD" ]; then
+    ZAMMAD_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_ADMIN_PASSWORD $ZAMMAD_ADMIN_PASSWORD
+  fi
+  if [ -z "$ZAMMAD_DATABASE_NAME" ]; then
+    ZAMMAD_DATABASE_NAME=zammaddb
+    updateConfigVar ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_NAME
+  fi
+  if [ -z "$ZAMMAD_DATABASE_USER" ]; then
+    ZAMMAD_DATABASE_USER=zammad-user
+    updateConfigVar ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER
+  fi
+  if [ -z "$ZAMMAD_DATABASE_USER_PASSWORD" ]; then
+    ZAMMAD_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_DATABASE_USER_PASSWORD $ZAMMAD_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$ZAMMAD_MINIO_KEY" ]; then
+    ZAMMAD_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_MINIO_KEY $ZAMMAD_MINIO_KEY
+  fi
+  if [ -z "$ZAMMAD_MINIO_SECRET" ]; then
+    ZAMMAD_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_MINIO_SECRET $ZAMMAD_MINIO_SECRET
+  fi
+  if [ -z "$ZAMMAD_REDIS_PASSWORD" ]; then
+    ZAMMAD_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_REDIS_PASSWORD $ZAMMAD_REDIS_PASSWORD
+  fi
+  if [ -z "$ZAMMAD_ES_USERNAME" ]; then
+    ZAMMAD_ES_USERNAME=zammad-es-user
+    updateConfigVar ZAMMAD_ES_USERNAME $ZAMMAD_ES_USERNAME
+  fi
+  if [ -z "$ZAMMAD_ES_PASSWORD" ]; then
+    ZAMMAD_ES_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_ES_PASSWORD $ZAMMAD_ES_PASSWORD
+  fi
+  if [ -z "$ZAMMAD_DEDICATED_EMAIL_USERNAME" ]; then
+    ZAMMAD_DEDICATED_EMAIL_USERNAME="zammad_hshq"
+    updateConfigVar ZAMMAD_DEDICATED_EMAIL_USERNAME $ZAMMAD_DEDICATED_EMAIL_USERNAME
+  fi
+  if [ -z "$ZAMMAD_DEDICATED_EMAIL_ADDRESS" ]; then
+    ZAMMAD_DEDICATED_EMAIL_ADDRESS=$ZAMMAD_DEDICATED_EMAIL_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ZAMMAD_DEDICATED_EMAIL_ADDRESS $ZAMMAD_DEDICATED_EMAIL_ADDRESS
+  fi
+  if [ -z "$ZAMMAD_DEDICATED_EMAIL_PASSWORD" ]; then
+    ZAMMAD_DEDICATED_EMAIL_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZAMMAD_DEDICATED_EMAIL_PASSWORD $ZAMMAD_DEDICATED_EMAIL_PASSWORD
+  fi
+  if [ -z "$ZULIP_ADMIN_USERNAME" ]; then
+    ZULIP_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_zulip"
+    updateConfigVar ZULIP_ADMIN_USERNAME $ZULIP_ADMIN_USERNAME
+  fi
+  if [ -z "$ZULIP_ADMIN_EMAIL_ADDRESS" ]; then
+    ZULIP_ADMIN_EMAIL_ADDRESS=$ZULIP_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$ZULIP_ADMIN_PASSWORD" ]; then
+    ZULIP_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_ADMIN_PASSWORD $ZULIP_ADMIN_PASSWORD
+  fi
+  if [ -z "$ZULIP_DATABASE_NAME" ]; then
+    ZULIP_DATABASE_NAME=zulipdb
+    updateConfigVar ZULIP_DATABASE_NAME $ZULIP_DATABASE_NAME
+  fi
+  if [ -z "$ZULIP_DATABASE_USER" ]; then
+    ZULIP_DATABASE_USER=zulip-user
+    updateConfigVar ZULIP_DATABASE_USER $ZULIP_DATABASE_USER
+  fi
+  if [ -z "$ZULIP_DATABASE_USER_PASSWORD" ]; then
+    ZULIP_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_DATABASE_USER_PASSWORD $ZULIP_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$ZULIP_MINIO_KEY" ]; then
+    ZULIP_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_MINIO_KEY $ZULIP_MINIO_KEY
+  fi
+  if [ -z "$ZULIP_MINIO_SECRET" ]; then
+    ZULIP_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_MINIO_SECRET $ZULIP_MINIO_SECRET
+  fi
+  if [ -z "$ZULIP_REDIS_PASSWORD" ]; then
+    ZULIP_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_REDIS_PASSWORD $ZULIP_REDIS_PASSWORD
+  fi
+  if [ -z "$ZULIP_RABBITMQ_USERNAME" ]; then
+    ZULIP_RABBITMQ_USERNAME=zammad-rmq-user
+    updateConfigVar ZULIP_RABBITMQ_USERNAME $ZULIP_RABBITMQ_USERNAME
+  fi
+  if [ -z "$ZULIP_RABBITMQ_PASSWORD" ]; then
+    ZULIP_RABBITMQ_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_RABBITMQ_PASSWORD $ZULIP_RABBITMQ_PASSWORD
+  fi
+  if [ -z "$ZULIP_MEMCACHE_PASSWORD" ]; then
+    ZULIP_MEMCACHE_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar ZULIP_MEMCACHE_PASSWORD $ZULIP_MEMCACHE_PASSWORD
+  fi
 
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
@@ -32659,6 +32873,12 @@ function checkCreateNonbackupDirByStack()
     "twenty")
       mkdir -p $HSHQ_NONBACKUP_DIR/twenty/redis
       ;;
+    "zammad")
+      mkdir -p $HSHQ_NONBACKUP_DIR/zammad/redis
+      ;;
+    "zulip")
+      mkdir -p $HSHQ_NONBACKUP_DIR/zulip/redis
+      ;;
     *)
       ;;
   esac
@@ -32785,6 +33005,7 @@ function initServiceVars()
   checkAddSvc "SVCD_OMBI_APP=ombi,ombi,primary,user,Ombi,ombi,le"
   checkAddSvc "SVCD_OPENLDAP_MANAGER=openldap,usermanager,other,user,User Manager,usermanager,hshq"
   checkAddSvc "SVCD_OPENLDAP_PHP=openldap,ldapphp,primary,admin,LDAP PHP,ldapphp,hshq"
+  checkAddSvc "SVCD_OPENPROJECT_APP=openproject,openproject,primary,user,OpenProject,openproject,hshq"
   checkAddSvc "SVCD_PAPERLESS=paperless,paperless,primary,user,Paperless-ngx,paperless,hshq"
   checkAddSvc "SVCD_PASTEFY=pastefy,pastefy,primary,user,Pastefy,pastefy,hshq"
   checkAddSvc "SVCD_PEERTUBE=peertube,peertube,other,user,PeerTube,peertube,hshq"
@@ -32833,6 +33054,8 @@ function initServiceVars()
   checkAddSvc "SVCD_WIKIJS=wikijs,wikijs,other,user,Wiki.js,wikijs,hshq"
   checkAddSvc "SVCD_WORDPRESS=wordpress,wordpress,other,user,WordPress,wordpress,hshq"
   checkAddSvc "SVCD_YAMTRACK=yamtrack,yamtrack,other,user,Yamtrack,yamtrack,hshq"
+  checkAddSvc "SVCD_ZAMMAD_APP=zammad,zammad,primary,user,Zammad,zammad,hshq"
+  checkAddSvc "SVCD_ZULIP_APP=zulip,zulip,primary,user,Zulip,zulip,hshq"
   set -e
 }
 
@@ -33022,6 +33245,12 @@ function installStackByName()
       installRallly $is_integrate ;;
     easyappointments)
       installEasyAppointments $is_integrate ;;
+    openproject)
+      installOpenProject $is_integrate ;;
+    zammad)
+      installZammad $is_integrate ;;
+    zulip)
+      installZulip $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -33229,6 +33458,12 @@ function performUpdateStackByName()
       performUpdateRallly ;;
     easyappointments)
       performUpdateEasyAppointments ;;
+    openproject)
+      performUpdateOpenProject ;;
+    zammad)
+      performUpdateZammad ;;
+    zulip)
+      performUpdateZulip ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -33344,6 +33579,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINTHCM.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
@@ -33352,6 +33588,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TWENTY.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -33504,6 +33742,9 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CALCOM_APP}-Admin" https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $CALCOM_ADMIN_EMAIL_ADDRESS $CALCOM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RALLLY}-Admin" https://$SUB_RALLLY.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_EASYAPPOINTMENTS}-Admin" https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login $HOMESERVER_ABBREV $EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENPROJECT_APP}-Admin" https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENPROJECT_ADMIN_USERNAME $OPENPROJECT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_USERNAME $ZAMMAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZULIP_APP}-Admin" https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ZULIP_ADMIN_USERNAME $ZULIP_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33527,7 +33768,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login,https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Email" "\"https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
@@ -33635,6 +33876,9 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CALCOM_APP}-Admin" https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $CALCOM_ADMIN_EMAIL_ADDRESS $CALCOM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RALLLY}-Admin" https://$SUB_RALLLY.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_EASYAPPOINTMENTS}-Admin" https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login $HOMESERVER_ABBREV $EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENPROJECT_APP}-Admin" https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENPROJECT_ADMIN_USERNAME $OPENPROJECT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_USERNAME $ZAMMAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZULIP_APP}-Admin" https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ZULIP_ADMIN_USERNAME $ZULIP_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34037,6 +34281,15 @@ function getHeimdallOrderFromSub()
     "$SUB_EASYAPPOINTMENTS")
       order_num=112
       ;;
+    "$SUB_OPENPROJECT_APP")
+      order_num=113
+      ;;
+    "$SUB_ZAMMAD_APP")
+      order_num=114
+      ;;
+    "$SUB_ZULIP_APP")
+      order_num=115
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -34084,16 +34337,16 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,dbgate,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,dbgate,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly
 }
@@ -34920,6 +35173,87 @@ function getScriptImageByContainerName()
     "easyappointments-app")
       container_image=$IMG_EASYAPPOINTMENTS_APP
       ;;
+    "openproject-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "openproject-web")
+      container_image=$IMG_OPENPROJECT_APP
+      ;;
+    "openproject-worker")
+      container_image=$IMG_OPENPROJECT_APP
+      ;;
+    "openproject-cron")
+      container_image=$IMG_OPENPROJECT_APP
+      ;;
+    "openproject-seeder")
+      container_image=$IMG_OPENPROJECT_APP
+      ;;
+    "openproject-memcache")
+      container_image=mirror.gcr.io/memcached:1.6.39-alpine
+      ;;
+    "openproject-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
+    "openproject-createbuckets")
+      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      ;;
+    "zammad-db")
+      container_image=mirror.gcr.io/postgres:17.6
+      ;;
+    "zammad-init")
+      container_image=$IMG_ZAMMAD
+      ;;
+    "zammad-backup")
+      container_image=$IMG_ZAMMAD
+      ;;
+    "zammad-nginx")
+      container_image=$IMG_ZAMMAD
+      ;;
+    "zammad-railsserver")
+      container_image=$IMG_ZAMMAD
+      ;;
+    "zammad-scheduler")
+      container_image=$IMG_ZAMMAD
+      ;;
+    "zammad-websocket")
+      container_image=$IMG_ZAMMAD
+      ;;
+    "zammad-memcache")
+      container_image=mirror.gcr.io/memcached:1.6.39-alpine
+      ;;
+    "zammad-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "zammad-es")
+      container_image=mirror.gcr.io/elasticsearch:8.19.4
+      ;;
+    "zammad-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
+    "zammad-createbuckets")
+      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      ;;
+    "zulip-db")
+      container_image=$IMG_ZULIP_DB
+      ;;
+    "zulip-app")
+      container_image=$IMG_ZULIP_APP
+      ;;
+    "zulip-memcache")
+      container_image=mirror.gcr.io/memcached:1.6.39-alpine
+      ;;
+    "zulip-rabbitmq")
+      container_image=mirror.gcr.io/rabbitmq:4.1.4
+      ;;
+    "zulip-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "zulip-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
+    "zulip-createbuckets")
+      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      ;;
     *)
       ;;
   esac
@@ -34991,6 +35325,9 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "Calcom" "CALCOM_INIT_ENV=false,CALCOM_ADMIN_USERNAME=,CALCOM_ADMIN_EMAIL_ADDRESS=,CALCOM_ADMIN_PASSWORD=,CALCOM_DATABASE_NAME=,CALCOM_DATABASE_USER=,CALCOM_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Rallly" "RALLLY_INIT_ENV=false,RALLLY_ADMIN_USERNAME=,RALLLY_ADMIN_EMAIL_ADDRESS=,RALLLY_ADMIN_PASSWORD=,RALLLY_DATABASE_NAME=,RALLLY_DATABASE_USER=,RALLLY_DATABASE_USER_PASSWORD=,RALLLY_MINIO_KEY=,RALLLY_MINIO_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "EasyAppointments" "EASYAPPOINTMENTS_INIT_ENV=false,EASYAPPOINTMENTS_ADMIN_USERNAME=,EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS=,EASYAPPOINTMENTS_ADMIN_PASSWORD=,EASYAPPOINTMENTS_DATABASE_NAME=,EASYAPPOINTMENTS_DATABASE_ROOT_PASSWORD=,EASYAPPOINTMENTS_DATABASE_USER=,EASYAPPOINTMENTS_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "OpenProject" "OPENPROJECT_INIT_ENV=false,OPENPROJECT_ADMIN_USERNAME=,OPENPROJECT_ADMIN_EMAIL_ADDRESS=,OPENPROJECT_ADMIN_PASSWORD=,OPENPROJECT_DATABASE_NAME=,OPENPROJECT_DATABASE_ROOT_PASSWORD=,OPENPROJECT_DATABASE_USER=,OPENPROJECT_DATABASE_USER_PASSWORD=,OPENPROJECT_MINIO_KEY=,OPENPROJECT_MINIO_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Zammad" "ZAMMAD_INIT_ENV=false,ZAMMAD_ADMIN_USERNAME=,ZAMMAD_ADMIN_EMAIL_ADDRESS=,ZAMMAD_ADMIN_PASSWORD=,ZAMMAD_DATABASE_NAME=,ZAMMAD_DATABASE_ROOT_PASSWORD=,ZAMMAD_DATABASE_USER=,ZAMMAD_DATABASE_USER_PASSWORD=,ZAMMAD_REDIS_PASSWORD=,ZAMMAD_ES_USERNAME=,ZAMMAD_ES_PASSWORD=,ZAMMAD_MINIO_KEY=,ZAMMAD_MINIO_SECRET=,ZAMMAD_DEDICATED_EMAIL_USERNAME=,ZAMMAD_DEDICATED_EMAIL_ADDRESS=,ZAMMAD_DEDICATED_EMAIL_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "Zulip" "ZULIP_INIT_ENV=false,ZULIP_ADMIN_USERNAME=,ZULIP_ADMIN_EMAIL_ADDRESS=,ZULIP_ADMIN_PASSWORD=,ZULIP_DATABASE_NAME=,ZULIP_DATABASE_ROOT_PASSWORD=,ZULIP_DATABASE_USER=,ZULIP_DATABASE_USER_PASSWORD=,ZULIP_REDIS_PASSWORD=,ZULIP_RABBITMQ_USERNAME=,ZULIP_RABBITMQ_PASSWORD=,ZULIP_MEMCACHE_PASSWORD=,ZULIP_MINIO_KEY=,ZULIP_MINIO_SECRET=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -39327,7 +39664,6 @@ function installMailu()
   mkdir $HSHQ_STACKS_DIR/mailu/clamav
   mkdir $HSHQ_STACKS_DIR/mailu/initconfig
   sudo chown 1000:1000 $HSHQ_STACKS_DIR/mailu/clamav
-
   # Generate email certificate if not joining another VPN
   if ! [ "$PRIMARY_VPN_SETUP_TYPE" = "join" ]; then
     generateCert mail "$SMTP_HOSTNAME,$SUB_POSTFIX.$HOMESERVER_DOMAIN"
@@ -40241,6 +40577,17 @@ function addUserMailu()
   is_added=false
   while [ $num_tries -le $total_tries ]
   do
+    if [ "$add_type" = "user" ]; then
+      docker exec mailu-admin flask mailu config-export | yq -r '.user' | grep -q ${username}@${domain}
+      if [ $? -eq 0 ]; then
+        return 0
+      fi
+    elif [ "$add_type" = "alias" ]; then
+      docker exec mailu-admin flask mailu config-export | yq -r '.alias' | grep -q ${username}@${domain}
+      if [ $? -eq 0 ]; then
+        return 0
+      fi
+    fi
     docker exec mailu-admin flask mailu $add_type $username $domain $password
     if [ $? -eq 0 ]; then
       is_added=true
@@ -41585,14 +41932,11 @@ function installNextcloud()
     updateConfigVar NEXTCLOUD_REDIS_PASSWORD $NEXTCLOUD_REDIS_PASSWORD
   fi
   set +e
-  docker exec mailu-admin flask mailu alias-delete $NEXTCLOUD_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $NEXTCLOUD_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   generateCert nextcloud-app nextcloud-app
   generateCert nextcloud-cron nextcloud-cron
   generateCert nextcloud-web nextcloud-web
   generateCert nextcloud-push nextcloud-push
-
   numTries=5
   curTries=1
   while [ $curTries -le $numTries ]
@@ -44351,7 +44695,6 @@ function installMastodon()
     MASTODON_ELASTICSEARCH_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar MASTODON_ELASTICSEARCH_PASSWORD $MASTODON_ELASTICSEARCH_PASSWORD
   fi
-
   outputConfigMastodon
   generateCert mastodon-app mastodon-app
   generateCert mastodon-web mastodon-web
@@ -44368,18 +44711,14 @@ function installMastodon()
   echo "Mastodon installed, sleeping 3 seconds..."
   sleep 3
   set +e
-  docker exec mailu-admin flask mailu alias-delete $MASTODON_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $MASTODON_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   addaccount_res=$(docker exec mastodon-app tootctl accounts create $MASTODON_ADMIN_USERNAME --email=$MASTODON_ADMIN_EMAIL_ADDRESS --confirmed --role=Admin)
   MASTODON_ADMIN_PASSWORD=$(echo $addaccount_res | rev | cut -d" " -f1 | rev)
   updateConfigVar MASTODON_ADMIN_PASSWORD $MASTODON_ADMIN_PASSWORD
-
   sendEmail -s "Mastodon Login Info" -b "Mastodon Admin Username: $MASTODON_ADMIN_EMAIL_ADDRESS\nMastodon Admin Password: $MASTODON_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
   docker exec mastodon-app tootctl settings registrations close
   docker exec mastodon-app tootctl accounts approve $MASTODON_ADMIN_USERNAME > /dev/null 2>&1
   rm -f $HOME/mastodon-compose-tmp.yml
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_MASTODON.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -47798,13 +48137,9 @@ function installPeerTube()
   mkdir $HSHQ_NONBACKUP_DIR/peertube
   mkdir $HSHQ_NONBACKUP_DIR/peertube/assets
   mkdir $HSHQ_NONBACKUP_DIR/peertube/redis
-
   initServicesCredentials
-
   pt_secret=$(openssl rand -hex 32)
   set +e
-  docker exec mailu-admin flask mailu alias-delete $PEERTUBE_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $ADMIN_USERNAME_BASE"_peertube" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigPeerTube
   installStack peertube peertube-app "HTTP server listening on 0.0.0.0" $HOME/peertube.env
@@ -49444,7 +49779,6 @@ function installDiscourse()
   chmod 777 $HSHQ_STACKS_DIR/discourse/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/discourse
   mkdir $HSHQ_NONBACKUP_DIR/discourse/redis
-
   initServicesCredentials
   if [ -z "$DISCOURSE_DATABASE_USER_PASSWORD" ]; then
     DISCOURSE_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
@@ -49455,8 +49789,6 @@ function installDiscourse()
     updateConfigVar DISCOURSE_REDIS_PASSWORD $DISCOURSE_REDIS_PASSWORD
   fi
   set +e
-  docker exec mailu-admin flask mailu alias-delete $DISCOURSE_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $ADMIN_USERNAME_BASE"_discourse" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   #generateCert discourse-app discourse-app
   outputConfigDiscourse
@@ -49465,7 +49797,6 @@ function installDiscourse()
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_DISCOURSE.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -51972,15 +52303,14 @@ function installGitea()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/gitea
   mkdir $HSHQ_STACKS_DIR/gitea/app
   mkdir $HSHQ_STACKS_DIR/gitea/db
   mkdir $HSHQ_STACKS_DIR/gitea/dbexport
   chmod 777 $HSHQ_STACKS_DIR/gitea/dbexport
-
   initServicesCredentials
   outputConfigGitea
+  set +e
   installStack gitea gitea-app "Starting new Web server:" $HOME/gitea.env 3
   retval=$?
   if [ $retval -ne 0 ]; then
@@ -51989,12 +52319,9 @@ function installGitea()
   echo "Gitea installed, sleeping 10 seconds..."
   sleep 10
   set +e
-  docker exec mailu-admin flask mailu alias-delete $GITEA_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $GITEA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin user create --admin --username $GITEA_ADMIN_USERNAME --password $GITEA_ADMIN_PASSWORD --email $GITEA_ADMIN_EMAIL_ADDRESS
   docker exec -u $USERID gitea-app gitea admin auth add-ldap --name OpenLDAP --security-protocol ldaps --host ldapserver --port 636 --bind-dn "$LDAP_READONLY_USER_BIND_DN" --bind-password "$LDAP_READONLY_USER_PASSWORD" --user-search-base "ou=people,$LDAP_BASE_DN" --user-filter "(&(&(uid=%s)(objectClass=person))(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))" --admin-filter "(memberOf=cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)" --username-attribute uid --firstname-attribute givenName --surname-attribute sn --email-attribute mail --avatar-attribute jpegPhoto --synchronize-users --active
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_GITEA.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -52241,8 +52568,6 @@ function installMealie()
   chmod 777 $HSHQ_STACKS_DIR/mealie/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $MEALIE_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $MEALIE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigMealie
   installStack mealie mealie-app "Application startup complete" $HOME/mealie.env 5
@@ -53271,13 +53596,9 @@ function installRemotely()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/remotely
   initServicesCredentials
-  docker exec mailu-admin flask mailu alias-delete $REMOTELY_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $REMOTELY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$REMOTELY_INIT_ENV" = "true" ]; then
     sendEmail -s "Remotely Admin Login Info" -b "Remotely Admin Username: $REMOTELY_ADMIN_EMAIL_ADDRESS\nRemotely Admin Password: $REMOTELY_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     REMOTELY_INIT_ENV=true
@@ -53291,11 +53612,9 @@ function installRemotely()
   fi
   echo "Sleeping 10 seconds..."
   sleep 10
-
   startStopStack remotely stop
   sudo sqlite3 $HSHQ_STACKS_DIR/remotely/Remotely.db "update KeyValueRecords set Value='{\"AllowApiLogin\":false,\"BannedDevices\":[],\"DataRetentionInDays\":90,\"DbProvider\":\"SQLite\",\"EnableRemoteControlRecording\":false,\"EnableWindowsEventLog\":false,\"EnforceAttendedAccess\":false,\"ForceClientHttps\":true,\"KnownProxies\":[],\"MaxConcurrentUpdates\":10,\"MaxOrganizationCount\":1,\"MessageOfTheDay\":\"\",\"RedirectToHttps\":false,\"RemoteControlNotifyUser\":true,\"RemoteControlRequiresAuthentication\":true,\"RemoteControlSessionLimit\":5,\"Require2FA\":false,\"ServerUrl\":\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN\",\"SmtpCheckCertificateRevocation\":false,\"SmtpDisplayName\":\"Remotely $(getAdminEmailName)\",\"SmtpEmail\":\"$EMAIL_ADMIN_EMAIL_ADDRESS\",\"SmtpHost\":\"$SMTP_HOSTNAME\",\"SmtpLocalDomain\":\"\",\"SmtpPassword\":\"\",\"SmtpPort\":$SMTP_HOSTPORT,\"SmtpUserName\":\"\",\"Theme\":0,\"TrustedCorsOrigins\":[],\"UseHsts\":false,\"UseHttpLogging\":false}';"
   startStopStack remotely start
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_REMOTELY.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -53423,25 +53742,18 @@ function installCalibre()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/calibre
   mkdir $HSHQ_STACKS_DIR/calibre/server
   mkdir $HSHQ_STACKS_DIR/calibre/library
   mkdir $HSHQ_STACKS_DIR/calibre/web
-
   initServicesCredentials
-
   set +e
-  docker exec mailu-admin flask mailu alias-delete $CALIBRE_WEB_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $CALIBRE_WEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$CALIBRE_WEB_INIT_ENV" = "true" ]; then
     sendEmail -s "Calibre-Web Admin Login Info" -b "Calibre-Web Admin Username: $CALIBRE_WEB_ADMIN_USERNAME\nCalibre-Web Admin Password: $CALIBRE_WEB_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     CALIBRE_WEB_INIT_ENV=true
     updateConfigVar CALIBRE_WEB_INIT_ENV $CALIBRE_WEB_INIT_ENV
   fi
-
   outputConfigCalibre
   generateCert calibre-web calibre-web
   installStack calibre calibre-web "done." $HOME/calibre.env 5
@@ -54667,21 +54979,15 @@ function installFreshRSS()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/freshrss
   mkdir $HSHQ_STACKS_DIR/freshrss/db
   mkdir $HSHQ_STACKS_DIR/freshrss/dbexport
   mkdir $HSHQ_STACKS_DIR/freshrss/data
   mkdir $HSHQ_STACKS_DIR/freshrss/extensions
   chmod 777 $HSHQ_STACKS_DIR/freshrss/dbexport
-
   initServicesCredentials
-
   set +e
-  docker exec mailu-admin flask mailu alias-delete $FRESHRSS_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $FRESHRSS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$FRESHRSS_INIT_ENV" = "true" ]; then
     sendEmail -s "FreshRSS Admin Login Info" -b "FreshRSS Admin Username: $FRESHRSS_ADMIN_USERNAME\nFreshRSS Admin Password: $FRESHRSS_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     FRESHRSS_INIT_ENV=true
@@ -54959,27 +55265,20 @@ function installKeila()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/keila
   mkdir $HSHQ_STACKS_DIR/keila/db
   mkdir $HSHQ_STACKS_DIR/keila/dbexport
   mkdir $HSHQ_STACKS_DIR/keila/uploads
   chmod 777 $HSHQ_STACKS_DIR/keila/dbexport
-
   initServicesCredentials
-
   KEILA_SECRET_KEY_BASE=$(pwgen -c -n 64 1)
   set +e
-  docker exec mailu-admin flask mailu alias-delete $KEILA_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $KEILA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$KEILA_INIT_ENV" = "true" ]; then
     sendEmail -s "Keila Admin Login Info" -b "Keila Admin Username: $KEILA_ADMIN_EMAIL_ADDRESS\nKeila Admin Password: $KEILA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     KEILA_INIT_ENV=true
     updateConfigVar KEILA_INIT_ENV $KEILA_INIT_ENV
   fi
-
   outputConfigKeila
   installStack keila keila-app "Access KeilaWeb.Endpoint at" $HOME/keila.env
   retval=$?
@@ -55220,10 +55519,7 @@ function installWallabag()
     updateConfigVar WALLABAG_REDIS_PASSWORD $WALLABAG_REDIS_PASSWORD
   fi
   set +e
-  docker exec mailu-admin flask mailu alias-delete $WALLABAG_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $WALLABAG_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$WALLABAG_INIT_ENV" = "true" ]; then
     sendEmail -s "Wallabag Admin Login Info" -b "Wallabag Admin Username: $WALLABAG_ADMIN_USERNAME\nWallabag Admin Password: $WALLABAG_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     WALLABAG_INIT_ENV=true
@@ -55663,10 +55959,7 @@ function installPaperless()
   fi
   PAPERLESS_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $PAPERLESS_OIDC_CLIENT_SECRET | tr -d ':\n')
   set +e
-  docker exec mailu-admin flask mailu alias-delete $PAPERLESS_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $PAPERLESS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$PAPERLESS_INIT_ENV" = "true" ]; then
     sendEmail -s "Paperless Admin Login Info" -b "Paperless Admin Username: $PAPERLESS_ADMIN_USERNAME\nPaperless Admin Password: $PAPERLESS_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     PAPERLESS_INIT_ENV=true
@@ -56029,26 +56322,19 @@ function installSpeedtestTrackerLocal()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local/db
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport
   mkdir $HSHQ_STACKS_DIR/speedtest-tracker-local/config
   chmod 777 $HSHQ_STACKS_DIR/speedtest-tracker-local/dbexport
-
   initServicesCredentials
   set +e
-
-  docker exec mailu-admin flask mailu alias-delete $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $SPEEDTEST_TRACKER_LOCAL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$SPEEDTEST_TRACKER_LOCAL_INIT_ENV" = "true" ]; then
     sendEmail -s "SpeedtestTrackerLocal Admin Login Info" -b "SpeedtestTrackerLocal Admin Username: $SPEEDTEST_TRACKER_LOCAL_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerLocal Admin Password: $SPEEDTEST_TRACKER_LOCAL_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     SPEEDTEST_TRACKER_LOCAL_INIT_ENV=true
     updateConfigVar SPEEDTEST_TRACKER_LOCAL_INIT_ENV $SPEEDTEST_TRACKER_LOCAL_INIT_ENV
   fi
-
   outputConfigSpeedtestTrackerLocal
   installStack speedtest-tracker-local speedtest-tracker-local-app "\[ls.io-init\] done" $HOME/speedtest-tracker-local.env 3
   retval=$?
@@ -56308,8 +56594,6 @@ function installSpeedtestTrackerVPN()
   chmod 777 $HSHQ_STACKS_DIR/speedtest-tracker-vpn/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $SPEEDTEST_TRACKER_VPN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   if ! [ "$SPEEDTEST_TRACKER_VPN_INIT_ENV" = "true" ]; then
     sendEmail -s "SpeedtestTrackerVPN Admin Login Info" -b "SpeedtestTrackerVPN Admin Username: $SPEEDTEST_TRACKER_VPN_ADMIN_EMAIL_ADDRESS\nSpeedtestTrackerVPN Admin Password: $SPEEDTEST_TRACKER_VPN_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
@@ -56793,28 +57077,22 @@ function installHuginn()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/huginn
   mkdir $HSHQ_STACKS_DIR/huginn/db
   mkdir $HSHQ_STACKS_DIR/huginn/dbexport
   chmod 777 $HSHQ_STACKS_DIR/huginn/dbexport
-
   initServicesCredentials
   if [ -z "$HUGINN_APP_SECRET_TOKEN" ]; then
     HUGINN_APP_SECRET_TOKEN=$(openssl rand -hex 64)
     updateConfigVar HUGINN_APP_SECRET_TOKEN $HUGINN_APP_SECRET_TOKEN
   fi
   set +e
-  docker exec mailu-admin flask mailu alias-delete $HUGINN_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $HUGINN_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-
   if ! [ "$HUGINN_INIT_ENV" = "true" ]; then
     sendEmail -s "Huginn Admin Login Info" -b "Huginn Admin Username: $HUGINN_ADMIN_USERNAME\nHuginn Admin Password: $HUGINN_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     HUGINN_INIT_ENV=true
     updateConfigVar HUGINN_INIT_ENV $HUGINN_INIT_ENV
   fi
-
   outputConfigHuginn
   installStack huginn huginn-app "" $HOME/huginn.env
   retval=$?
@@ -57851,7 +58129,6 @@ function installGrampsWeb()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/grampsweb
   mkdir $HSHQ_STACKS_DIR/grampsweb/redis
   mkdir $HSHQ_STACKS_DIR/grampsweb/users
@@ -57862,11 +58139,8 @@ function installGrampsWeb()
   mkdir $HSHQ_STACKS_DIR/grampsweb/db
   mkdir $HSHQ_STACKS_DIR/grampsweb/media
   mkdir $HSHQ_STACKS_DIR/grampsweb/tmp
-
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $GRAMPSWEB_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $GRAMPSWEB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   if ! [ "$GRAMPSWEB_INIT_ENV" = "true" ]; then
     sendEmail -s "GrampsWeb Admin Login Info" -b "GrampsWeb Admin Username: $GRAMPSWEB_ADMIN_USERNAME\nGrampsWeb Admin Password: $GRAMPSWEB_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
@@ -58855,8 +59129,6 @@ function installImmich()
   mkdir $HSHQ_NONBACKUP_DIR/immich/cache
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $IMMICH_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $IMMICH_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
 
   IMMICH_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $IMMICH_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/')
@@ -59383,8 +59655,6 @@ function installHomarr()
   mkdir $HSHQ_STACKS_DIR/homarr/data
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $HOMARR_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $HOMARR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   HOMARR_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $HOMARR_OIDC_CLIENT_SECRET | tr -d ':\n')
   HOMARR_NEXTAUTH_SECRET=$(pwgen -c -n 32 1)
@@ -59595,8 +59865,6 @@ function installMatomo()
   chmod 777 $HSHQ_STACKS_DIR/matomo/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $MATOMO_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $MATOMO_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   MATOMO_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MATOMO_ADMIN_PASSWORD | tr -d ':\n')
 
@@ -59896,8 +60164,6 @@ function installPastefy()
   chmod 777 $HSHQ_STACKS_DIR/pastefy/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $PASTEFY_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $PASTEFY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   PASTEFY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $PASTEFY_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigPastefy
@@ -60242,14 +60508,8 @@ function installAIStack()
   chmod 777 $HSHQ_STACKS_DIR/aistack/mindsdb/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $AISTACK_MINDSDB_ADMIN_EMAIL_ADDRESS
-  sleep 2
   addUserMailu alias $AISTACK_MINDSDB_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  docker exec mailu-admin flask mailu alias-delete $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS
-  sleep 2
   addUserMailu alias $AISTACK_LANGFUSE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
-  docker exec mailu-admin flask mailu alias-delete $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS
-  sleep 2
   addUserMailu alias $AISTACK_OPENWEBUI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigAIStack
   oidcBlock=$(cat $HOME/openwebui.oidc)
@@ -60944,6 +61204,7 @@ EOFOT
 "Nextcloud" postgres nextcloud-db $NEXTCLOUD_DATABASE_NAME $NEXTCLOUD_DATABASE_USER $NEXTCLOUD_DATABASE_USER_PASSWORD
 "Odoo" postgres odoo-db $ODOO_DATABASE_NAME $ODOO_DATABASE_USER $ODOO_DATABASE_USER_PASSWORD
 "Ombi" mysql ombi-db $OMBI_DATABASE_NAME $OMBI_DATABASE_USER $OMBI_DATABASE_USER_PASSWORD
+"OpenProject" postgres openproject-db $OPENPROJECT_DATABASE_NAME $OPENPROJECT_DATABASE_USER $OPENPROJECT_DATABASE_USER_PASSWORD
 "Paperless" postgres paperless-db $PAPERLESS_DATABASE_NAME $PAPERLESS_DATABASE_USER $PAPERLESS_DATABASE_USER_PASSWORD
 "Pastefy" mysql pastefy-db $PASTEFY_DATABASE_NAME $PASTEFY_DATABASE_USER $PASTEFY_DATABASE_USER_PASSWORD
 "PeerTube" postgres peertube-db $PEERTUBE_DATABASE_NAME $PEERTUBE_DATABASE_USER $PEERTUBE_DATABASE_USER_PASSWORD
@@ -60961,6 +61222,9 @@ EOFOT
 "Wallabag" postgres wallabag-db $WALLABAG_DATABASE_NAME $WALLABAG_DATABASE_USER $WALLABAG_DATABASE_USER_PASSWORD
 "Wikijs" postgres wikijs-db $WIKIJS_DATABASE_NAME $WIKIJS_DATABASE_USER $WIKIJS_DATABASE_USER_PASSWORD
 "WordPress" mysql wordpress-db $WORDPRESS_DATABASE_NAME $WORDPRESS_DATABASE_USER $WORDPRESS_DATABASE_USER_PASSWORD
+"Yamtrack" postgres yamtrack-db $YAMTRACK_DATABASE_NAME $YAMTRACK_DATABASE_USER $YAMTRACK_DATABASE_USER_PASSWORD
+"Zammad" postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD
+"Zulip" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD
 EOFAS
   cat <<EOFIM > $HSHQ_STACKS_DIR/aistack/mindsdb/dbimport/importConnections.sh
 #!/bin/bash
@@ -64080,8 +64344,6 @@ function installOmbi()
   chmod 777 $HSHQ_STACKS_DIR/ombi/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $OMBI_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $OMBI_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   OMBI_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OMBI_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigOmbi
@@ -64590,8 +64852,6 @@ function installNavidrome()
   mkdir $HSHQ_STACKS_DIR/navidrome/data
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $NAVIDROME_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $NAVIDROME_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigNavidrome
   installStack navidrome navidrome-app "Navidrome server is ready" $HOME/navidrome.env
@@ -64948,8 +65208,6 @@ function installBudibase()
   chmod 777 $HSHQ_STACKS_DIR/budibase/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $BUDIBASE_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $ADMIN_USERNAME_BASE"_budibase" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigBudibase
   installStack budibase budibase-app "" $HOME/budibase.env
@@ -65299,8 +65557,6 @@ function installAudioBookshelf()
   mkdir $HSHQ_STACKS_DIR/audiobookshelf/{config,metadata,audiobooks,podcasts}
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $AUDIOBOOKSHELF_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $AUDIOBOOKSHELF_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   AUDIOBOOKSHELF_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 8 "" $AUDIOBOOKSHELF_ADMIN_PASSWORD | tr -d ':\n'  | sed 's/$2y/$2a/')
   AUDIOBOOKSHELF_OIDC_CLIENT_SECRET_HASH=$(htpasswd -bnBC 10 "" $AUDIOBOOKSHELF_OIDC_CLIENT_SECRET | tr -d ':\n')
@@ -66002,8 +66258,6 @@ function installMetabase()
   chmod 777 $HSHQ_STACKS_DIR/metabase/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $METABASE_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $METABASE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   outputConfigMetabase
   installStack metabase metabase-app "" $HOME/metabase.env 5
@@ -66189,8 +66443,6 @@ function installKanboard()
   chmod 777 $HSHQ_STACKS_DIR/kanboard/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $KANBOARD_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $KANBOARD_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   KANBOARD_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 12 "" $KANBOARD_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
   outputConfigKanboard
@@ -67480,8 +67732,6 @@ function installFrappeHR()
   chmod 777 $HSHQ_STACKS_DIR/frappe-hr/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $FRAPPE_HR_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $FRAPPE_HR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   FRAPPE_HR_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $FRAPPE_HR_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigFrappeHR
@@ -67740,8 +67990,6 @@ function installMintHCM()
   chmod 777 $HSHQ_STACKS_DIR/minthcm/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $MINTHCM_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $MINTHCM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   MINTHCM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MINTHCM_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigMintHCM
@@ -68147,8 +68395,6 @@ function installTwenty()
   chmod 777 $HSHQ_STACKS_DIR/twenty/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $TWENTY_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $TWENTY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   TWENTY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $TWENTY_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2b/' | sed 's/\$/\\\$/g')
   outputConfigTwenty
@@ -68466,8 +68712,6 @@ function installOdoo()
   chmod 777 $HSHQ_STACKS_DIR/odoo/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $ODOO_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $ODOO_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   ODOO_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ODOO_ADMIN_PASSWORD | tr -d ':\n')
   odbname=$ODOO_DATABASE_NAME
@@ -68716,8 +68960,6 @@ function installCalcom()
   chmod 777 $HSHQ_STACKS_DIR/calcom/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $CALCOM_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $CALCOM_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   CALCOM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 12 "" $CALCOM_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$2y/\$2a/' | sed 's/\$/\\\$/g')
   outputConfigCalcom
@@ -69000,8 +69242,6 @@ function installRallly()
   chmod 777 $HSHQ_STACKS_DIR/rallly/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $RALLLY_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $RALLLY_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   RALLLY_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $RALLLY_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigRallly
@@ -69287,8 +69527,6 @@ function installEasyAppointments()
   chmod 777 $HSHQ_STACKS_DIR/easyappointments/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $EASYAPPOINTMENTS_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $EASYAPPOINTMENTS_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   generateCert easyappointments-app easyappointments-app
   outputConfigEasyAppointments
@@ -70141,6 +70379,1466 @@ function performUpdateEasyAppointments()
   perform_update_report="${perform_update_report}$stack_upgrade_report"
 }
 
+# OpenProject
+function installOpenProject()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory openproject "OpenProject"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openproject-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openproject-memcache)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openproject-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openproject-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName openproject-createbuckets)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/openproject
+  mkdir $HSHQ_STACKS_DIR/openproject/db
+  mkdir $HSHQ_STACKS_DIR/openproject/dbexport
+  mkdir $HSHQ_STACKS_DIR/openproject/data
+  mkdir $HSHQ_STACKS_DIR/openproject/minio
+  chmod 777 $HSHQ_STACKS_DIR/openproject/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $ADMIN_USERNAME_BASE"_openproject" $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  OPENPROJECT_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $OPENPROJECT_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigOpenProject
+  installStack openproject openproject-app "" $HOME/openproject.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$OPENPROJECT_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_OPENPROJECT_APP Admin Login Info" -b "$FMLNAME_OPENPROJECT_APP Admin Username: $OPENPROJECT_ADMIN_USERNAME\n$FMLNAME_OPENPROJECT_APP Admin Email: $OPENPROJECT_ADMIN_EMAIL_ADDRESS\n$FMLNAME_OPENPROJECT_APP Admin Password: $OPENPROJECT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    OPENPROJECT_INIT_ENV=true
+    updateConfigVar OPENPROJECT_INIT_ENV $OPENPROJECT_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://openproject-web:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>header_up X-Forwarded-Proto https\n"
+  inner_block=$inner_block">>>>>>>>header_up X-Forwarded-For {header.X-Forwarded-For}\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_OPENPROJECT_APP $MANAGETLS_OPENPROJECT_APP "$is_integrate_hshq" $NETDEFAULT_OPENPROJECT_APP "$inner_block"
+  insertSubAuthelia $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll openproject "$FMLNAME_OPENPROJECT_APP" $USERTYPE_OPENPROJECT_APP "https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN" "openproject.png" "$(getHeimdallOrderFromSub $SUB_OPENPROJECT_APP $USERTYPE_OPENPROJECT_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true openproject "$FMLNAME_OPENPROJECT_APP" postgres openproject-db $OPENPROJECT_DATABASE_NAME $OPENPROJECT_DATABASE_USER $OPENPROJECT_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigOpenProject()
+{
+  cat <<EOFMT > $HOME/openproject-compose.yml
+$STACK_VERSION_PREFIX openproject $(getScriptStackVersion openproject)
+
+services:
+  openproject-db:
+    image: $(getScriptImageByContainerName openproject-db)
+    container_name: openproject-db
+    hostname: openproject-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-openproject-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.openproject-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.openproject-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openproject-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openproject-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openproject-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openproject-hourly-db.email-from=OpenProject Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openproject-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.openproject-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.openproject-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.openproject-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.openproject-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.openproject-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.openproject-monthly-db.email-from=OpenProject Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.openproject-monthly-db.mail-only-on-error=false"
+
+  openproject-memcache:
+    image: $(getScriptImageByContainerName openproject-memcache)
+    container_name: openproject-memcache
+    hostname: openproject-memcache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-openproject-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  openproject-web:
+    image: $(getScriptImageByContainerName openproject-web)
+    container_name: openproject-web
+    hostname: openproject-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/web"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-worker:
+    image: $(getScriptImageByContainerName openproject-worker)
+    container_name: openproject-worker
+    hostname: openproject-worker
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/worker"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-cron:
+    image: $(getScriptImageByContainerName openproject-cron)
+    container_name: openproject-cron
+    hostname: openproject-cron
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/cron"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+      - openproject-seeder
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+  openproject-seeder:
+    image: $(getScriptImageByContainerName openproject-seeder)
+    container_name: openproject-seeder
+    hostname: openproject-seeder
+    restart: on-failure
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: "./docker/prod/seeder"
+    depends_on:
+      - openproject-db
+      - openproject-memcache
+    networks:
+      - int-openproject-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-openproject-data:/var/openproject/assets
+
+#  openproject-minio:
+#    image: $(getScriptImageByContainerName openproject-minio)
+#    container_name: openproject-minio
+#    hostname: openproject-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-openproject-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/openproject/minio:/data
+#
+#  openproject-createbuckets:
+#    image: $(getScriptImageByContainerName openproject-createbuckets)
+#    container_name: openproject-createbuckets
+#    hostname: openproject-createbuckets
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    depends_on:
+#      - openproject-minio
+#    networks:
+#      - int-openproject-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#    entrypoint: >
+#      /bin/sh -c "
+#      while ! /usr/bin/mc ready minio;
+#      do
+#        /usr/bin/mc alias set minio http://openproject-minio:9000 $OPENPROJECT_MINIO_KEY $OPENPROJECT_MINIO_SECRET;
+#        echo 'Waiting minio...' && sleep 1;
+#      done;
+#      /usr/bin/mc mb minio/uploads;
+#      exit 0;
+#      "
+
+volumes:
+  v-openproject-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/openproject/data
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-openproject-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/openproject.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$OPENPROJECT_DATABASE_NAME
+POSTGRES_USER=$OPENPROJECT_DATABASE_USER
+POSTGRES_PASSWORD=$OPENPROJECT_DATABASE_USER_PASSWORD
+HTTPS=false
+OPENPROJECT_HTTPS=true
+OPENPROJECT_HSTS=false
+OPENPROJECT_HOST__NAME=$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN
+TAG=16-slim
+IMAP_ENABLED=false
+DATABASE_URL=postgres://$OPENPROJECT_DATABASE_USER:$OPENPROJECT_DATABASE_USER_PASSWORD@openproject-db/$OPENPROJECT_DATABASE_NAME?pool=20&encoding=unicode&reconnect=true
+RAILS_MIN_THREADS=4
+RAILS_MAX_THREADS=16
+OPENPROJECT_RAILS__CACHE__STORE=memcache
+OPENPROJECT_CACHE__MEMCACHE__SERVER=openproject-memcache:11211
+APP_HOST=openproject-web
+PGDATA=/var/lib/postgresql/data
+OPDATA=/var/openproject/assets
+OPENPROJECT_EMAIL__DELIVERY__METHOD=smtp
+OPENPROJECT_SMTP__ADDRESS=$SMTP_HOSTNAME
+OPENPROJECT_SMTP__PORT=$SMTP_HOSTPORT
+OPENPROJECT_SMTP__AUTHENTICATION=none
+OPENPROJECT_SMTP__DOMAIN=$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN
+OPENPROJECT_SMTP__OPENSSL__VERIFY__MODE=peer
+OPENPROJECT_SMTP__ENABLE__STARTTLS__AUTO=true
+OPENPROJECT_MAIL_FROM=OpenProject $(getAdminEmailName) <$EMAIL_ADMIN_EMAIL_ADDRESS>
+OPENPROJECT_SEED__ADMIN__USER__LOCKED=false
+OPENPROJECT_SEED__ADMIN__USER__LOGIN=$OPENPROJECT_ADMIN_USERNAME
+OPENPROJECT_SEED__ADMIN__USER__MAIL=$OPENPROJECT_ADMIN_EMAIL_ADDRESS
+OPENPROJECT_SEED__ADMIN__USER__NAME=OpenProject $(getAdminEmailName)
+OPENPROJECT_SEED__ADMIN__USER__PASSWORD=$OPENPROJECT_ADMIN_PASSWORD
+OPENPROJECT_SEED__ADMIN__USER__PASSWORD__RESET=false
+OPENPROJECT_USER_DEFAULT_THEME=dark
+OPENPROJECT_SEED_LDAP_HSHQ_HOST=ldapserver
+OPENPROJECT_SEED_LDAP_HSHQ_PORT=389
+OPENPROJECT_SEED_LDAP_HSHQ_SECURITY=start_tls
+OPENPROJECT_SEED_LDAP_HSHQ_TLS__VERIFY=true
+OPENPROJECT_SEED_LDAP_HSHQ_BINDUSER=$LDAP_READONLY_USER_BIND_DN
+OPENPROJECT_SEED_LDAP_HSHQ_BINDPASSWORD=$LDAP_READONLY_USER_PASSWORD
+OPENPROJECT_SEED_LDAP_HSHQ_BASEDN=$LDAP_BASE_DN
+OPENPROJECT_SEED_LDAP_HSHQ_FILTER=(&(objectClass=person)(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+OPENPROJECT_SEED_LDAP_HSHQ_SYNC__USERS=true
+OPENPROJECT_SEED_LDAP_HSHQ_LOGIN__MAPPING=uid
+OPENPROJECT_SEED_LDAP_HSHQ_FIRSTNAME__MAPPING=givenName
+OPENPROJECT_SEED_LDAP_HSHQ_LASTNAME__MAPPING=sn
+OPENPROJECT_SEED_LDAP_HSHQ_MAIL__MAPPING=mail
+OPENPROJECT_SEED_LDAP_HSHQ_GROUPFILTER_HSHQFILTER_BASE=ou=groups,$LDAP_BASE_DN
+OPENPROJECT_SEED_LDAP_HSHQ_GROUPFILTER_HSHQFILTER_FILTER=(objectclass=groupOfUniqueNames)
+OPENPROJECT_SEED_LDAP_HSHQ_GROUPFILTER_HSHQFILTER_SYNC__USERS=true
+OPENPROJECT_SEED_LDAP_HSHQ_GROUPFILTER_HSHQFILTER_GROUP__ATTRIBUTE=cn
+MINIO_ROOT_USER=$OPENPROJECT_MINIO_KEY
+MINIO_ROOT_PASSWORD=$OPENPROJECT_MINIO_SECRET
+MINIO_DOMAIN=openproject
+MINIO_CONSOLE_ADDRESS=:9090
+OPENPROJECT_LOG__LEVEL=info
+OPENPROJECT_ATTACHMENTS__STORAGE=file
+OPENPROJECT_FOG_CREDENTIALS_AWS__ACCESS__KEY__ID=$OPENPROJECT_MINIO_KEY
+OPENPROJECT_FOG_CREDENTIALS_AWS__SECRET__ACCESS__KEY=$OPENPROJECT_MINIO_SECRET
+OPENPROJECT_FOG_CREDENTIALS_ENDPOINT=http://openproject-minio:9000
+OPENPROJECT_FOG_CREDENTIALS_PROVIDER=AWS
+OPENPROJECT_FOG_CREDENTIALS_REGION=openproject
+OPENPROJECT_FOG_DIRECTORY=uploads
+EOFMT
+}
+
+function performUpdateOpenProject()
+{
+  perform_stack_name=openproject
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/openproject/openproject:16.4.1-slim,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/openproject/openproject:16.4.1-slim,mirror.gcr.io/openproject/openproject:16.4.1-slim"
+      image_update_map[2]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[3]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[4]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Zammad
+function installZammad()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory zammad "Zammad"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zammad-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zammad-init)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zammad-memcache)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zammad-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zammad-es)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/zammad
+  mkdir $HSHQ_STACKS_DIR/zammad/config
+  mkdir $HSHQ_STACKS_DIR/zammad/storage
+  mkdir $HSHQ_STACKS_DIR/zammad/backup
+  mkdir $HSHQ_STACKS_DIR/zammad/es
+  mkdir $HSHQ_STACKS_DIR/zammad/minio
+  mkdir $HSHQ_STACKS_DIR/zammad/db
+  mkdir $HSHQ_STACKS_DIR/zammad/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/zammad
+  mkdir $HSHQ_NONBACKUP_DIR/zammad/redis
+  chmod 777 $HSHQ_STACKS_DIR/zammad/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $ZAMMAD_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  sleep 3
+  addUserMailu user $ZAMMAD_DEDICATED_EMAIL_USERNAME $HOMESERVER_DOMAIN $ZAMMAD_DEDICATED_EMAIL_PASSWORD
+  outputConfigZammad
+  installStack zammad zammad-nginx "starting nginx..." $HOME/zammad.env 10
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$ZAMMAD_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_ZAMMAD_APP Admin Login Info" -b "$FMLNAME_ZAMMAD_APP Admin Username: $ZAMMAD_ADMIN_USERNAME\n$FMLNAME_ZAMMAD_APP Admin Email: $ZAMMAD_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ZAMMAD_APP Admin Password: $ZAMMAD_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ZAMMAD_INIT_ENV=true
+    updateConfigVar ZAMMAD_INIT_ENV $ZAMMAD_INIT_ENV
+  fi
+  sleep 3
+  echo "Performing integrations, please wait..."
+  docker exec zammad-db /dbexport/checkDBReady.sh
+  rm -f $HSHQ_STACKS_DIR/zammad/dbexport/checkDBReady.sh
+  docker exec zammad-railsserver bash -c "cp /config/auto_wizard.json /opt/zammad/auto_wizard.json;/docker-entrypoint.sh bundle exec rails runner /config/init.rb" > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/zammad/config/auto_wizard.json
+  rm -f $HSHQ_STACKS_DIR/zammad/config/init.rb
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://zammad-nginx:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>>>header_up X-Forwarded-Proto https\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ZAMMAD_APP $MANAGETLS_ZAMMAD_APP "$is_integrate_hshq" $NETDEFAULT_ZAMMAD_APP "$inner_block"
+  insertSubAuthelia $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll zammad "$FMLNAME_ZAMMAD_APP" $USERTYPE_ZAMMAD_APP "https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN" "zammad.png" "$(getHeimdallOrderFromSub $SUB_ZAMMAD_APP $USERTYPE_ZAMMAD_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true zammad "$FMLNAME_ZAMMAD_APP" postgres zammad-db $ZAMMAD_DATABASE_NAME $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigZammad()
+{
+  auto_wizard_token=$(pwgen -n 64 1)
+  cat <<EOFJS > $HSHQ_STACKS_DIR/zammad/config/auto_wizard.json
+{
+  "Token": "$auto_wizard_token",
+  "TextModuleLocale": {
+    "Locale": "en-us"
+  },
+  "Users": [
+    {
+      "login": "$ZAMMAD_ADMIN_EMAIL_ADDRESS",
+      "firstname": "Zammad",
+      "lastname": "$(getAdminEmailName)",
+      "email": "$ZAMMAD_ADMIN_EMAIL_ADDRESS",
+      "organization": "$HOMESERVER_NAME",
+      "password": "$ZAMMAD_ADMIN_PASSWORD"
+    }
+  ],
+  "Settings": [
+    {
+      "name": "developer_mode",
+      "value": false
+    },
+    {
+      "name": "system_online_service",
+      "value": false
+    },
+    {
+      "name": "product_name",
+      "value": "$HOMESERVER_NAME Helpdesk"
+    },
+    {
+      "name": "organization",
+      "value": "$HOMESERVER_NAME"
+    },
+    {
+      "name": "timezone_default",
+      "value": "$TZ"
+    },
+    {
+      "name": "notification_sender",
+      "value": "Zammad $(getAdminEmailName) <$ZAMMAD_DEDICATED_EMAIL_ADDRESS>"
+    },
+    {
+      "name": "es_url",
+      "value": "http://zammad-es:9200"
+    },
+    {
+      "name": "es_user",
+      "value": "$ZAMMAD_ES_USERNAME"
+    },
+    {
+      "name": "es_password",
+      "value": "$ZAMMAD_ES_PASSWORD"
+    },
+    {
+      "name": "ldap_integration",
+      "value": true
+    }
+  ],
+  "EmailAddresses": [
+    {
+      "id": 1,
+      "channel_id": 3,
+      "name": "Zammad $(getAdminEmailName)",
+      "email": "$ZAMMAD_DEDICATED_EMAIL_ADDRESS"
+    }
+  ],
+  "Organizations": [
+    {
+      "name": "$HOMESERVER_NAME",
+      "domain": "$HOMESERVER_DOMAIN",
+      "domain_assignment": true
+    }
+  ],
+  "Signatures": [
+    {
+      "id": 1,
+      "name": "default",
+      "body": "\n  #{user.firstname} #{user.lastname}\n\n--\n $HOMESERVER_NAME\n--"
+    }
+  ],
+  "Channels": [
+    {
+      "id": 1,
+      "area": "Email::Notification",
+      "options": {
+        "outbound": {
+          "adapter": "smtp",
+          "options": {
+            "host": "$SMTP_HOSTNAME",
+            "port": "25",
+            "ssl": true,
+            "user": "",
+            "password": "",
+            "ssl_verify": true
+          }
+        }
+      },
+      "active": true
+    },
+    {
+      "id": 2,
+      "area": "Email::Notification",
+      "options": {
+        "outbound": {
+          "adapter": "sendmail"
+        }
+      },
+      "active": false
+    },
+    {
+      "id": 3,
+      "area": "Email::Account",
+      "group_id": 1,
+      "options": {
+        "inbound": {
+          "adapter": "imap",
+          "options": {
+            "host": "$SMTP_HOSTNAME",
+            "user": "$ZAMMAD_DEDICATED_EMAIL_ADDRESS",
+            "password": "$ZAMMAD_DEDICATED_EMAIL_PASSWORD",
+            "ssl": "ssl",
+            "ssl_verify": true,
+            "port": "993",
+            "folder": "",
+            "keep_on_server": false
+          }
+        },
+        "outbound": {
+          "adapter": "smtp",
+          "options": {
+            "host": "$SMTP_HOSTNAME",
+            "user": "$ZAMMAD_DEDICATED_EMAIL_ADDRESS",
+            "password": "$ZAMMAD_DEDICATED_EMAIL_PASSWORD",
+            "port": "587",
+            "ssl_verify": true,
+            "domain": "$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN",
+            "enable_starttls_auto": true
+          },
+          "email": "$ZAMMAD_DEDICATED_EMAIL_ADDRESS"
+        }
+      },
+      "active": true
+    }
+  ]
+}
+EOFJS
+  dtnow=$(date '+%Y-%m-%d %H:%M:%S.%3N')
+  cat <<EOFLD > $HSHQ_STACKS_DIR/zammad/config/init.rb
+AutoWizard.setup
+UserInfo.current_user_id = 1
+Setting.set('system_init_done', true)
+userd = User.where(email: "nicole.braun@zammad.org")
+userd.destroy_all
+od = Organization.find(1)
+Ticket.where(organization_id: od.id).update_all(organization_id: nil)
+od.members.each do |member| member.update!(organization_id: nil) end
+od.destroy
+RoleGroup.create(role_id: 2, group_id: 1, access: "full")
+LdapSource.create(id: 1, name: "HSHQ", preferences: {"host"=>"ldapserver", "ssl"=>"ssl", "ssl_verify"=>true, "options"=>{"$LDAP_BASE_DN"=>"$LDAP_BASE_DN"}, "option"=>"$LDAP_BASE_DN", "base_dn"=>"$LDAP_BASE_DN", "bind_user"=>"$LDAP_READONLY_USER_BIND_DN", "bind_pw"=>"$LDAP_READONLY_USER_PASSWORD", "user_uid"=>"uid", "user_filter"=>"(&(objectClass=person)(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))", "group_uid"=>"dn", "group_filter"=>"(objectClass=groupOfUniqueNames)", "user_attributes"=>{"givenname"=>"firstname", "sn"=>"lastname", "mail"=>"email", "uid"=>"login"}, "group_role_map"=>{"cn=$LDAP_ADMIN_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN"=>["1"], "cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN"=>["2"]}, "unassigned_users"=>"skip_sync"}, prio: 0, active: true, updated_by_id: 3, created_by_id: 3, created_at: "${dtnow}000000 +0000", updated_at: "${dtnow}000000 +0000")
+ImportJob.create(name: 'Import::Ldap').start
+EOFLD
+  cat <<EOFMT > $HOME/zammad-compose.yml
+$STACK_VERSION_PREFIX zammad $(getScriptStackVersion zammad)
+
+services:
+  zammad-db:
+    image: $(getScriptImageByContainerName zammad-db)
+    container_name: zammad-db
+    hostname: zammad-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-zammad-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.zammad-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.zammad-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zammad-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zammad-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zammad-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zammad-hourly-db.email-from=Zammad Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zammad-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.zammad-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.zammad-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zammad-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zammad-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zammad-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zammad-monthly-db.email-from=Zammad Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zammad-monthly-db.mail-only-on-error=false"
+
+  zammad-init:
+    image: $(getScriptImageByContainerName zammad-init)
+    container_name: zammad-init
+    hostname: zammad-init
+    restart: on-failure
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-init
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+      - dock-ldap-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-backup:
+    image: $(getScriptImageByContainerName zammad-backup)
+    container_name: zammad-backup
+    hostname: zammad-backup
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-backup
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+      - v-zammad-backup:/var/tmp/zammad
+
+  zammad-nginx:
+    image: $(getScriptImageByContainerName zammad-nginx)
+    container_name: zammad-nginx
+    hostname: zammad-nginx
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-nginx
+    depends_on:
+      - zammad-railsserver
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-railsserver:
+    image: $(getScriptImageByContainerName zammad-railsserver)
+    container_name: zammad-railsserver
+    hostname: zammad-railsserver
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-railsserver
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/config:/config
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-scheduler:
+    image: $(getScriptImageByContainerName zammad-scheduler)
+    container_name: zammad-scheduler
+    hostname: zammad-scheduler
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-scheduler
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-websocket:
+    image: $(getScriptImageByContainerName zammad-websocket)
+    container_name: zammad-websocket
+    hostname: zammad-websocket
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: zammad-websocket
+    depends_on:
+      - zammad-db
+    networks:
+      - int-zammad-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zammad-storage:/opt/zammad/storage
+
+  zammad-memcache:
+    image: $(getScriptImageByContainerName zammad-memcache)
+    container_name: zammad-memcache
+    hostname: zammad-memcache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: memcached -m 256M
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  zammad-redis:
+    image: $(getScriptImageByContainerName zammad-redis)
+    container_name: zammad-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $ZAMMAD_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-zammad-redis:/data
+
+  zammad-es:
+    image: $(getScriptImageByContainerName zammad-es)
+    container_name: zammad-es
+    hostname: zammad-es
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-zammad-es:/usr/share/elasticsearch/data
+
+  zammad-minio:
+    image: $(getScriptImageByContainerName zammad-minio)
+    container_name: zammad-minio
+    hostname: zammad-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zammad/minio:/data
+
+  zammad-createbuckets:
+    image: $(getScriptImageByContainerName zammad-createbuckets)
+    container_name: zammad-createbuckets
+    hostname: zammad-createbuckets
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - zammad-minio
+    networks:
+      - int-zammad-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    entrypoint: >
+      /bin/sh -c "
+      while ! /usr/bin/mc ready minio;
+      do
+        /usr/bin/mc alias set minio http://zammad-minio:9000 $ZAMMAD_MINIO_KEY $ZAMMAD_MINIO_SECRET;
+        echo 'Waiting minio...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/zammad;
+      exit 0;
+      "
+
+volumes:
+  v-zammad-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/storage
+  v-zammad-backup:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/backup
+  v-zammad-es:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zammad/es
+  v-zammad-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zammad/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-zammad-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/zammad.env
+TZ=\${PORTAINER_TZ}
+MEMCACHE_SERVERS=zammad-memcache:11211
+POSTGRES_DB=$ZAMMAD_DATABASE_NAME
+POSTGRES_USER=$ZAMMAD_DATABASE_USER
+POSTGRES_PASSWORD=$ZAMMAD_DATABASE_USER_PASSWORD
+POSTGRESQL_DB=$ZAMMAD_DATABASE_NAME
+POSTGRESQL_HOST=zammad-db
+POSTGRESQL_USER=$ZAMMAD_DATABASE_USER
+POSTGRESQL_PASS=$ZAMMAD_DATABASE_USER_PASSWORD
+POSTGRESQL_PORT=5432
+POSTGRESQL_OPTIONS=?pool=50
+POSTGRESQL_DB_CREATE=true
+REDIS_URL=redis://:$ZAMMAD_REDIS_PASSWORD@zammad-redis:6379
+BACKUP_DIR=/var/tmp/zammad
+BACKUP_TIME=03:00
+HOLD_DAYS=10
+AUTOWIZARD_JSON=
+ELASTICSEARCH_ENABLED=true
+ELASTICSEARCH_HOST=zammad-es
+ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_USER=$ZAMMAD_ES_USERNAME
+ELASTICSEARCH_PASS=$ZAMMAD_ES_PASSWORD
+ELASTICSEARCH_NAMESPACE=zammad
+ELASTICSEARCH_USERNAME=$ZAMMAD_ES_USERNAME
+ELASTICSEARCH_PASSWORD=$ZAMMAD_ES_PASSWORD
+discovery.type=single-node
+xpack.security.enabled=false
+ES_JAVA_OPTS=-Xms1g -Xmx1g
+NGINX_PORT=8080
+NGINX_SERVER_SCHEME=https
+RAILS_TRUSTED_PROXIES=['127.0.0.0/8','172.16.0.0/12','192.168.0.0/16','10.0.0.0/8']
+VIRTUAL_HOST=$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN
+ZAMMAD_HTTP_TYPE=https
+ZAMMAD_FQDN=$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN
+ZAMMAD_RAILSSERVER_HOST=zammad-railsserver
+ZAMMAD_RAILSSERVER_PORT=3000
+ZAMMAD_WEBSOCKET_HOST=zammad-websocket
+ZAMMAD_WEBSOCKET_PORT=6042
+ZAMMAD_WEB_CONCURRENCY=
+ZAMMAD_PROCESS_SESSIONS_JOBS_WORKERS=
+ZAMMAD_PROCESS_SCHEDULED_JOBS_WORKERS=
+ZAMMAD_PROCESS_DELAYED_JOBS_WORKERS=
+MINIO_ROOT_USER=$ZAMMAD_MINIO_KEY
+MINIO_ROOT_PASSWORD=$ZAMMAD_MINIO_SECRET
+MINIO_DOMAIN=zammad
+MINIO_CONSOLE_ADDRESS=:9090
+EOFMT
+  cat <<EOFDS > $HSHQ_STACKS_DIR/zammad/dbexport/checkDBReady.sh
+#!/bin/bash
+
+PGPASSWORD=$ZAMMAD_DATABASE_USER_PASSWORD
+curSeconds=0
+maxSeconds=300
+while [ \$curSeconds -lt \$maxSeconds ]
+do
+  testdb=\$(echo "select state_current from settings where name='application_secret';" | psql -t -A -U $ZAMMAD_DATABASE_USER $ZAMMAD_DATABASE_NAME 2> /dev/null)
+  if ! [ -z "\$testdb" ]; then
+    break
+  fi
+  echo "Database not ready, sleeping 3 seconds, total wait=\$curSeconds seconds..."
+  sleep 3
+  curSeconds=\$((curSeconds+3))
+done
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/zammad/dbexport/checkDBReady.sh
+}
+
+function performUpdateZammad()
+{
+  perform_stack_name=zammad
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:17.6,ghcr.io/zammad/zammad:6.5.2-2,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/elasticsearch:8.19.4,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/postgres:17.6,mirror.gcr.io/postgres:17.6"
+      image_update_map[1]="ghcr.io/zammad/zammad:6.5.2-2,ghcr.io/zammad/zammad:6.5.2-2"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[3]="mirror.gcr.io/elasticsearch:8.19.4,mirror.gcr.io/elasticsearch:8.19.4"
+      image_update_map[4]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[6]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Zulip
+function installZulip()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory zulip "Zulip"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zulip-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zulip-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zulip-memcache)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zulip-rabbitmq)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zulip-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/zulip
+  mkdir $HSHQ_STACKS_DIR/zulip/data
+  mkdir $HSHQ_STACKS_DIR/zulip/minio
+  mkdir $HSHQ_STACKS_DIR/zulip/rabbitmq
+  mkdir $HSHQ_STACKS_DIR/zulip/db
+  mkdir $HSHQ_STACKS_DIR/zulip/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/zulip
+  mkdir $HSHQ_NONBACKUP_DIR/zulip/redis
+  chmod 777 $HSHQ_STACKS_DIR/zulip/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $ZULIP_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  ZULIP_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ZULIP_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigZulip
+  installStack zulip zulip-app "" $HOME/zulip.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$ZULIP_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_ZULIP_APP Admin Login Info" -b "$FMLNAME_ZULIP_APP Admin Username: $ZULIP_ADMIN_USERNAME\n$FMLNAME_ZULIP_APP Admin Email: $ZULIP_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ZULIP_APP Admin Password: $ZULIP_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    ZULIP_INIT_ENV=true
+    updateConfigVar ZULIP_INIT_ENV $ZULIP_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://zulip-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_ZULIP_APP $MANAGETLS_ZULIP_APP "$is_integrate_hshq" $NETDEFAULT_ZULIP_APP "$inner_block"
+  insertSubAuthelia $SUB_ZULIP_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll zulip "$FMLNAME_ZULI_APPP" $USERTYPE_ZULIP_APP "https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN" "zulip.png" "$(getHeimdallOrderFromSub $SUB_ZULIP_APP $USERTYPE_ZULIP_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true zulip "$FMLNAME_ZULIP_APP" postgres zulip-db $ZULIP_DATABASE_NAME $ZULIP_DATABASE_USER $ZULIP_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigZulip()
+{
+  cat <<EOFMT > $HOME/zulip-compose.yml
+$STACK_VERSION_PREFIX zulip $(getScriptStackVersion zulip)
+
+services:
+  zulip-db:
+    image: $(getScriptImageByContainerName zulip-db)
+    container_name: zulip-db
+    hostname: zulip-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-zulip-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zulip/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zulip/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.zulip-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.zulip-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zulip-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zulip-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zulip-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zulip-hourly-db.email-from=Zulip Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zulip-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.zulip-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.zulip-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.zulip-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.zulip-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.zulip-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.zulip-monthly-db.email-from=Zulip Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.zulip-monthly-db.mail-only-on-error=false"
+
+  zulip-app:
+    image: $(getScriptImageByContainerName zulip-app)
+    container_name: zulip-app
+    hostname: zulip-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - zulip-db
+      - zulip-memcache
+      - zulip-rabbitmq
+      - zulip-redis
+    networks:
+      - int-zulip-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-zulip-data:/data:rw
+    ulimits:
+      nofile:
+        soft: 1000000
+        hard: 1048576
+
+  zulip-memcache:
+    image: $(getScriptImageByContainerName zulip-memcache)
+    container_name: zulip-memcache
+    hostname: zulip-memcache
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - "sh"
+      - "-euc"
+      - |
+        echo 'mech_list: plain' > "\$\$SASL_CONF_PATH"
+        echo "zulip@\$\$HOSTNAME:\$\$MEMCACHED_PASSWORD" > "\$\$MEMCACHED_SASL_PWDB"
+        echo "zulip@localhost:\$\$MEMCACHED_PASSWORD" >> "\$\$MEMCACHED_SASL_PWDB"
+        exec memcached -S
+    networks:
+      - int-zulip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  zulip-rabbitmq:
+    image: $(getScriptImageByContainerName zulip-rabbitmq)
+    container_name: zulip-rabbitmq
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - int-zulip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-zulip-rabbitmq:/var/lib/rabbitmq:rw
+
+  zulip-redis:
+    image: $(getScriptImageByContainerName zulip-redis)
+    container_name: zulip-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $ZAMMAD_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-zulip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-zulip-redis:/data
+
+  zulip-minio:
+    image: $(getScriptImageByContainerName zulip-minio)
+    container_name: zulip-minio
+    hostname: zulip-minio
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: server /data
+    networks:
+      - dock-proxy-net
+      - int-zulip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/zulip/minio:/data
+
+  zulip-createbuckets:
+    image: $(getScriptImageByContainerName zulip-createbuckets)
+    container_name: zulip-createbuckets
+    hostname: zulip-createbuckets
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - zulip-minio
+    networks:
+      - int-zulip-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+    entrypoint: >
+      /bin/sh -c "
+      while ! /usr/bin/mc ready minio;
+      do
+        /usr/bin/mc alias set minio http://zulip-minio:9000 $ZULIP_MINIO_KEY $ZULIP_MINIO_SECRET;
+        echo 'Waiting minio...' && sleep 1;
+      done;
+      /usr/bin/mc mb minio/zulip;
+      exit 0;
+      "
+
+volumes:
+  v-zulip-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zulip/data
+  v-zulip-rabbitmq:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/zulip/rabbitmq
+  v-zulip-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/zulip/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-zulip-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/zulip.env
+TZ=\${PORTAINER_TZ}
+POSTGRES_DB=$ZULIP_DATABASE_NAME
+POSTGRES_USER=$ZULIP_DATABASE_USER
+POSTGRES_PASSWORD=$ZULIP_DATABASE_USER_PASSWORD
+SASL_CONF_PATH=/home/memcache/memcached.conf
+MEMCACHED_SASL_PWDB=/home/memcache/memcached-sasl-db
+MEMCACHED_PASSWORD=$ZULIP_MEMCACHE_PASSWORD
+RABBITMQ_DEFAULT_USER=$ZULIP_RABBITMQ_USERNAME
+RABBITMQ_DEFAULT_PASS=$ZULIP_RABBITMQ_PASSWORD
+REDIS_PASSWORD=$ZULIP_REDIS_PASSWORD
+DB_HOST=zulip-db
+DB_HOST_PORT=5432
+DB_NAME=$ZULIP_DATABASE_NAME
+DB_USER=$ZULIP_DATABASE_USER
+SSL_CERTIFICATE_GENERATION=self-signed
+SETTING_MEMCACHED_LOCATION=zulip-memcached:11211
+SETTING_RABBITMQ_HOST=zulip-rabbitmq
+SETTING_RABBITMQ_USER=$ZULIP_RABBITMQ_USERNAME
+SETTING_REDIS_HOST=zulip-redis
+SECRETS_rabbitmq_password=$ZULIP_RABBITMQ_PASSWORD
+SECRETS_postgres_password=$ZULIP_DATABASE_USER_PASSWORD
+SECRETS_memcached_password=$ZULIP_MEMCACHE_PASSWORD
+SECRETS_redis_password=$ZULIP_REDIS_PASSWORD
+SECRETS_secret_key=
+SECRETS_s3_key=$ZULIP_MINIO_KEY
+SECRETS_s3_secret_key=$ZULIP_MINIO_SECRET
+SETTING_EXTERNAL_HOST=$SUB_ZULIP_APP.$HOMESERVER_DOMAIN
+SETTING_ZULIP_ADMINISTRATOR=$ZULIP_ADMIN_EMAIL_ADDRESS
+SETTING_EMAIL_HOST=$SMTP_HOSTNAME
+SETTING_EMAIL_HOST_USER=$ZULIP_ADMIN_EMAIL_ADDRESS
+SETTING_EMAIL_PORT=$SMTP_HOSTPORT
+SETTING_EMAIL_USE_TLS=True
+ZULIP_AUTH_BACKENDS=ZulipLDAPAuthBackend,EmailAuthBackend
+SETTING_ZULIP_SERVICE_PUSH_NOTIFICATIONS=True
+SETTING_ZULIP_SERVICE_SUBMIT_USAGE_STATISTICS=False
+LOADBALANCER_IPS=172.16.0.0/15
+SETTING_LOCAL_UPLOADS_DIR=None
+SETTING_S3_AUTH_UPLOADS_BUCKET=zulip-uploads
+SETTING_S3_AVATAR_BUCKET=zulip-avatars
+SETTING_S3_BACKUPS_BUCKET=zulip-backups
+SETTING_S3_ENDPOINT_URL=http://zulip-minio:9000
+SETTING_S3_REGION=zulip
+SETTING_AUTH_LDAP_SERVER_URI=ldap://ldapserver:389
+SETTING_AUTH_LDAP_BIND_DN=$LDAP_READONLY_USER_BIND_DN
+SECRETS_auth_ldap_bind_password=$LDAP_READONLY_USER_PASSWORD
+SETTING_AUTH_LDAP_USER_SEARCH=(&(objectClass=person)(memberOf=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN))
+SETTING_LDAP_EMAIL_ATTR=mail
+SETTING_AUTH_LDAP_REVERSE_EMAIL_SEARCH=(mail=%(email)s)
+SETTING_AUTH_LDAP_USERNAME_ATTR=uid
+SETTING_AUTH_LDAP_USER_ATTR_MAP={"full_name": "cn", "first_name": "givenName", "last_name": "sn", "avatar": "jpegPhoto"}
+SETTING_AUTH_LDAP_GROUP_TYPE=
+SETTING_AUTH_LDAP_REQUIRE_GROUP=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN
+SETTING_AUTH_LDAP_GROUP_SEARCH=(objectClass=GroupOfUniqueNames)
+SETTING_NAME_CHANGES_DISABLED=False
+SETTING_AVATAR_CHANGES_DISABLED=False
+EOFMT
+}
+
+function performUpdateZulip()
+{
+  perform_stack_name=zulip
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/zulip/zulip-postgresql:14,mirror.gcr.io/zulip/docker-zulip:11.2-0,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/zulip/zulip-postgresql:14,mirror.gcr.io/zulip/zulip-postgresql:14"
+      image_update_map[1]="mirror.gcr.io/zulip/docker-zulip:11.2-0,mirror.gcr.io/zulip/docker-zulip:11.2-0"
+      image_update_map[2]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
+      image_update_map[3]="mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/rabbitmq:4.1.4"
+      image_update_map[4]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[6]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
 # ExampleService
 function installExampleService()
 {
@@ -70168,8 +71866,6 @@ function installExampleService()
   chmod 777 $HSHQ_STACKS_DIR/exampleservice/dbexport
   initServicesCredentials
   set +e
-  docker exec mailu-admin flask mailu alias-delete $EXAMPLESERVICE_ADMIN_EMAIL_ADDRESS
-  sleep 5
   addUserMailu alias $EXAMPLESERVICE_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   EXAMPLESERVICE_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $EXAMPLESERVICE_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigExampleService
@@ -78840,6 +80536,13 @@ DATABASE_Ombi=$OMBI_DATABASE_NAME
 USER_Ombi=$OMBI_DATABASE_USER
 PASSWORD_Ombi=$OMBI_DATABASE_USER_PASSWORD
 PORT_Ombi=3306
+LABEL_Paperless=OpenProject
+ENGINE_OpenProject=postgres@dbgate-plugin-postgres
+SERVER_OpenProject=openproject-db
+DATABASE_OpenProject=$OPENPROJECT_DATABASE_NAME
+USER_OpenProject=$OPENPROJECT_DATABASE_USER
+PASSWORD_OpenProject=$OPENPROJECT_DATABASE_USER_PASSWORD
+PORT_OpenProject=5432
 LABEL_Paperless=Paperless
 ENGINE_Paperless=postgres@dbgate-plugin-postgres
 SERVER_Paperless=paperless-db
@@ -78966,6 +80669,20 @@ DATABASE_Yamtrack=$YAMTRACK_DATABASE_NAME
 USER_Yamtrack=$YAMTRACK_DATABASE_USER
 PASSWORD_Yamtrack=$YAMTRACK_DATABASE_USER_PASSWORD
 PORT_Yamtrack=5432
+LABEL_Zulip=Zammad
+ENGINE_Zammad=postgres@dbgate-plugin-postgres
+SERVER_Zammad=zammad-db
+DATABASE_Zammad=$ZAMMAD_DATABASE_NAME
+USER_Zammad=$ZAMMAD_DATABASE_USER
+PASSWORD_Zammad=$ZAMMAD_DATABASE_USER_PASSWORD
+PORT_Zammad=5432
+LABEL_Zulip=Zulip
+ENGINE_Zulip=postgres@dbgate-plugin-postgres
+SERVER_Zulip=yamtrack-db
+DATABASE_Zulip=$ZULIP_DATABASE_NAME
+USER_Zulip=$ZULIP_DATABASE_USER
+PASSWORD_Zulip=$ZULIP_DATABASE_USER_PASSWORD
+PORT_Zulip=5432
 EOFMT
 
 }
@@ -79373,6 +81090,14 @@ SQLPAD_CONNECTIONS__ombi__username=$OMBI_DATABASE_USER
 SQLPAD_CONNECTIONS__ombi__password=$OMBI_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__ombi__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__ombi__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__openproject__name=OpenProject
+SQLPAD_CONNECTIONS__openproject__driver=postgres
+SQLPAD_CONNECTIONS__openproject__host=openproject-db
+SQLPAD_CONNECTIONS__openproject__database=$OPENPROJECT_DATABASE_NAME
+SQLPAD_CONNECTIONS__openproject__username=$OPENPROJECT_DATABASE_USER
+SQLPAD_CONNECTIONS__openproject__password=$OPENPROJECT_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__openproject__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__openproject__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__paperless__name=Paperless
 SQLPAD_CONNECTIONS__paperless__driver=postgres
 SQLPAD_CONNECTIONS__paperless__host=paperless-db
@@ -79517,6 +81242,22 @@ SQLPAD_CONNECTIONS__yamtrack__username=$YAMTRACK_DATABASE_USER
 SQLPAD_CONNECTIONS__yamtrack__password=$YAMTRACK_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__yamtrack__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__yamtrack__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__zammad__name=Zammad
+SQLPAD_CONNECTIONS__zammad__driver=postgres
+SQLPAD_CONNECTIONS__zammad__host=zammad-db
+SQLPAD_CONNECTIONS__zammad__database=$ZAMMAD_DATABASE_NAME
+SQLPAD_CONNECTIONS__zammad__username=$ZAMMAD_DATABASE_USER
+SQLPAD_CONNECTIONS__zammad__password=$ZAMMAD_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__zammad__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__zammad__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__zulip__name=Zulip
+SQLPAD_CONNECTIONS__zulip__driver=postgres
+SQLPAD_CONNECTIONS__zulip__host=zulip-db
+SQLPAD_CONNECTIONS__zulip__database=$ZULIP_DATABASE_NAME
+SQLPAD_CONNECTIONS__zulip__username=$ZULIP_DATABASE_USER
+SQLPAD_CONNECTIONS__zulip__password=$ZULIP_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__zulip__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__zulip__idleTimeoutSeconds=900
 EOFSP
 
 }
