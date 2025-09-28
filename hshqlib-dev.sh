@@ -33732,7 +33732,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_RALLLY}-Admin" https://$SUB_RALLLY.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_EASYAPPOINTMENTS}-Admin" https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login $HOMESERVER_ABBREV $EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENPROJECT_APP}-Admin" https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENPROJECT_ADMIN_USERNAME $OPENPROJECT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_USERNAME $ZAMMAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
 
   # RelayServer
@@ -33866,7 +33866,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RALLLY}-Admin" https://$SUB_RALLLY.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_EASYAPPOINTMENTS}-Admin" https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login $HOMESERVER_ABBREV $EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENPROJECT_APP}-Admin" https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENPROJECT_ADMIN_USERNAME $OPENPROJECT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_USERNAME $ZAMMAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
 
   # RelayServer
@@ -70825,13 +70825,13 @@ function installZammad()
   sleep 3
   addUserMailu user $ZAMMAD_DEDICATED_EMAIL_USERNAME $HOMESERVER_DOMAIN $ZAMMAD_DEDICATED_EMAIL_PASSWORD
   outputConfigZammad
-  installStack zammad zammad-nginx "starting nginx..." $HOME/zammad.env 10
+  installStack zammad zammad-nginx "starting nginx..." $HOME/zammad.env 15
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
   if ! [ "$ZAMMAD_INIT_ENV" = "true" ]; then
-    sendEmail -s "$FMLNAME_ZAMMAD_APP Admin Login Info" -b "$FMLNAME_ZAMMAD_APP Admin Username: $ZAMMAD_ADMIN_USERNAME\n$FMLNAME_ZAMMAD_APP Admin Email: $ZAMMAD_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ZAMMAD_APP Admin Password: $ZAMMAD_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "$FMLNAME_ZAMMAD_APP Admin Login Info" -b "$FMLNAME_ZAMMAD_APP Admin Username: $ZAMMAD_ADMIN_EMAIL_ADDRESS\n$FMLNAME_ZAMMAD_APP Admin Password: $ZAMMAD_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     ZAMMAD_INIT_ENV=true
     updateConfigVar ZAMMAD_INIT_ENV $ZAMMAD_INIT_ENV
   fi
