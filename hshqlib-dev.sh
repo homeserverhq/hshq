@@ -73633,13 +73633,13 @@ function installInvoiceNinja()
   addUserMailu alias $INVOICENINJA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   INVOICENINJA_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $INVOICENINJA_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigInvoiceNinja
-  installStack invoiceninja invoiceninja-app "ready to handle connections" $HOME/invoiceninja.env 5
+  installStack invoiceninja invoiceninja-app "ready to handle connections" $HOME/invoiceninja.env 10
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
   if ! [ "$INVOICENINJA_INIT_ENV" = "true" ]; then
-    sendEmail -s "$FMLNAME_INVOICENINJA_WEB Admin Login Info" -b "$FMLNAME_INVOICENINJA_WEB Admin Username: $INVOICENINJA_ADMIN_USERNAME\n$FMLNAME_INVOICENINJA_WEB Admin Email: $INVOICENINJA_ADMIN_EMAIL_ADDRESS\n$FMLNAME_INVOICENINJA_WEB Admin Password: $INVOICENINJA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "$FMLNAME_INVOICENINJA_WEB Admin Login Info" -b "$FMLNAME_INVOICENINJA_WEB Admin Username: $INVOICENINJA_ADMIN_EMAIL_ADDRESS\n$FMLNAME_INVOICENINJA_WEB Admin Password: $INVOICENINJA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     INVOICENINJA_INIT_ENV=true
     updateConfigVar INVOICENINJA_INIT_ENV $INVOICENINJA_INIT_ENV
   fi
@@ -74051,13 +74051,13 @@ function installDolibarr()
   generateCert dolibarr-cron dolibarr-cron
   DOLI_INSTANCE_UNIQUE_ID=$(pwgen -c -n 64 1)
   outputConfigDolibarr
-  installStack dolibarr dolibarr-app "You can connect to the running Dolibarr web application with" $HOME/dolibarr.env 10
+  installStack dolibarr dolibarr-app "You can connect to the running Dolibarr web application with" $HOME/dolibarr.env 15 900
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
   fi
   if ! [ "$DOLIBARR_INIT_ENV" = "true" ]; then
-    sendEmail -s "$FMLNAME_DOLIBARR_APP Admin Login Info" -b "$FMLNAME_DOLIBARR_APP Admin Username: $DOLIBARR_ADMIN_USERNAME\n$FMLNAME_DOLIBARR_APP Admin Email: $DOLIBARR_ADMIN_EMAIL_ADDRESS\n$FMLNAME_DOLIBARR_APP Admin Password: $DOLIBARR_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "$FMLNAME_DOLIBARR_APP Admin Login Info" -b "$FMLNAME_DOLIBARR_APP Admin Username: $DOLIBARR_ADMIN_USERNAME\n$FMLNAME_DOLIBARR_APP Admin Password: $DOLIBARR_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     DOLIBARR_INIT_ENV=true
     updateConfigVar DOLIBARR_INIT_ENV $DOLIBARR_INIT_ENV
   fi
