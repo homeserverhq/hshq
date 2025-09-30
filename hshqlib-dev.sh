@@ -33745,6 +33745,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_CALCOM_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_COLLABORA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_DRAWIO_WEB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_ESPOCRM.$HOMESERVER_DOMAIN\n"
@@ -33788,6 +33789,7 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_ODOO.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OMBI_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PEERTUBE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PENPOT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_PROXY.$HOMESERVER_DOMAIN\n"
@@ -33803,6 +33805,8 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_WALLABAG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_WEKAN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_YAMTRACK.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia bypass END\n"
   retval="${retval}      policy: bypass\n"
   retval="${retval}    - domain:\n"
@@ -33819,7 +33823,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FRAPPE_HR.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
@@ -33828,7 +33831,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINTHCM.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PAPERLESS.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PASTEFY.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_PIPED_FRONTEND.$HOMESERVER_DOMAIN\n"
@@ -33837,8 +33839,6 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_STIRLINGPDF.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_SEARXNG.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_TWENTY.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_ZULIP_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}# Authelia ${LDAP_PRIMARY_USER_GROUP_NAME} END\n"
   retval="${retval}      policy: one_factor\n"
   retval="${retval}      subject:\n"
@@ -33995,7 +33995,7 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KILLBILL_WEB}-Admin" https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KILLBILL_ADMIN_USERNAME $KILLBILL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_USERNAME $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
 
@@ -34134,7 +34134,7 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KILLBILL_WEB}-Admin" https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KILLBILL_ADMIN_USERNAME $KILLBILL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_USERNAME $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
 
@@ -70771,7 +70771,7 @@ function installOpenProject()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_OPENPROJECT_APP $MANAGETLS_OPENPROJECT_APP "$is_integrate_hshq" $NETDEFAULT_OPENPROJECT_APP "$inner_block"
-  insertSubAuthelia $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll openproject "$FMLNAME_OPENPROJECT_APP" $USERTYPE_OPENPROJECT_APP "https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN" "openproject.png" "$(getHeimdallOrderFromSub $SUB_OPENPROJECT_APP $USERTYPE_OPENPROJECT_APP)"
     restartAllCaddyContainers
@@ -71203,7 +71203,7 @@ function installZammad()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_ZAMMAD_APP $MANAGETLS_ZAMMAD_APP "$is_integrate_hshq" $NETDEFAULT_ZAMMAD_APP "$inner_block"
-  insertSubAuthelia $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll zammad "$FMLNAME_ZAMMAD_APP" $USERTYPE_ZAMMAD_APP "https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN" "zammad.png" "$(getHeimdallOrderFromSub $SUB_ZAMMAD_APP $USERTYPE_ZAMMAD_APP)"
     restartAllCaddyContainers
@@ -71871,7 +71871,7 @@ function installZulip()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_ZULIP_APP $MANAGETLS_ZULIP_APP "$is_integrate_hshq" $NETDEFAULT_ZULIP_APP "$inner_block"
-  insertSubAuthelia $SUB_ZULIP_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_ZULIP_APP.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll zulip "$FMLNAME_ZULIP_APP" $USERTYPE_ZULIP_APP "https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN" "zulip.png" "$(getHeimdallOrderFromSub $SUB_ZULIP_APP $USERTYPE_ZULIP_APP)"
     restartAllCaddyContainers
@@ -73423,7 +73423,7 @@ EOFWZ
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll invoiceshelf "$FMLNAME_INVOICESHELF_APP" $USERTYPE_INVOICESHELF_APP "https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN" "invoiceshelf.png" "$(getHeimdallOrderFromSub $SUB_INVOICESHELF_APP $USERTYPE_INVOICESHELF_APP)"
     restartAllCaddyContainers
-    checkAddDBConnection true invoiceshelf "$FMLNAME_INVOICESHELF_APP" mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD
+    checkAddDBConnection true invoiceshelf "$FMLNAME_INVOICESHELF_APP" postgres invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD
   fi
   echo "========================================================================"
   echo "          Ensure to check your $EMAIL_ADMIN_EMAIL_ADDRESS"
@@ -74084,7 +74084,7 @@ function installDolibarr()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_DOLIBARR_APP $MANAGETLS_DOLIBARR_APP "$is_integrate_hshq" $NETDEFAULT_DOLIBARR_APP "$inner_block"
-  insertSubAuthelia $SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  insertSubAuthelia $SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN bypass
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll dolibarr "$FMLNAME_DOLIBARR_APP" $USERTYPE_DOLIBARR_APP "https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN" "dolibarr.png" "$(getHeimdallOrderFromSub $SUB_DOLIBARR_APP $USERTYPE_DOLIBARR_APP)"
     restartAllCaddyContainers
