@@ -1,5 +1,5 @@
 #!/bin/bash
-HSHQ_LIB_SCRIPT_VERSION=206
+HSHQ_LIB_SCRIPT_VERSION=207
 LOG_LEVEL=info
 
 # Copyright (C) 2023 HomeServerHQ <drdoug@homeserverhq.com>
@@ -29113,6 +29113,7 @@ function loadPinnedDockerImages()
   IMG_DBGATE_APP=mirror.gcr.io/dbgate/dbgate:6.6.3-alpine
   IMG_DISCOURSE=mirror.gcr.io/bitnami/discourse:3.4.7
   IMG_DNSMASQ=mirror.gcr.io/jpillora/dnsmasq:1.1
+  IMG_DOLIBARR_APP=mirror.gcr.io/dolibarr/dolibarr:20.0.4-php8.2
   IMG_DOZZLE=mirror.gcr.io/amir20/dozzle:v6.1.1
   IMG_DRAWIO_PLANTUML=mirror.gcr.io/jgraph/plantuml-server
   IMG_DRAWIO_EXPORT=mirror.gcr.io/jgraph/export-server
@@ -29149,6 +29150,8 @@ function loadPinnedDockerImages()
   IMG_INVIDIOUS_WEB=quay.io/invidious/invidious:master
   IMG_INVIDIOUS_COMPANION=quay.io/invidious/invidious-companion:latest
   IMG_INVIDIOUS_SESSIONGEN=quay.io/invidious/youtube-trusted-session-generator
+  IMG_INVOICENINJA_APP=mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12
+  IMG_INVOICESHELF_APP=mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2
   IMG_ITTOOLS=ghcr.io/corentinth/it-tools:latest
   IMG_JELLYFIN=mirror.gcr.io/jellyfin/jellyfin:10.10.7
   IMG_JITSI_WEB=jitsi/web:stable-10431
@@ -29159,6 +29162,9 @@ function loadPinnedDockerImages()
   IMG_KANBOARD_APP=mirror.gcr.io/kanboard/kanboard:v1.2.47
   IMG_KASM=lscr.io/linuxserver/kasm:1.17.0-ls88
   IMG_KEILA=pentacent/keila:0.17.1
+  IMG_KILLBILL_DB=mirror.gcr.io/killbill/mariadb:0.24
+  IMG_KILLBILL_APP=mirror.gcr.io/killbill/killbill:0.24.15
+  IMG_KILLBILL_WEB=mirror.gcr.io/killbill/kaui:3.0.23
   IMG_LINKWARDEN=ghcr.io/linkwarden/linkwarden:v2.11.5
   IMG_MAIL_RELAY_POSTFIX=hshq/mail-relay/postfix:v1
   IMG_MAIL_RELAY_RSPAMD=hshq/mail-relay/rspamd:v1
@@ -29460,6 +29466,14 @@ function getScriptStackVersion()
       echo "v1" ;;
     zulip)
       echo "v1" ;;
+    killbill)
+      echo "v1" ;;
+    invoiceshelf)
+      echo "v1" ;;
+    invoiceninja)
+      echo "v1" ;;
+    dolibarr)
+      echo "v1" ;;
     dbgate)
       echo "v1" ;;
     sqlpad)
@@ -29650,8 +29664,14 @@ function pullDockerImages()
   pullImage $IMG_EASYAPPOINTMENTS_APP
   pullImage $IMG_OPENPROJECT_APP
   pullImage $IMG_ZAMMAD
-  pullImage $IMG_ZULIP_APP
   pullImage $IMG_ZULIP_DB
+  pullImage $IMG_ZULIP_APP
+  pullImage $IMG_KILLBILL_DB
+  pullImage $IMG_KILLBILL_APP
+  pullImage $IMG_KILLBILL_WEB
+  pullImage $IMG_INVOICESHELF_APP
+  pullImage $IMG_INVOICENINJA_APP
+  pullImage $IMG_DOLIBARR_APP
 }
 
 function pullImagesUpdatePB()
@@ -30741,6 +30761,60 @@ ZULIP_RABBITMQ_USERNAME=
 ZULIP_RABBITMQ_PASSWORD=
 ZULIP_MEMCACHE_PASSWORD=
 # Zulip (Service Details) END
+
+# KillBill (Service Details) BEGIN
+KILLBILL_INIT_ENV=true
+KILLBILL_ADMIN_USERNAME=
+KILLBILL_ADMIN_EMAIL_ADDRESS=
+KILLBILL_ADMIN_PASSWORD=
+KILLBILL_DATABASE_USER=
+KILLBILL_DATABASE_USER_PASSWORD=
+KILLBILL_KB_DATABASE_NAME=
+KILLBILL_KAUI_DATABASE_NAME=
+KILLBILL_REDIS_PASSWORD=
+KILLBILL_API_KEY=
+KILLBILL_API_SECRET=
+# KillBill (Service Details) END
+
+# InvoiceShelf (Service Details) BEGIN
+INVOICESHELF_INIT_ENV=true
+INVOICESHELF_ADMIN_USERNAME=
+INVOICESHELF_ADMIN_EMAIL_ADDRESS=
+INVOICESHELF_ADMIN_PASSWORD=
+INVOICESHELF_DATABASE_NAME=
+INVOICESHELF_DATABASE_USER=
+INVOICESHELF_DATABASE_USER_PASSWORD=
+# InvoiceShelf (Service Details) END
+
+# InvoiceNinja (Service Details) BEGIN
+INVOICENINJA_INIT_ENV=true
+INVOICENINJA_ADMIN_USERNAME=
+INVOICENINJA_ADMIN_EMAIL_ADDRESS=
+INVOICENINJA_ADMIN_PASSWORD=
+INVOICENINJA_DATABASE_NAME=
+INVOICENINJA_DATABASE_ROOT_PASSWORD=
+INVOICENINJA_DATABASE_USER=
+INVOICENINJA_DATABASE_USER_PASSWORD=
+INVOICENINJA_REDIS_PASSWORD=
+INVOICENINJA_MINIO_KEY=
+INVOICENINJA_MINIO_SECRET=
+INVOICENINJA_API_SECRET=
+INVOICENINJA_UPDATE_SECRET=
+INVOICENINJA_WEBCRON_SECRET=
+# InvoiceNinja (Service Details) END
+
+# Dolibarr (Service Details) BEGIN
+DOLIBARR_INIT_ENV=true
+DOLIBARR_ADMIN_USERNAME=
+DOLIBARR_ADMIN_EMAIL_ADDRESS=
+DOLIBARR_ADMIN_PASSWORD=
+DOLIBARR_DATABASE_NAME=
+DOLIBARR_DATABASE_ROOT_PASSWORD=
+DOLIBARR_DATABASE_USER=
+DOLIBARR_DATABASE_USER_PASSWORD=
+DOLIBARR_REDIS_PASSWORD=
+DOLIBARR_CRON_SECRET=
+# Dolibarr (Service Details) END
 
 # Service Details END
 EOFCF
@@ -31961,7 +32035,7 @@ function initServicesCredentials()
     updateConfigVar PIXELFED_REDIS_PASSWORD $PIXELFED_REDIS_PASSWORD
   fi
   if [ -z "$PIXELFED_APP_KEY" ]; then
-    PIXELFED_APP_KEY=$(pwgen -c -n 32 1)
+    PIXELFED_APP_KEY=$(openssl rand -base64 32)
     updateConfigVar PIXELFED_APP_KEY $PIXELFED_APP_KEY
   fi
   if [ -z "$YAMTRACK_ADMIN_USERNAME" ]; then
@@ -32692,7 +32766,158 @@ function initServicesCredentials()
     ZULIP_MEMCACHE_PASSWORD=$(pwgen -c -n 32 1)
     updateConfigVar ZULIP_MEMCACHE_PASSWORD $ZULIP_MEMCACHE_PASSWORD
   fi
-
+  if [ -z "$KILLBILL_ADMIN_USERNAME" ]; then
+    KILLBILL_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_killbill"
+    updateConfigVar KILLBILL_ADMIN_USERNAME $KILLBILL_ADMIN_USERNAME
+  fi
+  if [ -z "$KILLBILL_ADMIN_EMAIL_ADDRESS" ]; then
+    KILLBILL_ADMIN_EMAIL_ADDRESS=$KILLBILL_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar KILLBILL_ADMIN_EMAIL_ADDRESS $KILLBILL_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$KILLBILL_ADMIN_PASSWORD" ]; then
+    KILLBILL_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KILLBILL_ADMIN_PASSWORD $KILLBILL_ADMIN_PASSWORD
+  fi
+  if [ -z "$KILLBILL_DATABASE_USER" ]; then
+    KILLBILL_DATABASE_USER=root
+    updateConfigVar KILLBILL_DATABASE_USER $KILLBILL_DATABASE_USER
+  fi
+  if [ -z "$KILLBILL_DATABASE_USER_PASSWORD" ]; then
+    KILLBILL_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KILLBILL_DATABASE_USER_PASSWORD $KILLBILL_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$KILLBILL_KB_DATABASE_NAME" ]; then
+    KILLBILL_KB_DATABASE_NAME=killbill
+    updateConfigVar KILLBILL_KB_DATABASE_NAME $KILLBILL_KB_DATABASE_NAME
+  fi
+  if [ -z "$KILLBILL_KAUI_DATABASE_NAME" ]; then
+    KILLBILL_KAUI_DATABASE_NAME=kaui
+    updateConfigVar KILLBILL_KAUI_DATABASE_NAME $KILLBILL_KAUI_DATABASE_NAME
+  fi
+  if [ -z "$KILLBILL_REDIS_PASSWORD" ]; then
+    KILLBILL_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar KILLBILL_REDIS_PASSWORD $KILLBILL_REDIS_PASSWORD
+  fi
+  if [ -z "$KILLBILL_API_KEY" ]; then
+    KILLBILL_API_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar KILLBILL_API_KEY $KILLBILL_API_KEY
+  fi
+  if [ -z "$KILLBILL_API_SECRET" ]; then
+    KILLBILL_API_SECRET=$(pwgen -c -n 64 1)
+    updateConfigVar KILLBILL_API_SECRET $KILLBILL_API_SECRET
+  fi
+  if [ -z "$INVOICESHELF_ADMIN_USERNAME" ]; then
+    INVOICESHELF_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_invoiceshelf"
+    updateConfigVar INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_USERNAME
+  fi
+  if [ -z "$INVOICESHELF_ADMIN_EMAIL_ADDRESS" ]; then
+    INVOICESHELF_ADMIN_EMAIL_ADDRESS=$INVOICESHELF_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar INVOICESHELF_ADMIN_EMAIL_ADDRESS $INVOICESHELF_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$INVOICESHELF_ADMIN_PASSWORD" ]; then
+    INVOICESHELF_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICESHELF_ADMIN_PASSWORD $INVOICESHELF_ADMIN_PASSWORD
+  fi
+  if [ -z "$INVOICESHELF_DATABASE_NAME" ]; then
+    INVOICESHELF_DATABASE_NAME=invoiceshelfdb
+    updateConfigVar INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_NAME
+  fi
+  if [ -z "$INVOICESHELF_DATABASE_USER" ]; then
+    INVOICESHELF_DATABASE_USER=invoiceshelf-user
+    updateConfigVar INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER
+  fi
+  if [ -z "$INVOICESHELF_DATABASE_USER_PASSWORD" ]; then
+    INVOICESHELF_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICESHELF_DATABASE_USER_PASSWORD $INVOICESHELF_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$INVOICENINJA_ADMIN_USERNAME" ]; then
+    INVOICENINJA_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_invoiceninja"
+    updateConfigVar INVOICENINJA_ADMIN_USERNAME $INVOICENINJA_ADMIN_USERNAME
+  fi
+  if [ -z "$INVOICENINJA_ADMIN_EMAIL_ADDRESS" ]; then
+    INVOICENINJA_ADMIN_EMAIL_ADDRESS=$INVOICENINJA_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar INVOICENINJA_ADMIN_EMAIL_ADDRESS $INVOICENINJA_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$INVOICENINJA_ADMIN_PASSWORD" ]; then
+    INVOICENINJA_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_ADMIN_PASSWORD $INVOICENINJA_ADMIN_PASSWORD
+  fi
+  if [ -z "$INVOICENINJA_DATABASE_NAME" ]; then
+    INVOICENINJA_DATABASE_NAME=invoiceninjadb
+    updateConfigVar INVOICENINJA_DATABASE_NAME $INVOICENINJA_DATABASE_NAME
+  fi
+  if [ -z "$INVOICENINJA_DATABASE_ROOT_PASSWORD" ]; then
+    INVOICENINJA_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_DATABASE_ROOT_PASSWORD $INVOICENINJA_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$INVOICENINJA_DATABASE_USER" ]; then
+    INVOICENINJA_DATABASE_USER=invoiceninja-user
+    updateConfigVar INVOICENINJA_DATABASE_USER $INVOICENINJA_DATABASE_USER
+  fi
+  if [ -z "$INVOICENINJA_DATABASE_USER_PASSWORD" ]; then
+    INVOICENINJA_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_DATABASE_USER_PASSWORD $INVOICENINJA_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$INVOICENINJA_REDIS_PASSWORD" ]; then
+    INVOICENINJA_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_REDIS_PASSWORD $INVOICENINJA_REDIS_PASSWORD
+  fi
+  if [ -z "$INVOICENINJA_MINIO_KEY" ]; then
+    INVOICENINJA_MINIO_KEY=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_MINIO_KEY $INVOICENINJA_MINIO_KEY
+  fi
+  if [ -z "$INVOICENINJA_MINIO_SECRET" ]; then
+    INVOICENINJA_MINIO_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_MINIO_SECRET $INVOICENINJA_MINIO_SECRET
+  fi
+  if [ -z "$INVOICENINJA_API_SECRET" ]; then
+    INVOICENINJA_API_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_API_SECRET $INVOICENINJA_API_SECRET
+  fi
+  if [ -z "$INVOICENINJA_UPDATE_SECRET" ]; then
+    INVOICENINJA_UPDATE_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_UPDATE_SECRET $INVOICENINJA_UPDATE_SECRET
+  fi
+  if [ -z "$INVOICENINJA_WEBCRON_SECRET" ]; then
+    INVOICENINJA_WEBCRON_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar INVOICENINJA_WEBCRON_SECRET $INVOICENINJA_WEBCRON_SECRET
+  fi
+  if [ -z "$DOLIBARR_ADMIN_USERNAME" ]; then
+    DOLIBARR_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_dolibarr"
+    updateConfigVar DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_USERNAME
+  fi
+  if [ -z "$DOLIBARR_ADMIN_EMAIL_ADDRESS" ]; then
+    DOLIBARR_ADMIN_EMAIL_ADDRESS=$DOLIBARR_ADMIN_USERNAME@$HOMESERVER_DOMAIN
+    updateConfigVar DOLIBARR_ADMIN_EMAIL_ADDRESS $DOLIBARR_ADMIN_EMAIL_ADDRESS
+  fi
+  if [ -z "$DOLIBARR_ADMIN_PASSWORD" ]; then
+    DOLIBARR_ADMIN_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOLIBARR_ADMIN_PASSWORD $DOLIBARR_ADMIN_PASSWORD
+  fi
+  if [ -z "$DOLIBARR_DATABASE_NAME" ]; then
+    DOLIBARR_DATABASE_NAME=dolibarrdb
+    updateConfigVar DOLIBARR_DATABASE_NAME $DOLIBARR_DATABASE_NAME
+  fi
+  if [ -z "$DOLIBARR_DATABASE_ROOT_PASSWORD" ]; then
+    DOLIBARR_DATABASE_ROOT_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOLIBARR_DATABASE_ROOT_PASSWORD $DOLIBARR_DATABASE_ROOT_PASSWORD
+  fi
+  if [ -z "$DOLIBARR_DATABASE_USER" ]; then
+    DOLIBARR_DATABASE_USER=dolibarr-user
+    updateConfigVar DOLIBARR_DATABASE_USER $DOLIBARR_DATABASE_USER
+  fi
+  if [ -z "$DOLIBARR_DATABASE_USER_PASSWORD" ]; then
+    DOLIBARR_DATABASE_USER_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOLIBARR_DATABASE_USER_PASSWORD $DOLIBARR_DATABASE_USER_PASSWORD
+  fi
+  if [ -z "$DOLIBARR_REDIS_PASSWORD" ]; then
+    DOLIBARR_REDIS_PASSWORD=$(pwgen -c -n 32 1)
+    updateConfigVar DOLIBARR_REDIS_PASSWORD $DOLIBARR_REDIS_PASSWORD
+  fi
+  if [ -z "$DOLIBARR_CRON_SECRET" ]; then
+    DOLIBARR_CRON_SECRET=$(pwgen -c -n 32 1)
+    updateConfigVar DOLIBARR_CRON_SECRET $DOLIBARR_CRON_SECRET
+  fi
   # RelayServer credentials
   if [ -z "$RELAYSERVER_PORTAINER_ADMIN_USERNAME" ]; then
     RELAYSERVER_PORTAINER_ADMIN_USERNAME=$ADMIN_USERNAME_BASE"_rs_portainer"
@@ -32868,6 +33093,15 @@ function checkCreateNonbackupDirByStack()
     "zulip")
       mkdir -p $HSHQ_NONBACKUP_DIR/zulip/redis
       ;;
+    "killbill")
+      mkdir -p $HSHQ_NONBACKUP_DIR/killbill/redis
+      ;;
+    "invoiceninja")
+      mkdir -p $HSHQ_NONBACKUP_DIR/invoiceninja/redis
+      ;;
+    "dolibarr")
+      mkdir -p $HSHQ_NONBACKUP_DIR/dolibarr/redis
+      ;;
     *)
       ;;
   esac
@@ -32929,6 +33163,7 @@ function initServiceVars()
   checkAddSvc "SVCD_COTURN=coturn,coturn,other,user,Coturn,coturn,hshq"
   checkAddSvc "SVCD_DBGATE=dbgate,dbgate,primary,admin,DbGate,dbgate,hshq"
   checkAddSvc "SVCD_DISCOURSE=discourse,discourse,other,user,Discourse,discourse,hshq"
+  checkAddSvc "SVCD_DOLIBARR_APP=dolibarr,dolibarr,primary,user,Dolibarr,dolibarr,hshq"
   checkAddSvc "SVCD_DOZZLE=dozzle,dozzle,primary,admin,Dozzle,dozzle,hshq"
   checkAddSvc "SVCD_DRAWIO_WEB=drawio,drawio,primary,user,Draw.io,drawio,hshq"
   checkAddSvc "SVCD_DUPLICATI=duplicati,duplicati,home,admin,Duplicati,duplicati,hshq"
@@ -32965,6 +33200,8 @@ function initServiceVars()
   checkAddSvc "SVCD_IMMICH=immich,immich,other,user,Immich,immich,le"
   checkAddSvc "SVCD_INFLUXDB=sysutils,influxdb,primary,admin,InfluxDB,influxdb,hshq"
   checkAddSvc "SVCD_INVIDIOUS=invidious,invidious,primary,user,Invidious,invidious,hshq"
+  checkAddSvc "SVCD_INVOICENINJA_WEB=invoiceninja,invoiceninja,primary,user,InvoiceNinja,invoiceninja,hshq"
+  checkAddSvc "SVCD_INVOICESHELF_APP=invoiceshelf,invoiceshelf,primary,user,InvoiceShelf,invoiceshelf,hshq"
   checkAddSvc "SVCD_ITTOOLS=ittools,ittools,primary,admin,IT Tools,ittools,hshq"
   checkAddSvc "SVCD_JELLYFIN=jellyfin,jellyfin,primary,user,Jellyfin,jellyfin,le"
   checkAddSvc "SVCD_JITSI=jitsi,jitsi,other,user,Jitsi,jitsi,le"
@@ -32974,6 +33211,8 @@ function initServiceVars()
   checkAddSvc "SVCD_KASM=kasm,kasm,primary,user,Kasm,kasm,hshq"
   checkAddSvc "SVCD_KASM_WIZARD=kasm,kasm-wizard,home,admin,Kasm Wizard,kasm-wizard,hshq"
   checkAddSvc "SVCD_KEILA=keila,keila,primary,user,Keila,keila,hshq"
+  checkAddSvc "SVCD_KILLBILL_API=killbill,kb-api,primary,user,KillBillAPI,kb-api,hshq"
+  checkAddSvc "SVCD_KILLBILL_WEB=killbill,killbill,primary,user,KillBill,killbill,hshq"
   checkAddSvc "SVCD_MAILU=mailu,mailu,primary,user,Mailu,mailu,hshq"
   checkAddSvc "SVCD_MASTODON=mastodon,mastodon,other,user,Mastodon,mastodon,le"
   checkAddSvc "SVCD_MATRIX_ELEMENT_PRIVATE=matrix,element-private,other,user,Matrix Element (Private Jitsi),element-private,hshq"
@@ -33240,6 +33479,14 @@ function installStackByName()
       installZammad $is_integrate ;;
     zulip)
       installZulip $is_integrate ;;
+    killbill)
+      installKillBill $is_integrate ;;
+    invoiceshelf)
+      installInvoiceShelf $is_integrate ;;
+    invoiceninja)
+      installInvoiceNinja $is_integrate ;;
+    dolibarr)
+      installDolibarr $is_integrate ;;
     heimdall)
       installHeimdall $is_integrate ;;
     ofelia)
@@ -33453,6 +33700,14 @@ function performUpdateStackByName()
       performUpdateZammad ;;
     zulip)
       performUpdateZulip ;;
+    killbill)
+      performUpdateKillBill ;;
+    invoiceshelf)
+      performUpdateInvoiceShelf ;;
+    invoiceninja)
+      performUpdateInvoiceNinja ;;
+    dolibarr)
+      performUpdateDolibarr ;;
     heimdall)
       performUpdateHeimdall ;;
     ofelia)
@@ -33511,11 +33766,14 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_IMAGES.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_IMMICH.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JELLYFIN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_JITSI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KASM.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KANBOARD.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_KEILA.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_KILLBILL_API.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MAILU.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MASTODON.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MATRIX_SYNAPSE.$HOMESERVER_DOMAIN\n"
@@ -33561,10 +33819,12 @@ function getAutheliaBlock()
   retval="${retval}        - $SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_BARASSISTANT.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_CHANGEDETECTION.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_FRAPPE_HR.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
-  retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_GITLAB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_HUGINN.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN\n"
+  retval="${retval}        - $SUB_LINKWARDEN.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MESHCENTRAL.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_METABASE.$HOMESERVER_DOMAIN\n"
   retval="${retval}        - $SUB_MINTHCM.$HOMESERVER_DOMAIN\n"
@@ -33639,41 +33899,41 @@ function emailVaultwardenCredentials()
 {
   strOutput="_________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PORTAINER}" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ADGUARD}" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SCRIPTSERVER}" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html,https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENLDAP_PHP}" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_AUTHELIA}" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_WAZUH}" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-Admin" "\"https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/wizarduser.html\"" $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GUACAMOLE" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_UPTIMEKUMA" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SQLPAD" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_SYNCTHING" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_CODESERVER" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_TASMOADMIN" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin,https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator,https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GUACAMOLE}" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_UPTIMEKUMA}" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SQLPAD}" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_SYNCTHING}" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CODESERVER}" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMEASSISTANT_TASMOADMIN}" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin,https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HOMEASSISTANT_CONFIGURATOR}" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator,https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Admin" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-Users" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-HomeServers" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_HEIMDALL}-RelayServer" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITEA}-Admin" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $GITEA_ADMIN_USERNAME $GITEA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITEA}-User" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_GITLAB" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_OPENLDAP_MANAGER" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_GITLAB}" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENLDAP_MANAGER}" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PRIVATE" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATRIX_ELEMENT_PRIVATE}" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MATRIX_ELEMENT_PUBLIC}" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_REMOTELY}" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register,https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DUPLICATI}" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_FILEBROWSER}" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_MASTODON}-User" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_PEERTUBE}-Admin" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PEERTUBE_ADMIN_USERNAME $PEERTUBE_ADMIN_PASSWORD)"\n"
@@ -33734,6 +33994,10 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_OPENPROJECT_APP}-Admin" https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENPROJECT_ADMIN_USERNAME $OPENPROJECT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KILLBILL_WEB}-Admin" https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KILLBILL_ADMIN_USERNAME $KILLBILL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_USERNAME $INVOICENINJA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -33757,7 +34021,7 @@ function emailUserVaultwardenCredentials()
   vw_email=$2
   strOutput="________________________________________________________________________\n\n"
   strOutput=$strOutput"folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login,https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Username" "\"https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/,https://$SUB_CALIBRE_WEB.$HOMESERVER_DOMAIN/login,https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login,https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html,https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in,https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login,https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login,https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login,https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN/login,https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/,https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login,https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login,https://$SUB_MESHCENTRAL.$HOMESERVER_DOMAIN/,https://$SUB_KANBOARD.$HOMESERVER_DOMAIN/,https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login,https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login,https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/,https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $vw_username abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "LDAP Services - Email" "\"https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login,https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "Mailu-User" "https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login" $HOMESERVER_ABBREV ${vw_username}@$HOMESERVER_DOMAIN abcdefg)"\n"
   strOutput=${strOutput}"\n\n"
@@ -33774,40 +34038,41 @@ function emailFormattedCredentials()
   strOutput=$strOutput"Be careful keeping this in your mailbox, it contains all of your Admin passwords in plain text! If you intend to install and use Vaultwarden, then you will receive an email once it is installed, and it will contain this information in a format that you can easily import into your vault. You can also resend yourself this email later from within Script-server, i.e. 01 Misc Utils -> 11 Email All Credentials\n\n\n\n"
   strOutput=$strOutput"Service Name, Username, Password, URL(s)\n"
   strOutput=$strOutput"________________________________________________________________________\n\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_PORTAINER" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_ADGUARD" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SCRIPTSERVER" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_OPENLDAP_PHP" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_AUTHELIA" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_WAZUH" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_GRAFANA" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_INFLUXDB" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_DOZZLE" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PORTAINER}" "\"https://$SUB_PORTAINER.$HOMESERVER_DOMAIN/#!/auth https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$PORTAINER_LOCAL_HTTPS_PORT/#!/auth\"" $HOMESERVER_ABBREV $PORTAINER_ADMIN_USERNAME $PORTAINER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ADGUARD}" https://$SUB_ADGUARD.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV $ADGUARD_ADMIN_USERNAME $ADGUARD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SCRIPTSERVER}" "\"https://$SUB_SCRIPTSERVER.$HOMESERVER_DOMAIN/login.html https://$HOMESERVER_HOST_PRIMARY_INTERFACE_IP:$SCRIPTSERVER_LOCALHOST_PORT/login.html\"" $HOMESERVER_ABBREV $SCRIPTSERVER_ADMIN_USERNAME $SCRIPTSERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENLDAP_PHP}" https://$SUB_OPENLDAP_PHP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV \"$LDAP_ADMIN_BIND_DN\" $LDAP_ADMIN_BIND_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AUTHELIA}" https://$SUB_AUTHELIA.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_WAZUH}" https://$SUB_WAZUH.$HOMESERVER_DOMAIN/app/login $HOMESERVER_ABBREV $WAZUH_USERS_ADMIN_USERNAME $WAZUH_USERS_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAFANA}" https://$SUB_GRAFANA.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAFANA_ADMIN_USERNAME $GRAFANA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INFLUXDB}" https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $INFLUXDB_ADMIN_USERNAME $INFLUXDB_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOZZLE}" https://$SUB_DOZZLE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $DOZZLE_USERNAME $DOZZLE_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-Admin" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $JELLYFIN_ADMIN_USERNAME $JELLYFIN_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_JELLYFIN}-User" https://$SUB_JELLYFIN.$HOMESERVER_DOMAIN/web/#/login.html $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_GUACAMOLE" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_UPTIMEKUMA" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SQLPAD" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_SYNCTHING" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_CODESERVER" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_HOMEASSISTANT_TASMOADMIN" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_HOMEASSISTANT_CONFIGURATOR" https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PHOTOPRISM}-Admin" https://$SUB_PHOTOPRISM.$HOMESERVER_DOMAIN/library/login $HOMESERVER_ABBREV $PHOTOPRISM_ADMIN_USERNAME $PHOTOPRISM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GUACAMOLE}" https://$SUB_GUACAMOLE.$HOMESERVER_DOMAIN/guacamole/ $HOMESERVER_ABBREV $GUACAMOLE_DEFAULT_ADMIN_USERNAME $GUACAMOLE_DEFAULT_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_UPTIMEKUMA}" https://$SUB_UPTIMEKUMA.$HOMESERVER_DOMAIN/dashboard $HOMESERVER_ABBREV $UPTIMEKUMA_USERNAME $UPTIMEKUMA_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SQLPAD}" https://$SUB_SQLPAD.$HOMESERVER_DOMAIN/signin $HOMESERVER_ABBREV $SQLPAD_ADMIN_USERNAME $SQLPAD_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SYNCTHING}" https://$SUB_SYNCTHING.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $SYNCTHING_ADMIN_USERNAME $SYNCTHING_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CODESERVER}" https://$SUB_CODESERVER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $CODESERVER_ADMIN_USERNAME $CODESERVER_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HOMEASSISTANT_TASMOADMIN}" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/tasmoadmin,https://$SUB_HOMEASSISTANT_TASMOADMIN.$HOMESERVER_DOMAIN/login\"" $HOMESERVER_ABBREV $HOMEASSISTANT_TASMOADMIN_USER $HOMEASSISTANT_TASMOADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HOMEASSISTANT_CONFIGURATOR}" "\"https://$SUB_HOMEASSISTANT_APP.$HOMESERVER_DOMAIN/configurator,https://$SUB_HOMEASSISTANT_CONFIGURATOR.$HOMESERVER_DOMAIN/\"" $HOMESERVER_ABBREV $HOMEASSISTANT_CONFIGURATOR_USER $HOMEASSISTANT_CONFIGURATOR_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-Admin" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_ADMIN_USERNAME $HEIMDALL_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-Users" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_USER_USERNAME $HEIMDALL_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-HomeServers" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_HOMESERVERS_USERNAME $HEIMDALL_HOMESERVERS_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HEIMDALL}-RelayServer" https://$SUB_HEIMDALL.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $HEIMDALL_RELAYSERVER_USERNAME $HEIMDALL_RELAYSERVER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GITEA}-Admin" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $GITEA_ADMIN_USERNAME $GITEA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GITEA}-User" https://$SUB_GITEA.$HOMESERVER_DOMAIN/user/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_GITLAB" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_OPENLDAP_MANAGER" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GITLAB}" https://$SUB_GITLAB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENLDAP_MANAGER}" https://$SUB_OPENLDAP_MANAGER.$HOMESERVER_DOMAIN/log_in/ $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MAILU}-Admin" https://$SUB_MAILU.$HOMESERVER_DOMAIN/sso/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $EMAIL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_MATRIX_ELEMENT_PRIVATE" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_MATRIX_ELEMENT_PUBLIC" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATRIX_ELEMENT_PRIVATE}" https://$SUB_MATRIX_ELEMENT_PRIVATE.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATRIX_ELEMENT_PUBLIC}" https://$SUB_MATRIX_ELEMENT_PUBLIC.$HOMESERVER_DOMAIN/#/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-Admin" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $MEALIE_ADMIN_USERNAME $MEALIE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MEALIE}-User" https://$SUB_MEALIE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_REMOTELY" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_DUPLICATI" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "$FMLNAME_FILEBROWSER" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_REMOTELY}" "\"https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Register https://$SUB_REMOTELY.$HOMESERVER_DOMAIN/Account/Login\"" $HOMESERVER_ABBREV $REMOTELY_ADMIN_EMAIL_ADDRESS $REMOTELY_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DUPLICATI}" https://$SUB_DUPLICATI.$HOMESERVER_DOMAIN/login.html $HOMESERVER_ABBREV "NA" $DUPLICATI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_FILEBROWSER}" https://$SUB_FILEBROWSER.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $FILEBROWSER_USERNAME $FILEBROWSER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-Admin" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $MASTODON_ADMIN_EMAIL_ADDRESS $MASTODON_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MASTODON}-User" https://$SUB_MASTODON.$HOMESERVER_DOMAIN/auth/sign_in $HOMESERVER_ABBREV $LDAP_ADMIN_USER_USERNAME $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PEERTUBE}-Admin" https://$SUB_PEERTUBE.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $PEERTUBE_ADMIN_USERNAME $PEERTUBE_ADMIN_PASSWORD)"\n"
@@ -33831,15 +34096,15 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_GRAMPSWEB}-Admin" https://$SUB_GRAMPSWEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $GRAMPSWEB_ADMIN_USERNAME $GRAMPSWEB_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PENPOT}-User" https://$SUB_PENPOT.$HOMESERVER_DOMAIN/#/auth/login $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ESPOCRM}-Admin" https://$SUB_ESPOCRM.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $ESPOCRM_ADMIN_USERNAME $ESPOCRM_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_USERNAME $IMMICH_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_IMMICH}-Admin" https://$SUB_IMMICH.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $IMMICH_ADMIN_EMAIL_ADDRESS $IMMICH_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_HOMARR}-Admin" https://$SUB_HOMARR.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $HOMARR_ADMIN_USERNAME $HOMARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_MATOMO}-Admin" https://$SUB_MATOMO.$HOMESERVER_DOMAIN/index.php $HOMESERVER_ABBREV $MATOMO_ADMIN_USERNAME $MATOMO_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PASTEFY}-Admin" https://$SUB_PASTEFY.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $PASTEFY_ADMIN_USERNAME $PASTEFY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_MINDSDB_APP}-Admin" https://$SUB_AISTACK_MINDSDB_APP.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_MINDSDB_ADMIN_USERNAME $AISTACK_MINDSDB_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_LANGFUSE}-Admin" https://$SUB_AISTACK_LANGFUSE.$HOMESERVER_DOMAIN/auth/sign-in $HOMESERVER_ABBREV $AISTACK_LANGFUSE_ADMIN_EMAIL_ADDRESS $AISTACK_LANGFUSE_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_AISTACK_OPENWEBUI}-Admin" https://$SUB_AISTACK_OPENWEBUI.$HOMESERVER_DOMAIN/auth $HOMESERVER_ABBREV $AISTACK_OPENWEBUI_ADMIN_EMAIL_ADDRESS $AISTACK_OPENWEBUI_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_PIXELFED}-Admin" "\"https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/login https://$SUB_PIXELFED.$HOMESERVER_DOMAIN/i/auth/sudo\"" $HOMESERVER_ABBREV $EMAIL_ADMIN_EMAIL_ADDRESS $LDAP_ADMIN_USER_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_YAMTRACK}-Admin" https://$SUB_YAMTRACK.$HOMESERVER_DOMAIN/accounts/login $HOMESERVER_ABBREV $YAMTRACK_ADMIN_USERNAME $YAMTRACK_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_SONARR}-Admin" https://$SUB_SERVARR_SONARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $SONARR_ADMIN_USERNAME $SONARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_RADARR}-Admin" https://$SUB_SERVARR_RADARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RADARR_ADMIN_USERNAME $RADARR_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_SERVARR_LIDARR}-Admin" https://$SUB_SERVARR_LIDARR.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $LIDARR_ADMIN_USERNAME $LIDARR_ADMIN_PASSWORD)"\n"
@@ -33862,12 +34127,16 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DBGATE}-Admin" https://$SUB_DBGATE.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DBGATE_ADMIN_USERNAME $DBGATE_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_TWENTY}-Admin" https://$SUB_TWENTY.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $TWENTY_ADMIN_EMAIL_ADDRESS $TWENTY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ODOO}-Admin" https://$SUB_ODOO.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $ODOO_ADMIN_USERNAME $ODOO_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CALCOM_APP}-Admin" https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/web/login $HOMESERVER_ABBREV $CALCOM_ADMIN_EMAIL_ADDRESS $CALCOM_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CALCOM_APP}-Admin" https://$SUB_CALCOM_APP.$HOMESERVER_DOMAIN/auth/login $HOMESERVER_ABBREV $CALCOM_ADMIN_EMAIL_ADDRESS $CALCOM_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_RALLLY}-Admin" https://$SUB_RALLLY.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $RALLLY_ADMIN_EMAIL_ADDRESS $RALLLY_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_EASYAPPOINTMENTS}-Admin" https://$SUB_EASYAPPOINTMENTS.$HOMESERVER_DOMAIN/index.php/login $HOMESERVER_ABBREV $EASYAPPOINTMENTS_ADMIN_USERNAME $EASYAPPOINTMENTS_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_OPENPROJECT_APP}-Admin" https://$SUB_OPENPROJECT_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $OPENPROJECT_ADMIN_USERNAME $OPENPROJECT_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KILLBILL_WEB}-Admin" https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KILLBILL_ADMIN_USERNAME $KILLBILL_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_USERNAME $INVOICENINJA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
 
   # RelayServer
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_CLIENTDNS}-user1" https://${SUB_CLIENTDNS}-user1.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $CLIENTDNS_USER1_ADMIN_USERNAME $CLIENTDNS_USER1_ADMIN_PASSWORD)"\n"
@@ -34279,6 +34548,18 @@ function getHeimdallOrderFromSub()
     "$SUB_ZULIP_APP")
       order_num=115
       ;;
+    "$SUB_KILLBILL_WEB")
+      order_num=116
+      ;;
+    "$SUB_INVOICESHELF_APP")
+      order_num=117
+      ;;
+    "$SUB_INVOICENINJA_WEB")
+      order_num=118
+      ;;
+    "$SUB_DOLIBARR_APP")
+      order_num=119
+      ;;
     "$SUB_ADGUARD.$INT_DOMAIN_PREFIX")
       order_num=400
       ;;
@@ -34326,18 +34607,18 @@ function getLetsEncryptCertsDefault()
 function initServiceDefaults()
 {
   HSHQ_REQUIRED_STACKS="adguard,authelia,duplicati,heimdall,mailu,openldap,portainer,syncthing,ofelia,uptimekuma"
-  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,dbgate,sqlpad"
+  HSHQ_OPTIONAL_STACKS="vaultwarden,sysutils,wazuh,jitsi,collabora,nextcloud,matrix,mastodon,dozzle,searxng,jellyfin,filebrowser,photoprism,guacamole,codeserver,ghost,wikijs,wordpress,peertube,homeassistant,gitlab,discourse,shlink,firefly,excalidraw,drawio,invidious,gitea,mealie,kasm,ntfy,ittools,remotely,calibre,netdata,linkwarden,stirlingpdf,bar-assistant,freshrss,keila,wallabag,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,changedetection,huginn,coturn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,snippetbox,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,invoiceshelf,invoiceninja,dolibarr,dbgate,sqlpad"
   DS_MEM_LOW=minimal
-  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip
-  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
-  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
-  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip
-  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly
-  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly
+  DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
+  BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
 }
 
 function getScriptImageByContainerName()
@@ -35243,6 +35524,54 @@ function getScriptImageByContainerName()
     "zulip-createbuckets")
       container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
       ;;
+    "killbill-db")
+      container_image=$IMG_KILLBILL_DB
+      ;;
+    "killbill-app")
+      container_image=$IMG_KILLBILL_APP
+      ;;
+    "killbill-web")
+      container_image=$IMG_KILLBILL_WEB
+      ;;
+    "killbill-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "invoiceshelf-db")
+      container_image=mirror.gcr.io/postgres:16.9-bookworm
+      ;;
+    "invoiceshelf-app")
+      container_image=$IMG_INVOICESHELF_APP
+      ;;
+    "invoiceninja-db")
+      container_image=mirror.gcr.io/mariadb:10.7.3
+      ;;
+    "invoiceninja-app")
+      container_image=$IMG_INVOICENINJA_APP
+      ;;
+    "invoiceninja-web")
+      container_image=mirror.gcr.io/nginx:1.28.0-alpine
+      ;;
+    "invoiceninja-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
+    "invoiceninja-minio")
+      container_image=mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z
+      ;;
+    "invoiceninja-createbuckets")
+      container_image=mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      ;;
+    "dolibarr-db")
+      container_image=mirror.gcr.io/mariadb:10.7.3
+      ;;
+    "dolibarr-app")
+      container_image=$IMG_DOLIBARR_APP
+      ;;
+    "dolibarr-cron")
+      container_image=$IMG_DOLIBARR_APP
+      ;;
+    "dolibarr-redis")
+      container_image=mirror.gcr.io/redis:8.2.0-bookworm
+      ;;
     *)
       ;;
   esac
@@ -35317,6 +35646,10 @@ function checkAddAllNewSvcs()
   checkAddServiceToConfig "OpenProject" "OPENPROJECT_INIT_ENV=false,OPENPROJECT_ADMIN_USERNAME=,OPENPROJECT_ADMIN_EMAIL_ADDRESS=,OPENPROJECT_ADMIN_PASSWORD=,OPENPROJECT_DATABASE_NAME=,OPENPROJECT_DATABASE_ROOT_PASSWORD=,OPENPROJECT_DATABASE_USER=,OPENPROJECT_DATABASE_USER_PASSWORD=,OPENPROJECT_MINIO_KEY=,OPENPROJECT_MINIO_SECRET=" $CONFIG_FILE false
   checkAddServiceToConfig "Zammad" "ZAMMAD_INIT_ENV=false,ZAMMAD_ADMIN_USERNAME=,ZAMMAD_ADMIN_EMAIL_ADDRESS=,ZAMMAD_ADMIN_PASSWORD=,ZAMMAD_DATABASE_NAME=,ZAMMAD_DATABASE_ROOT_PASSWORD=,ZAMMAD_DATABASE_USER=,ZAMMAD_DATABASE_USER_PASSWORD=,ZAMMAD_REDIS_PASSWORD=,ZAMMAD_ES_USERNAME=,ZAMMAD_ES_PASSWORD=,ZAMMAD_MINIO_KEY=,ZAMMAD_MINIO_SECRET=,ZAMMAD_DEDICATED_EMAIL_USERNAME=,ZAMMAD_DEDICATED_EMAIL_ADDRESS=,ZAMMAD_DEDICATED_EMAIL_PASSWORD=" $CONFIG_FILE false
   checkAddServiceToConfig "Zulip" "ZULIP_INIT_ENV=false,ZULIP_ADMIN_USERNAME=,ZULIP_ADMIN_EMAIL_ADDRESS=,ZULIP_ADMIN_PASSWORD=,ZULIP_DATABASE_NAME=,ZULIP_DATABASE_USER=,ZULIP_DATABASE_USER_PASSWORD=,ZULIP_REDIS_PASSWORD=,ZULIP_RABBITMQ_USERNAME=,ZULIP_RABBITMQ_PASSWORD=,ZULIP_MEMCACHE_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "KillBill" "KILLBILL_INIT_ENV=false,KILLBILL_ADMIN_USERNAME=,KILLBILL_ADMIN_EMAIL_ADDRESS=,KILLBILL_ADMIN_PASSWORD=,KILLBILL_DATABASE_USER=,KILLBILL_DATABASE_USER_PASSWORD=,KILLBILL_KB_DATABASE_NAME=,KILLBILL_KAUI_DATABASE_NAME=,KILLBILL_REDIS_PASSWORD=,KILLBILL_API_KEY=,KILLBILL_API_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "InvoiceShelf" "INVOICESHELF_INIT_ENV=false,INVOICESHELF_ADMIN_USERNAME=,INVOICESHELF_ADMIN_EMAIL_ADDRESS=,INVOICESHELF_ADMIN_PASSWORD=,INVOICESHELF_DATABASE_NAME=,INVOICESHELF_DATABASE_USER=,INVOICESHELF_DATABASE_USER_PASSWORD=" $CONFIG_FILE false
+  checkAddServiceToConfig "InvoiceNinja" "INVOICENINJA_INIT_ENV=false,INVOICENINJA_ADMIN_USERNAME=,INVOICENINJA_ADMIN_EMAIL_ADDRESS=,INVOICENINJA_ADMIN_PASSWORD=,INVOICENINJA_DATABASE_NAME=,INVOICENINJA_DATABASE_ROOT_PASSWORD=,INVOICENINJA_DATABASE_USER=,INVOICENINJA_DATABASE_USER_PASSWORD=,INVOICENINJA_REDIS_PASSWORD=,INVOICENINJA_MINIO_KEY=,INVOICENINJA_MINIO_SECRET=,INVOICENINJA_API_SECRET=,INVOICENINJA_UPDATE_SECRET=,INVOICENINJA_WEBCRON_SECRET=" $CONFIG_FILE false
+  checkAddServiceToConfig "Dolibarr" "DOLIBARR_INIT_ENV=false,DOLIBARR_ADMIN_USERNAME=,DOLIBARR_ADMIN_EMAIL_ADDRESS=,DOLIBARR_ADMIN_PASSWORD=,DOLIBARR_DATABASE_NAME=,DOLIBARR_DATABASE_ROOT_PASSWORD=,DOLIBARR_DATABASE_USER=,DOLIBARR_DATABASE_USER_PASSWORD=,DOLIBARR_REDIS_PASSWORD=,DOLIBARR_CRON_SECRET=" $CONFIG_FILE false
 
   checkAddVarsToServiceConfig "Mailu" "MAILU_API_TOKEN=" $CONFIG_FILE false
   checkAddVarsToServiceConfig "PhotoPrism" "PHOTOPRISM_INIT_ENV=false" $CONFIG_FILE false
@@ -50919,7 +51252,6 @@ function installFirefly()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/firefly
   mkdir $HSHQ_STACKS_DIR/firefly/db
   mkdir $HSHQ_STACKS_DIR/firefly/dbexport
@@ -50927,7 +51259,6 @@ function installFirefly()
   chmod 777 $HSHQ_STACKS_DIR/firefly/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/firefly
   mkdir $HSHQ_NONBACKUP_DIR/firefly/redis
-
   initServicesCredentials
   if [ -z "$FIREFLY_REDIS_PASSWORD" ]; then
     FIREFLY_REDIS_PASSWORD=$(pwgen -c -n 32 1)
@@ -50937,7 +51268,6 @@ function installFirefly()
     FIREFLY_INITIAL_API_KEY=$(pwgen -c -n 32 1)
     updateConfigVar FIREFLY_INITIAL_API_KEY $FIREFLY_INITIAL_API_KEY
   fi
-
   outputConfigFirefly
   installStack firefly firefly "" $HOME/firefly.env
   retval=$?
@@ -50946,7 +51276,6 @@ function installFirefly()
   fi
   echo "Firefly installed, sleeping 10 seconds..."
   sleep 10
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -50961,7 +51290,6 @@ function installFirefly()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_FIREFLY_APP $MANAGETLS_FIREFLY_APP "$is_integrate_hshq" $NETDEFAULT_FIREFLY_APP "$inner_block"
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_FIREFLY_IMPORTER.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -51155,7 +51483,7 @@ UID=$USERID
 GID=$GROUPID
 SITE_OWNER=$EMAIL_ADMIN_EMAIL_ADDRESS
 APP_URL=https://$SUB_FIREFLY_APP.$HOMESERVER_DOMAIN
-TRUSTED_PROXIES='*'
+TRUSTED_PROXIES=172.16.0.0/15
 APP_KEY=$FIREFLY_INITIAL_API_KEY
 DEFAULT_LANGUAGE=en_US
 DEFAULT_LOCALE=equal
@@ -56458,7 +56786,7 @@ PUID=$USERID
 PGID=$GROUPID
 APP_NAME=Speedtest Tracker Local
 APP_URL=https://$SUB_SPEEDTEST_TRACKER_LOCAL.$HOMESERVER_DOMAIN
-APP_KEY=base64:$(pwgen -c -n 43 1)=
+APP_KEY=base64:$(openssl rand -base64 32)
 APP_TIMEZONE=${TZ}
 DISPLAY_TIMEZONE=${TZ}
 PUBLIC_DASHBOARD=false
@@ -56718,7 +57046,7 @@ PUID=$USERID
 PGID=$GROUPID
 APP_NAME=Speedtest Tracker VPN
 APP_URL=https://$SUB_SPEEDTEST_TRACKER_VPN.$HOMESERVER_DOMAIN
-APP_KEY=base64:$(pwgen -c -n 43 1)=
+APP_KEY=base64:$(openssl rand -base64 32)
 APP_TIMEZONE=${TZ}
 DISPLAY_TIMEZONE=${TZ}
 PUBLIC_DASHBOARD=false
@@ -61167,6 +61495,7 @@ EOFOT
 "Langfuse" postgres aistack-mindsdb-db $AISTACK_LANGFUSE_DATABASE_NAME $AISTACK_MINDSDB_DATABASE_USER $AISTACK_MINDSDB_DATABASE_USER_PASSWORD
 "Calcom" postgres calcom-db $CALCOM_DATABASE_NAME $CALCOM_DATABASE_USER $CALCOM_DATABASE_USER_PASSWORD
 "Discourse" postgres discourse-db $DISCOURSE_DATABASE_NAME $DISCOURSE_DATABASE_USER $DISCOURSE_DATABASE_USER_PASSWORD
+"Dolibarr" mysql dolibarr-db $DOLIBARR_DATABASE_NAME $DOLIBARR_DATABASE_USER $DOLIBARR_DATABASE_USER_PASSWORD
 "EasyAppointments" mysql easyappointments-db $EASYAPPOINTMENTS_DATABASE_NAME $EASYAPPOINTMENTS_DATABASE_USER $EASYAPPOINTMENTS_DATABASE_USER_PASSWORD
 "EspoCRM" mysql espocrm-db $ESPOCRM_DATABASE_NAME $ESPOCRM_DATABASE_USER $ESPOCRM_DATABASE_USER_PASSWORD
 "Firefly" postgres firefly-db $FIREFLY_DATABASE_NAME $FIREFLY_DATABASE_USER $FIREFLY_DATABASE_USER_PASSWORD
@@ -61180,8 +61509,12 @@ EOFOT
 "Huginn" postgres huginn-db $HUGINN_DATABASE_NAME $HUGINN_DATABASE_USER $HUGINN_DATABASE_USER_PASSWORD
 "Immich" postgres immich-db $IMMICH_DATABASE_NAME $IMMICH_DATABASE_USER $IMMICH_DATABASE_USER_PASSWORD
 "Invidious" postgres invidious-db $INVIDIOUS_DATABASE_NAME $INVIDIOUS_DATABASE_USER $INVIDIOUS_DATABASE_USER_PASSWORD
+"InvoiceNinja" mysql invoiceninja-db $INVOICENINJA_DATABASE_NAME $INVOICENINJA_DATABASE_USER $INVOICENINJA_DATABASE_USER_PASSWORD
+"InvoiceShelf" mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD
 "Kanboard" postgres kanboard-db $KANBOARD_DATABASE_NAME $KANBOARD_DATABASE_USER $KANBOARD_DATABASE_USER_PASSWORD
 "Keila" postgres keila-db $KEILA_DATABASE_NAME $KEILA_DATABASE_USER $KEILA_DATABASE_USER_PASSWORD
+"KillBillAPI" mysql killbill-db $KILLBILL_KB_DATABASE_NAME $KILLBILL_DATABASE_USER $KILLBILL_DATABASE_USER_PASSWORD
+"KillBill" mysql killbill-db $KILLBILL_KAUI_DATABASE_NAME $KILLBILL_DATABASE_USER $KILLBILL_DATABASE_USER_PASSWORD
 "Linkwarden" postgres linkwarden-db $LINKWARDEN_DATABASE_NAME $LINKWARDEN_DATABASE_USER $LINKWARDEN_DATABASE_USER_PASSWORD
 "Mastodon" postgres mastodon-db $MASTODON_DATABASE_NAME $MASTODON_DATABASE_USER $MASTODON_DATABASE_USER_PASSWORD
 "Matomo" mysql matomo-db $MATOMO_DATABASE_NAME $MATOMO_DATABASE_USER $MATOMO_DATABASE_USER_PASSWORD
@@ -70807,6 +71140,14 @@ function installZammad()
   if [ $? -ne 0 ]; then
     return 1
   fi
+  pullImage $(getScriptImageByContainerName zammad-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName zammad-createbuckets)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
   set -e
   mkdir $HSHQ_STACKS_DIR/zammad
   mkdir $HSHQ_STACKS_DIR/zammad/config
@@ -72690,14 +73031,1380 @@ function performUpdateZulip()
   case "$perform_stack_ver" in
     1)
       newVer=v1
-      curImageList=mirror.gcr.io/zulip/zulip-postgresql:14,mirror.gcr.io/zulip/docker-zulip:11.2-0,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      curImageList=mirror.gcr.io/zulip/zulip-postgresql:14,mirror.gcr.io/zulip/docker-zulip:11.2-0,mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/redis:8.2.0-bookworm
       image_update_map[0]="mirror.gcr.io/zulip/zulip-postgresql:14,mirror.gcr.io/zulip/zulip-postgresql:14"
       image_update_map[1]="mirror.gcr.io/zulip/docker-zulip:11.2-0,mirror.gcr.io/zulip/docker-zulip:11.2-0"
       image_update_map[2]="mirror.gcr.io/memcached:1.6.39-alpine,mirror.gcr.io/memcached:1.6.39-alpine"
       image_update_map[3]="mirror.gcr.io/rabbitmq:4.1.4,mirror.gcr.io/rabbitmq:4.1.4"
       image_update_map[4]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
-      image_update_map[5]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
-      image_update_map[6]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# KillBill
+function installKillBill()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory killbill "KillBill"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName killbill-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName killbill-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName killbill-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName killbill-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/killbill
+  mkdir $HSHQ_STACKS_DIR/killbill/db
+  mkdir $HSHQ_STACKS_DIR/killbill/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/killbill
+  mkdir $HSHQ_NONBACKUP_DIR/killbill/redis
+  chmod 777 $HSHQ_STACKS_DIR/killbill/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $KILLBILL_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  KILLBILL_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $KILLBILL_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigKillBill
+  installStack killbill killbill-app "" $HOME/killbill.env
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$KILLBILL_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_KILLBILL_WEB Admin Login Info" -b "$FMLNAME_KILLBILL_WEB Admin Username: $KILLBILL_ADMIN_USERNAME\n$FMLNAME_KILLBILL_WEB Admin Email: $KILLBILL_ADMIN_EMAIL_ADDRESS\n$FMLNAME_KILLBILL_WEB Admin Password: $KILLBILL_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    KILLBILL_INIT_ENV=true
+    updateConfigVar KILLBILL_INIT_ENV $KILLBILL_INIT_ENV
+  fi
+  sleep 3
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KILLBILL_API.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://killbill-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KILLBILL_API $MANAGETLS_KILLBILL_API "$is_integrate_hshq" $NETDEFAULT_KILLBILL_API "$inner_block"
+  insertSubAuthelia $SUB_KILLBILL_API.$HOMESERVER_DOMAIN bypass
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://killbill-web:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_KILLBILL_WEB $MANAGETLS_KILLBILL_WEB "$is_integrate_hshq" $NETDEFAULT_KILLBILL_WEB "$inner_block"
+  insertSubAuthelia $SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll killbill "$FMLNAME_KILLBILL_WEB" $USERTYPE_KILLBILL_WEB "https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN" "killbill.png" "$(getHeimdallOrderFromSub $SUB_KILLBILL_WEB $USERTYPE_KILLBILL_WEB)"
+    restartAllCaddyContainers
+    checkAddDBConnection true killbill-api "$FMLNAME_KILLBILL_API" mysql killbill-db $KILLBILL_KB_DATABASE_NAME $KILLBILL_DATABASE_USER $KILLBILL_DATABASE_USER_PASSWORD
+    checkAddDBConnection true killbill-web "$FMLNAME_KILLBILL_WEB" mysql killbill-db $KILLBILL_KAUI_DATABASE_NAME $KILLBILL_DATABASE_USER $KILLBILL_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigKillBill()
+{
+  cat <<EOFMT > $HOME/killbill-compose.yml
+$STACK_VERSION_PREFIX killbill $(getScriptStackVersion killbill)
+
+services:
+  killbill-db:
+    image: $(getScriptImageByContainerName killbill-db)
+    container_name: killbill-db
+    hostname: killbill-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-killbill-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-killbill-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/killbill/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.killbill-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.killbill-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.killbill-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.killbill-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.killbill-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.killbill-hourly-db.email-from=KillBill Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.killbill-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.killbill-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.killbill-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.killbill-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.killbill-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.killbill-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.killbill-monthly-db.email-from=KillBill Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.killbill-monthly-db.mail-only-on-error=false"
+
+  killbill-app:
+    image: $(getScriptImageByContainerName killbill-app)
+    container_name: killbill-app
+    hostname: killbill-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - killbill-db
+    networks:
+      - int-killbill-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  killbill-web:
+    image: $(getScriptImageByContainerName killbill-web)
+    container_name: killbill-web
+    hostname: killbill-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - killbill-app
+      - killbill-db
+    networks:
+      - int-killbill-net
+      - dock-proxy-net
+      - dock-ext-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+
+  killbill-redis:
+    image: $(getScriptImageByContainerName killbill-redis)
+    container_name: killbill-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $KILLBILL_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-killbill-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-killbill-redis:/data
+
+volumes:
+  v-killbill-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/killbill/db
+  v-killbill-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/killbill/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-killbill-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/killbill.env
+TZ=\${PORTAINER_TZ}
+MYSQL_ROOT_PASSWORD=$KILLBILL_DATABASE_USER_PASSWORD
+KILLBILL_DAO_URL=jdbc:mysql://killbill-db:3306/$KILLBILL_KB_DATABASE_NAME
+KILLBILL_DAO_USER=$KILLBILL_DATABASE_USER
+KILLBILL_DAO_PASSWORD=$KILLBILL_DATABASE_USER_PASSWORD
+KILLBILL_METRICS_INFLUXDB=false
+KILLBILL_METRICS_INFLUXDB_HOST=https://$SUB_INFLUXDB.$HOMESERVER_DOMAIN
+KILLBILL_METRICS_INFLUXDB_PORT=8086
+KAUI_CONFIG_DAO_URL=jdbc:mysql://killbill-db:3306/$KILLBILL_KAUI_DATABASE_NAME
+KAUI_CONFIG_DAO_USER=$KILLBILL_DATABASE_USER
+KAUI_CONFIG_DAO_PASSWORD=$KILLBILL_DATABASE_USER_PASSWORD
+KAUI_KILLBILL_URL=http://killbill-app:8080
+KAUI_KILLBILL_API_KEY=$KILLBILL_API_KEY
+KAUI_KILLBILL_API_SECRET=$KILLBILL_API_SECRET
+
+EOFMT
+}
+
+function performUpdateKillBill()
+{
+  perform_stack_name=killbill
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/killbill/mariadb:0.24,mirror.gcr.io/killbill/killbill:0.24.15,mirror.gcr.io/killbill/kaui:3.0.23,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/killbill/mariadb:0.24,mirror.gcr.io/killbill/mariadb:0.24"
+      image_update_map[1]="mirror.gcr.io/killbill/killbill:0.24.15,mirror.gcr.io/killbill/killbill:0.24.15"
+      image_update_map[2]="mirror.gcr.io/killbill/kaui:3.0.23,mirror.gcr.io/killbill/kaui:3.0.23"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# InvoiceShelf
+function installInvoiceShelf()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory invoiceshelf "InvoiceShelf"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceshelf-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceshelf-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/invoiceshelf
+  mkdir $HSHQ_STACKS_DIR/invoiceshelf/db
+  mkdir $HSHQ_STACKS_DIR/invoiceshelf/dbexport
+  mkdir $HSHQ_STACKS_DIR/invoiceshelf/storage
+  mkdir $HSHQ_STACKS_DIR/invoiceshelf/modules
+  chmod 775 $HSHQ_STACKS_DIR/invoiceshelf/storage
+  chmod 775 $HSHQ_STACKS_DIR/invoiceshelf/modules
+  sudo chown 82:82 $HSHQ_STACKS_DIR/invoiceshelf/storage
+  sudo chown 82:82 $HSHQ_STACKS_DIR/invoiceshelf/modules
+  chmod 777 $HSHQ_STACKS_DIR/invoiceshelf/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $INVOICESHELF_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  INVOICESHELF_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $INVOICESHELF_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigInvoiceShelf
+  installStack invoiceshelf invoiceshelf-app "ready to handle connections" $HOME/invoiceshelf.env 3
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  wizard_notes=$(cat <<EOFWZ
+Admin Login Info:
+========================================================================
+$FMLNAME_INVOICESHELF_APP Admin Email: $INVOICESHELF_ADMIN_EMAIL_ADDRESS
+$FMLNAME_INVOICESHELF_APP Admin Password: $INVOICESHELF_ADMIN_PASSWORD
+========================================================================
+
+Onboard Wizard Instructions
+========================================================================
+1. Choose your language  - Select accordingly
+2. System Requirements - Continue
+3. Permissions - Continue
+4. Site URL & Database - Leave App URL, Set the following:
+   - Database Connection - Select pgsql
+   - Database Port - 5432
+   - Database Name = $INVOICESHELF_DATABASE_NAME
+   - Database Username = $INVOICESHELF_DATABASE_USER
+   - Database Password = $INVOICESHELF_DATABASE_USER_PASSWORD
+   - Database Host = invoiceshelf-db
+   - Select Overwrite existing database and proceed, i.e. check the box
+5. Domain Verification - leave default, press Verify Now.
+6. Mail Configuration - On Mail Driver, select smtp.
+   Then set the following:
+   - Mail Host = $SMTP_HOSTNAME
+   - Mail Username/Password - leave blank
+   - Mail Port = $SMTP_HOSTPORT
+   - Mail Encryption = starttls
+   - From Mail Address = $EMAIL_ADMIN_EMAIL_ADDRESS
+   - From Mail Name = InvoiceShelf $(getAdminEmailName)
+7. Account Information - set the following:
+   - Name = InvoiceShelf $(getAdminEmailName)
+   - Email - $INVOICESHELF_ADMIN_EMAIL_ADDRESS
+   - Password - $INVOICESHELF_ADMIN_PASSWORD
+8. Company Information - Fill out accordingly (Company Name: $HOMESERVER_NAME, etc.)
+9. Company Preferences - Fill out accordingly, ensure to set Time Zone
+========================================================================
+
+Ensure to DELETE this email when finished with the onboarding process.
+
+EOFWZ
+  )
+  sendEmail -s "$FMLNAME_INVOICESHELF_APP Onboarding Info" -b "$wizard_notes" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+  INVOICESHELF_INIT_ENV=true
+  updateConfigVar INVOICESHELF_INIT_ENV $INVOICESHELF_INIT_ENV
+  sleep 3
+  docker exec invoiceshelf-app bash -c "chmod -R 775 /var/www/html/storage;chmod -R 775 /var/www/html/bootstrap"
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://invoiceshelf-app:8080 {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_INVOICESHELF_APP $MANAGETLS_INVOICESHELF_APP "$is_integrate_hshq" $NETDEFAULT_INVOICESHELF_APP "$inner_block"
+  insertSubAuthelia $SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll invoiceshelf "$FMLNAME_INVOICESHELF_APP" $USERTYPE_INVOICESHELF_APP "https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN" "invoiceshelf.png" "$(getHeimdallOrderFromSub $SUB_INVOICESHELF_APP $USERTYPE_INVOICESHELF_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true invoiceshelf "$FMLNAME_INVOICESHELF_APP" mysql invoiceshelf-db $INVOICESHELF_DATABASE_NAME $INVOICESHELF_DATABASE_USER $INVOICESHELF_DATABASE_USER_PASSWORD
+  fi
+  echo "========================================================================"
+  echo "          Ensure to check your $EMAIL_ADMIN_EMAIL_ADDRESS"
+  echo "          email for onboarding instructions"
+  echo "========================================================================"
+}
+
+function outputConfigInvoiceShelf()
+{
+  cat <<EOFMT > $HOME/invoiceshelf-compose.yml
+$STACK_VERSION_PREFIX invoiceshelf $(getScriptStackVersion invoiceshelf)
+
+services:
+  invoiceshelf-db:
+    image: $(getScriptImageByContainerName invoiceshelf-db)
+    container_name: invoiceshelf-db
+    hostname: invoiceshelf-db
+    user: "\${PORTAINER_UID}:\${PORTAINER_GID}"
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    shm_size: 256mb
+    networks:
+      - int-invoiceshelf-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/db:/var/lib/postgresql/data
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportPostgres.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.email-from=InvoiceShelf Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceshelf-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.email-from=InvoiceShelf Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceshelf-monthly-db.mail-only-on-error=false"
+
+  invoiceshelf-app:
+    image: $(getScriptImageByContainerName invoiceshelf-app)
+    container_name: invoiceshelf-app
+    hostname: invoiceshelf-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceshelf-db
+    networks:
+      - int-invoiceshelf-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - v-invoiceshelf-storage:/var/www/html/storage
+      - v-invoiceshelf-modules:/var/www/html/Modules
+
+volumes:
+  v-invoiceshelf-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/storage
+  v-invoiceshelf-modules:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceshelf/modules
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-invoiceshelf-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/invoiceshelf.env
+TZ=\${PORTAINER_TZ}
+PHP_TZ=\${PORTAINER_TZ}
+TIMEZONE=\${PORTAINER_TZ}
+POSTGRES_DB=$INVOICESHELF_DATABASE_NAME
+POSTGRES_USER=$INVOICESHELF_DATABASE_USER
+POSTGRES_PASSWORD=$INVOICESHELF_DATABASE_USER_PASSWORD
+APP_NAME=InvoiceShelf
+APP_ENV=production
+APP_DEBUG=true
+APP_URL=https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+DB_CONNECTION=pgsql
+DB_HOST=invoiceshelf-db
+DB_PORT=5432
+DB_DATABASE=$INVOICESHELF_DATABASE_NAME
+DB_USERNAME=$INVOICESHELF_DATABASE_USER
+DB_PASSWORD=$INVOICESHELF_DATABASE_USER_PASSWORD
+CACHE_STORE=file
+SESSION_DRIVER=file
+SESSION_DOMAIN=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+SANCTUM_STATEFUL_DOMAINS=$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN
+TRUSTED_PROXIES=172.16.0.0/15
+EOFMT
+}
+
+function performUpdateInvoiceShelf()
+{
+  perform_stack_name=invoiceshelf
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2
+      image_update_map[0]="mirror.gcr.io/postgres:16.9-bookworm,mirror.gcr.io/postgres:16.9-bookworm"
+      image_update_map[1]="mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2,mirror.gcr.io/invoiceshelf/invoiceshelf:2.2.0-alpha2"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# InvoiceNinja
+function installInvoiceNinja()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory invoiceninja "InvoiceNinja"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceninja-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceninja-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceninja-web)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceninja-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceninja-minio)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName invoiceninja-createbuckets)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/invoiceninja
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/config
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/db
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/dbexport
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/nginx
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/public
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/minio
+  mkdir $HSHQ_NONBACKUP_DIR/invoiceninja
+  mkdir $HSHQ_NONBACKUP_DIR/invoiceninja/redis
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/storage
+  mkdir $HSHQ_STACKS_DIR/invoiceninja/storage/logs
+  touch $HSHQ_STACKS_DIR/invoiceninja/storage/logs/invoiceninja.log
+  sudo chown -R 33:33 $HSHQ_STACKS_DIR/invoiceninja/storage
+  chmod 777 $HSHQ_STACKS_DIR/invoiceninja/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $INVOICENINJA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  INVOICENINJA_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $INVOICENINJA_ADMIN_PASSWORD | tr -d ':\n')
+  outputConfigInvoiceNinja
+  installStack invoiceninja invoiceninja-app "ready to handle connections" $HOME/invoiceninja.env 5
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$INVOICENINJA_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_INVOICENINJA_WEB Admin Login Info" -b "$FMLNAME_INVOICENINJA_WEB Admin Username: $INVOICENINJA_ADMIN_USERNAME\n$FMLNAME_INVOICENINJA_WEB Admin Email: $INVOICENINJA_ADMIN_EMAIL_ADDRESS\n$FMLNAME_INVOICENINJA_WEB Admin Password: $INVOICENINJA_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    INVOICENINJA_INIT_ENV=true
+    updateConfigVar INVOICENINJA_INIT_ENV $INVOICENINJA_INIT_ENV
+  fi
+  sleep 3
+  docker exec invoiceninja-app bash -c "php artisan optimize;php artisan config:clear;php artisan optimize:clear;php artisan cache:clear" > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://invoiceninja-web {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_INVOICENINJA_WEB $MANAGETLS_INVOICENINJA_WEB "$is_integrate_hshq" $NETDEFAULT_INVOICENINJA_WEB "$inner_block"
+  insertSubAuthelia $SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN bypass
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll invoiceninja "$FMLNAME_INVOICENINJA_WEB" $USERTYPE_INVOICENINJA_WEB "https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN" "invoiceninja.png" "$(getHeimdallOrderFromSub $SUB_INVOICENINJA_WEB $USERTYPE_INVOICENINJA_WEB)"
+    restartAllCaddyContainers
+    checkAddDBConnection true invoiceninja "$FMLNAME_INVOICENINJA_WEB" mysql invoiceninja-db $INVOICENINJA_DATABASE_NAME $INVOICENINJA_DATABASE_USER $INVOICENINJA_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigInvoiceNinja()
+{
+  cat <<EOFMT > $HOME/invoiceninja-compose.yml
+$STACK_VERSION_PREFIX invoiceninja $(getScriptStackVersion invoiceninja)
+
+services:
+  invoiceninja-db:
+    image: $(getScriptImageByContainerName invoiceninja-db)
+    container_name: invoiceninja-db
+    hostname: invoiceninja-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-invoiceninja-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-invoiceninja-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.invoiceninja-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.invoiceninja-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceninja-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceninja-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceninja-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceninja-hourly-db.email-from=InvoiceNinja Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceninja-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.invoiceninja-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.invoiceninja-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.invoiceninja-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.invoiceninja-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.invoiceninja-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.invoiceninja-monthly-db.email-from=InvoiceNinja Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.invoiceninja-monthly-db.mail-only-on-error=false"
+
+  invoiceninja-app:
+    image: $(getScriptImageByContainerName invoiceninja-app)
+    container_name: invoiceninja-app
+    hostname: invoiceninja-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceninja-db
+    networks:
+      - int-invoiceninja-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/env:/var/www/html/.env
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/php.ini:/usr/local/etc/php/conf.d/invoiceninja.ini:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/php-fpm.conf:/usr/local/etc/php-fpm.d/invoiceninja.conf:ro
+      #- \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/config/supervisord.conf:/etc/supervisor/conf.d/supervisord.conf:ro
+      - v-invoiceninja-public:/var/www/html/public
+      - v-invoiceninja-storage:/var/www/html/storage
+
+  invoiceninja-web:
+    image: $(getScriptImageByContainerName invoiceninja-web)
+    container_name: invoiceninja-web
+    hostname: invoiceninja-web
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - invoiceninja-db
+    networks:
+      - int-invoiceninja-net
+      - dock-proxy-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/nginx:/etc/nginx/conf.d:ro
+      - v-invoiceninja-public:/var/www/html/public
+      - v-invoiceninja-storage:/var/www/html/storage
+
+  invoiceninja-redis:
+    image: $(getScriptImageByContainerName invoiceninja-redis)
+    container_name: invoiceninja-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $INVOICENINJA_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-invoiceninja-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-invoiceninja-redis:/data
+
+#  To enable, set FILESYSTEM_DRIVER=s3 in environment. However,
+#  this feature is inop at the moment.
+#
+#  invoiceninja-minio:
+#    image: $(getScriptImageByContainerName invoiceninja-minio)
+#    container_name: invoiceninja-minio
+#    hostname: invoiceninja-minio
+#    restart: unless-stopped
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    command: server /data
+#    networks:
+#      - dock-proxy-net
+#      - int-invoiceninja-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#      - \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/minio:/data
+#
+#  invoiceninja-createbuckets:
+#    image: $(getScriptImageByContainerName invoiceninja-createbuckets)
+#    container_name: invoiceninja-createbuckets
+#    hostname: invoiceninja-createbuckets
+#    env_file: stack.env
+#    security_opt:
+#      - no-new-privileges:true
+#    depends_on:
+#      - invoiceninja-minio
+#    networks:
+#      - int-invoiceninja-net
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - /etc/ssl/certs:/etc/ssl/certs:ro
+#      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+#      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+#    entrypoint: >
+#      /bin/sh -c "
+#      while ! /usr/bin/mc ready minio;
+#      do
+#        /usr/bin/mc alias set minio http://invoiceninja-minio:9000 $INVOICENINJA_MINIO_KEY $INVOICENINJA_MINIO_SECRET;
+#        echo 'Waiting minio...' && sleep 1;
+#      done;
+#      /usr/bin/mc mb minio/invoiceninja;
+#      exit 0;
+#      "
+
+volumes:
+  v-invoiceninja-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/db
+  v-invoiceninja-public:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/public
+  v-invoiceninja-storage:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/invoiceninja/storage
+  v-invoiceninja-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/invoiceninja/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  int-invoiceninja-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/invoiceninja.env
+TZ=$TZ
+MYSQL_DATABASE=$INVOICENINJA_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$INVOICENINJA_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$INVOICENINJA_DATABASE_USER
+MYSQL_PASSWORD=$INVOICENINJA_DATABASE_USER_PASSWORD
+APP_NAME=Invoice Ninja
+APP_URL=https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN
+APP_KEY=base64:$(openssl rand -base64 32)
+APP_ENV=production
+APP_DEBUG=true
+REQUIRE_HTTPS=false
+EXPANDED_LOGGING=true
+DB_TYPE=mysql
+DB_CONNECTION=mysql
+DB_HOST=invoiceninja-db
+DB_DATABASE=$INVOICENINJA_DATABASE_NAME
+DB_USERNAME=$INVOICENINJA_DATABASE_USER
+DB_PASSWORD=$INVOICENINJA_DATABASE_USER_PASSWORD
+DB_ROOT_PASSWORD=$INVOICENINJA_DATABASE_ROOT_PASSWORD
+DB_PORT=3306
+CACHE_DRIVER=redis
+QUEUE_CONNECTION=redis
+SESSION_DRIVER=redis
+REDIS_HOST=invoiceninja-redis
+REDIS_PASSWORD=$INVOICENINJA_REDIS_PASSWORD
+REDIS_PORT=6379
+FILESYSTEM_DISK=debian_docker
+IN_USER_EMAIL=$INVOICENINJA_ADMIN_EMAIL_ADDRESS
+IN_PASSWORD=$INVOICENINJA_ADMIN_PASSWORD
+MAIL_MAILER=smtp
+MAIL_HOST=$SMTP_HOSTNAME
+MAIL_PORT=$SMTP_HOSTPORT
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=starttls
+MAIL_FROM_ADDRESS=$EMAIL_ADMIN_EMAIL_ADDRESS
+MAIL_FROM_NAME=Invoice Ninja $(getAdminEmailName)
+FILESYSTEM_DRIVER=local
+AWS_ACCESS_KEY_ID=$INVOICENINJA_MINIO_KEY
+AWS_SECRET_ACCESS_KEY=$INVOICENINJA_MINIO_SECRET
+AWS_DEFAULT_REGION=invoiceninja
+AWS_BUCKET=invoiceninja
+AWS_URL=http://invoiceninja-minio:9000
+AWS_ENDPOINT=http://invoiceninja-minio:9000/
+MINIO_ROOT_USER=$INVOICENINJA_MINIO_KEY
+MINIO_ROOT_PASSWORD=$INVOICENINJA_MINIO_SECRET
+MINIO_DOMAIN=invoiceninja
+MINIO_CONSOLE_ADDRESS=:9090
+PHANTOMJS_PDF_GENERATION=false
+PDF_GENERATOR=snappdf
+TRUSTED_PROXIES=172.16.0.0/15
+IS_DOCKER=true
+SCOUT_DRIVER=null
+NINJA_ENVIRONMENT=selfhost
+WEBCRON_SECRET=$INVOICENINJA_WEBCRON_SECRET
+UPDATE_SECRET=$INVOICENINJA_UPDATE_SECRET
+EOFMT
+  cp $HOME/invoiceninja.env $HSHQ_STACKS_DIR/invoiceninja/config/env
+  sed -i "s/\"//g" $HOME/invoiceninja.env
+  cat <<EOFMT > $HSHQ_STACKS_DIR/invoiceninja/nginx/invoiceninja.conf
+# https://nginx.org/en/docs/http/ngx_http_core_module.html
+client_max_body_size 10M;
+client_body_buffer_size 10M;
+server_tokens off;
+
+# https://nginx.org/en/docs/http/ngx_http_fastcgi_module.html
+fastcgi_buffers 32 16K;
+
+# https://nginx.org/en/docs/http/ngx_http_gzip_module.html
+gzip on;
+gzip_comp_level 2;
+gzip_min_length 1M;
+gzip_proxied any;
+gzip_types *;
+EOFMT
+  cat <<EOFMT > $HSHQ_STACKS_DIR/invoiceninja/nginx/laravel.conf
+# https://laravel.com/docs/master/deployment#nginx
+server {
+    listen 80 default_server;
+    server_name _;   
+    root /var/www/html/public;
+
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-Content-Type-Options "nosniff";
+
+    index index.php;
+ 
+    charset utf-8;
+ 
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+ 
+    location = /favicon.ico { access_log off; log_not_found off; }
+    location = /robots.txt  { access_log off; log_not_found off; }
+ 
+    error_page 404 /index.php;
+
+    location ~ \.php\$ {
+        fastcgi_pass invoiceninja-app:9000;
+        fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+EOFMT
+}
+
+function performUpdateInvoiceNinja()
+{
+  perform_stack_name=invoiceninja
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12,mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12,mirror.gcr.io/invoiceninja/invoiceninja-debian:5.12"
+      image_update_map[2]="mirror.gcr.io/nginx:1.28.0-alpine,mirror.gcr.io/nginx:1.28.0-alpine"
+      image_update_map[3]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
+      image_update_map[4]="mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z,mirror.gcr.io/minio/minio:RELEASE.2025-07-23T15-54-02Z"
+      image_update_map[5]="mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z,mirror.gcr.io/minio/mc:RELEASE.2025-08-13T08-35-41Z"
+    ;;
+    *)
+      is_upgrade_error=true
+      perform_update_report="ERROR ($perform_stack_name): Unknown version (v$perform_stack_ver)"
+      return
+    ;;
+  esac
+  upgradeStack "$perform_stack_name" "$perform_stack_id" "$oldVer" "$newVer" "$curImageList" "$perform_compose" doNothing false
+  perform_update_report="${perform_update_report}$stack_upgrade_report"
+}
+
+# Dolibarr
+function installDolibarr()
+{
+  set +e
+  is_integrate_hshq=$1
+  checkDeleteStackAndDirectory dolibarr "Dolibarr"
+  cdRes=$?
+  if [ $cdRes -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dolibarr-db)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dolibarr-app)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  pullImage $(getScriptImageByContainerName dolibarr-redis)
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+  set -e
+  mkdir $HSHQ_STACKS_DIR/dolibarr
+  mkdir $HSHQ_STACKS_DIR/dolibarr/custom
+  mkdir $HSHQ_STACKS_DIR/dolibarr/documents
+  mkdir $HSHQ_STACKS_DIR/dolibarr/db
+  mkdir $HSHQ_STACKS_DIR/dolibarr/dbexport
+  mkdir $HSHQ_NONBACKUP_DIR/dolibarr
+  mkdir $HSHQ_NONBACKUP_DIR/dolibarr/redis
+  chmod 777 $HSHQ_STACKS_DIR/dolibarr/dbexport
+  initServicesCredentials
+  set +e
+  addUserMailu alias $DOLIBARR_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
+  DOLIBARR_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $DOLIBARR_ADMIN_PASSWORD | tr -d ':\n')
+  generateCert dolibarr-app dolibarr-app
+  generateCert dolibarr-cron dolibarr-cron
+  DOLI_INSTANCE_UNIQUE_ID=$(pwgen -c -n 64 1)
+  outputConfigDolibarr
+  installStack dolibarr dolibarr-app "You can connect to the running Dolibarr web application with" $HOME/dolibarr.env 10
+  retVal=$?
+  if [ $retVal -ne 0 ]; then
+    return $retVal
+  fi
+  if ! [ "$DOLIBARR_INIT_ENV" = "true" ]; then
+    sendEmail -s "$FMLNAME_DOLIBARR_APP Admin Login Info" -b "$FMLNAME_DOLIBARR_APP Admin Username: $DOLIBARR_ADMIN_USERNAME\n$FMLNAME_DOLIBARR_APP Admin Email: $DOLIBARR_ADMIN_EMAIL_ADDRESS\n$FMLNAME_DOLIBARR_APP Admin Password: $DOLIBARR_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    DOLIBARR_INIT_ENV=true
+    updateConfigVar DOLIBARR_INIT_ENV $DOLIBARR_INIT_ENV
+  fi
+  echo "Performing integrations..."
+  set +e
+  sleep 3
+  docker exec dolibarr-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
+  rm -f $HSHQ_STACKS_DIR/dolibarr/dbexport/setupDBSettings.sh
+  rm -f $HSHQ_STACKS_DIR/dolibarr/dbexport/initdb.sql
+  #echo "Restarting Dolibarr..."
+  #docker container restart dolibarr-app > /dev/null 2>&1
+  set -e
+  inner_block=""
+  inner_block=$inner_block">>https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
+  inner_block=$inner_block">>>>import $CADDY_SNIPPET_SAFEHEADER\n"
+  inner_block=$inner_block">>>>handle @subnet {\n"
+  inner_block=$inner_block">>>>>>reverse_proxy http://dolibarr-app {\n"
+  inner_block=$inner_block">>>>>>>>import $CADDY_SNIPPET_TRUSTEDPROXIES\n"
+  inner_block=$inner_block">>>>>>}\n"
+  inner_block=$inner_block">>>>}\n"
+  inner_block=$inner_block">>>>respond 404\n"
+  inner_block=$inner_block">>}"
+  updateCaddyBlocks $SUB_DOLIBARR_APP $MANAGETLS_DOLIBARR_APP "$is_integrate_hshq" $NETDEFAULT_DOLIBARR_APP "$inner_block"
+  insertSubAuthelia $SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
+  if ! [ "$is_integrate_hshq" = "false" ]; then
+    insertEnableSvcAll dolibarr "$FMLNAME_DOLIBARR_APP" $USERTYPE_DOLIBARR_APP "https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN" "dolibarr.png" "$(getHeimdallOrderFromSub $SUB_DOLIBARR_APP $USERTYPE_DOLIBARR_APP)"
+    restartAllCaddyContainers
+    checkAddDBConnection true dolibarr "$FMLNAME_DOLIBARR_APP" mysql dolibarr-db $DOLIBARR_DATABASE_NAME $DOLIBARR_DATABASE_USER $DOLIBARR_DATABASE_USER_PASSWORD
+  fi
+}
+
+function outputConfigDolibarr()
+{
+  cat <<EOFMT > $HOME/dolibarr-compose.yml
+$STACK_VERSION_PREFIX dolibarr $(getScriptStackVersion dolibarr)
+
+services:
+  dolibarr-db:
+    image: $(getScriptImageByContainerName dolibarr-db)
+    container_name: dolibarr-db
+    hostname: dolibarr-db
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    command: mysqld --innodb-buffer-pool-size=128M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    networks:
+      - int-dolibarr-net
+      - dock-dbs-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-dolibarr-db:/var/lib/mysql
+      - \${PORTAINER_HSHQ_SCRIPTS_DIR}/user/exportMySQL.sh:/exportDB.sh:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/dbexport:/dbexport
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.dolibarr-hourly-db.schedule=@every 1h"
+      - "ofelia.job-exec.dolibarr-hourly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.dolibarr-hourly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.dolibarr-hourly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.dolibarr-hourly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.dolibarr-hourly-db.email-from=Dolibarr Hourly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.dolibarr-hourly-db.mail-only-on-error=true"
+      - "ofelia.job-exec.dolibarr-monthly-db.schedule=0 0 8 1 * *"
+      - "ofelia.job-exec.dolibarr-monthly-db.command=/exportDB.sh"
+      - "ofelia.job-exec.dolibarr-monthly-db.smtp-host=$SMTP_HOSTNAME"
+      - "ofelia.job-exec.dolibarr-monthly-db.smtp-port=$SMTP_HOSTPORT"
+      - "ofelia.job-exec.dolibarr-monthly-db.email-to=$EMAIL_ADMIN_EMAIL_ADDRESS"
+      - "ofelia.job-exec.dolibarr-monthly-db.email-from=Dolibarr Monthly DB Export <$EMAIL_ADMIN_EMAIL_ADDRESS>"
+      - "ofelia.job-exec.dolibarr-monthly-db.mail-only-on-error=false"
+
+  dolibarr-app:
+    image: $(getScriptImageByContainerName dolibarr-app)
+    container_name: dolibarr-app
+    hostname: dolibarr-app
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dolibarr-db
+    networks:
+      - int-dolibarr-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/dolibarr-app.crt:/ldapcerts/dolibarr-app.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/dolibarr-app.key:/ldapcerts/dolibarr-app.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/ldap-app.conf:/etc/ldap/ldap.conf:ro
+      - v-dolibarr-custom:/var/www/html/custom
+      - v-dolibarr-documents:/var/www/documents
+    environment:
+      - DOLI_CRON=0
+
+  dolibarr-cron:
+    image: $(getScriptImageByContainerName dolibarr-cron)
+    container_name: dolibarr-cron
+    hostname: dolibarr-cron
+    restart: unless-stopped
+    env_file: stack.env
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - dolibarr-db
+    networks:
+      - int-dolibarr-net
+      - dock-proxy-net
+      - dock-ext-net
+      - dock-internalmail-net
+      - dock-ldap-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/ssl/certs:/etc/ssl/certs:ro
+      - /usr/share/ca-certificates:/usr/share/ca-certificates:ro
+      - /usr/local/share/ca-certificates:/usr/local/share/ca-certificates:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/dolibarr-cron.crt:/ldapcerts/dolibarr-cron.crt:ro
+      - \${PORTAINER_HSHQ_SSL_DIR}/dolibarr-cron.key:/ldapcerts/dolibarr-cron.key:ro
+      - \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/ldap-cron.conf:/etc/ldap/ldap.conf:ro
+      - v-dolibarr-custom:/var/www/html/custom
+      - v-dolibarr-documents:/var/www/documents
+    environment:
+      - DOLI_CRON=1
+
+  dolibarr-redis:
+    image: $(getScriptImageByContainerName dolibarr-redis)
+    container_name: dolibarr-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: redis-server
+      --requirepass $DOLIBARR_REDIS_PASSWORD
+      --appendonly yes
+    networks:
+      - int-dolibarr-net
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - v-dolibarr-redis:/data
+
+volumes:
+  v-dolibarr-db:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/db
+  v-dolibarr-custom:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/custom
+  v-dolibarr-documents:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_STACKS_DIR}/dolibarr/documents
+  v-dolibarr-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: \${PORTAINER_HSHQ_NONBACKUP_DIR}/dolibarr/redis
+
+networks:
+  dock-proxy-net:
+    name: dock-proxy
+    external: true
+  dock-internalmail-net:
+    name: dock-internalmail
+    external: true
+  dock-ext-net:
+    name: dock-ext
+    external: true
+  dock-dbs-net:
+    name: dock-dbs
+    external: true
+  dock-ldap-net:
+    name: dock-ldap
+    external: true
+  int-dolibarr-net:
+    driver: bridge
+    internal: true
+    ipam:
+      driver: default
+
+EOFMT
+  cat <<EOFMT > $HOME/dolibarr.env
+TZ=\${PORTAINER_TZ}
+PHP_INI_DATE_TIMEZONE=\${PORTAINER_TZ}
+WWW_USER_ID=$USERID
+WWW_GROUP_ID=$GROUPID
+DOLI_INIT_DEMO=$(if [ -f $HOME/hshq/$IS_HSHQ_TEST_FILENAME ]; then echo "1"; else echo "0"; fi)
+DOLI_CRON_KEY=$DOLIBARR_CRON_SECRET
+DOLI_COMPANY_NAME=$HOMESERVER_NAME
+MYSQL_DATABASE=$DOLIBARR_DATABASE_NAME
+MYSQL_ROOT_PASSWORD=$DOLIBARR_DATABASE_ROOT_PASSWORD
+MYSQL_USER=$DOLIBARR_DATABASE_USER
+MYSQL_PASSWORD=$DOLIBARR_DATABASE_USER_PASSWORD
+DOLI_INSTALL_AUTO=1
+DOLI_DB_TYPE=mysqli
+DOLI_DB_HOST=dolibarr-db
+DOLI_DB_HOST_PORT=3306
+DOLI_DB_USER=$DOLIBARR_DATABASE_USER
+DOLI_DB_PASSWORD=$DOLIBARR_DATABASE_USER_PASSWORD
+DOLI_DB_NAME=$DOLIBARR_DATABASE_NAME
+DOLI_URL_ROOT=https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN
+DOLI_ADMIN_LOGIN=$DOLIBARR_ADMIN_USERNAME
+DOLI_ADMIN_PASSWORD=$DOLIBARR_ADMIN_PASSWORD
+DOLI_AUTH=ldap,dolibarr
+DOLI_LDAP_HOST=ldaps://ldapserver
+DOLI_LDAP_PORT=636
+DOLI_LDAP_VERSION=3
+DOLI_LDAP_SERVER_TYPE=openldap
+DOLI_LDAP_LOGIN_ATTRIBUTE=uid
+DOLI_LDAP_DN=ou=people,$LDAP_BASE_DN
+DOLI_LDAP_FILTER=(&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)(uid=%1%))
+DOLI_LDAP_BIND_DN=$LDAP_READONLY_USER_BIND_DN
+DOLI_LDAP_BIND_PASS=$LDAP_READONLY_USER_PASSWORD
+DOLI_INSTANCE_UNIQUE_ID=$DOLI_INSTANCE_UNIQUE_ID
+EOFMT
+  cat <<EOFLD > $HSHQ_STACKS_DIR/dolibarr/ldap-app.conf
+TLS_CERT /ldapcerts/dolibarr-app.crt
+TLS_KEY /ldapcerts/dolibarr-app.key
+TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+TLS_REQCERT always
+TLS_REQSAN always
+EOFLD
+  cat <<EOFLD > $HSHQ_STACKS_DIR/dolibarr/ldap-cron.conf
+TLS_CERT /ldapcerts/dolibarr-cron.crt
+TLS_KEY /ldapcerts/dolibarr-cron.key
+TLS_CACERT /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt
+TLS_REQCERT always
+TLS_REQSAN always
+EOFLD
+  cat <<EOFDS > $HSHQ_STACKS_DIR/dolibarr/dbexport/setupDBSettings.sh
+#!/bin/bash
+
+mysql -N -u $DOLIBARR_DATABASE_USER -p$DOLIBARR_DATABASE_USER_PASSWORD < /dbexport/initdb.sql
+EOFDS
+  chmod +x $HSHQ_STACKS_DIR/dolibarr/dbexport/setupDBSettings.sh
+  cat <<EOFMT > $HOME/pwenc.php
+<?php
+\$chain = '$LDAP_READONLY_USER_PASSWORD';
+\$ciphering = 'AES-256-CTR';
+\$key = '$DOLI_INSTANCE_UNIQUE_ID';
+\$ivseed = bin2hex(random_bytes(8));
+\$newchain = openssl_encrypt(\$chain, \$ciphering, \$key, 0, \$ivseed);
+echo "dolcrypt:\$ciphering:\$ivseed:\$newchain";
+?>
+EOFMT
+  DOLIBARR_LDAPREADONLY_PASSWORD_ENC=$(php $HOME/pwenc.php)
+  rm -f $HOME/pwenc.php
+  dtnow=$(date -u '+%Y-%m-%d %H:%M:%S')
+  cat <<EOFSQ > $HSHQ_STACKS_DIR/dolibarr/dbexport/initdb.sql
+use $DOLIBARR_DATABASE_NAME;
+
+delete from llx_const where name='MAIN_MONNAIE';
+delete from llx_const where name='MAIN_MAIL_SMTP_SERVER';
+delete from llx_const where name='MAIN_MAIL_SMTP_PORT';
+delete from llx_const where name='MAIN_MAIL_EMAIL_FROM';
+delete from llx_const where name='MAIN_INFO_SOCIETE_NOM';
+#delete from llx_const where name='MAIN_THEME';
+#delete from llx_const where name='THEME_DARKMODEENABLED';
+#delete from llx_const where name='MAIN_IHM_PARAMS_REV';
+
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_INFO_SOCIETE_COUNTRY',1,'11:US:United States','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_INFO_SOCIETE_NOM',1,'$HOMESERVER_NAME','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MONNAIE',1,'USD','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_INFO_SOCIETE_FORME_JURIDIQUE',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('SOCIETE_FISCAL_MONTH_START',1,'1','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('FACTURE_TVAOPTION',1,'1','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_DISABLE_ALL_MAILS',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_ENABLED_USER_DEST_SELECT',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_NO_WITH_TO_SELECTED',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_SENDMODE',1,'smtps','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_SMTP_PORT',1,'$SMTP_HOSTPORT','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_SMTP_SERVER',1,'$SMTP_HOSTNAME','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_SMTPS_AUTH_TYPE',1,'PLAIN','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_EMAIL_TLS',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_EMAIL_STARTTLS',1,'1','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_EMAIL_SMTP_ALLOW_SELF_SIGNED',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_EMAIL_DKIM_ENABLED',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_EMAIL_FROM',1,'$EMAIL_ADMIN_EMAIL_ADDRESS','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MAIL_DEFAULT_FROMTYPE',1,'user','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MODULE_LDAP',1,'1','string',0,'{\"authorid\":\"1\",\"ip\":\"\",\"lastactivationversion\":\"dolibarr\"}','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_MODULE_SETUP_ON_LIST_BY_DEFAULT',1,'commonkanban','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_SERVER_TYPE',1,'openldap','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_USERACCOUNTCONTROL',1,'512','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_SERVER_PROTOCOLVERSION',1,'3','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_SERVER_HOST',1,'ldaps://ldapserver','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_SERVER_PORT',1,'636','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_SERVER_DN',1,'$LDAP_BASE_DN','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_ADMIN_DN',1,'$LDAP_READONLY_USER_BIND_DN','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_ADMIN_PASS',1,'$DOLIBARR_LDAPREADONLY_PASSWORD_ENC','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_SERVER_USE_TLS',1,'0','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_SYNCHRO_ACTIVE',1,'2','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_PASSWORD_HASH_TYPE',1,'md5','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_USER_DN',1,'ou=people,$LDAP_BASE_DN','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_USER_OBJECT_CLASS',1,'person','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_FILTER_CONNECTION',1,'&(objectClass=person)(memberof=cn=$LDAP_PRIMARY_USER_GROUP_NAME,ou=groups,$LDAP_BASE_DN)','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_FIELD_FULLNAME',1,'cn','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_FIELD_LOGIN',1,'uid','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_FIELD_NAME',1,'sn','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_FIELD_FIRSTNAME',1,'givenname','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_FIELD_MAIL',1,'mail','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_KEY_USERS',1,'uid','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_GROUP_DN',1,'ou=groups,$LDAP_BASE_DN','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_GROUP_OBJECT_CLASS',1,'groupOfUniqueNames','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_GROUP_FILTER',1,'&(objectClass=groupOfUniqueNames)','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_GROUP_FIELD_FULLNAME',1,'cn','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_GROUP_FIELD_GROUPMEMBERS',1,'uniqueMember','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_GROUP_FIELD_GROUPID',1,'gidnumber','chaine',0,'','$dtnow');
+insert into llx_const(name,entity,value,type,visible,note,tms) values('LDAP_KEY_GROUPS',1,'cn','chaine',0,'','$dtnow');
+#insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_THEME',1,'eldy','chaine',0,'','$dtnow');
+#insert into llx_const(name,entity,value,type,visible,note,tms) values('THEME_DARKMODEENABLED',1,'2','chaine',0,'','$dtnow');
+#insert into llx_const(name,entity,value,type,visible,note,tms) values('MAIN_IHM_PARAMS_REV',1,'3','chaine',0,'','$dtnow');
+
+EOFSQ
+}
+
+function performUpdateDolibarr()
+{
+  perform_stack_name=dolibarr
+  prepPerformUpdate
+  if [ $? -ne 0 ]; then return 1; fi
+  # The current version is included as a placeholder for when the next version arrives.
+  case "$perform_stack_ver" in
+    1)
+      newVer=v1
+      curImageList=mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/dolibarr/dolibarr:20.0.4-php8.2,mirror.gcr.io/redis:8.2.0-bookworm
+      image_update_map[0]="mirror.gcr.io/mariadb:10.7.3,mirror.gcr.io/mariadb:10.7.3"
+      image_update_map[1]="mirror.gcr.io/dolibarr/dolibarr:20.0.4-php8.2,mirror.gcr.io/dolibarr/dolibarr:20.0.4-php8.2"
+      image_update_map[2]="mirror.gcr.io/redis:8.2.0-bookworm,mirror.gcr.io/redis:8.2.0-bookworm"
     ;;
     *)
       is_upgrade_error=true
@@ -72752,7 +74459,7 @@ function installExampleService()
   sleep 3
   set -e
   inner_block=""
-  inner_block=$inner_block">>https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN {\n"
+  inner_block=$inner_block">>https://$SUB_EXAMPLESERVICE_APP.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_RIP\n"
   inner_block=$inner_block">>>>import $CADDY_SNIPPET_FWDAUTH\n"
@@ -72764,12 +74471,12 @@ function installExampleService()
   inner_block=$inner_block">>>>}\n"
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
-  updateCaddyBlocks $SUB_EXAMPLESERVICE $MANAGETLS_EXAMPLESERVICE "$is_integrate_hshq" $NETDEFAULT_EXAMPLESERVICE "$inner_block"
-  insertSubAuthelia $SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
+  updateCaddyBlocks $SUB_EXAMPLESERVICE_APP $MANAGETLS_EXAMPLESERVICE_APP "$is_integrate_hshq" $NETDEFAULT_EXAMPLESERVICE_APP "$inner_block"
+  insertSubAuthelia $SUB_EXAMPLESERVICE_APP.$HOMESERVER_DOMAIN ${LDAP_ADMIN_USER_GROUP_NAME}
   if ! [ "$is_integrate_hshq" = "false" ]; then
-    insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE" $USERTYPE_EXAMPLESERVICE "https://$SUB_EXAMPLESERVICE.$HOMESERVER_DOMAIN" "exampleservice.png" "$(getHeimdallOrderFromSub $SUB_EXAMPLESERVICE $USERTYPE_EXAMPLESERVICE)"
+    insertEnableSvcAll exampleservice "$FMLNAME_EXAMPLESERVICE_APP" $USERTYPE_EXAMPLESERVICE_APP "https://$SUB_EXAMPLESERVICE_APP.$HOMESERVER_DOMAIN" "exampleservice.png" "$(getHeimdallOrderFromSub $SUB_EXAMPLESERVICE_APP $USERTYPE_EXAMPLESERVICE_APP)"
     restartAllCaddyContainers
-    checkAddDBConnection true exampleservice "$FMLNAME_EXAMPLESERVICE" postgres exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
+    checkAddDBConnection true exampleservice "$FMLNAME_EXAMPLESERVICE_APP" postgres exampleservice-db $EXAMPLESERVICE_DATABASE_NAME $EXAMPLESERVICE_DATABASE_USER $EXAMPLESERVICE_DATABASE_USER_PASSWORD
   fi
 }
 
@@ -81224,6 +82931,13 @@ DATABASE_Discourse=$DISCOURSE_DATABASE_NAME
 USER_Discourse=$DISCOURSE_DATABASE_USER
 PASSWORD_Discourse=$DISCOURSE_DATABASE_USER_PASSWORD
 PORT_Discourse=5432
+LABEL_Dolibarr=Dolibarr
+ENGINE_Dolibarr=mysql@dbgate-plugin-mysql
+SERVER_Dolibarr=easyappointments-db
+DATABASE_Dolibarr=$DOLIBARR_DATABASE_NAME
+USER_Dolibarr=$DOLIBARR_DATABASE_USER
+PASSWORD_Dolibarr=$DOLIBARR_DATABASE_USER_PASSWORD
+PORT_Dolibarr=3306
 LABEL_EasyAppointments=EasyAppointments
 ENGINE_EasyAppointments=mysql@dbgate-plugin-mysql
 SERVER_EasyAppointments=easyappointments-db
@@ -81315,6 +83029,20 @@ DATABASE_Invidious=$INVIDIOUS_DATABASE_NAME
 USER_Invidious=$INVIDIOUS_DATABASE_USER
 PASSWORD_Invidious=$INVIDIOUS_DATABASE_USER_PASSWORD
 PORT_Invidious=5432
+LABEL_InvoiceNinja=InvoiceNinja
+ENGINE_InvoiceNinja=mysql@dbgate-plugin-mysql
+SERVER_InvoiceNinja=invoiceninja-db
+DATABASE_InvoiceNinja=$INVOICENINJA_DATABASE_NAME
+USER_InvoiceNinja=$INVOICENINJA_DATABASE_USER
+PASSWORD_InvoiceNinja=$INVOICENINJA_DATABASE_USER_PASSWORD
+PORT_InvoiceNinja=3306
+LABEL_InvoiceShelf=InvoiceShelf
+ENGINE_InvoiceShelf=mysql@dbgate-plugin-mysql
+SERVER_InvoiceShelf=invoiceshelf-db
+DATABASE_InvoiceShelf=$INVOICESHELF_DATABASE_NAME
+USER_InvoiceShelf=$INVOICESHELF_DATABASE_USER
+PASSWORD_InvoiceShelf=$INVOICESHELF_DATABASE_USER_PASSWORD
+PORT_InvoiceShelf=3306
 LABEL_Kanboard=Kanboard
 ENGINE_Kanboard=postgres@dbgate-plugin-postgres
 SERVER_Kanboard=kanboard-db
@@ -81329,6 +83057,20 @@ DATABASE_Keila=$KEILA_DATABASE_NAME
 USER_Keila=$KEILA_DATABASE_USER
 PASSWORD_Keila=$KEILA_DATABASE_USER_PASSWORD
 PORT_Keila=5432
+LABEL_KillBillAPI=KillBillAPI
+ENGINE_KillBillAPI=mysql@dbgate-plugin-mysql
+SERVER_KillBillAPI=killbill-db
+DATABASE_KillBillAPI=$KILLBILL_KB_DATABASE_NAME
+USER_KillBillAPI=$KILLBILL_DATABASE_USER
+PASSWORD_KillBillAPI=$KILLBILL_DATABASE_USER_PASSWORD
+PORT_KillBillAPI=3306
+LABEL_KillBill=KillBill
+ENGINE_KillBill=mysql@dbgate-plugin-mysql
+SERVER_KillBill=killbill-db
+DATABASE_KillBill=$KILLBILL_KAUI_DATABASE_NAME
+USER_KillBill=$KILLBILL_DATABASE_USER
+PASSWORD_KillBill=$KILLBILL_DATABASE_USER_PASSWORD
+PORT_KillBill=3306
 LABEL_Linkwarden=Linkwarden
 ENGINE_Linkwarden=postgres@dbgate-plugin-postgres
 SERVER_Linkwarden=linkwarden-db
@@ -81581,7 +83323,7 @@ function performUpdateDbGate()
 
 function modFunAddUpdateConnectionDbGate()
 {
-  grep -q "LABEL_${sdb_formal}" $HOME/${updateStackName}.env
+  grep -q "LABEL_${sdb_formal}=" $HOME/${updateStackName}.env
   if [ $? -eq 0 ]; then
     return 3
   fi
@@ -81752,6 +83494,14 @@ SQLPAD_CONNECTIONS__discourse__username=$DISCOURSE_DATABASE_USER
 SQLPAD_CONNECTIONS__discourse__password=$DISCOURSE_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__discourse__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__discourse__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__dolibarr__name=Dolibarr
+SQLPAD_CONNECTIONS__dolibarr__driver=mysql
+SQLPAD_CONNECTIONS__dolibarr__host=dolibarr-db
+SQLPAD_CONNECTIONS__dolibarr__database=$DOLIBARR_DATABASE_NAME
+SQLPAD_CONNECTIONS__dolibarr__username=$DOLIBARR_DATABASE_USER
+SQLPAD_CONNECTIONS__dolibarr__password=$DOLIBARR_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__dolibarr__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__dolibarr__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__easyappointments__name=EasyAppointments
 SQLPAD_CONNECTIONS__easyappointments__driver=mysql
 SQLPAD_CONNECTIONS__easyappointments__host=easyappointments-db
@@ -81856,6 +83606,22 @@ SQLPAD_CONNECTIONS__invidious__username=$INVIDIOUS_DATABASE_USER
 SQLPAD_CONNECTIONS__invidious__password=$INVIDIOUS_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__invidious__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__invidious__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__invoiceninja__name=InvoiceNinja
+SQLPAD_CONNECTIONS__invoiceninja__driver=mysql
+SQLPAD_CONNECTIONS__invoiceninja__host=invoiceninja-db
+SQLPAD_CONNECTIONS__invoiceninja__database=$INVOICENINJA_DATABASE_NAME
+SQLPAD_CONNECTIONS__invoiceninja__username=$INVOICENINJA_DATABASE_USER
+SQLPAD_CONNECTIONS__invoiceninja__password=$INVOICENINJA_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__invoiceninja__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__invoiceninja__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__invoiceshelf__name=InvoiceShelf
+SQLPAD_CONNECTIONS__invoiceshelf__driver=mysql
+SQLPAD_CONNECTIONS__invoiceshelf__host=invoiceshelf-db
+SQLPAD_CONNECTIONS__invoiceshelf__database=$INVOICESHELF_DATABASE_NAME
+SQLPAD_CONNECTIONS__invoiceshelf__username=$INVOICESHELF_DATABASE_USER
+SQLPAD_CONNECTIONS__invoiceshelf__password=$INVOICESHELF_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__invoiceshelf__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__invoiceshelf__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__kanboard__name=Kanboard
 SQLPAD_CONNECTIONS__kanboard__driver=postgres
 SQLPAD_CONNECTIONS__kanboard__host=kanboard-db
@@ -81872,6 +83638,22 @@ SQLPAD_CONNECTIONS__keila__username=$KEILA_DATABASE_USER
 SQLPAD_CONNECTIONS__keila__password=$KEILA_DATABASE_USER_PASSWORD
 SQLPAD_CONNECTIONS__keila__multiStatementTransactionEnabled='false'
 SQLPAD_CONNECTIONS__keila__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__killbill-api__name=KillBillAPI
+SQLPAD_CONNECTIONS__killbill-api__driver=mysql
+SQLPAD_CONNECTIONS__killbill-api__host=killbill-db
+SQLPAD_CONNECTIONS__killbill-api__database=$KILLBILL_KB_DATABASE_NAME
+SQLPAD_CONNECTIONS__killbill-api__username=$KILLBILL_DATABASE_USER
+SQLPAD_CONNECTIONS__killbill-api__password=$KILLBILL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__killbill-api__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__killbill-api__idleTimeoutSeconds=900
+SQLPAD_CONNECTIONS__killbill-web__name=KillBill
+SQLPAD_CONNECTIONS__killbill-web__driver=mysql
+SQLPAD_CONNECTIONS__killbill-web__host=killbill-db
+SQLPAD_CONNECTIONS__killbill-web__database=$KILLBILL_KAUI_DATABASE_NAME
+SQLPAD_CONNECTIONS__killbill-web__username=$KILLBILL_DATABASE_USER
+SQLPAD_CONNECTIONS__killbill-web__password=$KILLBILL_DATABASE_USER_PASSWORD
+SQLPAD_CONNECTIONS__killbill-web__multiStatementTransactionEnabled='false'
+SQLPAD_CONNECTIONS__killbill-web__idleTimeoutSeconds=900
 SQLPAD_CONNECTIONS__linkwarden__name=Linkwarden
 SQLPAD_CONNECTIONS__linkwarden__driver=postgres
 SQLPAD_CONNECTIONS__linkwarden__host=linkwarden-db
@@ -82195,7 +83977,7 @@ function modFunAddUpdateConnectionSQLPad()
     mongodb|sqlite)
       return 0;;
   esac
-  grep "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
+  grep -q "SQLPAD_CONNECTIONS__${sdb_name}__name" $HOME/${updateStackName}.env > /dev/null 2>&1
   if [ $? -eq 0 ]; then
     return 3
   fi
@@ -82565,7 +84347,7 @@ return [
     |
     */
 
-    'key' => env('APP_KEY', 'base64:I206O8ibx+GQyRE7BeOxDobn04Mfmyyc5Ptzns/C0mY='),
+    'key' => env('APP_KEY', 'base64:$(openssl rand -base64 32)'),
 
     'cipher' => 'AES-256-CBC',
 
