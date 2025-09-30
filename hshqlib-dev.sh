@@ -30675,7 +30675,7 @@ TWENTY_MINIO_SECRET=
 # Twenty (Service Details) END
 
 # Odoo (Service Details) BEGIN
-ODOO_INIT_ENV=false
+ODOO_INIT_ENV=true
 ODOO_ADMIN_USERNAME=
 ODOO_ADMIN_EMAIL_ADDRESS=
 ODOO_ADMIN_PASSWORD=
@@ -30685,7 +30685,7 @@ ODOO_DATABASE_USER_PASSWORD=
 # Odoo (Service Details) END
 
 # Calcom (Service Details) BEGIN
-CALCOM_INIT_ENV=false
+CALCOM_INIT_ENV=true
 CALCOM_ADMIN_USERNAME=
 CALCOM_ADMIN_EMAIL_ADDRESS=
 CALCOM_ADMIN_PASSWORD=
@@ -30695,7 +30695,7 @@ CALCOM_DATABASE_USER_PASSWORD=
 # Calcom (Service Details) END
 
 # Rallly (Service Details) BEGIN
-RALLLY_INIT_ENV=false
+RALLLY_INIT_ENV=true
 RALLLY_ADMIN_USERNAME=
 RALLLY_ADMIN_EMAIL_ADDRESS=
 RALLLY_ADMIN_PASSWORD=
@@ -33996,8 +33996,8 @@ function emailVaultwardenCredentials()
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_KILLBILL_WEB}-Admin" https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KILLBILL_ADMIN_USERNAME $KILLBILL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_USERNAME $INVOICENINJA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_EMAIL_ADDRESS $INVOICESHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_EMAIL_ADDRESS $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getSvcCredentialsVW "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
 
   # RelayServer
@@ -34135,8 +34135,8 @@ function emailFormattedCredentials()
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZAMMAD_APP}-Admin" https://$SUB_ZAMMAD_APP.$HOMESERVER_DOMAIN/#login $HOMESERVER_ABBREV $ZAMMAD_ADMIN_EMAIL_ADDRESS $ZAMMAD_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_ZULIP_APP}-Admin" "\"https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/login/,https://$SUB_ZULIP_APP.$HOMESERVER_DOMAIN/accounts/login/\"" $HOMESERVER_ABBREV $ZULIP_ADMIN_EMAIL_ADDRESS $ZULIP_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_KILLBILL_WEB}-Admin" https://$SUB_KILLBILL_WEB.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $KILLBILL_ADMIN_USERNAME $KILLBILL_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_USERNAME $INVOICESHELF_ADMIN_PASSWORD)"\n"
-  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_USERNAME $INVOICENINJA_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICESHELF_APP}-Admin" https://$SUB_INVOICESHELF_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $INVOICESHELF_ADMIN_EMAIL_ADDRESS $INVOICESHELF_ADMIN_PASSWORD)"\n"
+  strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_INVOICENINJA_WEB}-Admin" https://$SUB_INVOICENINJA_WEB.$HOMESERVER_DOMAIN/login $HOMESERVER_ABBREV $INVOICENINJA_ADMIN_EMAIL_ADDRESS $INVOICENINJA_ADMIN_PASSWORD)"\n"
   strOutput=${strOutput}$(getFmtCredentials "${FMLNAME_DOLIBARR_APP}-Admin" https://$SUB_DOLIBARR_APP.$HOMESERVER_DOMAIN/ $HOMESERVER_ABBREV $DOLIBARR_ADMIN_USERNAME $DOLIBARR_ADMIN_PASSWORD)"\n"
 
   # RelayServer
@@ -42281,7 +42281,7 @@ function installNextcloud()
     isError=false
     i=0
     set +e
-    while [ $i -le 300 ]
+    while [ $i -le 900 ]
     do
       findtext=$(docker logs nextcloud-app 2>&1 | grep "$search")
       finderror=$(docker logs nextcloud-app 2>&1 | grep "$error_text")
@@ -42293,9 +42293,9 @@ function installNextcloud()
         isFound=true
         break
       fi
-      echo "Container not ready, sleeping 5 seconds, total wait=$i seconds..."
-      sleep 5
-      i=$((i+5))
+      echo "Container not ready, sleeping 15 seconds, total wait=$i seconds..."
+      sleep 15
+      i=$((i+15))
     done
     if [ "$isFound" = "true" ] && [ "$isError" = "false" ]; then
       break
@@ -42315,7 +42315,6 @@ function installNextcloud()
     echo "ERROR: Nextcloud unknown installation error, exiting..."
     return 2
   fi
-
   # Regarding the next section, see the following:
   #   https://github.com/nextcloud/server/issues/14482
   #   https://github.com/nextcloud/server/issues/14926
@@ -42361,7 +42360,6 @@ function installNextcloud()
     echo "ERROR: Nextcloud could not obtain apps manifest, exiting..."
     return 3
   fi
-
   ls /usr/local/share/ca-certificates/ | while read cert
   do
     docker exec -u www-data nextcloud-app php occ --no-warnings security:certificates:import /usr/local/share/ca-certificates/$cert
@@ -42446,7 +42444,6 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ config:system:set preview_imaginary_url --value="http://nextcloud-imaginary:$NEXTCLOUD_IMAGINARY_PORT"
   docker exec -u www-data nextcloud-app php occ --no-warnings app:install notify_push
   docker exec -u www-data nextcloud-app php occ config:system:set maintenance_window_start --type=integer --value=1
-
   if ! [ "$(isServiceDisabled clamav)" = "true" ]; then
     docker exec -u www-data nextcloud-app php occ --no-warnings app:install files_antivirus
     docker exec -u www-data nextcloud-app php occ config:app:set files_antivirus av_mode --value="daemon"
@@ -42460,12 +42457,10 @@ function installNextcloud()
   docker exec -u www-data nextcloud-app php occ db:add-missing-indices > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ maintenance:repair --include-expensive > /dev/null 2>&1
   docker exec -u www-data nextcloud-app php occ background:cron
-
   sleep 5
   cd ~
   docker compose -f $HOME/nextcloud-compose-tmp.yml down -v
   rm -f $HOME/nextcloud-compose-tmp.yml
-
   if sudo test -d $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin; then
     # This is dumb. https://github.com/nextcloud/notify_push/issues/355
     sudo chmod -R 755 $HSHQ_STACKS_DIR/nextcloud/app/custom_apps/notify_push/bin
@@ -42518,7 +42513,6 @@ function installNextcloud()
   inner_block=$inner_block">>>>respond 404\n"
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NEXTCLOUD $MANAGETLS_NEXTCLOUD "$is_integrate_hshq" $NETDEFAULT_NEXTCLOUD "$inner_block"
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NCTALKHPB.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -42539,7 +42533,6 @@ function installNextcloud()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NCTALKHPB $MANAGETLS_NCTALKHPB "$is_integrate_hshq" $NETDEFAULT_NCTALKHPB "$inner_block"
   insertSubAuthelia $SUB_NCTALKHPB.$HOMESERVER_DOMAIN bypass
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_NCTALKRECORD.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -42556,7 +42549,6 @@ function installNextcloud()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_NCTALKRECORD $MANAGETLS_NCTALKRECORD "$is_integrate_hshq" $NETDEFAULT_NCTALKRECORD "$inner_block"
   insertSubAuthelia $SUB_NCTALKRECORD.$HOMESERVER_DOMAIN bypass
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll nextcloud "$FMLNAME_NEXTCLOUD" $USERTYPE_NEXTCLOUD "https://$SUB_NEXTCLOUD.$HOMESERVER_DOMAIN" "nextcloud.png" "$(getHeimdallOrderFromSub $SUB_NEXTCLOUD $USERTYPE_NEXTCLOUD)"
     restartAllCaddyContainers
@@ -56253,7 +56245,6 @@ function installPaperless()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/paperless
   mkdir $HSHQ_STACKS_DIR/paperless/db
   mkdir $HSHQ_STACKS_DIR/paperless/dbexport
@@ -56265,7 +56256,6 @@ function installPaperless()
   chmod 777 $HSHQ_STACKS_DIR/paperless/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/paperless
   mkdir $HSHQ_NONBACKUP_DIR/paperless/redis
-
   initServicesCredentials
   if [ -z "$PAPERLESS_SECRET_KEY" ]; then
     PAPERLESS_SECRET_KEY=$(pwgen -c -n 64 1)
@@ -56288,12 +56278,11 @@ function installPaperless()
   rm -f $HOME/paperless.oidc
   insertOIDCClientAuthelia paperless "$oidcBlock"
   set +e
-  installStack paperless paperless-app "celery@paperless-app ready" $HOME/paperless.env 5
+  installStack paperless paperless-app "celery@paperless-app ready" $HOME/paperless.env 10 600
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -56309,7 +56298,6 @@ function installPaperless()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PAPERLESS $MANAGETLS_PAPERLESS "$is_integrate_hshq" $NETDEFAULT_PAPERLESS "$inner_block"
   insertSubAuthelia $SUB_PAPERLESS.$HOMESERVER_DOMAIN ${LDAP_PRIMARY_USER_GROUP_NAME}
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll paperless "$FMLNAME_PAPERLESS" $USERTYPE_PAPERLESS "https://$SUB_PAPERLESS.$HOMESERVER_DOMAIN" "paperless.png" "$(getHeimdallOrderFromSub $SUB_PAPERLESS $USERTYPE_PAPERLESS)"
     restartAllCaddyContainers
@@ -58777,7 +58765,6 @@ function installPenpot()
     return 1
   fi
   set -e
-
   mkdir $HSHQ_STACKS_DIR/penpot
   mkdir $HSHQ_STACKS_DIR/penpot/db
   mkdir $HSHQ_STACKS_DIR/penpot/dbexport
@@ -58786,7 +58773,6 @@ function installPenpot()
   chmod 777 $HSHQ_STACKS_DIR/penpot/dbexport
   mkdir $HSHQ_NONBACKUP_DIR/penpot
   mkdir $HSHQ_NONBACKUP_DIR/penpot/redis
-
   initServicesCredentials
   set +e
   docker run --rm --name=tomcat -v $HSHQ_STACKS_DIR/penpot/ssl:/certsexport -v /usr/local/share/ca-certificates:/usr/local/share/ca-certificates $IMG_TOMCAT bash -c "keytool -importcert -file /usr/local/share/ca-certificates/${CERTS_ROOT_CA_NAME}.crt -alias ${CERTS_ROOT_CA_NAME}.crt -cacerts -storepass changeit -noprompt; cp /opt/java/openjdk/lib/security/cacerts /certsexport/"
@@ -58795,7 +58781,7 @@ function installPenpot()
     return 2
   fi
   outputConfigPenpot
-  installStack penpot penpot-backend "welcome to penpot" $HOME/penpot.env 5
+  installStack penpot penpot-backend "welcome to penpot" $HOME/penpot.env 10 600
   retval=$?
   if [ $retval -ne 0 ]; then
     return $retval
@@ -58805,7 +58791,6 @@ function installPenpot()
     PENPOT_INIT_ENV=true
     updateConfigVar PENPOT_INIT_ENV $PENPOT_INIT_ENV
   fi
-
   inner_block=""
   inner_block=$inner_block">>https://$SUB_PENPOT.$HOMESERVER_DOMAIN {\n"
   inner_block=$inner_block">>>>REPLACE-TLS-BLOCK\n"
@@ -58821,7 +58806,6 @@ function installPenpot()
   inner_block=$inner_block">>}"
   updateCaddyBlocks $SUB_PENPOT $MANAGETLS_PENPOT "$is_integrate_hshq" $NETDEFAULT_PENPOT "$inner_block"
   insertSubAuthelia $SUB_PENPOT.$HOMESERVER_DOMAIN bypass
-
   if ! [ "$is_integrate_hshq" = "false" ]; then
     insertEnableSvcAll penpot "$FMLNAME_PENPOT" $USERTYPE_PENPOT "https://$SUB_PENPOT.$HOMESERVER_DOMAIN" "penpot.png" "$(getHeimdallOrderFromSub $SUB_PENPOT $USERTYPE_PENPOT)"
     restartAllCaddyContainers
@@ -66769,7 +66753,7 @@ function installKanboard()
   addUserMailu alias $KANBOARD_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   KANBOARD_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 12 "" $KANBOARD_ADMIN_PASSWORD | tr -d ':\n' | sed 's/\$/\\$/g')
   outputConfigKanboard
-  installStack kanboard kanboard-app "" $HOME/kanboard.env
+  installStack kanboard kanboard-app "" $HOME/kanboard.env 5
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -68317,7 +68301,7 @@ function installMintHCM()
   MINTHCM_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $MINTHCM_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigMintHCM
   echo "Please be patient, this will take a few minutes..."
-  installStack minthcm minthcm-web "Starting periodic command scheduler cron" $HOME/minthcm.env 15 900
+  installStack minthcm minthcm-web "Starting periodic command scheduler cron" $HOME/minthcm.env 30 900
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -68328,6 +68312,7 @@ function installMintHCM()
     updateConfigVar MINTHCM_INIT_ENV $MINTHCM_INIT_ENV
   fi
   sleep 3
+  echo "Setting up integrations..."
   docker exec minthcm-db /dbexport/setupDBSettings.sh > /dev/null 2>&1
   rm -f $HSHQ_STACKS_DIR/minthcm/dbexport/setupDBSettings.sh
   set -e
@@ -73362,7 +73347,7 @@ function installInvoiceShelf()
   wizard_notes=$(cat <<EOFWZ
 Admin Login Info:
 ========================================================================
-$FMLNAME_INVOICESHELF_APP Admin Email: $INVOICESHELF_ADMIN_EMAIL_ADDRESS
+$FMLNAME_INVOICESHELF_APP Admin Username: $INVOICESHELF_ADMIN_EMAIL_ADDRESS
 $FMLNAME_INVOICESHELF_APP Admin Password: $INVOICESHELF_ADMIN_PASSWORD
 ========================================================================
 
@@ -82934,7 +82919,7 @@ PASSWORD_Discourse=$DISCOURSE_DATABASE_USER_PASSWORD
 PORT_Discourse=5432
 LABEL_Dolibarr=Dolibarr
 ENGINE_Dolibarr=mysql@dbgate-plugin-mysql
-SERVER_Dolibarr=easyappointments-db
+SERVER_Dolibarr=dolibarr-db
 DATABASE_Dolibarr=$DOLIBARR_DATABASE_NAME
 USER_Dolibarr=$DOLIBARR_DATABASE_USER
 PASSWORD_Dolibarr=$DOLIBARR_DATABASE_USER_PASSWORD
@@ -83291,7 +83276,7 @@ PASSWORD_Zammad=$ZAMMAD_DATABASE_USER_PASSWORD
 PORT_Zammad=5432
 LABEL_Zulip=Zulip
 ENGINE_Zulip=postgres@dbgate-plugin-postgres
-SERVER_Zulip=yamtrack-db
+SERVER_Zulip=zulip-db
 DATABASE_Zulip=$ZULIP_DATABASE_NAME
 USER_Zulip=$ZULIP_DATABASE_USER
 PASSWORD_Zulip=$ZULIP_DATABASE_USER_PASSWORD
