@@ -23642,6 +23642,7 @@ function version202Update()
 
 function version204Update()
 {
+  set +e
   sudo DEBIAN_FRONTEND=noninteractive apt update > /dev/null 2>&1
   performAptInstall php-cli > /dev/null 2>&1
 }
@@ -34612,11 +34613,11 @@ function initServiceDefaults()
   DS_MEM_12=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,jitsi,jellyfin,peertube,photoprism,sysutils,wazuh,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,easyappointments,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
   DS_MEM_16=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,excalidraw,invidious,peertube,photoprism,gitea,mealie,kasm,bar-assistant,remotely,calibre,linkwarden,stirlingpdf,freshrss,keila,wallabag,changedetection,piped,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
   DS_MEM_22=gitlab,discourse,netdata,jupyter,paperless,speedtest-tracker-local,speedtest-tracker-vpn,huginn,grampsweb,drawio,firefly,shlink,homeassistant,wordpress,ghost,wikijs,guacamole,searxng,invidious,peertube,photoprism,gitea,kasm,remotely,calibre,stirlingpdf,keila,piped,penpot,espocrm,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  DS_MEM_28=gitlab,discourse,netdata,jupyter,huginn,grampsweb,drawio,invidious,photoprism,kasm,penpot,espocrm,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  DS_MEM_HIGH=netdata,photoprism,aistack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,kanboard,wekan,revolt,frappe-hr,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja
   BDS_MEM_12=sysutils,wazuh,jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,firefly,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,linkwarden,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,penpot,espocrm,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,adminer,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
-  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja,dolibarr
+  BDS_MEM_16=jitsi,matrix,mastodon,searxng,jellyfin,photoprism,guacamole,ghost,wikijs,peertube,homeassistant,gitlab,discourse,shlink,drawio,invidious,gitea,mealie,kasm,ntfy,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,huginn,filedrop,piped,grampsweb,immich,homarr,matomo,pastefy,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,meshcentral,navidrome,budibase,audiobookshelf,standardnotes,metabase,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceshelf,invoiceninja
+  BDS_MEM_22=matrix,mastodon,searxng,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,remotely,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,homarr,aistack,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,standardnotes,wekan,revolt,minthcm,cloudbeaver,twenty,odoo,calcom,rallly,openproject,zammad,zulip,killbill,invoiceninja
   BDS_MEM_28=matrix,mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,drawio,invidious,mealie,kasm,calibre,netdata,bar-assistant,freshrss,wallabag,jupyter,speedtest-tracker-local,speedtest-tracker-vpn,filedrop,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,revolt,calcom,rallly,killbill
   BDS_MEM_HIGH=mastodon,jellyfin,photoprism,peertube,homeassistant,gitlab,invidious,mealie,kasm,calibre,bar-assistant,freshrss,piped,grampsweb,immich,pixelfed,yamtrack,servarr,sabnzbd,qbittorrent,ombi,navidrome,audiobookshelf,rallly,killbill
 }
@@ -70749,7 +70750,7 @@ function installOpenProject()
     return $retVal
   fi
   if ! [ "$OPENPROJECT_INIT_ENV" = "true" ]; then
-    sendEmail -s "$FMLNAME_OPENPROJECT_APP Admin Login Info" -b "$FMLNAME_OPENPROJECT_APP Admin Username: $OPENPROJECT_ADMIN_USERNAME\n$FMLNAME_OPENPROJECT_APP Admin Email: $OPENPROJECT_ADMIN_EMAIL_ADDRESS\n$FMLNAME_OPENPROJECT_APP Admin Password: $OPENPROJECT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
+    sendEmail -s "$FMLNAME_OPENPROJECT_APP Admin Login Info" -b "$FMLNAME_OPENPROJECT_APP Admin Username: $OPENPROJECT_ADMIN_USERNAME\n$FMLNAME_OPENPROJECT_APP Admin Password: $OPENPROJECT_ADMIN_PASSWORD\n" -f "$(getAdminEmailName) <$EMAIL_SMTP_EMAIL_ADDRESS>"
     OPENPROJECT_INIT_ENV=true
     updateConfigVar OPENPROJECT_INIT_ENV $OPENPROJECT_INIT_ENV
   fi
@@ -71166,7 +71167,7 @@ function installZammad()
   sleep 3
   addUserMailu user $ZAMMAD_DEDICATED_EMAIL_USERNAME $HOMESERVER_DOMAIN $ZAMMAD_DEDICATED_EMAIL_PASSWORD
   outputConfigZammad
-  installStack zammad zammad-nginx "starting nginx..." $HOME/zammad.env 15
+  installStack zammad zammad-nginx "starting nginx..." $HOME/zammad.env 15 600
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -71842,7 +71843,7 @@ function installZulip()
   addUserMailu alias $ZULIP_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   ZULIP_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $ZULIP_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigZulip
-  installStack zulip zulip-app "nginx entered RUNNING state" $HOME/zulip.env 15
+  installStack zulip zulip-app "nginx entered RUNNING state" $HOME/zulip.env 15 600
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -72769,7 +72770,7 @@ MEMCACHED_USERNAME = "zulip@zulip-memcache"
 ##
 ## Controls whether or not error reports (tracebacks) are emailed to the
 ## server administrators.
-# ERROR_REPORTING = True
+ERROR_REPORTING = False
 
 ## Controls the DSN used to report errors to Sentry.io
 # SENTRY_DSN = "https://aaa@bbb.ingest.sentry.io/1234"
@@ -73633,7 +73634,7 @@ function installInvoiceNinja()
   addUserMailu alias $INVOICENINJA_ADMIN_USERNAME $HOMESERVER_DOMAIN $EMAIL_ADMIN_EMAIL_ADDRESS
   INVOICENINJA_ADMIN_PASSWORD_HASH=$(htpasswd -bnBC 10 "" $INVOICENINJA_ADMIN_PASSWORD | tr -d ':\n')
   outputConfigInvoiceNinja
-  installStack invoiceninja invoiceninja-app "ready to handle connections" $HOME/invoiceninja.env 10
+  installStack invoiceninja invoiceninja-app "ready to handle connections" $HOME/invoiceninja.env 15 900
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
@@ -74051,7 +74052,7 @@ function installDolibarr()
   generateCert dolibarr-cron dolibarr-cron
   DOLI_INSTANCE_UNIQUE_ID=$(pwgen -c -n 64 1)
   outputConfigDolibarr
-  installStack dolibarr dolibarr-app "You can connect to the running Dolibarr web application with" $HOME/dolibarr.env 15 900
+  installStack dolibarr dolibarr-app "You can connect to the running Dolibarr web application with" $HOME/dolibarr.env 20 900
   retVal=$?
   if [ $retVal -ne 0 ]; then
     return $retVal
